@@ -2260,7 +2260,7 @@ def export_attestation(repo: "GitVarsRepo", scope: str, decision_id: bytes,
     return bundle
 
 
-def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
+def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]] = None) -> Dict[str, object]:
     """Recompute §4.2 Pass 3 for one contract or decision from a bundle, with no repository.
 
     `attested`: over the supplied verdicts, ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator
@@ -2274,7 +2274,12 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
     local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `accepted` requires that,
     the projection witnessed, and no supplied verdict from after the tip contradicting it by a policy key; it says
     nothing else about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a
-    computation need replay, hence the repository."""
+    computation need replay, hence the repository.
+
+    The chain's admission quorum may rotate its roster, so a key that refused a release can be rotated out and
+    later releases settle without it. A reader who wants a veto for certain keys pins them: with `require`, each
+    must also endorse the cell at the tip and witness the projection, and `required_missing` lists those that
+    do not."""
     if bundle.get("format") != ATTESTATION_FORMAT:
         raise VarsError("unknown attestation bundle format")
     d = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -2361,7 +2366,10 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
     result["attested_at_tip"] = settled
     result["active_at_tip"] = st["active"] and not st["stale"]
     result["contradicted_after_tip"] = any(w.slots[1] == H_VERDICT_INVALID and signers[w.id] & keys for w in later)
-    result["accepted"] = bool(settled and pr["witnessed"] and not result["contradicted_after_tip"])
+    missing = [k.hex() for k in require or []
+               if k.hex() not in result["endorsers_at_tip"] or k.hex() not in pr["witnesses"]]
+    result["required_missing"] = missing
+    result["accepted"] = bool(settled and pr["witnessed"] and not result["contradicted_after_tip"] and not missing)
     return result
 
 
@@ -2374,15 +2382,18 @@ def _main(argv: List[str]) -> int:
             return 2
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result["witnessed"] and result["data_ok"] in (True, None) else 1
-    if len(argv) == 2 and argv[0] == "verify-attestation":
+    if len(argv) >= 2 and argv[0] == "verify-attestation" and len(argv) % 2 == 0 \
+            and all(a == "--require" for a in argv[2::2]):
         try:
-            result = verify_attestation(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
+            result = verify_attestation(json.loads(Path(argv[1]).read_text(encoding="utf-8")),
+                                        require=[bytes.fromhex(k) for k in argv[3::2]])
         except (VarsError, ValueError, KeyError) as e:
             print(f"refused: {e}", file=sys.stderr)
             return 2
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result["accepted"] else 1
-    print("usage: vars1.py verify-projection BUNDLE.json | verify-attestation BUNDLE.json", file=sys.stderr)
+    print("usage: vars1.py verify-projection BUNDLE.json | verify-attestation BUNDLE.json [--require PUBKEY]...",
+          file=sys.stderr)
     return 2
 
 

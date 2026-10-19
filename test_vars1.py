@@ -1795,7 +1795,8 @@ class TestVars1Conformance(unittest.TestCase):
             return ["spy OK"], True
         real, mc.run_checks = mc.run_checks, spy
         try:
-            self.assertEqual(mc.checks_at(work, first, b"\x01" * 32), (["spy OK"], True))
+            self.assertEqual(mc.checks_at(work, first, b"\x01" * 32),
+                             (["siblings are the current checkouts: this release does not pin them OK", "spy OK"], True))
         finally:
             mc.run_checks = real
         self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": True})
@@ -1850,6 +1851,165 @@ class TestVars1Conformance(unittest.TestCase):
                       seals=[x for x in b["seals"] if V.Seal.decode(bytes.fromhex(x)).h_target != bad.id])
         with self.assertRaisesRegex(V.VarsError, "omits 1 verdict"):
             V.verify_attestation(hidden)
+
+    def test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds(self) -> None:
+        """Monday F36: admission is 1-of-n, so one member alone may rotate the roster down to itself, after which its
+        releases settle on the chain without the other. A reader who pins both keys still refuses them."""
+        mc = self._minds_chain()
+        ska, skb = b"\x07" * 32, b"\x08" * 32
+        pka, pkb = V.ed25519_pubkey(ska), V.ed25519_pubkey(skb)
+        mc.init(self.repo_path, ska)
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, ska, pkb, "bob")
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])  # bob never attests r1
+
+        # Alice alone rotates Bob out: the gate admits it, as §3 check 1 asks only the admission quorum
+        atoms: dict[bytes, bytes] = {}
+        s = mc.governing_scope(repo)
+        pol = self._pol(atoms, 1, [pka])
+        solo = V.Cell(h_schema=V.H_SCHEMA["scope"], h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/SCOPE")),
+                      h_payload=self._put_atom(atoms, V.atom_utf8("alice alone")),
+                      h_supersedes=self._hv(atoms, [s]), h_loss=self._put_atom(atoms, V.atom_utf8("bob removed")),
+                      slots=(pol, pol, V.H_LENS_KERNEL))
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", atoms, [solo], [V.Seal.sign(ska, solo.id, s)], parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        self.assertEqual(mc.roster(repo), [pka])
+        _, r2 = mc.release(self.repo_path, ska, "b" * 40, ["test_vars1 OK"])
+        _, r3 = mc.release(self.repo_path, ska, "c" * 40, ["test_vars1 OK"])
+        lens = repo.lens("minds")
+        self.assertFalse(lens["settled"][r1["decision"]], "a release recorded under both still needs both")
+        self.assertTrue(lens["settled"][r2["decision"]], "after the rotation Alice alone settles a release")
+
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r3["projection"])))
+        self.assertTrue(V.verify_attestation(b)["accepted"], "the chain describes itself consistently")
+        pinned = V.verify_attestation(b, require=[pka, pkb])
+        self.assertFalse(pinned["accepted"], "a reader who pinned Bob's key does not accept it")
+        self.assertEqual(pinned["required_missing"], [pkb.hex()])
+        self.assertTrue(V.verify_attestation(b, require=[pka])["accepted"])
+
+        # Bob rejoins and witnesses a later projection without having attested r2: still missing for the pin
+        mc.join(self.repo_path, ska, pkb, "bob")
+        _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["test_vars1 OK"])
+        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a: (["ok"], True))
+        b4 = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r4["projection"])))
+        self.assertIn(pkb.hex(), V.verify_projection(b4["projection"])["witnesses"])
+        self.assertEqual(V.verify_attestation(b4, require=[pka, pkb])["required_missing"], [pkb.hex()])
+
+        path = Path(self.tmp.name) / "attestation.json"
+        path.write_text(json.dumps(b))
+        cli = lambda *a: subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path), *a],
+                                        capture_output=True, text=True).returncode
+        self.assertEqual((cli(), cli("--require", pka.hex()), cli("--require", pka.hex(), "--require", pkb.hex())),
+                         (0, 0, 1))
+
+    def test_23_a_member_revokes_its_own_attestation(self) -> None:
+        """Monday F37: a member who attested a release and later finds a failure records INVALID under the same
+        verifier id through `verify-release`, which contradicts its ATTESTED and unsettles the release."""
+        mc = self._minds_chain()
+        ska, skb = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, ska)
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, ska, V.ed25519_pubkey(skb), "bob")
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])
+        ok_checks = lambda *a: (["test_vars1 OK"], True)
+        bad_checks = lambda *a: (["test_vars1 FAILED"], False)
+        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=ok_checks)
+        self.assertTrue(repo.lens("minds")["settled"][r1["decision"]])
+        with self.assertRaisesRegex(V.VarsError, "already recorded"):
+            mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=ok_checks)
+        try:
+            _, ok, _ = mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=bad_checks)
+        except V.VarsError as e:
+            self.fail(f"the member could not revoke its own attestation: {e}")
+        self.assertFalse(ok)
+        self.assertFalse(repo.lens("minds")["settled"][r1["decision"]], "Bob's INVALID withdraws Bob's ATTESTED")
+        with self.assertRaisesRegex(V.VarsError, "already recorded"):
+            mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=bad_checks)
+
+    def test_24_releases_pin_the_sibling_checkouts(self) -> None:
+        """Monday (F36 review, note): a release records the sigma-glyph and primitives commits; checks run on those
+        commits, extracted beside the worktree, not on whatever the sibling checkouts hold, and Book I is compared
+        with the spec's pin."""
+        mc = self._minds_chain()
+        proj = Path(self.tmp.name) / "proj"
+
+        def repo(name):
+            d = proj / name
+            d.mkdir(parents=True)
+            g = lambda *a: subprocess.run(["git", "-C", str(d), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                          capture_output=True, text=True, check=True).stdout.strip()
+            g("init", "-q", "-b", "main")
+            return d, g
+
+        def commit(d, g, files, msg):
+            for f, text in files.items():
+                (d / f).parent.mkdir(parents=True, exist_ok=True)
+                (d / f).write_text(text)
+            g("add", "-A")
+            g("commit", "-q", "-m", msg)
+            return g("rev-parse", "HEAD")
+
+        minds, gm = repo("minds")
+        m1 = commit(minds, gm, {"f": "minds"}, "one")
+        sg, gs = repo("sigma-glyph")
+        pin = commit(sg, gs, {"impl/sigma_resume.py": "book one", "proofs/A.lean": "a", "README": "r1"}, "pin")
+        s_same = commit(sg, gs, {"README": "r2"}, "docs only")
+        s_new = commit(sg, gs, {"impl/sigma_resume.py": "book two"}, "book changed")
+        pr, gp = repo("primitives")
+        p1 = commit(pr, gp, {"v": "vectors one"}, "one")
+        commit(pr, gp, {"v": "vectors two"}, "two")
+
+        seen = {}
+        def spy(root, rules):
+            seen.update(book=(root.parent / "sigma-glyph" / "impl" / "sigma_resume.py").read_text(),
+                        readme=(root.parent / "sigma-glyph" / "README").read_text(),
+                        vectors=(root.parent / "primitives" / "v").read_text(),
+                        linked=(root.parent / "sigma-glyph").is_symlink())
+            return ["spy OK"], True
+        real_checks, real_pin = mc.run_checks, mc.SIGMA_PIN
+        mc.run_checks, mc.SIGMA_PIN = spy, pin
+        try:
+            lines, ok = mc.checks_at(minds, m1, V.H_LENS_KERNEL, {"sigma-glyph": s_same, "primitives": p1})
+            self.assertTrue(ok, lines)
+            self.assertEqual(seen, {"book": "book one", "readme": "r2", "vectors": "vectors one", "linked": False},
+                             "the checks saw the pinned commits, not the checkouts")
+            self.assertFalse((minds / ".git" / "vars" / "verify" / m1[:12] / "sigma-glyph").exists())
+            lines, ok = mc.checks_at(minds, m1, V.H_LENS_KERNEL, {"sigma-glyph": s_new, "primitives": p1})
+            self.assertFalse(ok)
+            self.assertIn(f"sigma-glyph Book I equals the spec's pin {pin} FAILED", lines)
+            lines, ok = mc.checks_at(minds, m1, V.H_LENS_KERNEL)
+            self.assertTrue(ok and seen["linked"] and seen["book"] == "book two")
+            self.assertIn("siblings are the current checkouts: this release does not pin them OK", lines)
+        finally:
+            mc.run_checks, mc.SIGMA_PIN = real_checks, real_pin
+
+        self.assertEqual(mc.sibling_revs(minds), ({"sigma-glyph": s_new, "primitives": gp("rev-parse", "HEAD")}, None))
+        (sg / "README").write_text("dirty")
+        self.assertIn("sigma-glyph checkout has uncommitted changes", mc.sibling_revs(minds)[1] or "")
+
+        # The statement carries the pins, and verify-release hands them to the checks
+        stmt = f"minds release main@{m1} rules@{V.H_LENS_KERNEL.hex()} sigma-glyph@{s_same} primitives@{p1}; checks: x"
+        self.assertEqual(mc.parse_release(stmt), (m1, V.H_LENS_KERNEL, {"sigma-glyph": s_same, "primitives": p1}))
+        self.assertEqual(mc.parse_release(f"minds release main@{m1} rules@{V.H_LENS_KERNEL.hex()}; checks: x"),
+                         (m1, V.H_LENS_KERNEL, None))
+        sk, skb = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(skb), "bob")
+        _, r = mc.release(self.repo_path, sk, m1, ["x OK"], {"sigma-glyph": s_same, "primitives": p1})
+        got = []
+        mc.verify_release(self.repo_path, skb, r["decision"], "bob",
+                          checks=lambda *a, **kw: (got.append((a[1:], kw)), (["ok"], True))[1])
+        self.assertEqual(got, [((m1, V.H_LENS_KERNEL), {"siblings": {"sigma-glyph": s_same, "primitives": p1}})])
+
+    def test_25_readme_keys_are_the_chain_roster(self) -> None:
+        """The member keys README.md publishes for pinning are the roster of this repository's own chain."""
+        mc = self._minds_chain()
+        repo = V.GitVarsRepo(ROOT_DIR)
+        if repo.ref_commit(mc.SCOPE) is None:
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        published = set(re.findall(r"\| `([0-9a-f]{64})` \|", (ROOT_DIR / "README.md").read_text()))
+        self.assertEqual(published, {k.hex() for k in mc.roster(repo)})
 
 
 if __name__ == "__main__":

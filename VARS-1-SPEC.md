@@ -130,7 +130,8 @@ whose key vector is present. `root`: a ComputationRoot whose Environment is pres
 `kernel_outcome` ∈ {`H_NORMAL_FORM`, `H_PAUSED`, `H_BLOCKED_REF`}; a checkpoint chains to its parent through
 `relies`, never `supersedes`. cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`. tier ∈
 {`H_PROVISIONAL`, `H_OWNER`}. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
-`foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 scope name)`. verdict: the
+`foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 label)`, free text that nothing
+evaluates (the scope's origin is in its name, its authority in its slots). verdict: the
 contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
 `H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
 
@@ -149,7 +150,9 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
 
 1. **Chain.** Genesis has no parent and exactly one local scope cell `S_0`, with empty edges, self-sealed to its
    admission quorum. Any later commit has exactly the parent `T_old` and at most one new local scope cell, which
-   supersedes exactly the governing scope and is sealed by its admission quorum.
+   supersedes exactly the governing scope and is sealed by its admission quorum. That quorum alone may set the
+   new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the
+   reader's pin).
 2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.
 3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell has
    `rules = H_LENS_KERNEL`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
@@ -324,9 +327,11 @@ verdict are its seals; of a foreign verdict, seals under a scope of its origin n
 of a newer cell of its origin that references it, by that scope's admission keys. The cell is *accepted* when that
 recomputation settles it, the projection is witnessed, and no supplied verdict from after `tip` contradicts it by
 a policy key. Acceptance is about `tip`: the release recorded last is accepted only once a later projection
-covers it. A verdict or seal about another
+covers it. Because the admission quorum may rotate a key out (§3), and releases after that need it no longer, a
+reader who wants certain keys to have a veto pins them: each pinned key must also endorse the cell at `tip` and
+witness the projection. A verdict or seal about another
 cell is a refusal. A decision that requires a computation needs replay, hence the repository.
-`vars1.py verify-attestation BUNDLE.json` exits 0 only on acceptance; `export_attestation` builds a bundle.
+`vars1.py verify-attestation BUNDLE.json [--require PUBKEY]...` exits 0 only on acceptance; `export_attestation` builds a bundle.
 
 ## 5. Replay against Book I
 

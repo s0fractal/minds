@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +35,9 @@ sys.path.insert(0, str(ROOT))
 import vars1 as V  # noqa: E402
 
 SCOPE = "minds"
+SIBLINGS = ("sigma-glyph", "primitives")
+SIGMA_PIN = "c864d3e"  # VARS-1-SPEC.md: Book I as the spec depends on it
+BOOK_I = ("impl/sigma_resume.py", "proofs")
 
 
 def key_path(repo_dir: Path) -> Path:
@@ -122,7 +126,8 @@ def join(repo_dir: Path, sk: bytes, pubkey: bytes, name: str) -> str:
     return c
 
 
-def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str]) -> Tuple[str, Dict[str, bytes]]:
+def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
+            siblings: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, bytes]]:
     """Record a release of `main_sha`: a decision stating it and the checks, the maintainer's ATTESTED verdict on it,
     and a projection of the chain as it stood before this commit. The decision's evaluator policy and the
     projection's witness policy are every key on the roster: the release is settled when each member has attested
@@ -135,7 +140,8 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str]) -> Tupl
     atoms: Dict[bytes, bytes] = {}
     keys = roster(repo)
     everyone = _policy(atoms, len(keys), keys)
-    statement = f"minds release main@{main_sha} rules@{V.H_LENS_KERNEL.hex()}; checks: " + "; ".join(checks)
+    pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
+    statement = f"minds release main@{main_sha} rules@{V.H_LENS_KERNEL.hex()}{pins}; checks: " + "; ".join(checks)
     tag = main_sha[:12]
     decision = V.Cell(
         h_schema=V.H_SCHEMA["decision"],
@@ -233,40 +239,81 @@ def release_target(repo_dir: Path) -> Tuple[str, Optional[str]]:
     return main_sha, None
 
 
-def parse_release(statement: str) -> Tuple[str, bytes]:
-    """The commit and rules hash a release statement names."""
-    m = re.match(r"^minds release main@([0-9a-f]{40}) rules@([0-9a-f]{64});", statement)
+def parse_release(statement: str) -> Tuple[str, bytes, Optional[Dict[str, str]]]:
+    """The commit, rules hash and (for releases that pin them) sibling commits a release statement names."""
+    sib = "".join(rf"(?: {k}@([0-9a-f]{{40}}))" for k in SIBLINGS)
+    m = re.match(rf"^minds release main@([0-9a-f]{{40}}) rules@([0-9a-f]{{64}})(?:{sib})?;", statement)
     if m is None:
         raise V.VarsError("not a release statement")
-    return m.group(1), bytes.fromhex(m.group(2))
+    pins = dict(zip(SIBLINGS, m.groups()[2:])) if m.group(3) else None
+    return m.group(1), bytes.fromhex(m.group(2)), pins
 
 
-def checks_at(repo_dir: Path, sha: str, rules: bytes) -> Tuple[List[str], bool]:
-    """Run every check on commit `sha` in a fresh worktree under `.git/vars/verify/`, beside links to the sibling
-    checkouts the code expects; the worktree is removed afterwards."""
+def sibling_revs(repo_dir: Path) -> Tuple[Dict[str, str], Optional[str]]:
+    """The commits of the sibling checkouts beside `repo_dir`, and why a release may not pin them now, if so."""
+    revs: Dict[str, str] = {}
+    for sib in SIBLINGS:
+        d = Path(repo_dir).resolve().parent / sib
+        git = lambda *a: subprocess.run(["git", "-C", str(d), *a], capture_output=True, text=True, check=True).stdout
+        revs[sib] = git("rev-parse", "--verify", "HEAD^{commit}").strip()
+        if git("status", "--porcelain", "--untracked-files=no").strip():
+            return revs, f"the {sib} checkout has uncommitted changes"
+    return revs, None
+
+
+def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
+    """Run every check on commit `sha` in a fresh worktree under `.git/vars/verify/`. With `siblings`, each sibling
+    is extracted at the pinned commit beside it (read from the sibling repository with `git archive`) and Book I is
+    compared with the spec's pin; without, the current sibling checkouts are linked, and a line says so. The
+    worktree and the extracted siblings are removed afterwards."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True)
     git("merge-base", "--is-ancestor", sha, "main")
+    parent = Path(repo_dir).resolve().parent
     base = Path(repo_dir) / ".git" / "vars" / "verify" / sha[:12]
     base.mkdir(parents=True, exist_ok=True)
-    for sib in ("sigma-glyph", "primitives"):
-        link = base / sib
-        if not link.exists():
-            link.symlink_to(Path(repo_dir).resolve().parent / sib)
+    pre: List[Tuple[str, bool]] = []
+    for sib in SIBLINGS:
+        dst = base / sib
+        if dst.is_symlink() or dst.is_file():
+            dst.unlink()
+        elif dst.exists():
+            shutil.rmtree(dst)
+        if siblings is None:
+            dst.symlink_to(parent / sib)
+            continue
+        dst.mkdir()
+        arc = subprocess.run(["git", "-C", str(parent / sib), "archive", siblings[sib]], capture_output=True, check=True)
+        subprocess.run(["tar", "-x", "-C", str(dst)], input=arc.stdout, check=True)
+    if siblings is None:
+        pre.append(("siblings are the current checkouts: this release does not pin them", True))
+    else:
+        same = subprocess.run(["git", "-C", str(parent / "sigma-glyph"), "diff", "--quiet", SIGMA_PIN,
+                               siblings["sigma-glyph"], "--", *BOOK_I]).returncode == 0
+        pre.append((f"sigma-glyph Book I equals the spec's pin {SIGMA_PIN}", same))
     wt = base / "minds"
     if wt.exists():
         git("worktree", "remove", "--force", str(wt))
     git("worktree", "add", "-q", "--detach", str(wt), sha)
     try:
-        return run_checks(wt, rules)
+        lines, ok = run_checks(wt, rules)
     finally:
         git("worktree", "remove", "--force", str(wt))
+        for sib in SIBLINGS:
+            dst = base / sib
+            if dst.exists() and not dst.is_symlink():
+                shutil.rmtree(dst)
+    return [f"{n} {'OK' if g else 'FAILED'}" for n, g in pre] + lines, ok and all(g for _, g in pre)
 
 
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
     (ATTESTED if every check passed, else INVALID), and witness every projection that names this member's key and
-    whose digests this host recomputes. Returns the new commit, the outcome and the check lines."""
+    whose digests this host recomputes. Returns the new commit, the outcome and the check lines.
+
+    `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
+    contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
+    an INVALID cannot be taken back by a later ATTESTED."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     atoms, cells, seals = repo.read_cas_tree(tip)
@@ -276,13 +323,14 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     d = cells.get(decision_id)
     if d is None or d.h_schema != V.H_SCHEMA["decision"]:
         raise V.VarsError("not a decision of this chain")
-    sha, rules = parse_release(V.parse_utf8(atoms[d.h_payload]))
-    lines, ok = checks(repo_dir, sha, rules)
+    sha, rules, pins = parse_release(V.parse_utf8(atoms[d.h_payload]))
+    lines, ok = checks(repo_dir, sha, rules, siblings=pins) if pins else checks(repo_dir, sha, rules)
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     verdict = V.Cell(
         h_schema=V.H_SCHEMA["verdict"],
-        h_slot_name=_put(new, V.atom_utf8(f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}")),
+        h_slot_name=_put(new, V.atom_utf8(f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/"
+                                           f"{'attested' if ok else 'invalid'}")),
         h_payload=decision_id,
         h_attests=_put(new, V.atom_hvec([decision_id])),
         slots=(V.H_EMPTY, V.H_ATTESTED if ok else V.H_VERDICT_INVALID, _put(new, V.atom_utf8(name))),
@@ -315,18 +363,20 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "release":
         main_sha, why = release_target(repo_dir)
+        sibs, why_sib = sibling_revs(repo_dir)
+        why = why or why_sib
         if why:
             print(f"refused: {why}", file=sys.stderr)
             return 1
-        checks, ok = checks_at(repo_dir, main_sha, V.H_LENS_KERNEL)  # a fresh worktree: nothing left from earlier builds
+        checks, ok = checks_at(repo_dir, main_sha, V.H_LENS_KERNEL, sibs)  # fresh: nothing left from earlier builds
         print("\n".join(checks))
         if not ok:
             print("refused: a check failed", file=sys.stderr)
             return 1
-        if release_target(repo_dir) != (main_sha, None):
-            print("refused: main, HEAD or the working tree changed while the checks ran", file=sys.stderr)
+        if release_target(repo_dir) != (main_sha, None) or sibling_revs(repo_dir) != (sibs, None):
+            print("refused: main, HEAD, the tree or a sibling changed while the checks ran", file=sys.stderr)
             return 1
-        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks)
+        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks, sibs)
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
     if cmd == "join" and len(argv) == 3:

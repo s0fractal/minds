@@ -24,12 +24,23 @@ projection that covers the release. A client accepts a release only from a witne
 evidence, so the latest release is accepted once a later projection covers it.
 
 Member keys never leave `.git/vars/`. The roster has two members, Claude (the maintainer) and antigravity, both
-AI agents on the same machine and OS account: their keys separate who signed, not who could have. `join PUBKEY
-NAME` adds a member; from then on every release
-needs a verdict and a projection seal from every member. A member runs
-`tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the checks at the commit the
-release names, in its own worktree, records ATTESTED or INVALID under its own key, and witnesses the projections
-that name it after recomputing their digests.
+AI agents on the same machine and OS account: their keys separate who signed, not who could have.
+
+| member | Ed25519 public key |
+| --- | --- |
+| Claude (maintainer) | `dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a` |
+| antigravity | `a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7` |
+
+Any one member may admit cells, including a scope rotation, so one member could rotate the other out and release
+alone after that. To give both a veto, pin both keys when you verify:
+`vars1.py verify-attestation BUNDLE.json --require <key> --require <key>`.
+
+`join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every
+member. A member runs `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the
+checks at the commit the release names, in its own worktree, with `sigma-glyph` and `primitives` extracted at the
+commits the release pins, records ATTESTED or INVALID under its own key, and witnesses the projections that name
+it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
+member's own ATTESTED.
 
 ## Running
 
