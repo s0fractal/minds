@@ -21,15 +21,16 @@ git clone https://github.com/s0fractal/sigma-glyph
 git clone https://github.com/s0fractal/primitives
 cd minds
 python3 -m unittest test_vars1          # conformance; every fold and lens runs kernel/lens.wasm and its twin
-(cd proofs && lake build && lake build vars1exec && lake build Vars1Sigma)
-python3 test_vars1_props.py             # property-based invariants I0–I9 (I9 needs proofs' vars1exec)
+(cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
+python3 test_vars1_props.py             # property-based invariants I0–I10 (I9, I10 need the proofs' executables)
 ```
 
 ## Status
 
 Experimental. The conformance suite, the property suite and the Lean proofs pass; the proofs' hypotheses and
 unlinked parts are listed in `proofs/README.md`. There has been no independent review, the Radicle transport
-of `refs/vars/*` is untested. The kernel's lens Passes 1–2 are differentially tested against a Lean-proved
-executable lens; its fold is tested against a Python twin and spec oracles, not proved.
+of `refs/vars/*` is untested. The kernel is differentially tested against the Lean side: its lens Passes 1–2
+against an executable lens proved equal to the model, and its fold against the model's own fold, compiled. The
+Rust/wasm code itself is not proved.
 
 MIT licensed.

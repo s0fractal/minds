@@ -306,5 +306,6 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed
   independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces
   the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status
-  bytes from the kernel's own input and fold output (I9).
+  bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,
+  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10).
 - `proofs/`: the theorems listed in `proofs/README.md`.

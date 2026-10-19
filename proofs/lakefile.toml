@@ -19,3 +19,8 @@ roots = ["Vars1Sigma"]
 [[lean_exe]]
 name = "vars1exec"
 root = "Vars1ExecMain"
+
+# The model's own fold (Vars1/Fold.lean `run`) compiled, for differential checks against kernel/lens.wasm.
+[[lean_exe]]
+name = "vars1fold"
+root = "Vars1FoldMain"

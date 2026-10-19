@@ -1000,6 +1000,70 @@ def exec_statuses(line: str) -> List[int]:
     return [int(x) for x in out.split()]
 
 
+FOLD_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin" / "vars1fold"
+_FOLD: Optional[subprocess.Popen] = None
+
+
+def fold_facts(kernel_input: bytes) -> str:
+    """The input line for `vars1fold` (the model's own fold, `proofs/Vars1/Fold.lean`), read only from the kernel's
+    input: policies, cell kinds and policy slots, edges, births, and the verified seals with their first commit."""
+    words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
+    C, N, NK, P = words(0, 4); off = 16
+    pols, pol_ix = [], {}
+    for i in range(P):
+        pid = kernel_input[off:off + 32]; off += 32
+        thr, m = words(off, 2); off += 8
+        keys = list(words(off, m)) if m else []; off += 4 * m
+        pol_ix[pid] = i
+        pols.append((thr, keys))
+    codes = {V.H_SCHEMA["scope"]: 1, V.H_SCHEMA["acceptance"]: 2, V.H_SCHEMA["contract"]: 3,
+             V.H_SCHEMA["decision"]: 4, V.H_SCHEMA["question"]: 5, V.H_SCHEMA["verdict"]: 6, V.H_META_SCHEMA: 7}
+    cells, g = [], None
+    for i in range(N):
+        cid, schema = kernel_input[off:off + 32], kernel_input[off + 32:off + 64]; off += 160
+        origin, birth, K = words(off, 3); off += 12
+        slots = [kernel_input[off + 32 * j: off + 32 * (j + 1)] for j in range(K)]; off += 32 * K
+        edges = []
+        for _ in range(5):
+            (cnt,) = words(off); off += 4
+            edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
+        code = codes.get(schema, 0)
+        pol = lambda h: 0 if h == V.H_EMPTY or h not in pol_ix else pol_ix[h] + 1
+        owner = code in (3, 4) and slots[0] == V.H_OWNER
+        custom = pol(slots[3]) if code in (3, 4) else pol(slots[1]) if code == 5 else 0
+        p0, p1 = (pol(slots[0]), pol(slots[1])) if code == 1 else (0, 0)
+        if code == 1 and origin == 0 and birth == 0:
+            g = i
+        cells.append([code, int(origin == 0), int(cid in V.STD_SCHEMA_IDS), birth, int(owner), custom, p0, p1,
+                      edges[2], edges[3], edges[4]])
+    (S,) = words(off); off += 4
+    seals = [words(off + 16 * j, 4) for j in range(S)]
+    parts = [N, P, C, S, g]
+    for thr, keys in pols:
+        parts += [thr, len(keys), *keys]
+    for c in cells:
+        parts += c[:8]
+        for lst in c[8:]:
+            parts += [len(lst), *lst]
+    for t in seals:
+        parts += list(t)
+    return " ".join(map(str, parts))
+
+
+def model_fold(line: str) -> List[int]:
+    global _FOLD
+    if _FOLD is None:
+        if not FOLD_BIN.exists():
+            raise RuntimeError("build the model fold first: cd proofs && lake build vars1fold")
+        _FOLD = subprocess.Popen([str(FOLD_BIN)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    _FOLD.stdin.write(line + "\n")
+    _FOLD.stdin.flush()
+    out = _FOLD.stdout.readline().strip()
+    if out == "E" or not out:
+        raise RuntimeError(f"vars1fold rejected the facts line ({out or 'no output'})")
+    return [int(x) for x in out.split()]
+
+
 _RUNNER: Optional["V.KernelRunner"] = None
 
 
@@ -1037,6 +1101,15 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
     raw = kernel_runner().run(lens["kernel_input"])
     line, kstatus = exec_facts(lens["kernel_input"], raw)
     estatus = exec_statuses(line)
+    # I10: the model's own fold (proofs/Vars1/Fold.lean, compiled) reproduces the kernel's scope, Authorized bits and
+    # edge authorizations from the kernel's input
+    n = len(kstatus)
+    mfold = model_fold(fold_facts(lens["kernel_input"]))
+    kfold = [int.from_bytes(raw[:4], "little"), *raw[4 + n:4 + 2 * n], *raw[4 + 2 * n:]]
+    if mfold != kfold:
+        i = next((i for i, (a, b) in enumerate(zip(mfold, kfold)) if a != b), min(len(mfold), len(kfold)))
+        what = "scope" if i == 0 else f"Authorized of cell {i - 1}" if i <= n else f"edge latch {i - 1 - n}"
+        out.append(("I10", f"model fold disagrees with the kernel on {what}: model={mfold[i:i+1]} kernel={kfold[i:i+1]}"))
     if list(kstatus) != estatus:
         i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
         out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
@@ -1394,7 +1467,7 @@ class TestVars1Properties(unittest.TestCase):
     SEED0 = int(os.environ.get("VARS1_PBT_SEED", "1"))
 
     def test_random_admission_sequences(self) -> None:
-        """I0..I9 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
+        """I0..I10 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
         found: Dict[str, List[str]] = {}
         known_hits: Dict[str, int] = {}
         admitted_total = 0

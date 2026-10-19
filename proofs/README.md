@@ -6,6 +6,7 @@ Lean 4 (`v4.31.0`, core only, no Mathlib). Models the fold (§4.1) and the lens 
 ```
 lake build              # library Vars1
 lake build vars1exec    # the executable lens, compiled (used by test_vars1_props.py, invariant I9)
+lake build vars1fold    # the model's own fold, compiled (invariant I10)
 lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (../../sigma-glyph/proofs)
 ```
 
@@ -59,8 +60,10 @@ unproved implementation. Reverting `Superseded`'s transitivity in `Exec.lean` br
 - Uniqueness among scope cells (one Active local scope) is checked by property I7, not proved.
 - `kernel/lens.wasm`'s Passes 1–2 are tied to the proved executable lens by differential testing (I9), not by a
   proof about the Rust or wasm code.
-- The kernel's fold is not refined against `Fold.lean`; it is tested against its Python twin and the property
-  suite's spec oracles (I3, I3c), and its outputs are the executable lens's inputs.
+- The kernel's fold is tied to `Fold.lean` by differential testing: `vars1fold` compiles the model's own `run`
+  (no transcription) over facts read from the kernel's input, and the property suite checks on every admitted tip
+  that its governing scope, Authorized bits and edge authorizations equal the kernel's (I10). Making the model let
+  an author invalidate alone is caught by I10.
 
 ## Mutants
 
