@@ -100,7 +100,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(V.H_META_SCHEMA.hex(), "7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
         self.assertEqual(V.H_ZERO.hex(), "bd8ce1f0a5c552141dc052a9b66a200003a1b34dbf947dea1c1e32b9969cfe3c")
         self.assertEqual(V.H_ATTESTED.hex(), "7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c")
-        self.assertEqual(V.H_LENS_KERNEL.hex(), "993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263")
+        self.assertEqual(V.H_LENS_KERNEL.hex(), "874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
         self.assertEqual(V.sha256((ROOT_DIR / "kernel" / "lens.wasm").read_bytes()), V.H_LENS_KERNEL)
         # The spec's schema table and intrinsic constants are the code's, digit for digit
         spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text(encoding="utf-8")
@@ -1441,6 +1441,74 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(self.repo.lens("core")["provisional"][good.id])
         self._admit({}, [], [V.Seal.sign(self.sk2, good.id, s0.id)], c2)
         self.assertTrue(self.repo.lens("core")["settled"][good.id])
+
+
+    def _projection(self, atoms: dict[bytes, bytes], name: str, tip: str, witnesses: list[bytes], thr: int,
+                    **edges: list[bytes]) -> V.Cell:
+        h_in, h_state = self.repo.projection_digests("core", tip)
+        kw = {f"h_{k}": self._hv(atoms, v) for k, v in edges.items()}
+        return V.Cell(
+            h_schema=V.H_SCHEMA["projection"],
+            h_slot_name=self._put_atom(atoms, V.atom_utf8(name)),
+            h_payload=V.H_EMPTY,
+            slots=(self._put_atom(atoms, V.atom_utf8(tip)), V.H_LENS_KERNEL, h_in, h_state,
+                   self._put_atom(atoms, V.atom_pol1(thr, self._hv(atoms, witnesses)))),
+            **kw,
+        )
+
+    def test_12_witness_outside_the_roster_signs_a_projection(self) -> None:
+        """A projection's witnesses need not be in the scope's roster: a key of its witness_policy may seal that
+        projection, and only that projection. Writing it still needs a roster seal."""
+        c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=1)
+        atoms1: dict[bytes, bytes] = {}
+        ax = self._axiom(atoms1, "core/fact", "a fact")
+        c1 = self._admit(atoms1, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], c0)
+
+        # Only the outside witness signs: refused, nobody in the roster wrote it
+        atoms_w: dict[bytes, bytes] = {}
+        lone = self._projection(atoms_w, "core/projection.lone", c1, [self.pk_peer], 1)
+        c_lone = self.repo.build_candidate_commit("core", atoms_w, [lone], [V.Seal.sign(self.sk_peer, lone.id, s0.id)], parent_commit=c1)
+        with self.assertRaises(V.VarsError):
+            self.repo.admit_and_advance("core", c_lone, expected_old=c1)
+
+        # A roster key writes it and the outside witness signs it: admitted and Settled by the witness alone
+        atoms2: dict[bytes, bytes] = {}
+        proj = self._projection(atoms2, "core/projection.c1", c1, [self.pk_peer], 1)
+        c2 = self._admit(atoms2, [proj], [V.Seal.sign(self.sk1, proj.id, s0.id), V.Seal.sign(self.sk_peer, proj.id, s0.id)], c1)
+        self.assertTrue(self.repo.lens("core")["settled"][proj.id])
+
+        # The witness key has no other power: it cannot seal an ordinary local cell
+        atoms3: dict[bytes, bytes] = {}
+        other = self._axiom(atoms3, "core/other", "not a projection")
+        c3 = self.repo.build_candidate_commit("core", atoms3, [other],
+                                              [V.Seal.sign(self.sk1, other.id, s0.id), V.Seal.sign(self.sk_peer, other.id, s0.id)], parent_commit=c2)
+        with self.assertRaises(V.VarsError):
+            self.repo.admit_and_advance("core", c3, expected_old=c2)
+
+    def test_13_projections_are_immutable_historical_facts(self) -> None:
+        """A projection states the rules' result at an earlier commit and the gate has recomputed it, so nothing can
+        evict it and it has no edges: its Settled status is exactly its witness quorum, which a client can check."""
+        c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=1)
+        atoms1: dict[bytes, bytes] = {}
+        ax = self._axiom(atoms1, "core/fact", "a fact")
+        c1 = self._admit(atoms1, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], c0)
+        atoms2: dict[bytes, bytes] = {}
+        proj = self._projection(atoms2, "core/projection.c1", c1, [self.pk1], 1)
+        c2 = self._admit(atoms2, [proj], [V.Seal.sign(self.sk1, proj.id, s0.id)], c1)
+        self.assertTrue(self.repo.lens("core")["settled"][proj.id])
+
+        for kind in ("invalidates", "retires"):
+            atoms3: dict[bytes, bytes] = {}
+            x = self._axiom(atoms3, f"core/evict.{kind}", "try to evict the projection", **{kind: [proj.id]})
+            c3 = self.repo.build_candidate_commit("core", atoms3, [x], [V.Seal.sign(self.sk1, x.id, s0.id)], parent_commit=c2)
+            with self.assertRaisesRegex(V.VarsError, "projection"):
+                self.repo.admit_and_advance("core", c3, expected_old=c2)
+
+        atoms4: dict[bytes, bytes] = {}
+        with_edge = self._projection(atoms4, "core/projection.edge", c1, [self.pk1], 1, relies=[ax.id])
+        c4 = self.repo.build_candidate_commit("core", atoms4, [with_edge], [V.Seal.sign(self.sk1, with_edge.id, s0.id)], parent_commit=c2)
+        with self.assertRaisesRegex(V.VarsError, "projection"):
+            self.repo.admit_and_advance("core", c4, expected_old=c2)
 
 
 if __name__ == "__main__":

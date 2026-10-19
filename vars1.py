@@ -199,7 +199,7 @@ H_OWNER = sha256(b"UTF8owner")
 # The rules a scope is evaluated under are a stored object: the compiled rules kernel (`kernel/`, Rust -> wasm32,
 # reproducible). A scope names it by hash; this host implements exactly these rules.
 KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
-H_LENS_KERNEL = bytes.fromhex("993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263")
+H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
@@ -1174,6 +1174,8 @@ class GitVarsRepo:
                     H_SCHEMA["question"],
                 ):
                     raise VarsError("attests target must be contract, decision, or question")
+                if target_c.h_schema == H_SCHEMA["projection"]:
+                    raise VarsError("a projection is an immutable historical fact: no edge may name it")
                 if target_c.h_schema == H_SCHEMA["scope"] and not (
                     mname == "supersedes" and src_c.h_schema == H_SCHEMA["scope"]
                 ):
@@ -1211,6 +1213,10 @@ class GitVarsRepo:
                 raise VarsError("Check #3 failed: cell arity does not match schema arity")
             if c.h_payload not in known:
                 raise VarsError("Check #4 failed: H_payload missing from CAS")
+            if c.h_schema == H_SCHEMA["projection"] and any(
+                m != H_EMPTY for m in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates, c.h_loss)
+            ):
+                raise VarsError("a projection has no edges and no loss")
             if c.h_schema in (H_SCHEMA["acceptance"], H_SCHEMA["verdict"]) and c.h_payload not in cells:
                 raise VarsError("Check #4 failed: ACCEPTANCE/VERDICT H_payload must be in cas/cells/")
 
@@ -1485,6 +1491,8 @@ class GitVarsRepo:
                     if s.h_scope_ctx != s_base_id:
                         raise VarsError("Local seal H_scope_ctx does not match active SCOPE")
                     allowed = adm_pks | (acc_pks if target_c.h_schema == H_SCHEMA["acceptance"] else set())
+                    if target_c.h_schema == H_SCHEMA["projection"]:
+                        allowed = allowed | pol_quorum(target_c.slots[4])[1]  # its witnesses, roster or not (§4.4)
                     if s.actor_pubkey not in allowed:
                         raise VarsError("Local seal signer not in active SCOPE policy")
                     # an admitted local seal is an endorsement for good. It was checked against the scope
@@ -1498,10 +1506,14 @@ class GitVarsRepo:
                 c = cells[cid]
                 c_orig = cell_origin(c)
                 if c_orig == scope:
+                    # writing a cell, and InitialEndorsers, count roster keys only (a projection's outside witnesses
+                    # sign it, they do not write it)
+                    roster = adm_pks | (acc_pks if c.h_schema == H_SCHEMA["acceptance"] else set())
                     c_signers = {
                         seals[sid].actor_pubkey
                         for sid in seals
                         if seals[sid].h_target == cid and seals[sid].h_scope_ctx == s_base_id
+                        and seals[sid].actor_pubkey in roster
                     }
                     if not c_signers:
                         raise VarsError(f"New local cell {cid.hex()[:12]} lacks a valid Seal under active SCOPE")

@@ -54,7 +54,7 @@ Non-canonical bytes are refused, never normalized.
 | `H_PROVISIONAL` | `UTF8provisional` | `b9d665ebd73a6d287e1e40b8c29cf2839d973b461511bfc7b0dd5623b9fe41e5` |
 | `H_OWNER` | `UTF8owner` | `4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e` |
 
-`H_LENS_KERNEL = 993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263` is not intrinsic: it is the
+`H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
 ### 1.2 Cells (`cas/cells/`)
@@ -78,7 +78,7 @@ Unsigned, `296 + 32·K` bytes:
 ```
 
 1. **Loss.** `H_supersedes ≠ H_EMPTY` or `H_retires ≠ H_EMPTY` requires `H_loss ≠ H_EMPTY`.
-2. **Edges.** Every element of the five edge vectors is a cell id, never the cell itself. `supersedes` joins
+2. **Edges.** Every element of the five edge vectors is a cell id, never the cell itself, and never a projection. `supersedes` joins
    cells of the same schema. `attests` targets a contract, decision or question. A scope cell appears only in
    `supersedes` of a scope cell of the same origin.
 3. **Names.** `<scope>/<name>`, at most 128 bytes, segments `[A-Za-z0-9][A-Za-z0-9_.-]*` (scope:
@@ -132,7 +132,7 @@ whose key vector is present. `root`: a ComputationRoot whose Environment is pres
 {`H_PROVISIONAL`, `H_OWNER`}. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
 `foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 scope name)`. verdict: the
 contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
-`H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`. projection: `H_EMPTY` (§4.4).
+`H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
 
 ## 3. Store and gate
 
@@ -149,9 +149,11 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
 2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.
 3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell has
    `rules = H_LENS_KERNEL`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
-   `S_base`'s admission policy (acceptance policy for an acceptance cell). A **cross-seal** — a seal on a
+   `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its
+   `witness_policy`, roster or not). A **cross-seal** — a seal on a
    foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a
-   standard schema has at least one such seal. The evaluator policy of a local contract, decision or question
+   standard schema has at least one such seal by a key of the admission policy (acceptance policy for an
+   acceptance cell): a projection's outside witnesses sign it but do not write it. The evaluator policy of a local contract, decision or question
    has keys within the admission policy.
 4. **References and replay.** Every referenced hash is present (cells where §1.2 requires cells). Every
    checkpoint replays as in §5; a cycle witness passes `sigma_resume.verify_cycle`.
@@ -275,14 +277,24 @@ differing latch, scope or status bit, is a host fault (`TwinDivergence`), never 
 
 ### 4.4 Projections
 
-A projection `Π = (tip, rules, input, state)` states the result of the rules at a commit: `input =
-SHA-256(kernel input for the chain up to tip)` and `state = SHA-256(kernel output)` (§4.3). The gate recomputes
-both before admitting it (§3 check 6), so a chain never holds a false projection. Its witnesses sign it with
-ordinary seals; once they meet `witness_policy` it is Settled.
+A projection `Π = (tip, rules, input, state)` is a historical statement: at commit `tip`, the rules `rules` give
+`input = SHA-256(kernel input for the chain up to tip)` and `state = SHA-256(kernel output)` (§4.3). The gate
+recomputes both before admitting it (§3 check 6), so a chain never holds a false projection. A projection has no
+edges and no edge may name it, so it never becomes Superseded, Retired, Invalidated or Stale: it is Settled
+exactly when its witness seals meet `witness_policy`. Its witnesses may sign it from outside the scope's roster;
+writing it into the chain still takes a roster seal, because each projection costs the gate a recomputation.
 
-A client without the history checks a Settled projection by its witness seals alone; that is trust in the
-witness quorum, stated by the policy. Anyone holding the chain can recompute `input` and `state`, and the rules
-are deterministic and named by hash, so a false projection signed outside a chain is refuted by recomputation.
+What a client without the history gets from a Settled projection, and what it does not:
+
+- **History.** That the witness quorum named by `witness_policy` vouches for the result at `tip`. This is trust in
+  those witnesses, not a proof; anyone holding the chain can recompute `input` and `state`, and the rules are
+  deterministic and named by hash, so a false projection signed outside a chain is refuted by recomputation.
+- **Not freshness.** Nothing about commits after `tip`: a later commit may change any status. Knowing the current
+  head needs a separate statement about the head, which VARS-1 does not define.
+- **Not Pass 3, not the statuses themselves.** `state` commits to the kernel's output only: the governing scope,
+  the Authorized and edge bits of the fold, and the status bits of Passes 1–2. It says nothing about Settled for
+  contracts, decisions or questions, which the host computes (§4.2 Pass 3). To read a status the client needs the
+  output bytes themselves and checks them against `state`.
 
 ## 5. Replay against Book I
 
