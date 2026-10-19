@@ -1,0 +1,16 @@
+name = "vars1proofs"
+defaultTargets = ["Vars1"]
+
+[[lean_lib]]
+name = "Vars1"
+
+# Stage 2 link to Book I's mechanized evaluator. Not a default target: it reads
+# the sibling checkout ~/Projects/sigma-glyph/proofs (pinned in README.md).
+[[lean_lib]]
+name = "SigmaEval"
+srcDir = "../../sigma-glyph/proofs"
+roots = ["Sha256", "MachineBytes", "EvalMachine"]
+
+[[lean_lib]]
+name = "Vars1Sigma"
+roots = ["Vars1Sigma"]
