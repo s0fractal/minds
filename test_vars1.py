@@ -9,6 +9,7 @@ foreign import and acceptance, scope rotation without retroactivity, replay trus
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 import subprocess
@@ -2010,6 +2011,235 @@ class TestVars1Conformance(unittest.TestCase):
             self.skipTest("refs/vars/heads/minds is not fetched in this clone")
         published = set(re.findall(r"\| `([0-9a-f]{64})` \|", (ROOT_DIR / "README.md").read_text()))
         self.assertEqual(published, {k.hex() for k in mc.roster(repo)})
+
+    def test_26_concurrent_builders_get_their_own_cells(self) -> None:
+        """Codex MND-01: two builders on one repository and scope, scheduled so that B stages between A's staging
+        and A's write-tree; each candidate holds exactly its own cell (the schedule only orders real git calls)."""
+        import threading
+        old, scope, _ = self._bootstrap_genesis("core")
+        staged_a, staged_b, read_a = threading.Event(), threading.Event(), threading.Event()
+        original = V.subprocess.run
+
+        def scheduled(cmd, *a, **kw):
+            tag = threading.current_thread().name
+            if tag == "A" and "write-tree" in cmd:
+                staged_a.set()
+                staged_b.wait(20)
+                out = original(cmd, *a, **kw)
+                read_a.set()
+                return out
+            if tag == "B" and "write-tree" in cmd:
+                staged_b.set()
+                read_a.wait(20)
+            return original(cmd, *a, **kw)
+
+        got, cells, errors = {}, {}, {}
+        def worker(tag):
+            try:
+                build(tag)
+            except Exception as e:  # noqa: BLE001 - reported below as a failed assertion
+                errors[tag] = f"{type(e).__name__}: {e}"
+
+        def build(tag):
+            if tag == "B":
+                staged_a.wait(20)
+            atoms: dict[bytes, bytes] = {}
+            cell = V.Cell(V.H_SCHEMA["axiom"], self._put_atom(atoms, V.atom_utf8("core/" + tag)),
+                          self._put_atom(atoms, V.atom_utf8(tag)))
+            cells[tag] = cell
+            repo = V.GitVarsRepo(self.repo_path)
+            c = repo.build_candidate_commit("core", atoms, [cell], [V.Seal.sign(self.sk1, cell.id, scope.id)],
+                                            parent_commit=old)
+            got[tag] = set(repo.read_cas_tree(c)[1])
+
+        V.subprocess.run = scheduled
+        try:
+            ts = [threading.Thread(target=worker, args=(t,), name=t) for t in "AB"]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join(60)
+        finally:
+            V.subprocess.run = original
+        self.assertTrue(staged_b.is_set(), "the schedule interleaved the two builders")
+        self.assertEqual(errors, {})
+        for mine, other in (("A", "B"), ("B", "A")):
+            self.assertIn(cells[mine].id, got[mine])
+            self.assertNotIn(cells[other].id, got[mine])
+
+    def test_27_a_historical_attestation_survives_a_rotation(self) -> None:
+        """Codex MND-02: after `join`, exporting an older release with the projection that covers it bundles the
+        scope that governed that projection's tip, so the bundle still verifies."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        before = V.export_attestation(repo, "minds", r1["decision"], r2["projection"])
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(b"\x08" * 32), "bob")
+        after = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertEqual(after["scope"], before["scope"], "the scope of the projection's tip, not of the head")
+        self.assertTrue(V.verify_attestation(after)["accepted"])
+
+    def test_28_a_later_invalid_withdraws_only_its_own_verifier(self) -> None:
+        """Codex MND-03: an INVALID recorded after the projection's tip withdraws the ATTESTED verdicts of its own
+        verifier, as at the tip and in the lens; another verifier's INVALID does not."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        d1 = r1["decision"]
+
+        def invalid(verifier, name):
+            atoms: dict[bytes, bytes] = {}
+            w = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(atoms, V.atom_utf8(name)), d1,
+                       h_attests=self._hv(atoms, [d1]),
+                       slots=(V.H_EMPTY, V.H_VERDICT_INVALID, self._put_atom(atoms, V.atom_utf8(verifier))))
+            tip = repo.ref_commit("minds")
+            c = repo.build_candidate_commit("minds", atoms, [w], [V.Seal.sign(sk, w.id, mc.governing_scope(repo))],
+                                            parent_commit=tip)
+            repo.admit_and_advance("minds", c, expected_old=tip)
+
+        verify = lambda: V.verify_attestation(json.loads(json.dumps(
+            V.export_attestation(repo, "minds", d1, r2["projection"]))))
+        invalid("different-verifier", "minds/other-verifier")
+        self.assertTrue(repo.lens("minds")["settled"][d1])
+        r = verify()
+        self.assertEqual((r["contradicted_after_tip"], r["accepted"]), (False, True))
+        invalid("minds-maintainer", "minds/maintainer-withdraws")
+        self.assertFalse(repo.lens("minds")["settled"][d1])
+        r = verify()
+        self.assertEqual((r["attested_at_tip"], r["contradicted_after_tip"], r["accepted"]), (True, True, False))
+
+    def test_29_gate_enforces_payloads_and_enumerations(self) -> None:
+        """Codex MND-04: each malformed cell is refused, and its well-formed neighbour admitted."""
+        def attempt(build):
+            T = TestVars1Conformance()
+            T.setUp()
+            try:
+                c0, s0, _ = T._bootstrap_genesis("core")
+                a: dict[bytes, bytes] = {}
+                put = lambda raw: T._put_atom(a, raw)
+                ax = V.Cell(V.H_SCHEMA["axiom"], put(V.atom_utf8("core/ax")), put(V.atom_utf8("axiom")))
+                d = V.Cell(V.H_SCHEMA["decision"], put(V.atom_utf8("core/decision")), put(V.atom_utf8("statement")),
+                           slots=(V.H_OWNER, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+                cells = build(put, ax, d, c0, s0, T)
+                c = T.repo.build_candidate_commit("core", a, cells, [V.Seal.sign(T.sk1, x.id, s0.id) for x in cells],
+                                                  parent_commit=c0)
+                T.repo.admit_and_advance("core", c, expected_old=c0)
+                return None
+            except V.VarsError as e:
+                return str(e)
+            finally:
+                T.tearDown()
+
+        def verdict(put, d, code, ck=V.H_EMPTY, **kw):
+            return V.Cell(V.H_SCHEMA["verdict"], put(V.atom_utf8("core/verdict")), d.id,
+                          h_attests=put(V.atom_hvec([d.id])), slots=(ck, code, put(V.atom_utf8("verifier"))), **kw)
+
+        def schema_cell(put, desc):
+            sc = V.Cell(V.H_META_SCHEMA, put(V.atom_utf8("core/custom-schema")), V.H_EMPTY,
+                        slots=(put(V.atom_utf8(desc)),))
+            return [sc, V.Cell(sc.id, put(V.atom_utf8("core/custom")), put(V.atom_utf8("x")), slots=(V.H_ZERO,))]
+
+        def projection(put, c0, s0, T, payload):
+            hi, ho = T.repo.projection_digests("core", c0)
+            return V.Cell(V.H_SCHEMA["projection"], put(V.atom_utf8("core/projection")), payload,
+                          slots=(put(V.atom_utf8(c0)), V.H_LENS_KERNEL, hi, ho, s0.slots[0]))
+
+        cases = {
+            "statement payload": (
+                lambda put, ax, d, *_: [ax, dataclasses.replace(d, h_payload=V.H_ZERO)],
+                lambda put, ax, d, *_: [ax, d]),
+            "computation payload": (
+                lambda put, ax, d, *_: [ax, V.Cell(V.H_SCHEMA["computation"], put(V.atom_utf8("core/comp")), V.H_ZERO)],
+                None),
+            "tier": (
+                lambda put, ax, d, *_: [ax, dataclasses.replace(d, slots=(put(V.atom_utf8("owenr")), *d.slots[1:]))],
+                lambda put, ax, d, *_: [ax, dataclasses.replace(d, slots=(V.H_PROVISIONAL, *d.slots[1:]))]),
+            "loss": (
+                lambda put, ax, d, *_: [ax, d, V.Cell(V.H_SCHEMA["axiom"], put(V.atom_utf8("core/retire")),
+                                                      put(V.atom_utf8("retire")), h_retires=put(V.atom_hvec([ax.id])),
+                                                      h_loss=put(V.atom_u64(123)))],
+                lambda put, ax, d, *_: [ax, d, V.Cell(V.H_SCHEMA["axiom"], put(V.atom_utf8("core/retire")),
+                                                      put(V.atom_utf8("retire")), h_retires=put(V.atom_hvec([ax.id])),
+                                                      h_loss=put(V.atom_utf8("retired on purpose")))]),
+            "field type": (
+                lambda put, ax, d, *_: [ax, d, *schema_cell(put, "field:totally-unknown")],
+                lambda put, ax, d, *_: [ax, d, *schema_cell(put, "field:u64")]),
+            "field type, schema alone": (
+                lambda put, ax, d, *_: [ax, d, schema_cell(put, "field:totally-unknown")[0]],
+                lambda put, ax, d, *_: [ax, d, schema_cell(put, "field:u64")[0]]),
+            "field descriptor shape": (
+                lambda put, ax, d, *_: [ax, d, schema_cell(put, "no-type-here")[0]],
+                None),
+            "verdict code": (
+                lambda put, ax, d, *_: [ax, d, verdict(put, d, put(V.atom_utf8("UNKNOWN")))],
+                lambda put, ax, d, *_: [ax, d, verdict(put, d, V.H_VERDICT_INVALID)]),
+            "attested with a witness": (
+                lambda put, ax, d, *_: [ax, d, verdict(put, d, V.H_ATTESTED, ax.id, h_relies=put(V.atom_hvec([ax.id])))],
+                lambda put, ax, d, *_: [ax, d, verdict(put, d, V.H_ATTESTED)]),
+            "projection payload": (
+                lambda put, ax, d, c0, s0, T: [ax, d, projection(put, c0, s0, T, V.H_ZERO)],
+                lambda put, ax, d, c0, s0, T: [ax, d, projection(put, c0, s0, T, V.H_EMPTY)]),
+        }
+        for name, (bad, good) in cases.items():
+            with self.subTest(name):
+                self.assertIsNotNone(attempt(bad), f"{name}: the malformed cell was admitted")
+                if good is not None:
+                    self.assertIsNone(attempt(good), f"{name}: the well-formed neighbour was refused")
+
+    def test_30_checkpoint_actions_are_replayed(self) -> None:
+        """Codex MND-05: a checkpoint's `actions` must equal the replayed transition's action count."""
+        def admit(actions):
+            T = TestVars1Conformance()
+            T.setUp()
+            try:
+                c0, s0, _ = T._bootstrap_genesis("core")
+                a: dict[bytes, bytes] = {}
+                put = lambda raw: T._put_atom(a, raw)
+                raw = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=V.H_I, right=V.H_K)
+                h = put(raw)
+                env = SR.Environment([h], {h: raw})
+                cid = bytes.fromhex(SR.root(h, env)[1])
+                self.assertEqual(put(V.atom_computation_root(h, put(V.atom_environment([h])))), cid)
+                doc, i, state = SR.start(cid.hex(), h)
+                nf = SR.advance(doc, i, state, env, 10)
+                comp = V.Cell(V.H_SCHEMA["computation"], put(V.atom_utf8("core/comp")), cid)
+                ck = V.Cell(V.H_SCHEMA["checkpoint"], put(V.atom_utf8("core/ck")), put(nf.state_bytes),
+                            h_relies=put(V.atom_hvec([comp.id])),
+                            slots=(cid, put(V.atom_u64(10)), put(V.atom_u64(nf.checkpoint["spent_total"])),
+                                   put(V.atom_u64(nf.checkpoint["peak_semantic_size"])), V.H_NORMAL_FORM,
+                                   put(V.atom_u64(actions(nf.checkpoint["transition_claim"]["actions"])))))
+                c = T.repo.build_candidate_commit("core", a, [comp, ck], [V.Seal.sign(T.sk1, x.id, s0.id)
+                                                                          for x in (comp, ck)], parent_commit=c0)
+                T.repo.admit_and_advance("core", c, expected_old=c0)
+                return None
+            except V.VarsError as e:
+                return str(e)
+            finally:
+                T.tearDown()
+        self.assertIsNone(admit(lambda n: n))
+        self.assertIn("actions", admit(lambda n: n + 997) or "")
+        self.assertIn("actions", admit(lambda n: 0) or "")
+
+    def test_31_a_question_is_answered_by_any_cell_of_its_schema(self) -> None:
+        """Codex MND-06: the INVALID-verdict exclusion is for contract and decision witnesses; a question whose
+        expected schema is verdict is answered (Settled) by an INVALID verdict, as the spec now says."""
+        old, scope, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        put = lambda raw: self._put_atom(a, raw)
+        q = V.Cell(V.H_SCHEMA["question"], put(V.atom_utf8("core/q")), put(V.atom_utf8("Need a verdict")),
+                   slots=(V.H_SCHEMA["verdict"], V.H_EMPTY))
+        w = V.Cell(V.H_SCHEMA["verdict"], put(V.atom_utf8("core/no")), q.id, h_attests=put(V.atom_hvec([q.id])),
+                   slots=(V.H_EMPTY, V.H_VERDICT_INVALID, put(V.atom_utf8("verifier"))))
+        c = self.repo.build_candidate_commit("core", a, [q, w], [V.Seal.sign(self.sk1, x.id, scope.id) for x in (q, w)],
+                                             parent_commit=old)
+        self.repo.admit_and_advance("core", c, expected_old=old)
+        self.assertTrue(self.repo.lens("core")["settled"][q.id])
 
 
 if __name__ == "__main__":

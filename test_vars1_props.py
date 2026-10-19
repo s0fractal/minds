@@ -88,15 +88,17 @@ _I_NF = SR.advance(_d, _i, _s, _ENV_I, additional_credit=0)
 _FAKE_K = b"SGS1" + COMP["fake"] + _NF.state_bytes[36:]
 BIG = 10_000_001  # one ATP above the verifier ceiling -> NOT_ASSESSED at the gate
 
-# Variant -> (comp, state_bytes, credit_total, spent_total, peak, outcome_text)
+# Variant -> (comp, state_bytes, credit_total, spent_total, peak, outcome_text, actions of the transition)
+_NF_ACTIONS = _NF.checkpoint["transition_claim"]["actions"]
 CKPT_VARIANTS = {
-    "h_paused0": ("honest", _PAUSED.state_bytes, 0, 0, _PAUSED.checkpoint["peak_semantic_size"], "PAUSED"),
-    "h_nf": ("honest", _NF.state_bytes, 10, _NF.checkpoint["spent_total"], _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM"),
-    "h_nf_claims_paused": ("honest", _NF.state_bytes, 10, _NF.checkpoint["spent_total"], _NF.checkpoint["peak_semantic_size"], "PAUSED"),
-    "i_nf": ("fake", _I_NF.state_bytes, 0, 0, _I_NF.checkpoint["peak_semantic_size"], "NORMAL_FORM"),
-    "f_big_paused": ("fake", _FAKE_K, BIG, BIG, _NF.checkpoint["peak_semantic_size"], "PAUSED"),
-    "f_big_nf": ("fake", _FAKE_K, BIG, BIG, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM"),
-    "f_small_nf": ("fake", _FAKE_K, 10, 4, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM"),
+    "h_paused0": ("honest", _PAUSED.state_bytes, 0, 0, _PAUSED.checkpoint["peak_semantic_size"], "PAUSED", 0),
+    "h_nf": ("honest", _NF.state_bytes, 10, _NF.checkpoint["spent_total"], _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", _NF_ACTIONS),
+    "h_nf_claims_paused": ("honest", _NF.state_bytes, 10, _NF.checkpoint["spent_total"], _NF.checkpoint["peak_semantic_size"], "PAUSED", _NF_ACTIONS),
+    "h_nf_wrong_actions": ("honest", _NF.state_bytes, 10, _NF.checkpoint["spent_total"], _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", _NF_ACTIONS + 1),
+    "i_nf": ("fake", _I_NF.state_bytes, 0, 0, _I_NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", 0),
+    "f_big_paused": ("fake", _FAKE_K, BIG, BIG, _NF.checkpoint["peak_semantic_size"], "PAUSED", 0),
+    "f_big_nf": ("fake", _FAKE_K, BIG, BIG, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", 0),
+    "f_small_nf": ("fake", _FAKE_K, 10, 4, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", 0),
 }
 EXP = {"K": V.H_K, "I": V.H_I, "EMPTY": V.H_EMPTY}
 STATUS_KEYS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "provisional")
@@ -347,10 +349,10 @@ class Interp:
         if kind == "computation":
             return V.Cell(h_schema=sch, h_slot_name=name, h_payload=COMP[op["comp"]], **kw)
         if kind == "checkpoint":
-            comp, state, credit, spent, peak, outc = CKPT_VARIANTS[op["variant"]]
+            comp, state, credit, spent, peak, outc, actions = CKPT_VARIANTS[op["variant"]]
             u = lambda n: _put(atoms, V.atom_u64(n))  # noqa: E731
             return V.Cell(h_schema=sch, h_slot_name=name, h_payload=_put(atoms, state),
-                          slots=(COMP[comp], u(credit), u(spent), u(peak), _put(atoms, V.atom_utf8(outc)), u(0)), **kw)
+                          slots=(COMP[comp], u(credit), u(spent), u(peak), _put(atoms, V.atom_utf8(outc)), u(actions)), **kw)
         if kind in ("contract", "question"):
             pol = self._pol(atoms, op["pol"][0], op["pol"][1]) if op.get("pol") else V.H_EMPTY
             if kind == "question":
@@ -620,7 +622,7 @@ class Gen:
             hc = self.h()
             ops.append({"op": "cell", "h": hc, "origin": SCOPE, "kind": "computation", "comp": comp,
                         "name": f"{SCOPE}/computation.u{hc}", "edges": {}, "signers": sig()})
-        lineage = {"honest": [["h_nf"], ["h_paused0", "h_nf"], ["h_nf_claims_paused"]],
+        lineage = {"honest": [["h_nf"], ["h_paused0", "h_nf"], ["h_nf_claims_paused"], ["h_nf_wrong_actions"]],
                    "fake": [["i_nf"], ["f_big_paused", "f_big_nf"], ["f_big_paused", "f_big_nf"], ["f_big_nf"], ["f_small_nf"]]}[comp]
         parent = None
         for variant in r.choice(lineage):

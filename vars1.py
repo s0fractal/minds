@@ -11,7 +11,9 @@ import hashlib
 import json
 import re
 import struct
+import shutil
 import subprocess
+import tempfile
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -219,6 +221,9 @@ INTRINSIC_UTF8: Set[bytes] = {
     H_PROVISIONAL, H_OWNER,
 }
 # Fields that may hold H_EMPTY to mean "none"; every other slot must have its declared type.
+# Closed: a schema naming another type is refused at the gate, so check_slot_type never sees one
+FIELD_TYPES = {"utf8", "u64", "pol1", "root", "digest", "wasm", "cell", "hash"}
+VERDICT_CODES = {H_REPLAYED, H_ATTESTED, H_VERDICT_INVALID, H_NOT_ASSESSED}
 OPTIONAL_FIELDS = {"required_comp", "expected_outcome", "evaluator_policy", "ckpt_or_witness"}
 
 
@@ -703,6 +708,8 @@ def _replay_from_parent(
         or replay.checkpoint["peak_semantic_size"] != peak_size
     ):
         raise VarsError("forged checkpoint state_bytes, spent_total, or peak_size mismatch on replay")
+    if replay.checkpoint["transition_claim"]["actions"] != parse_u64(atoms[c.slots[5]]):
+        raise VarsError("checkpoint actions differ from the replayed transition's action count")
 
     probe_doc = dict(replay.checkpoint, credit_total=spent_total)
     probe = SR.advance(
@@ -1060,11 +1067,6 @@ class GitVarsRepo:
         for s in seals:
             all_seals[s.id] = s.encode()
 
-        idx_path = self.repo_dir / ".git" / f"vars-tmp-idx-{scope}"
-        if idx_path.exists():
-            idx_path.unlink()
-        env = {**subprocess.os.environ, "GIT_INDEX_FILE": str(idx_path)}
-
         index_lines: List[str] = []
 
         def stage_entry(mode: str, path: str, data: bytes) -> None:
@@ -1087,24 +1089,27 @@ class GitVarsRepo:
         for mode, _kind, path, data in extra_tree_entries or []:
             stage_entry(mode, path, data)
 
-        res_idx = subprocess.run(
-            ["git", "-C", str(self.repo_dir), "update-index", "--index-info"],
-            input=("\n".join(index_lines) + "\n").encode("utf-8"),
-            env=env,
-            capture_output=True,
-            check=False,
-        )
-        if res_idx.returncode != 0:
-            raise VarsError(res_idx.stderr.decode())
-
-        res_tree = subprocess.run(
-            ["git", "-C", str(self.repo_dir), "write-tree"],
-            env=env,
-            capture_output=True,
-            check=True,
-        )
-        if idx_path.exists():
-            idx_path.unlink()
+        # A private index per call: concurrent builders never share or delete each other's staging
+        idx_dir = tempfile.mkdtemp(prefix="vars-idx-")
+        env = {**subprocess.os.environ, "GIT_INDEX_FILE": str(Path(idx_dir) / "index")}
+        try:
+            res_idx = subprocess.run(
+                ["git", "-C", str(self.repo_dir), "update-index", "--index-info"],
+                input=("\n".join(index_lines) + "\n").encode("utf-8"),
+                env=env,
+                capture_output=True,
+                check=False,
+            )
+            if res_idx.returncode != 0:
+                raise VarsError(res_idx.stderr.decode())
+            res_tree = subprocess.run(
+                ["git", "-C", str(self.repo_dir), "write-tree"],
+                env=env,
+                capture_output=True,
+                check=True,
+            )
+        finally:
+            shutil.rmtree(idx_dir, ignore_errors=True)
         tree_oid = res_tree.stdout.decode().strip()
         cmd = ["commit-tree", tree_oid, "-m", f"vars({scope}): transition"]
         if parent_commit:
@@ -1204,7 +1209,11 @@ class GitVarsRepo:
                 ):
                     raise VarsError("schema definition cell must have H_EMPTY payload and morphisms")
                 for s_h in c.slots:
-                    req_atom(s_h, "schema slot descriptor")
+                    raw = req_atom(s_h, "schema slot descriptor")
+                    validate_utf8_atom(raw)
+                    fname, sep, ftype = parse_utf8(raw).partition(":")
+                    if not fname or not sep or ftype not in FIELD_TYPES:
+                        raise VarsError(f"schema field descriptor {parse_utf8(raw)!r} is not name:type of a known type")
                 continue
 
             if c.h_schema not in cells or cells[c.h_schema].h_schema != H_META_SCHEMA:
@@ -1228,6 +1237,7 @@ class GitVarsRepo:
 
             if c.h_loss != H_EMPTY:
                 loss_raw = req_atom(c.h_loss, "H_loss")
+                validate_utf8_atom(loss_raw)
                 if not (1 <= len(loss_raw) - 4 <= MAX_LOSS_BYTES):
                     raise VarsError("H_loss exceeds 4096 bytes")
 
@@ -1244,6 +1254,22 @@ class GitVarsRepo:
                 if s_h == H_EMPTY and fname in OPTIONAL_FIELDS:
                     continue
                 check_slot_type(s_h, ftype, atoms, cells)
+
+            # Payloads and enumerations by kind (§2 "Payloads and meaning")
+            if c.h_schema in (H_SCHEMA["axiom"], H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]) \
+                    and c.h_payload not in INTRINSIC_UTF8:
+                check_slot_type(c.h_payload, "utf8", atoms, cells)
+            if c.h_schema == H_SCHEMA["computation"]:
+                _load_root_and_env(c.h_payload, atoms)
+            if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]) and c.slots[0] not in (H_PROVISIONAL, H_OWNER):
+                raise VarsError("tier must be H_PROVISIONAL or H_OWNER")
+            if c.h_schema == H_SCHEMA["projection"] and c.h_payload != H_EMPTY:
+                raise VarsError("a projection's payload is H_EMPTY")
+            if c.h_schema == H_SCHEMA["verdict"]:
+                if c.slots[1] not in VERDICT_CODES:
+                    raise VarsError("verdict_code is not one of REPLAYED, ATTESTED, INVALID, NOT_ASSESSED")
+                if c.slots[1] == H_ATTESTED and c.slots[0] != H_EMPTY:
+                    raise VarsError("an ATTESTED verdict has an empty ckpt_or_witness")
 
             # Kind-specific structural & deterministic replay invariants
             if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
@@ -2058,12 +2084,15 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
     return {"pols": pols, "cells": cells, "seals": seals}
 
 
-def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int) -> Tuple[bool, Set[int], int, Set[bytes]]:
+def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
+                 blocked_after: Optional[Set[bytes]] = None) -> Tuple[bool, Set[int], int, bytes]:
     """§4.2 Pass 3 for the contract or decision at index `di` (without `required_comp`), from a parsed kernel input
     and the kernel's output alone: whether it is Settled, the key indices that endorse it, the threshold, and the
     policy hash. Endorsers are counted as the lens counts them: every admitted seal on a local verdict; on a
     foreign verdict, seals under a scope of its origin that a live acceptance (of it or of a newer cell of its
-    origin that references it) names, by that scope's admission keys. A contradicting INVALID verdict of the same verifier, endorsed by a policy key, blocks."""
+    origin that references it) names, by that scope's admission keys. A contradicting INVALID verdict of the same
+    verifier, endorsed by a policy key, blocks; `blocked_after` adds the verifier ids that such INVALID verdicts
+    recorded after the tip block."""
     kc, pols, seals = ki["cells"], ki["pols"], ki["seals"]
     n = len(kc)
     if len(output) < 4 + 2 * n:
@@ -2119,7 +2148,7 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int) -> Tuple[bool, S
     did = d["id"]
     bad = [b for b in range(n) if live[b] and kc[b]["schema"] == H_SCHEMA["verdict"]
            and kc[b]["slots"][1] == H_VERDICT_INVALID and kc[b]["payload"] == did and endorsers(b) & pk]
-    blocked = {kc[b]["slots"][2] for b in bad}
+    blocked = {kc[b]["slots"][2] for b in bad} | (blocked_after or set())
     end: Set[int] = set()
     for w in children[di]:
         c = kc[w]
@@ -2234,13 +2263,20 @@ def export_attestation(repo: "GitVarsRepo", scope: str, decision_id: bytes,
                        projection_id: Optional[bytes] = None) -> Dict[str, object]:
     """A self-contained bundle for a contract or decision at the scope's tip: the cell, the governing scope cell, the
     atoms its evaluator policy and statement need, every verdict on it and every seal on it and on those verdicts,
-    and optionally a projection bundle whose statuses cover them."""
+    and optionally a projection bundle whose statuses cover them. With a projection, the scope is the one governing
+    the projection's tip, which its evidence is about; a later rotation does not change it."""
     tip = repo.ref_commit(scope)
     atoms, cells, seals = repo.read_cas_tree(tip)
     d = cells.get(decision_id)
     if d is None or d.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
         raise VarsError("not a contract or decision cell of this scope")
-    s_cell = cells[repo._evaluate_commit_chain(scope, repo.commit_chain(tip))["active_scope_id"]]
+    at = tip
+    if projection_id is not None:
+        pc = cells.get(projection_id)
+        if pc is None or pc.h_schema != H_SCHEMA["projection"]:
+            raise VarsError("not a projection cell of this scope")
+        at = parse_utf8(atoms[pc.slots[0]])
+    s_cell = cells[repo._evaluate_commit_chain(scope, repo.commit_chain(at))["active_scope_id"]]
     pol = d.slots[3] if d.slots[3] != H_EMPTY else s_cell.slots[0]
     verdicts = [c for c in cells.values() if c.h_schema == H_SCHEMA["verdict"] and c.h_payload == decision_id]
     need = [pol, parse_pol1(atoms[pol])[1], d.h_payload]
@@ -2359,17 +2395,23 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     if p != pol or t_thr != thr or len(ki["pols"][p][1]) != len(keys):
         raise VarsError("the projection's input disagrees with the bundle on the evaluator policy")
     key_of = dict(zip(ki["pols"][p][1], sorted(keys)))  # both orders are the keys' byte order
-    later = [w for wid, w in verdicts.items() if wid not in at_tip]
+    # Verdicts supplied from after the tip contradict as at the tip: an INVALID by a policy key withdraws the
+    # ATTESTED verdicts of its own verifier, and Pass 3 is recomputed without them
+    later_blocks = {w.slots[2] for wid, w in verdicts.items()
+                    if wid not in at_tip and w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys}
+    now, end_now = settled, end
+    if later_blocks:
+        now, end_now, _, _ = pass3_at_tip(ki, bytes.fromhex(bundle["projection"]["output"]), pos[d.id], later_blocks)
     st = pr["statuses"][d.id.hex()]
     result["evidence"] = "complete_at_tip"
     result["endorsers_at_tip"] = sorted(key_of[k].hex() for k in end)
     result["attested_at_tip"] = settled
     result["active_at_tip"] = st["active"] and not st["stale"]
-    result["contradicted_after_tip"] = any(w.slots[1] == H_VERDICT_INVALID and signers[w.id] & keys for w in later)
-    missing = [k.hex() for k in require or []
-               if k.hex() not in result["endorsers_at_tip"] or k.hex() not in pr["witnesses"]]
+    result["contradicted_after_tip"] = settled and not now
+    standing = {key_of[k].hex() for k in end_now}
+    missing = [k.hex() for k in require or [] if k.hex() not in standing or k.hex() not in pr["witnesses"]]
     result["required_missing"] = missing
-    result["accepted"] = bool(settled and pr["witnessed"] and not result["contradicted_after_tip"] and not missing)
+    result["accepted"] = bool(now and pr["witnessed"] and not missing)
     return result
 
 

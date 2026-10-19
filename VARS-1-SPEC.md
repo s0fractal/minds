@@ -122,18 +122,22 @@ Each is a schema cell named `core/schema.<name>` with the descriptors below.
 
 **Types.** `utf8`: a UTF8 atom or intrinsic UTF8 constant. `u64`: a U64 atom or `H_ZERO`. `pol1`: a POL1 atom
 whose key vector is present. `root`: a ComputationRoot whose Environment is present. `wasm`: a wasm atom.
-`cell`: a cell. `hash`: anything present or intrinsic. `digest`: any 32 bytes, not required to be stored. `H_EMPTY` is allowed only in `required_comp`,
+`cell`: a cell. `hash`: anything present or intrinsic. `digest`: any 32 bytes, not required to be stored. These
+are all the types: a schema cell whose descriptor is not `name:type` of one of them is refused. `H_EMPTY` is
+allowed only in `required_comp`,
 `expected_outcome`, `evaluator_policy` and `ckpt_or_witness`.
 
 **Payloads and meaning.** axiom, contract, decision, question: `id(UTF8 statement)`. computation:
 `computation_id`. checkpoint: `id(SGS1 state)`, with `slots[0]` equal to the state's `computation_id`;
 `kernel_outcome` ∈ {`H_NORMAL_FORM`, `H_PAUSED`, `H_BLOCKED_REF`}; a checkpoint chains to its parent through
 `relies`, never `supersedes`. cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`. tier ∈
-{`H_PROVISIONAL`, `H_OWNER`}. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
+{`H_PROVISIONAL`, `H_OWNER`}. A nonempty `H_loss` is a UTF8 atom. checkpoint `actions`: the number of actions of
+the transition from its parent checkpoint (or from the root), which replay must reproduce. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
 `foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 label)`, free text that nothing
 evaluates (the scope's origin is in its name, its authority in its slots). verdict: the
 contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
-`H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
+`H_NOT_ASSESSED`}; `H_ATTESTED` has `ckpt_or_witness = H_EMPTY`, `H_REPLAYED` names a checkpoint or cycle witness,
+and `H_VERDICT_INVALID` and `H_NOT_ASSESSED` may do either. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
 
 ## 3. Store and gate
 
@@ -242,8 +246,9 @@ else the tip scope's admission policy. A witness `w` is Active, non-Stale, attes
   over its lineage (§5), whose state's term hash is `e`; or a cycle witness of `r` when `e = H_CYCLE_PROVEN`;
 - question: a cell of the expected schema.
 
-A witness is excluded if an Active, non-Stale verdict on `v` with `H_VERDICT_INVALID` and the same
-`verifier_id`, endorsed by a key of `EvalPol(v)`, exists. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
+For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with
+`H_VERDICT_INVALID` and the same `verifier_id`, endorsed by a key of `EvalPol(v)`, exists. A question has no
+exclusion: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
 for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the union of witness
 endorsers meets `EvalPol(v)`; otherwise **Provisional**. Scope and custom schema cells are Settled iff
 Authorized; a projection is Settled iff its `CumulativeEndorsers` meet its `witness_policy`; every other Active,
