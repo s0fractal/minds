@@ -140,6 +140,10 @@ contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_A
 tree is `cas/{atoms,cells,seals}/<2 hex>/<62 hex>`, every entry a regular file (`100644`) whose bytes hash to
 its path.
 
+**Radicle.** A node's `refs/vars/heads/<scope>` replicates as `refs/namespaces/<nid>/refs/vars/heads/<scope>`,
+covered by that node's signed refs (`rad/sigrefs`), with its history; a peer maps it to
+`refs/vars/peers/<nid>/<scope>`. `tools/radicle-probe.sh` checks this with two local nodes (rad 1.10.3).
+
 A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref moves by compare-and-swap
 (`git update-ref <ref> T_new T_old`). Every refusal is an error of the gate, never a crash.
 

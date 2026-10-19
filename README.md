@@ -9,6 +9,7 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
   `H_LENS_KERNEL`). Scopes name these rules by hash; the host only parses, hashes and verifies signatures, and
   keeps a Python twin of the rules for differential checking.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
+- `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
 
 ## Running
 
@@ -29,8 +30,8 @@ python3 vars1.py verify-projection BUNDLE.json   # check a projection with no re
 ## Status
 
 Experimental. The conformance suite, the property suite and the Lean proofs pass; the proofs' hypotheses and
-unlinked parts are listed in `proofs/README.md`. There has been no independent review, the Radicle transport
-of `refs/vars/*` is untested. The kernel is differentially tested against the Lean side: its lens Passes 1–2
+unlinked parts are listed in `proofs/README.md`. There has been no independent review. Radicle replicates
+`refs/vars/*` signed and with history (`tools/radicle-probe.sh`, two local nodes, rad 1.10.3). The kernel is differentially tested against the Lean side: its lens Passes 1–2
 against an executable lens proved equal to the model, and its fold against the model's own fold, compiled. The
 Rust/wasm code itself is not proved.
 
