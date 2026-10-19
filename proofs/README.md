@@ -45,7 +45,8 @@ and, for some theorems, `Classical.choice`.
 - SGS1 bytes to `(Store, Term)`; `term_hash`; `ComputationRoot` to the start state.
 - The rich runtime profile (`ski+Y+M+W`); `verify_cycle`.
 - Uniqueness among scope cells (one Active local scope) is checked by property I7, not proved.
-- `vars1.py` and `kernel/lens.wasm` are not refined against this model; they are tested against each other.
+- `vars1.py` and `kernel/lens.wasm` (which now holds the fold as well as Passes 1–2) are not refined against this
+  model; they are tested against each other and against the property suite's spec oracles.
 
 ## Mutants
 

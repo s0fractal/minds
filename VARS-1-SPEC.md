@@ -54,7 +54,7 @@ Non-canonical bytes are refused, never normalized.
 | `H_PROVISIONAL` | `UTF8provisional` | `b9d665ebd73a6d287e1e40b8c29cf2839d973b461511bfc7b0dd5623b9fe41e5` |
 | `H_OWNER` | `UTF8owner` | `4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e` |
 
-`H_LENS_KERNEL = 42b6a42f194e819335e794a25ea26f99ac1d6155dc13f457c6d9962d95358aeb` is not intrinsic: it is the
+`H_LENS_KERNEL = 2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
 ### 1.2 Cells (`cas/cells/`)
@@ -157,7 +157,10 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
 5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope
    cell of its origin. Seals count for it only under that scope and its admission keys.
 
-The fold (§4.1) then runs over the whole chain, including step 3b.
+The fold (§4.1) then runs over the whole chain, including step 3b. The seal and authority rules of step 3 (seal
+contexts and keys, cross-seals, a seal on every new cell, evaluator policies within the roster, foreign scopes)
+and the fold itself are decided by the rules object (§4.3); the host contributes parsing, hashing and signature
+verification.
 
 ## 4. Fold and lens
 
@@ -166,7 +169,8 @@ The fold (§4.1) then runs over the whole chain, including step 3b.
 For each commit `T_i` with governing scope `S_i`:
 
 - `Endorsers_i(u)`: keys of seals on `u` with `H_scope_ctx = id(S_i)` and a key of `S_i` (admission policy;
-  acceptance policy for an acceptance cell). For a foreign `u` these are its cross-seals.
+  acceptance policy for an acceptance cell). For a foreign `u` these are its cross-seals. For an edge `w → v`,
+  `Endorsers_i(w)` is counted with `S_i`'s acceptance keys when `v` is an acceptance cell, else its admission keys.
 - `InitialEndorsers(v)`: `Endorsers_birth(v)(v)` for a local `v`; fixed at birth.
 - `CumulativeEndorsers(v)`: every admitted seal on a local `v`, each checked under its own commit's scope. For a
   foreign `v`, `ForeignEndorsers(v, S_f)` counts seals under a self-sealed scope `S_f` of its origin.
@@ -183,9 +187,10 @@ Governing policy and author rights of a target `v`:
 
 Latches (never undone):
 
-1. An acceptance cell pinned to a self-sealed foreign scope whose `Endorsers_i` meet `S_i`'s acceptance
-   policy is **Authorized**.
-2. A custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**.
+1. A local acceptance cell pinned to a self-sealed foreign scope whose `Endorsers_i` meet `S_i`'s acceptance
+   policy is **Authorized**. A local acceptance whose `foreign_scope_cell` is not self-sealed refuses `T_i`.
+2. A local custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**. Foreign
+   acceptance and schema cells are never Authorized in `<scope>`.
 3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind
    supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets
    `InitialEndorsers(v)`.
@@ -231,13 +236,36 @@ Authorized; every other Active, non-Stale cell is Settled.
 
 ### 4.3 Rules object
 
-The rules of §4.2 Passes 1–2 are compiled to `kernel/lens.wasm` (`kernel/src/lib.rs`, Rust → wasm32, built
-reproducibly from `kernel/`). A scope names them in `slots[2]` by `H_LENS_KERNEL`; the gate refuses any other
-value, and every genesis stores the module as an atom. The kernel takes `n`, `flags[n]` (bit 0 accepted
-unconditionally, bit 1 all supersedes edges authorized) and six edge lists of `(newer, older)` indices in forward
-topological order — acceptance, same-origin reference, authorized invalidates, retires, supersedes, relies —
-and returns one byte per cell (accepted, invalidated, effective, retired, superseded, active, stale), or a
-negative code. A host's Passes 1–2 must agree with it bit for bit.
+The fold of §4.1 (with the seal rules of §3 step 3) and Passes 1–2 of §4.2 are compiled to `kernel/lens.wasm`
+(`kernel/src/lib.rs`, Rust → wasm32, built reproducibly from `kernel/`). A scope names them in `slots[2]` by
+`H_LENS_KERNEL`; the gate refuses any other value, and every genesis stores the module as an atom. The host runs
+the module on every admission and every lens: it decides admission authority and the statuses of Passes 1–2.
+The host parses bytes, hashes, verifies Ed25519 signatures and orders cells; Pass 3 (replay, witnesses, Settled)
+stays in the host.
+
+Input, u32 little-endian words (`H` = 32 raw bytes):
+
+```
+C N NK P                                     commits, cells, interned keys, policies
+P × (H id, threshold, m, key[m])             every POL1 atom with strong keys and threshold ≤ m
+N × (H id, H schema, H payload, H name, H loss, origin, birth, K, K × H slot,
+     5 × (count, index[count]))              relies, attests, supersedes, retires, invalidates
+S, S × (target, ctx, key, commit)            seals whose signatures the host verified
+```
+
+Cells are in forward topological order: every edge, and every payload or slot that is a cell id, names an older
+index born no later. `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
+object. The module embeds the standard schema ids, `H_META_SCHEMA`, `H_EMPTY`, `H_OWNER`, `H_PROVISIONAL` and
+`H_VERDICT_INVALID`, and reads kinds, tiers, policy slots and verdict codes from the cell hashes itself.
+
+Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,
+retired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per
+invalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input
+(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,
+unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).
+
+`vars1.py` keeps a Python fold and Passes 1–2 as a differential twin: a refusal by one and not the other, or any
+differing latch, scope or status bit, is a host fault (`TwinDivergence`), never a gate refusal.
 
 ## 5. Replay against Book I
 
@@ -253,10 +281,12 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 ## 6. Conformance
 
 - `test_vars1.py`: golden vectors, gate refusals, the scenarios of §§3–5, every Ed25519 vector of
-  `primitives/vectors/verify-sig.json`, and the schema table above. Every `lens()` is checked against the kernel.
+  `primitives/vectors/verify-sig.json`, and the schema table above. Every fold and `lens()` runs the kernel and
+  its Python twin, and every `lens()` is re-run on the kernel.
 - `test_vars1_props.py`: seeded random admission sequences; on each admitted tip, gate refusals and the lens
-  never crash (I0), one Active binding per name (I1), `Stale` equals an independent fixed point (I2), latched
-  edges equal a spec oracle (I3), Settled implies a full replay from root (I4), latches only grow (I5), order
-  and hash-seed independence (I6), the fold governs with the unique Active local scope (I7), and the kernel
-  agrees with the host (I8).
+  never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed
+  point (I2), latched edges equal a spec oracle (I3), acceptance, custom-schema and scope latches equal a spec
+  oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed
+  independence (I6), the fold governs with the unique Active local scope (I7), and a fresh kernel run reproduces
+  the lens (I8).
 - `proofs/`: the theorems listed in `proofs/README.md`.

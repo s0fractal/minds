@@ -4,8 +4,10 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 
 - `VARS-1-SPEC.md` — the specification.
 - `vars1.py` — reference implementation.
-- `kernel/` — the lens rules compiled to `lens.wasm` (Rust, `cargo build --release --target wasm32-unknown-unknown`;
-  the build is reproducible and must hash to `H_LENS_KERNEL`). Scopes name these rules by hash.
+- `kernel/` — the rules compiled to `lens.wasm`: the authority fold and lens Passes 1–2 (Rust,
+  `cargo build --release --target wasm32-unknown-unknown`; the build is reproducible and must hash to
+  `H_LENS_KERNEL`). Scopes name these rules by hash; the host only parses, hashes and verifies signatures, and
+  keeps a Python twin of the rules for differential checking.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 
 ## Running
@@ -18,7 +20,7 @@ git clone https://github.com/s0fractal/minds
 git clone https://github.com/s0fractal/sigma-glyph
 git clone https://github.com/s0fractal/primitives
 cd minds
-python3 -m unittest test_vars1          # conformance; every lens is checked against kernel/lens.wasm
+python3 -m unittest test_vars1          # conformance; every fold and lens runs kernel/lens.wasm and its twin
 python3 test_vars1_props.py             # property-based invariants I0–I8
 cd proofs && lake build && lake build Vars1Sigma
 ```

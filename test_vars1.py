@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Conformance suite for `vars1.py` (VARS-1-SPEC.md).
 
-Every `lens()` call is also evaluated by the compiled lens kernel (`kernel/lens.wasm`) and must agree bit for bit.
+Every fold and `lens()` runs the rules kernel (`kernel/lens.wasm`) and its Python twin, which must agree bit for bit;
+every `lens()` is also re-run on a separate kernel instance.
 Covers golden vectors, the gate's rejections, the local compute/checkpoint/verdict loop, rebinding and rollback,
 foreign import and acceptance, scope rotation without retroactivity, replay trust, and all Ed25519 vectors of
 `primitives/vectors/verify-sig.json`.
@@ -27,7 +28,7 @@ import vars1 as V  # noqa: E402
 
 
 class KernelCheckedRepo(V.GitVarsRepo):
-    """Every lens() is checked against the compiled lens kernel (kernel/lens.wasm): Passes 1-2 must agree bit for bit."""
+    """Every lens() is re-run on a separate rules-kernel instance (kernel/lens.wasm): Passes 1-2 must reproduce."""
 
     runner: "V.KernelRunner | None" = None
 
@@ -99,7 +100,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(V.H_META_SCHEMA.hex(), "7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
         self.assertEqual(V.H_ZERO.hex(), "bd8ce1f0a5c552141dc052a9b66a200003a1b34dbf947dea1c1e32b9969cfe3c")
         self.assertEqual(V.H_ATTESTED.hex(), "7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c")
-        self.assertEqual(V.H_LENS_KERNEL.hex(), "42b6a42f194e819335e794a25ea26f99ac1d6155dc13f457c6d9962d95358aeb")
+        self.assertEqual(V.H_LENS_KERNEL.hex(), "2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747")
         self.assertEqual(V.sha256((ROOT_DIR / "kernel" / "lens.wasm").read_bytes()), V.H_LENS_KERNEL)
         # The spec's schema table and intrinsic constants are the code's, digit for digit
         spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text(encoding="utf-8")
@@ -1253,6 +1254,144 @@ class TestVars1Conformance(unittest.TestCase):
         c3 = self.repo.build_candidate_commit("core", atoms3, [squat], [V.Seal.sign(self.sk1, squat.id, s0.id)], parent_commit=c1)
         with self.assertRaisesRegex(V.VarsError, "reserved scope name"):
             self.repo.admit_and_advance("core", c3, expected_old=c1)
+
+    # ------------------------------------------------------------------------------------------
+    # Rules decided by the kernel (§4.3): one scenario per fold refusal and per Pol_i row
+    # ------------------------------------------------------------------------------------------
+    def _genesis(self, adm: list[bytes], adm_thr: int, acc: list[bytes], acc_thr: int, signers: list[bytes],
+                 scope: str = "core") -> tuple[str, V.Cell]:
+        atoms = dict(V.STD_SCHEMA_ATOMS)
+        s0 = V.Cell(
+            h_schema=V.H_SCHEMA["scope"],
+            h_slot_name=self._put_atom(atoms, V.atom_utf8(f"{scope}/SCOPE")),
+            h_payload=self._put_atom(atoms, V.atom_utf8(scope)),
+            slots=(self._pol(atoms, adm_thr, adm), self._pol(atoms, acc_thr, acc), V.H_LENS_KERNEL),
+        )
+        c = self.repo.build_candidate_commit(scope, atoms, [*V.STD_SCHEMAS.values(), s0],
+                                             [V.Seal.sign(sk, s0.id, s0.id) for sk in signers], parent_commit=None)
+        self.repo.admit_and_advance(scope, c, expected_old=None)
+        return c, s0
+
+    def _pol(self, atoms: dict[bytes, bytes], thr: int, pks: list[bytes]) -> bytes:
+        return self._put_atom(atoms, V.atom_pol1(thr, self._hv(atoms, sorted(pks))))
+
+    def _refused(self, code: int, atoms: dict[bytes, bytes], cells: list, seals: list, parent: str) -> None:
+        c = self.repo.build_candidate_commit("core", atoms, cells, seals, parent_commit=parent)
+        with self.assertRaisesRegex(V.VarsError, rf"rules kernel E{code}:"):
+            self.repo.admit_and_advance("core", c, expected_old=parent)
+
+    def _scope_cell(self, atoms: dict[bytes, bytes], origin: str, payload: str, adm: tuple[int, list[bytes]],
+                    **kw) -> V.Cell:
+        pol = self._pol(atoms, *adm)
+        return V.Cell(h_schema=V.H_SCHEMA["scope"], h_slot_name=self._put_atom(atoms, V.atom_utf8(f"{origin}/SCOPE")),
+                      h_payload=self._put_atom(atoms, V.atom_utf8(payload)), slots=(pol, pol, V.H_LENS_KERNEL), **kw)
+
+    def _contract(self, atoms: dict[bytes, bytes], name: str, tier: bytes, pol: bytes = V.H_EMPTY, **edges) -> V.Cell:
+        kw = {f"h_{k}": self._hv(atoms, v) for k, v in edges.items()}
+        if "h_supersedes" in kw:
+            kw["h_loss"] = self._put_atom(atoms, V.atom_utf8(f"loss: {name}"))
+        return V.Cell(h_schema=V.H_SCHEMA["contract"], h_slot_name=self._put_atom(atoms, V.atom_utf8(name)),
+                      h_payload=self._put_atom(atoms, V.atom_utf8(f"statement {name}")),
+                      slots=(tier, V.H_EMPTY, V.H_EMPTY, pol), **kw)
+
+    def test_11_fold_refusals_are_decided_by_the_kernel(self) -> None:
+        sk4 = b"\x04" * 32
+        pk4 = V.ed25519_pubkey(sk4)
+        # adm 1-of-{pk1}, acc 1-of-{pk2}: pk2 may seal only acceptance cells
+        c0, s0 = self._genesis([self.pk1], 1, [self.pk2], 1, [self.sk1])
+
+        a: dict[bytes, bytes] = {}
+        ax = self._axiom(a, "core/ax", "sealed by an acceptance-only key")
+        self._refused(-13, a, [ax], [V.Seal.sign(self.sk2, ax.id, s0.id)], c0)
+
+        a = {}
+        con = self._contract(a, "core/c", V.H_PROVISIONAL, self._pol(a, 1, [self.pk1, pk4]))
+        self._refused(-16, a, [con], [V.Seal.sign(self.sk1, con.id, s0.id)], c0)
+
+        # peerB: a self-sealed scope and one of its cells
+        a = {}
+        fb = self._scope_cell(a, "peerB", "peerB", (1, [self.pk_peer]))
+        fx = self._axiom(a, "peerB/x", "a peerB fact")
+        c1 = self._admit(a, [fb, fx], [V.Seal.sign(self.sk_peer, fb.id, fb.id), V.Seal.sign(self.sk_peer, fx.id, fb.id)], c0)
+        self._refused(-14, {}, [], [V.Seal.sign(sk4, fx.id, s0.id)], c1)  # cross-seal by an outsider
+
+        # peerC's scope needs 2-of-{peer, pk4} and carries one self-seal: its cells have no self-sealed scope
+        a = {}
+        fc = self._scope_cell(a, "peerC", "peerC", (2, [self.pk_peer, pk4]))
+        fy = self._axiom(a, "peerC/y", "a peerC fact")
+        self._refused(-17, a, [fc, fy], [V.Seal.sign(self.sk_peer, fc.id, fc.id), V.Seal.sign(self.sk_peer, fy.id, fc.id)], c1)
+
+        # an acceptance pinned to a second, unsealed peerB scope
+        a = {}
+        fb2 = self._scope_cell(a, "peerB", "peerB#2", (1, [self.pk_peer]))
+        acc = V.Cell(h_schema=V.H_SCHEMA["acceptance"], h_slot_name=self._put_atom(a, V.atom_utf8("core/acc")),
+                     h_payload=fx.id, slots=(self._put_atom(a, V.atom_utf8("peerB")), fb2.id))
+        self._refused(-21, a, [fb2, acc], [V.Seal.sign(self.sk2, acc.id, s0.id)], c1)
+
+        # a rotation that also retires a cell
+        a = {}
+        rot = self._scope_cell(a, "core", "core#bad", (1, [self.pk1]), h_supersedes=self._hv(a, [s0.id]),
+                               h_retires=self._hv(a, [fx.id]), h_loss=self._put_atom(a, V.atom_utf8("rotation")))
+        self._refused(-19, a, [rot], [V.Seal.sign(self.sk1, rot.id, s0.id)], c1)
+
+        # after a rotation, a seal under the old scope
+        a = {}
+        s1 = self._scope_cell(a, "core", "core#1", (1, [self.pk1]), h_supersedes=self._hv(a, [s0.id]),
+                              h_loss=self._put_atom(a, V.atom_utf8("rotation")))
+        c2 = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c1)
+        a = {}
+        ax = self._axiom(a, "core/late", "sealed under the superseded scope")
+        self._refused(-12, a, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], c2)
+
+    def test_12_quorum_refusals_at_genesis_and_rotation(self) -> None:
+        atoms = dict(V.STD_SCHEMA_ATOMS)
+        g = self._scope_cell(atoms, "gov", "gov", (2, [self.pk1, self.pk2]))
+        c = self.repo.build_candidate_commit("gov", atoms, [*V.STD_SCHEMAS.values(), g],
+                                             [V.Seal.sign(self.sk1, g.id, g.id)], parent_commit=None)
+        with self.assertRaisesRegex(V.VarsError, r"rules kernel E-11:"):
+            self.repo.admit_and_advance("gov", c, expected_old=None)
+
+        c0, s0 = self._genesis([self.pk1, self.pk2], 2, [self.pk1, self.pk2], 1, [self.sk1, self.sk2])
+        a: dict[bytes, bytes] = {}
+        s1 = self._scope_cell(a, "core", "core#1", (1, [self.pk1]), h_supersedes=self._hv(a, [s0.id]),
+                              h_loss=self._put_atom(a, V.atom_utf8("rotation")))
+        self._refused(-20, a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+
+    def test_13_governing_policy_rows(self) -> None:
+        """Pol_i(v): a provisional contract or question is evicted under its evaluator policy; an owner contract only
+        under the admission quorum, never by its author; an ATTESTED verdict never invalidates."""
+        c0, s0 = self._genesis([self.pk1, self.pk2], 2, [self.pk1, self.pk2], 1, [self.sk1, self.sk2])
+        a: dict[bytes, bytes] = {}
+        pol2 = self._pol(a, 1, [self.pk2])
+        v_con = self._contract(a, "core/c", V.H_PROVISIONAL, pol2)
+        q_text = self._put_atom(a, V.atom_utf8("a question"))
+        v_q = V.Cell(h_schema=V.H_SCHEMA["question"], h_slot_name=self._put_atom(a, V.atom_utf8("core/q")),
+                     h_payload=q_text, slots=(V.H_SCHEMA["axiom"], pol2))
+        v_own = self._contract(a, "core/o", V.H_OWNER)
+        target = self._contract(a, "core/t", V.H_PROVISIONAL)
+        c1 = self._admit(a, [v_con, v_q, v_own, target],
+                         [V.Seal.sign(self.sk1, x.id, s0.id) for x in (v_con, v_q, v_own)]
+                         + [V.Seal.sign(sk, target.id, s0.id) for sk in (self.sk1, self.sk2)], c0)
+
+        a = {}
+        w_con = self._contract(a, "core/c", V.H_PROVISIONAL, pol2, supersedes=[v_con.id])
+        w_q = V.Cell(h_schema=V.H_SCHEMA["question"], h_slot_name=v_q.h_slot_name, h_payload=self._put_atom(a, V.atom_utf8("q2")),
+                     slots=(V.H_SCHEMA["axiom"], pol2), h_supersedes=self._hv(a, [v_q.id]),
+                     h_loss=self._put_atom(a, V.atom_utf8("loss: q")))
+        w_own = self._contract(a, "core/o", V.H_OWNER, supersedes=[v_own.id])
+        vid = self._put_atom(a, V.atom_utf8("a verifier"))
+        attested = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=self._put_atom(a, V.atom_utf8("core/v")),
+                          h_payload=target.id, slots=(V.H_EMPTY, V.H_ATTESTED, vid),
+                          h_attests=self._hv(a, [target.id]), h_invalidates=self._hv(a, [target.id]))
+        self._admit(a, [w_con, w_q, w_own, attested],
+                    [V.Seal.sign(self.sk2, w_con.id, s0.id), V.Seal.sign(self.sk2, w_q.id, s0.id),
+                     V.Seal.sign(self.sk1, w_own.id, s0.id)]
+                    + [V.Seal.sign(sk, attested.id, s0.id) for sk in (self.sk1, self.sk2)], c1)
+        lens = self.repo.lens("core")
+        self.assertTrue(lens["superseded"][v_con.id] and lens["active"][w_con.id], "evaluator policy 1-of-{pk2} evicts")
+        self.assertTrue(lens["superseded"][v_q.id] and lens["active"][w_q.id], "question evaluator policy evicts")
+        self.assertFalse(lens["superseded"][v_own.id] or lens["active"][w_own.id], "owner tier: author alone cannot evict")
+        self.assertTrue(lens["effective"][target.id], "an ATTESTED verdict's invalidates edge has no effect")
 
 
 if __name__ == "__main__":

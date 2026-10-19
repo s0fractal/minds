@@ -2,7 +2,8 @@
 """VARS-1 reference implementation (no dependencies beyond `sigma-glyph`'s `sigma_resume`).
 
 Section numbers refer to VARS-1-SPEC.md: objects (§1), standard schemas (§2), store and admission gate (§3),
-fold and lens (§4), replay against Book I (§5). Passes 1-2 of the lens are also compiled to `kernel/lens.wasm`.
+fold and lens (§4), replay against Book I (§5). The fold and lens Passes 1-2 are decided by `kernel/lens.wasm`;
+the Python fold and passes here are its differential twin.
 """
 from __future__ import annotations
 
@@ -195,10 +196,10 @@ H_NOT_ASSESSED = sha256(b"UTF8NOT_ASSESSED")
 H_PROVISIONAL = sha256(b"UTF8provisional")
 H_OWNER = sha256(b"UTF8owner")
 
-# The rules a scope is evaluated under are a stored object: the compiled lens kernel (`kernel/`, Rust -> wasm32,
+# The rules a scope is evaluated under are a stored object: the compiled rules kernel (`kernel/`, Rust -> wasm32,
 # reproducible). A scope names it by hash; this host implements exactly these rules.
 KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
-H_LENS_KERNEL = bytes.fromhex("42b6a42f194e819335e794a25ea26f99ac1d6155dc13f457c6d9962d95358aeb")
+H_LENS_KERNEL = bytes.fromhex("2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747")
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
@@ -809,10 +810,31 @@ def verify_cycle_witness_replay(c: Cell, atoms: Dict[bytes, bytes], *, gate_mode
 
 
 KERNEL_BITS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale")
+KERNEL_CODES = {
+    -1: "malformed input", -2: "edge not in forward topological order", -3: "out of memory",
+    -4: "Pass 2 not monotone", -5: "Pass 2 without fixed point",
+    -10: "genesis scope shape", -11: "genesis scope lacks its admission quorum", -12: "local seal context",
+    -13: "local seal key", -14: "cross-seal", -15: "unsealed local cell", -16: "evaluator policy not within roster",
+    -17: "foreign cell without self-sealed scope", -18: "several new local scopes", -19: "new scope shape",
+    -20: "new scope lacks admission quorum", -21: "acceptance not pinned to a self-sealed scope",
+    -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
+}
+
+
+class KernelRefusal(VarsError):
+    """The rules kernel returned a negative code: the fold refused the commit log (or its input was malformed)."""
+
+    def __init__(self, code: int):
+        self.code = code
+        super().__init__(f"rules kernel E{code}: {KERNEL_CODES.get(code, 'unknown code')}")
+
+
+class TwinDivergence(RuntimeError):
+    """The rules kernel and the host's differential twin disagree: a defect in one of them, never a refusal."""
 
 
 class KernelRunner:
-    """Runs `kernel/lens.wasm` under Node (WebAssembly, no other dependency) for differential checks."""
+    """Runs `kernel/lens.wasm` under Node (WebAssembly, no other dependency): the rules object of §4.3."""
 
     def __init__(self) -> None:
         self.proc = subprocess.Popen(
@@ -820,19 +842,130 @@ class KernelRunner:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
         )
 
-    def statuses(self, lens: Dict[str, object]) -> Dict[bytes, Dict[str, bool]]:
-        """Kernel statuses for a lens result, keyed by cell id; raises VarsError on a kernel error code."""
-        self.proc.stdin.write(lens["kernel_input"].hex() + "\n")
+    def run(self, kernel_input: bytes) -> bytes:
+        """The kernel's output bytes; raises KernelRefusal on a negative code."""
+        self.proc.stdin.write(kernel_input.hex() + "\n")
         self.proc.stdin.flush()
         line = self.proc.stdout.readline().strip()
-        if not line or line.startswith("E"):
-            raise VarsError(f"lens kernel refused its input ({line or 'no output'})")
-        out = bytes.fromhex(line)
-        return {cid: {name: bool(out[i] >> b & 1) for b, name in enumerate(KERNEL_BITS)} for i, cid in enumerate(lens["kernel_order"])}
+        if not line:
+            raise RuntimeError("rules kernel produced no output")
+        if line.startswith("E"):
+            raise KernelRefusal(int(line[1:]))
+        return bytes.fromhex(line)
+
+    def statuses(self, lens: Dict[str, object]) -> Dict[bytes, Dict[str, bool]]:
+        """Kernel statuses for a lens result, keyed by cell id, from a fresh run of its kernel input."""
+        out = self.run(lens["kernel_input"])
+        n = len(lens["kernel_order"])
+        return {cid: {name: bool(out[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
+                for i, cid in enumerate(lens["kernel_order"])}
 
     def close(self) -> None:
         self.proc.stdin.close()
         self.proc.wait(timeout=10)
+
+
+_KERNEL: Optional[KernelRunner] = None
+
+
+def kernel_runner() -> KernelRunner:
+    global _KERNEL
+    if _KERNEL is None:
+        _KERNEL = KernelRunner()
+    return _KERNEL
+
+
+def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[List[bytes], Dict[bytes, Set[bytes]], Dict[bytes, Set[bytes]]]:
+    """Forward topological order (oldest first) over every cell reference, with parents (older) and children (newer)."""
+
+    def hvec_items(h: bytes) -> List[bytes]:
+        return [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
+
+    parents_of: Dict[bytes, Set[bytes]] = {cid: set() for cid in cells}  # u -> older v
+    children_of: Dict[bytes, Set[bytes]] = {cid: set() for cid in cells}  # older v -> newer u
+    for u, c in cells.items():
+        refs: Set[bytes] = set()
+        for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
+            refs.update(hvec_items(mh))
+        refs.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        for v in refs:
+            if v in cells and v != u:
+                parents_of[u].add(v)
+                children_of[v].add(u)
+    indeg = {u: len(parents_of[u]) for u in cells}
+    queue = sorted(u for u, d in indeg.items() if d == 0)
+    order: List[bytes] = []
+    while queue:
+        u = queue.pop(0)
+        order.append(u)
+        for ch in sorted(children_of[u]):
+            indeg[ch] -= 1
+            if indeg[ch] == 0:
+                queue.append(ch)
+    if len(order) != len(cells):
+        raise VarsError("cell references are cyclic")
+    return order, parents_of, children_of
+
+
+def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, List[bytes]]]:
+    """A POL1 atom's threshold and keys if it is well formed with strong, distinct-enough keys; else None."""
+    try:
+        thr, hvec_h = parse_pol1(raw)
+        pks = parse_hvec(atoms[hvec_h], require_sorted=True)
+        for pk in pks:
+            if weak_public_key(pk):
+                return None
+            _ed_dec(pk)
+    except (VarsError, KeyError, ValueError):
+        return None
+    return (thr, pks) if len(set(pks)) >= thr else None
+
+
+def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "Cell"], Dict[bytes, "Seal"]]]) -> Tuple[bytes, List[bytes]]:
+    """Encode a commit log as the rules kernel's input (§4.3): parsed cells, verified seals, POL1 rosters.
+
+    Only parsing happens here: the order of cells, interned origins and keys, and edge lists as cell indices."""
+    atoms, cells, seals = trees[-1]
+    birth_c: Dict[bytes, int] = {}
+    birth_s: Dict[bytes, int] = {}
+    for i, (_, cs, ss) in enumerate(trees):
+        for cid in cs:
+            birth_c.setdefault(cid, i)
+        for sid in ss:
+            birth_s.setdefault(sid, i)
+    order, _, _ = topo_order(cells, atoms)
+    pos = {cid: i for i, cid in enumerate(order)}
+
+    def origin(c: "Cell") -> str:
+        return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
+
+    origins = sorted({origin(c) for c in cells.values()} - {scope})
+    origin_ix = {scope: 0, **{o: i + 1 for i, o in enumerate(origins)}}
+    pols = {}
+    for h, raw in atoms.items():
+        if raw[:4] == b"POL1":
+            got = strong_pol1(raw, atoms)
+            if got is not None:
+                pols[h] = got
+    keys = sorted({pk for _, pks in pols.values() for pk in pks} | {s.actor_pubkey for s in seals.values()})
+    key_ix = {k: i for i, k in enumerate(keys)}
+
+    out = bytearray(struct.pack("<4I", len(trees), len(order), len(keys), len(pols)))
+    for h in sorted(pols):
+        thr, pks = pols[h]
+        out += h + struct.pack(f"<{2 + len(pks)}I", thr, len(pks), *(key_ix[k] for k in pks))
+    for cid in order:
+        c = cells[cid]
+        out += cid + c.h_schema + c.h_payload + c.h_slot_name + c.h_loss
+        out += struct.pack("<3I", origin_ix[origin(c)], birth_c[cid], len(c.slots)) + b"".join(c.slots)
+        for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
+            items = [] if mh == H_EMPTY else parse_hvec(atoms[mh], require_sorted=True)
+            out += struct.pack(f"<{1 + len(items)}I", len(items), *(pos[v] for v in items))
+    out += struct.pack("<I", len(seals))
+    for sid in sorted(seals):
+        sl = seals[sid]
+        out += struct.pack("<4I", pos[sl.h_target], pos[sl.h_scope_ctx], key_ix[sl.actor_pubkey], birth_s[sid])
+    return bytes(out), order
 
 
 # ---------------------------------------------------------------------------
@@ -1158,6 +1291,52 @@ class GitVarsRepo:
     # §4 Commit-Chain Fold & Three-Pass Lensing
     # -----------------------------------------------------------------------
     def _evaluate_commit_chain(self, scope: str, commits: List[str]) -> Dict[str, object]:
+        """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree."""
+        trees = [self.read_cas_tree(c) for c in commits]
+        try:
+            twin, twin_err = self._fold_twin(scope, trees), None
+        except VarsError as e:
+            twin, twin_err = None, e
+        kernel_input, order = kernel_facts(scope, trees)
+        try:
+            out = kernel_runner().run(kernel_input)
+        except KernelRefusal as e:
+            if twin_err is None:
+                raise TwinDivergence(f"{e}, but the host fold admits the commit log") from None
+            raise VarsError(f"{twin_err} [{e}]") from None
+        if twin_err is not None:
+            raise TwinDivergence(f"host fold refused ({twin_err}) but the rules kernel admits the commit log")
+        cells: Dict[bytes, Cell] = twin["cells"]
+        atoms: Dict[bytes, bytes] = twin["atoms"]
+        n = len(order)
+        status, auth, flags = out[4:4 + n], out[4 + n:4 + 2 * n], iter(out[4 + 2 * n:])
+        kernel = {
+            "active_scope_id": order[int.from_bytes(out[:4], "little")],
+            "latched_scope_auth": {cid for i, cid in enumerate(order) if auth[i] and cells[cid].h_schema == H_SCHEMA["scope"]},
+            "latched_acc_auth": {cid for i, cid in enumerate(order) if auth[i] and cells[cid].h_schema == H_SCHEMA["acceptance"]},
+            "latched_schema_auth": {cid for i, cid in enumerate(order) if auth[i] and cells[cid].h_schema == H_META_SCHEMA},
+            "latched_edge_auth": set(),
+        }
+        for wid in order:
+            w = cells[wid]
+            for kind, mh in (("invalidates", w.h_invalidates), ("retires", w.h_retires), ("supersedes", w.h_supersedes)):
+                for vid in [] if mh == H_EMPTY else parse_hvec(atoms[mh], require_sorted=True):
+                    if next(flags):
+                        kernel["latched_edge_auth"].add((wid, vid, kind))
+        for k, v in kernel.items():
+            if twin[k] != v:
+                raise TwinDivergence(f"rules kernel and host fold disagree on {k}")
+        return {
+            **twin,
+            **kernel,
+            "kernel_input": kernel_input,
+            "kernel_order": order,
+            "kernel_status": {cid: {name: bool(status[i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
+                              for i, cid in enumerate(order)},
+        }
+
+    def _fold_twin(self, scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]]) -> Dict[str, object]:
+        """The host's differential twin of the kernel fold (§4.1), plus the endorser sets Pass 3 needs."""
         latched_scope_auth: Set[bytes] = set()
         latched_acc_auth: Set[bytes] = set()
         latched_schema_auth: Set[bytes] = set(STD_SCHEMA_IDS)
@@ -1170,8 +1349,7 @@ class GitVarsRepo:
         seen_seals: Set[bytes] = set()
         active_scope_id: Optional[bytes] = None
 
-        for idx, commit_oid in enumerate(commits):
-            atoms, cells, seals = self.read_cas_tree(commit_oid)
+        for idx, (atoms, cells, seals) in enumerate(trees):
 
             def pol_quorum(pol_hash: bytes) -> Tuple[int, Set[bytes]]:
                 thr, hvec_h = parse_pol1(atoms[pol_hash])
@@ -1519,38 +1697,7 @@ class GitVarsRepo:
         def cell_origin(c: Cell) -> str:
             return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
 
-        def cell_refs(c: Cell) -> Set[bytes]:
-            out: Set[bytes] = set()
-            for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
-                out.update(hvec_items(mh))
-            if c.h_payload in cells:
-                out.add(c.h_payload)
-            for s_h in c.slots:
-                if s_h in cells:
-                    out.add(s_h)
-            return out
-
-        # Topological sort: edges point newer (u) -> older (v)
-        indeg: Dict[bytes, int] = {cid: 0 for cid in cells}
-        parents_of: Dict[bytes, Set[bytes]] = {cid: set() for cid in cells}  # u -> older v
-        children_of: Dict[bytes, Set[bytes]] = {cid: set() for cid in cells}  # older v -> newer u
-        for u, c in cells.items():
-            for v in cell_refs(c):
-                if v in cells and v != u:
-                    parents_of[u].add(v)
-                    children_of[v].add(u)
-        for u in cells:
-            indeg[u] = len(parents_of[u])
-
-        queue = sorted([u for u, d in indeg.items() if d == 0])
-        forward_order: List[bytes] = []
-        while queue:
-            u = queue.pop(0)
-            forward_order.append(u)
-            for ch in sorted(children_of[u]):
-                indeg[ch] -= 1
-                if indeg[ch] == 0:
-                    queue.append(ch)
+        forward_order, parents_of, children_of = topo_order(cells, atoms)
         reverse_order = list(reversed(forward_order))
 
         # Pass 1 (Reverse-Topological: newest/sinks -> oldest/sources)
@@ -1666,6 +1813,19 @@ class GitVarsRepo:
                 break
         else:
             raise VarsError("Pass 2 did not reach its fixed point within |cells| + 1 rounds")
+
+        # The rules kernel computed Passes 1-2; the Python passes above are its differential twin.
+        kst: Dict[bytes, Dict[str, bool]] = fold["kernel_status"]
+        twin_st = {"accepted": accepted, "invalidated": invalidated, "effective": effective, "retired": retired,
+                   "superseded": superseded, "active": active, "stale": stale}
+        if fold["kernel_order"] != forward_order:
+            raise TwinDivergence("rules kernel and host lens order cells differently")
+        for cid in forward_order:
+            for name in KERNEL_BITS:
+                if kst[cid][name] != twin_st[name][cid]:
+                    raise TwinDivergence(f"rules kernel and host lens disagree on {name} of {cid.hex()[:12]}")
+        accepted, invalidated, effective, retired, superseded, active, stale = (
+            {cid: kst[cid][name] for cid in forward_order} for name in KERNEL_BITS)
 
         # Pass 3 (Constructive Maximal Witness Set W_max -> Settled vs Provisional)
         def pol_quorum(pol_hash: bytes) -> Tuple[int, Set[bytes]]:
@@ -1784,41 +1944,8 @@ class GitVarsRepo:
             settled[cid] = is_set
             provisional[cid] = not is_set
 
-        # Facts for the lens kernel (Pass 1 and Pass 2 only): indices in forward topological order, edges (newer, older).
-        pos = {cid: i for i, cid in enumerate(forward_order)}
-        local = {cid: cid in STD_SCHEMA_IDS or cell_origin(cells[cid]) == scope for cid in cells}
-        flags = [
-            int(local[cid]) | (2 if all((cid, v, "supersedes") in latched_edge_auth for v in hvec_items(cells[cid].h_supersedes)) else 0)
-            for cid in forward_order
-        ]
-        edges: List[List[Tuple[int, int]]] = [[], [], [], [], [], []]
-        for wid in forward_order:
-            w = cells[wid]
-            if w.h_schema == H_SCHEMA["acceptance"] and wid in latched_acc_auth and w.h_payload in cells:
-                edges[0].append((pos[wid], pos[w.h_payload]))
-            for vid in sorted(parents_of[wid]):
-                if not local[wid] and not local[vid] and cell_origin(w) == cell_origin(cells[vid]):
-                    edges[1].append((pos[wid], pos[vid]))
-            for vid in hvec_items(w.h_invalidates):
-                if (wid, vid, "invalidates") in latched_edge_auth and (
-                    w.h_schema != H_SCHEMA["verdict"] or w.slots[1] == H_VERDICT_INVALID
-                ):
-                    edges[2].append((pos[wid], pos[vid]))
-            for k, kind, mh in ((3, "retires", w.h_retires), (4, "supersedes", w.h_supersedes)):
-                for vid in hvec_items(mh):
-                    if (wid, vid, kind) in latched_edge_auth:
-                        edges[k].append((pos[wid], pos[vid]))
-            for did in hvec_items(w.h_relies):
-                edges[5].append((pos[wid], pos[did]))
-        words = [len(forward_order), *flags]
-        for lst in edges:
-            words.append(len(lst))
-            for a, b in sorted(lst):
-                words += [a, b]
-        kernel_input = struct.pack(f"<{len(words)}I", *words)
-
         return {
-            "kernel_input": kernel_input,
+            "kernel_input": fold["kernel_input"],
             "kernel_order": forward_order,
             "cells": cells,
             "atoms": atoms,

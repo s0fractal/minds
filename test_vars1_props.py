@@ -11,13 +11,16 @@ checks:
   I1  at most one Active local cell per H_slot_name
   I2  Stale equals a from-scratch least fixed point (oracle written from spec §4.2 Pass 2, order-free)
   I3  no Active cell has a supersedes edge that the spec §4.1 fold does not authorize (oracle from the spec);
-      I3b additionally compares the whole latched edge set with that oracle
+      I3b additionally compares the whole latched edge set with that oracle;
+      I3c compares the acceptance, custom-schema and scope Authorized latches with a spec oracle (latches 1, 2, 4)
   I4  every Settled contract/decision with required_comp has a REPLAYED checkpoint witness that a full replay from
       ComputationRoot reproduces (state bytes, NORMAL_FORM) with term_hash == expected_outcome
   I5  latches (scope, acceptance, schema, edge) never unlatch across commits
   I6  the lens is independent of dict iteration order (shuffled CAS dicts in-process) and of PYTHONHASHSEED
   I7  the scope cell the fold governs with is the unique Active local schema.scope cell
-  I0  admit/lens never raise anything but VarsError, and an admitted tip's lens never raises
+  I0  admit/lens never raise anything but VarsError (a TwinDivergence between the rules kernel and its Python twin
+      is such a crash), and an admitted tip's lens never raises
+  I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
 
 Failing programs are shrunk greedily (drop commits, ops, signers, edges) and frozen below as named regression
 tests. Run `VARS1_PBT_SEQS=400 python3 test_vars1_props.py` for a longer exploration; the default stays < 2 min.
@@ -247,7 +250,7 @@ class Interp:
                     for k in op["signers"]:
                         new_seals.append(V.Seal.sign(SKS[k], cell.id, ctx))
                     self._register(op["h"], cell, new_cells, origin=op["origin"], kind=op["kind"], name=op["name"],
-                                   **{k: op[k] for k in ("tier", "req", "exp", "pol") if k in op})
+                                   **{k: op[k] for k in ("tier", "req", "exp", "pol", "schema") if k in op})
                 elif kind == "seal":
                     if op["target"] not in self.ids:
                         continue
@@ -328,6 +331,13 @@ class Interp:
             kw["h_loss"] = _put(atoms, V.atom_utf8(f"loss {op['h']}"))
         name = _put(atoms, V.atom_utf8(op["name"]))
         text = _put(atoms, V.atom_utf8(f"{kind} {op['h']}"))
+        if kind == "schema":  # custom schema cell: H_EMPTY payload and edges, one utf8 field
+            return V.Cell(h_schema=V.H_META_SCHEMA, h_slot_name=name, h_payload=V.H_EMPTY,
+                          slots=(_put(atoms, V.atom_utf8("note:utf8")),))
+        if kind == "custom":  # an instance of a custom schema
+            if op["schema"] not in self.ids:
+                return None
+            return V.Cell(h_schema=self.ids[op["schema"]], h_slot_name=name, h_payload=text, slots=(text,), **kw)
         sch = V.H_SCHEMA[kind]
         if kind == "axiom":
             return V.Cell(h_schema=sch, h_slot_name=name, h_payload=text, **kw)
@@ -408,8 +418,12 @@ class Gen:
 
     def local_cell(self, it: Interp, kind: Optional[str] = None) -> Optional[dict]:
         r = self.r
-        kind = kind or r.choice(["axiom"] * 5 + ["contract"] * 2 + ["verdict"] * 3 + ["computation"] * 2 + ["checkpoint"] * 3 + ["question", "acceptance", "acceptance"])
+        kind = kind or r.choice(["axiom"] * 5 + ["contract"] * 2 + ["verdict"] * 3 + ["computation"] * 2 + ["checkpoint"] * 3
+                                + ["question", "acceptance", "acceptance", "schema", "custom"])
         h = self.h()
+        if kind == "schema":  # unique name, no edges; signed by a random subset, so late seals may latch it
+            return {"op": "cell", "h": h, "origin": SCOPE, "kind": kind, "name": f"{SCOPE}/sch.u{h}", "edges": {},
+                    "signers": self.signers(it)}
         op = {"op": "cell", "h": h, "origin": SCOPE, "kind": kind, "edges": {}}
         allh = self.handles(it, lambda hh, m: m["kind"] != "scope")
         same_kind_local = lambda hh, m: m["origin"] == SCOPE and m["kind"] == kind  # noqa: E731
@@ -481,6 +495,11 @@ class Gen:
                 op["edges"]["attests"] = [op["target"]]
             if op["code"] == "INVALID" and r.random() < 0.6:
                 op["edges"]["invalidates"] = [op["target"]]
+        elif kind == "custom":
+            schemas = self.handles(it, lambda hh, m: m["kind"] == "schema")
+            if not schemas:
+                return None
+            op["schema"] = r.choice(schemas)
         elif kind == "acceptance":
             foreign = self.handles(it, lambda hh, m: m["origin"] != SCOPE and (m["kind"] != "scope" or r.random() < 0.3))
             if not foreign:
@@ -811,6 +830,44 @@ def oracle_edges(it: Interp, foreign_initial: bool = False) -> Set[Tuple[bytes, 
     return latched
 
 
+def oracle_auth(it: Interp) -> Dict[str, Set[bytes]]:
+    """Spec §4.1 latches 1, 2 and 4 replayed over the interpreter's own commit log (I3c).
+
+    1. a local acceptance cell pinned to a self-sealed foreign scope whose Endorsers_i (seals under S_i by keys of
+       S_i's acceptance policy) meet that policy is Authorized; 2. a local custom schema cell whose Endorsers_i (keys
+       of S_i's admission policy) meet the admission policy is Authorized; 4. every governing scope is Authorized."""
+    atoms = it.atoms
+    out: Dict[str, Set[bytes]] = {"acc": set(), "schema": set(V.STD_SCHEMA_IDS), "scope": set()}
+    for rec in it.history:
+        cells, s_id, seals = rec["cells"], rec["scope"], rec["seals"]
+        out["scope"].add(s_id)
+        s = cells[s_id]
+        adm, acc = _pol(atoms, s.slots[0]), _pol(atoms, s.slots[1])
+
+        def ends(u: bytes, pks: Set[bytes]) -> Set[bytes]:
+            return {x.actor_pubkey for x in seals if x.h_target == u and x.h_scope_ctx == s_id and x.actor_pubkey in pks}
+
+        def self_sealed(f: bytes) -> bool:
+            fc = cells.get(f)
+            if fc is None or fc.h_schema != V.H_SCHEMA["scope"] or _origin(atoms, fc) == SCOPE:
+                return False
+            thr, pks = _pol(atoms, fc.slots[0])
+            return len({x.actor_pubkey for x in seals if x.h_target == f and x.h_scope_ctx == f and x.actor_pubkey in pks}) >= thr
+
+        for cid, c in cells.items():
+            if cid in V.STD_SCHEMA_IDS or _origin(atoms, c) != SCOPE:
+                continue
+            if c.h_schema == V.H_SCHEMA["acceptance"]:
+                if self_sealed(c.slots[1]) and len(ends(cid, acc[1])) >= acc[0]:
+                    out["acc"].add(cid)
+            elif c.h_schema == V.H_META_SCHEMA:
+                if len(ends(cid, adm[1])) >= adm[0]:
+                    out["schema"].add(cid)
+    if it.cur is not None:
+        out["scope"].add(it.ids[it.cur])
+    return out
+
+
 def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], latched_acc: Set[bytes]) -> Dict[bytes, bool]:
     """Spec §4.2 Pass 2 least fixed point, computed by chaotic iteration with no round cap and no topological order."""
     refs: Dict[bytes, Set[bytes]] = {}
@@ -898,7 +955,7 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
         return [("I0", f"lens/fold crashed: {type(e).__name__}: {e}")], prev_latches
     cells, atoms, active = lens["cells"], lens["atoms"], lens["active"]
 
-    # I8: the compiled lens kernel (kernel/lens.wasm) agrees with the Python lens on Passes 1-2
+    # I8: a fresh run of the rules kernel (kernel/lens.wasm) reproduces the lens's Passes 1-2
     try:
         for cid, bits in kernel_runner().statuses(lens).items():
             bad = [n for n, v in bits.items() if lens[n][cid] != v]
@@ -938,6 +995,14 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
         fmt = lambda s: sorted(f"{w.hex()[:8]}-{k[:3]}->{v.hex()[:8]}" for w, v, k in s)  # noqa: E731
         tag = known_tag if oe_f == le else ""
         out.append(("I3b", f"latched edges != spec oracle; impl-only {fmt(le - oe)} oracle-only {fmt(oe - le)}{tag}"))
+
+    # I3c: acceptance, custom-schema and scope latches equal the spec oracle
+    oa = oracle_auth(it)
+    for k, fk in (("acc", "latched_acc_auth"), ("schema", "latched_schema_auth"), ("scope", "latched_scope_auth")):
+        got = set(fold[fk])
+        if got != oa[k]:
+            fmt = lambda xs: sorted(x.hex()[:10] for x in xs)  # noqa: E731
+            out.append(("I3c", f"{k} latches != spec oracle; impl-only {fmt(got - oa[k])} oracle-only {fmt(oa[k] - got)}"))
 
     # I4
     for cid, c in cells.items():
@@ -1253,7 +1318,7 @@ class TestVars1Properties(unittest.TestCase):
     SEED0 = int(os.environ.get("VARS1_PBT_SEED", "1"))
 
     def test_random_admission_sequences(self) -> None:
-        """I0..I7 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
+        """I0..I8 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
         found: Dict[str, List[str]] = {}
         known_hits: Dict[str, int] = {}
         admitted_total = 0
@@ -1285,8 +1350,7 @@ def _make_regression(name: str, inv: str, program):
     def test(self) -> None:
         viols, _, tmp = run_program(program, shuffles=3 if inv == "I6" else 0)
         tmp.cleanup()
-        bad = [v for v in viols if v[1] == inv]
-        self.assertEqual(bad, [], f"{name}: {inv} violated")
+        self.assertEqual(viols, [], f"{name}: {inv} or another invariant violated")
     test.__name__ = f"test_regression_{name}"
     test.__doc__ = f"{inv}: shrunk counterexample {name}"
     return test
