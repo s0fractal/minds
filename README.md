@@ -71,10 +71,13 @@ from the bundle, not authority; `vars1.py` delegates to the same file (spec §4.
 
 ## Status
 
-Experimental. The conformance suite, the property suite and the Lean proofs pass; the proofs' hypotheses and
-unlinked parts are listed in `proofs/README.md`. There has been no independent review. Radicle replicates
-`refs/vars/*` signed and with history (`tools/radicle-probe.sh`, two local nodes, rad 1.10.3). The kernel is differentially tested against the Lean side: its lens Passes 1–2
-against an executable lens proved equal to the model, and its fold against the model's own fold, compiled. The
-Rust/wasm code itself is not proved.
+Experimental. CI (`.github/workflows/check.yml`) runs every release check on a fresh Ubuntu runner: the kernel
+rebuild, which hashes to the same `H_LENS_KERNEL` there as on macOS, the Lean proofs and executables, the
+conformance suite and the property suite. The proofs' hypotheses and unlinked parts are listed in
+`proofs/README.md`; the Rust/wasm code itself is not proved, only differentially tested against the Lean side
+(lens Passes 1–2 against an executable lens proved equal to the model, the fold against the model's own fold,
+compiled). Other AI agents have reviewed it adversarially, and their reproduced findings are fixed with
+regression tests; no independent human has reviewed it. Radicle replicates `refs/vars/*` signed and with history
+(`tools/radicle-probe.sh`, two local nodes, rad 1.10.3).
 
 MIT licensed.
