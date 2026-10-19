@@ -287,6 +287,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed
   point (I2), latched edges equal a spec oracle (I3), acceptance, custom-schema and scope latches equal a spec
   oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed
-  independence (I6), the fold governs with the unique Active local scope (I7), and a fresh kernel run reproduces
-  the lens (I8).
+  independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces
+  the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status
+  bytes from the kernel's own input and fold output (I9).
 - `proofs/`: the theorems listed in `proofs/README.md`.

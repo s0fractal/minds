@@ -5,6 +5,7 @@ Lean 4 (`v4.31.0`, core only, no Mathlib). Models the fold (§4.1) and the lens 
 
 ```
 lake build              # library Vars1
+lake build vars1exec    # the executable lens, compiled (used by test_vars1_props.py, invariant I9)
 lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (../../sigma-glyph/proofs)
 ```
 
@@ -28,6 +29,17 @@ and, for some theorems, `Classical.choice`.
 | `ReplayAttack.lean` | `pre_lineage_unsound` | a verifier that trusts an unverified parent is unsound (explicit counterexample) |
 | `Pass3Replay.lean` | `settled_full_replay` | a Settled contract with `required_comp` has a full replay from root to a normal form with the expected term hash |
 | `Vars1Sigma/Link.lean` | `run_eq_adv`, `book_verify_sound` | the abstract machine instantiated with `EvalMachine.step`; replay soundness for Book I |
+| `ExecProof.lean` | `pass1_correct` | the executable Pass 1 (`Exec.lean`) satisfies `IsPass1`, and its `sup`/`act` bits are the model's `Superseded`/`Active`, on the world its facts describe |
+| | `stale_correct` | the executable Pass 2 is the model's `Stale = lfp Φ` |
+
+## Executable lens
+
+`Exec.lean` computes lens Passes 1–2 from the facts the rules kernel sees — cell structure from its input,
+`Authorized` and edge authorization from its fold's output — and `ExecProof.lean` proves it equal to the model
+(hypotheses: every reference names an older cell, which the kernel enforces; no cell is both an acceptance and a
+verdict). It is compiled as `vars1exec`, and the property suite checks on every admitted tip that its status bytes
+equal `kernel/lens.wasm`'s (I9). So the kernel's Passes 1–2 are compared with proved code, not with another
+unproved implementation. Reverting `Superseded`'s transitivity in `Exec.lean` breaks the proof and fails I9.
 
 ## Hypotheses (explicit, not axioms)
 
@@ -45,8 +57,10 @@ and, for some theorems, `Classical.choice`.
 - SGS1 bytes to `(Store, Term)`; `term_hash`; `ComputationRoot` to the start state.
 - The rich runtime profile (`ski+Y+M+W`); `verify_cycle`.
 - Uniqueness among scope cells (one Active local scope) is checked by property I7, not proved.
-- `vars1.py` and `kernel/lens.wasm` (which now holds the fold as well as Passes 1–2) are not refined against this
-  model; they are tested against each other and against the property suite's spec oracles.
+- `kernel/lens.wasm`'s Passes 1–2 are tied to the proved executable lens by differential testing (I9), not by a
+  proof about the Rust or wasm code.
+- The kernel's fold is not refined against `Fold.lean`; it is tested against its Python twin and the property
+  suite's spec oracles (I3, I3c), and its outputs are the executable lens's inputs.
 
 ## Mutants
 

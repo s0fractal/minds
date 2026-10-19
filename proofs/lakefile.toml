@@ -14,3 +14,8 @@ roots = ["Sha256", "MachineBytes", "EvalMachine"]
 [[lean_lib]]
 name = "Vars1Sigma"
 roots = ["Vars1Sigma"]
+
+# The executable lens (Vars1/Exec.lean) compiled for differential checks against kernel/lens.wasm.
+[[lean_exe]]
+name = "vars1exec"
+root = "Vars1ExecMain"

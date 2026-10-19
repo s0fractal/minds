@@ -32,6 +32,7 @@ import dataclasses
 import json
 import os
 import random
+import struct
 import re
 import subprocess
 import sys
@@ -933,6 +934,72 @@ def full_replay_term_hash(ck: V.Cell, atoms) -> Optional[bytes]:
 # ---------------------------------------------------------------------------
 # Invariant checks on one admitted tip
 # ---------------------------------------------------------------------------
+EXEC_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin" / "vars1exec"
+_EXEC: Optional[subprocess.Popen] = None
+
+
+def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
+    """The facts line for `vars1exec` (proofs/Vars1/Exec.lean), read only from the kernel's own input and output:
+    cell structure from the input, `Authorized` and per-edge authorization from the fold's output. Returns the
+    line and the kernel's status bytes."""
+    words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
+    off = 0
+    C, N, NK, P = words(0, 4); off = 16
+    for _ in range(P):
+        off += 32
+        _thr, m = words(off, 2); off += 8 + 4 * m
+    cells = []
+    for _ in range(N):
+        cid, schema, payload, _name, _loss = (kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(5)); off += 160
+        origin, _birth, K = words(off, 3); off += 12
+        slots = [kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(K)]; off += 32 * K
+        edges = []
+        for _ in range(5):
+            (cnt,) = words(off); off += 4
+            edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
+        cells.append((cid, schema, payload, origin, slots, edges))
+    index = {c[0]: i for i, c in enumerate(cells)}
+    # `KernelRunner.run` returns the output after its length word: scope index, statuses, Authorized, edge latches
+    status = kernel_output[4:4 + N]
+    auth = kernel_output[4 + N:4 + 2 * N]
+    flags = kernel_output[4 + 2 * N:]
+    pos = 0
+    parts = [str(N)]
+    for i, (cid, schema, payload, origin, slots, edges) in enumerate(cells):
+        rel, _att, sup, ret, inv = edges
+        latch = {}
+        for kind, lst in (("inv", inv), ("ret", ret), ("sup", sup)):
+            latch[kind] = [(d, flags[pos + j]) for j, d in enumerate(lst)]
+            pos += len(lst)
+        is_verdict = schema == V.H_SCHEMA["verdict"]
+        pay = index.get(payload)
+        refs = sorted({*rel, *edges[1], *sup, *ret, *inv, *(x for x in [pay] if x is not None),
+                       *(index[h] for h in slots if h in index)})
+        parts += [str(int(origin == 0 or cid in V.STD_SCHEMA_IDS)), str(int(schema == V.H_SCHEMA["acceptance"])),
+                  str(int(is_verdict)), str(int(is_verdict and len(slots) > 1 and slots[1] == V.H_VERDICT_INVALID)),
+                  str(origin), str(auth[i]), str(0 if pay is None else pay + 1),
+                  str(len(rel)), *map(str, rel), str(len(refs)), *map(str, refs)]
+        for kind in ("sup", "ret", "inv"):
+            parts.append(str(len(latch[kind])))
+            for d, a in latch[kind]:
+                parts += [str(d), str(a)]
+    return " ".join(parts), bytes(status)
+
+
+def exec_statuses(line: str) -> List[int]:
+    global _EXEC
+    if _EXEC is None:
+        if not EXEC_BIN.exists():
+            raise RuntimeError("build the executable lens first: cd proofs && lake build vars1exec")
+        _EXEC = subprocess.Popen([str(EXEC_BIN)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    _EXEC.stdin.write(line + "\n")
+    _EXEC.stdin.flush()
+    out = _EXEC.stdout.readline().strip()
+    if out == "E" or not out:
+        raise RuntimeError(f"vars1exec rejected the facts line ({out or 'no output'})")
+    return [int(x) for x in out.split()]
+
+
 _RUNNER: Optional["V.KernelRunner"] = None
 
 
@@ -964,6 +1031,15 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
                 break
     except V.VarsError as e:
         out.append(("I8", str(e)))
+
+    # I9: the proved executable lens (proofs/Vars1/Exec.lean, compiled) computes the kernel's own status bytes
+    # from the kernel's input and its fold's authority output
+    raw = kernel_runner().run(lens["kernel_input"])
+    line, kstatus = exec_facts(lens["kernel_input"], raw)
+    estatus = exec_statuses(line)
+    if list(kstatus) != estatus:
+        i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
+        out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
 
     # I1
     by_name: Dict[bytes, List[bytes]] = {}
@@ -1318,7 +1394,7 @@ class TestVars1Properties(unittest.TestCase):
     SEED0 = int(os.environ.get("VARS1_PBT_SEED", "1"))
 
     def test_random_admission_sequences(self) -> None:
-        """I0..I8 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
+        """I0..I9 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
         found: Dict[str, List[str]] = {}
         known_hits: Dict[str, int] = {}
         admitted_total = 0
