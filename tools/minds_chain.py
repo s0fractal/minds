@@ -7,7 +7,7 @@ repository. The maintainer key lives in `.git/vars/maintainer.key` (never commit
 is that key until a rotation adds others.
 
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
-    tools/minds_chain.py release              # run every check, then record main@HEAD as a release
+    tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check, record main
     tools/minds_chain.py show                 # releases and projections with their status
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
@@ -165,6 +165,20 @@ def run_checks(root: Path) -> Tuple[List[str], bool]:
     return [f"{n} {'OK' if ok else 'FAILED'}" for n, ok in results], all(ok for _, ok in results)
 
 
+def release_target(repo_dir: Path) -> Tuple[str, Optional[str]]:
+    """The commit a release would record — `main` — and why it may not be recorded now, if so: the checks run in this
+    checkout, so its HEAD must be main's commit and its tree clean."""
+    def git(*a: str) -> str:
+        return subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True).stdout.strip()
+
+    main_sha = git("rev-parse", "--verify", "main^{commit}")
+    if git("rev-parse", "--verify", "HEAD^{commit}") != main_sha:
+        return main_sha, "HEAD is not main: the checks would run on another commit"
+    if git("status", "--porcelain", "--untracked-files=all"):
+        return main_sha, "the working tree is not clean"
+    return main_sha, None
+
+
 def _main(argv: List[str]) -> int:
     cmd = argv[0] if argv else ""
     repo_dir = ROOT
@@ -173,17 +187,17 @@ def _main(argv: List[str]) -> int:
         print("maintainer key:", V.ed25519_pubkey(load_or_create_key(repo_dir)).hex())
         return 0
     if cmd == "release":
-        main_sha = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "main"], capture_output=True,
-                                  text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", str(repo_dir), "status", "--porcelain"], capture_output=True,
-                               text=True).stdout.strip()
-        if dirty:
-            print("refused: the working tree is not clean", file=sys.stderr)
+        main_sha, why = release_target(repo_dir)
+        if why:
+            print(f"refused: {why}", file=sys.stderr)
             return 1
         checks, ok = run_checks(repo_dir)
         print("\n".join(checks))
         if not ok:
             print("refused: a check failed", file=sys.stderr)
+            return 1
+        if release_target(repo_dir) != (main_sha, None):
+            print("refused: main, HEAD or the working tree changed while the checks ran", file=sys.stderr)
             return 1
         commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks)
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))

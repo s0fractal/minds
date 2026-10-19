@@ -312,11 +312,19 @@ not an error. `vars1.py verify-projection BUNDLE.json` does this; `export_projec
 `{"format": "vars-1.attestation-bundle@1", "cell", "scope", "atoms", "verdicts", "seals", "projection"?}`: the cell,
 the governing scope cell (its admission policy is the fallback `EvalPol`), the policy, statement, attests and
 verifier atoms, every verdict on the cell, every seal on the cell and on those verdicts, and optionally a projection
-bundle. It is attested when ATTESTED verdicts sealed by distinct keys of `EvalPol` meet its threshold, excluding
-verdicts contradicted by an INVALID verdict of the same verifier endorsed by a policy key (§4.2 Pass 3). With a
-projection whose tip holds the cell, the cell and the counted verdicts must be Active and not Stale there. A
-verdict or seal about another cell is a refusal. A decision that requires a computation needs replay, hence the
-repository. `vars1.py verify-attestation BUNDLE.json` does this; `export_attestation` builds a bundle.
+bundle. Over the supplied verdicts it is *attested* when ATTESTED verdicts sealed by distinct keys of `EvalPol`
+meet its threshold, excluding verdicts contradicted by an INVALID verdict of the same verifier sealed by a policy key
+(§4.2 Pass 3). A supplier can omit verdicts and seals, so alone this is evidence as supplied, never acceptance.
+
+With a projection whose tip holds the cell, the projection's kernel input is the evidence: it holds every cell and
+every verified seal at `tip`, and its digest is what the witnesses signed. The client parses it (key indices map to
+`EvalPol`'s keys, both in byte order), refuses a bundle that omits any verdict on the cell held at `tip`, and
+recomputes Pass 3 from the input alone, counting local verdicts that are Active and not Stale. The cell is
+*accepted* when that recomputation and the supplied one both attest, the cell is Active and not Stale at `tip`,
+and the projection is witnessed. Acceptance is about `tip`: a verdict after it is outside the witnessed evidence,
+so the release recorded last is accepted only once a later projection covers it. A verdict or seal about another
+cell is a refusal. A decision that requires a computation needs replay, hence the repository.
+`vars1.py verify-attestation BUNDLE.json` exits 0 only on acceptance; `export_attestation` builds a bundle.
 
 ## 5. Replay against Book I
 

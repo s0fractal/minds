@@ -16,10 +16,14 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 
 This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub alongside `main`). Each release is a
 `decision` naming `main@<sha>`, the rules kernel and the checks that passed, attested by the maintainer's key, with a
-witnessed projection of the chain. `tools/minds_chain.py release` refuses unless every check passes;
+witnessed projection of the chain. `tools/minds_chain.py release` refuses unless HEAD is `main`, the tree is clean
+before and after the checks, and every check passes;
 `tools/minds_chain.py show` lists releases; `tools/minds_chain.py bundle <projection>` gives a bundle for
 `vars1.py verify-projection`; `tools/minds_chain.py attest <decision>` gives a bundle for `vars1.py
-verify-attestation`, with the latest projection that covers the release. The maintainer key never leaves `.git/vars/`; the roster grows by scope rotation.
+verify-attestation`, with the latest projection that covers the release; a client accepts a release only from a
+witnessed projection's complete evidence, so the latest release is accepted once the next one covers it. The
+maintainer key never leaves `.git/vars/`. Today the roster, the evaluator and the projection witness are that one
+key: the chain shows what the maintainer claimed and when, not that anyone else checked it.
 
 ## Running
 

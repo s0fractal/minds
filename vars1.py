@@ -2015,25 +2015,52 @@ class GitVarsRepo:
 BUNDLE_FORMAT = "vars-1.projection-bundle@1"
 
 
-def kernel_input_order(kernel_input: bytes) -> List[bytes]:
-    """The cell ids of a kernel input (§4.3), in its order; the kernel's output indexes cells by this order."""
+def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
+    """A kernel input (§4.3) as data: POL1 rosters as key indices, cells in order with their slots and edges as cell
+    indices, and seals as (target, context, key index, commit). Key bytes are not in the input, only their order."""
     def u32(off: int) -> int:
         if off + 4 > len(kernel_input):
             raise VarsError("kernel input truncated")
         return struct.unpack_from("<I", kernel_input, off)[0]
+
+    def take(off: int, n: int) -> bytes:
+        if off + n > len(kernel_input):
+            raise VarsError("kernel input truncated")
+        return kernel_input[off:off + n]
+
     n, p = u32(4), u32(12)
     off = 16
+    pols: Dict[bytes, Tuple[int, List[int]]] = {}
     for _ in range(p):
-        off += 32 + 8 + 4 * u32(off + 36)
-    ids = []
+        k = u32(off + 36)
+        pols[take(off, 32)] = (u32(off + 32), [u32(off + 40 + 4 * j) for j in range(k)])
+        off += 40 + 4 * k
+    cells = []
     for _ in range(n):
-        ids.append(kernel_input[off:off + 32])
+        cid, schema, payload = take(off, 32), take(off + 32, 32), take(off + 64, 32)
         off += 160
-        k = u32(off + 8)
-        off += 12 + 32 * k
+        origin, k = u32(off), u32(off + 8)
+        off += 12
+        slots = [take(off + 32 * j, 32) for j in range(k)]
+        off += 32 * k
+        edges = []
         for _ in range(5):
-            off += 4 + 4 * u32(off)
-    return ids
+            m = u32(off)
+            edges.append([u32(off + 4 + 4 * j) for j in range(m)])
+            off += 4 + 4 * m
+        cells.append({"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
+                      "relies": edges[0], "attests": edges[1]})
+    seals = []
+    for j in range(u32(off)):
+        seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
+    if off + 4 + 16 * len(seals) != len(kernel_input):
+        raise VarsError("kernel input has trailing bytes")
+    return {"pols": pols, "cells": cells, "seals": seals}
+
+
+def kernel_input_order(kernel_input: bytes) -> List[bytes]:
+    """The cell ids of a kernel input (§4.3), in its order; the kernel's output indexes cells by this order."""
+    return [c["id"] for c in parse_kernel_input(kernel_input)["cells"]]
 
 
 def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, with_data: bool = True) -> Dict[str, object]:
@@ -2163,11 +2190,17 @@ def export_attestation(repo: "GitVarsRepo", scope: str, decision_id: bytes,
 def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
     """Recompute §4.2 Pass 3 for one contract or decision from a bundle, with no repository.
 
-    `attested`: ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator policy (else the bundled
-    scope's admission policy), meet the threshold, after excluding verdicts contradicted by an INVALID verdict of the
-    same verifier endorsed by a policy key. With a projection bundle, `active_at_tip` says whether the cell and the
-    counted verdicts are Active and not Stale at its tip (None when the tip predates them). Any inconsistency raises
-    VarsError. Decisions that require a computation need replay, hence the repository, and are refused."""
+    `attested`: over the supplied verdicts, ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator
+    policy (else the bundled scope's admission policy), meet the threshold, after excluding verdicts contradicted by an
+    INVALID verdict of the same verifier sealed by a policy key. A supplier can omit verdicts, so on its own this is
+    `evidence: "supplied"`.
+
+    With a projection bundle whose tip holds the cell, the projection's kernel input — every cell and verified seal
+    at that tip, committed to by its digest — is the evidence: the bundle must supply every verdict on the cell that
+    the input holds, and `attested_at_tip` is Pass 3 recomputed from the input alone, counting only local verdicts
+    that are Active and not Stale (`evidence: "complete_at_tip"`). `accepted` requires that, `attested`, the cell
+    Active and not Stale at the tip, and the projection witnessed; it says nothing about the chain after the tip. Any
+    inconsistency raises VarsError. Decisions that require a computation need replay, hence the repository."""
     if bundle.get("format") != ATTESTATION_FORMAT:
         raise VarsError("unknown attestation bundle format")
     d = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -2218,19 +2251,53 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
         "authors": sorted(k.hex() for k in signers[d.id]),
         "endorsers": sorted(k.hex() for k in endorsers),
         "attested": len(endorsers) >= thr,
+        "evidence": "supplied",
         "tip": None,
+        "projection_witnessed": None,
+        "attested_at_tip": None,
         "active_at_tip": None,
+        "accepted": False,
     }
-    if "projection" in bundle:
-        pr = verify_projection(bundle["projection"])
-        if not pr["data_ok"]:
-            raise VarsError("the projection in an attestation bundle must carry its input and output")
-        st = pr["statuses"]
-        result["tip"] = pr["tip"]
-        result["projection_witnessed"] = pr["witnessed"]
-        ids = [d.id.hex(), *(w.hex() for w in counted)]
-        if all(i in st for i in ids):
-            result["active_at_tip"] = all(st[i]["active"] and not st[i]["stale"] for i in ids)
+    if "projection" not in bundle:
+        return result
+    pr = verify_projection(bundle["projection"])
+    if not pr["data_ok"]:
+        raise VarsError("the projection in an attestation bundle must carry its input and output")
+    result["tip"] = pr["tip"]
+    result["projection_witnessed"] = pr["witnessed"]
+    ki = parse_kernel_input(bytes.fromhex(bundle["projection"]["input"]))
+    kc = ki["cells"]
+    pos = {c["id"]: i for i, c in enumerate(kc)}
+    if d.id not in pos:
+        return result  # the tip predates the cell
+    if bytes.fromhex(pr["scope"]) != sc.id:
+        raise VarsError("the bundled scope does not govern the projection's tip")
+    if pol not in ki["pols"] or ki["pols"][pol][0] != thr or len(ki["pols"][pol][1]) != len(keys):
+        raise VarsError("the projection's input disagrees with the bundle on the evaluator policy")
+    key_of = dict(zip(ki["pols"][pol][1], sorted(keys)))  # both orders are the keys' byte order
+    st = pr["statuses"]
+
+    def live(i: int) -> bool:
+        x = st[kc[i]["id"].hex()]
+        return x["active"] and not x["stale"]
+
+    di = pos[d.id]
+    at_tip = [i for i, c in enumerate(kc)
+              if c["schema"] == H_SCHEMA["verdict"] and c["payload"] == d.id and di in c["attests"]]
+    missing = {kc[i]["id"] for i in at_tip} - set(verdicts)
+    if missing:
+        raise VarsError(f"the bundle omits {len(missing)} verdict(s) on this cell that the projection's tip holds")
+    tsign = {i: {key_of[k] for t, _, k, _ in ki["seals"] if t == i and k in key_of} for i in at_tip}
+    t_contra = {kc[i]["slots"][2] for i in at_tip if live(i) and kc[i]["slots"][1] == H_VERDICT_INVALID and tsign[i]}
+    t_counted = [i for i in at_tip if live(i) and kc[i]["origin"] == 0 and kc[i]["slots"][0] == H_EMPTY
+                 and kc[i]["slots"][1] == H_ATTESTED and kc[i]["slots"][2] not in t_contra]
+    t_end = set().union(*(tsign[i] for i in t_counted)) if t_counted else set()
+    result["evidence"] = "complete_at_tip"
+    result["endorsers_at_tip"] = sorted(k.hex() for k in t_end)
+    result["attested_at_tip"] = len(t_end) >= thr
+    result["active_at_tip"] = live(di)
+    result["accepted"] = bool(result["attested"] and result["attested_at_tip"] and result["active_at_tip"]
+                              and result["projection_witnessed"])
     return result
 
 
@@ -2250,7 +2317,7 @@ def _main(argv: List[str]) -> int:
             print(f"refused: {e}", file=sys.stderr)
             return 2
         print(json.dumps(result, indent=2, sort_keys=True))
-        return 0 if result["attested"] and result["active_at_tip"] in (True, None) else 1
+        return 0 if result["accepted"] else 1
     print("usage: vars1.py verify-projection BUNDLE.json | verify-attestation BUNDLE.json", file=sys.stderr)
     return 2
 

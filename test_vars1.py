@@ -1596,6 +1596,10 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(r["authors"], [V.ed25519_pubkey(sk).hex()])
         self.assertEqual(r["tip"], c1)
         self.assertTrue(r["active_at_tip"])
+        self.assertEqual(r["evidence"], "complete_at_tip")
+        self.assertTrue(r["attested_at_tip"])
+        self.assertTrue(r["accepted"])
+        self.assertTrue(repo.lens("minds")["settled"][ids1["decision"]], "the bundle agrees with the full lens")
 
         # Without the maintainer's seal on the verdict there is no attestation; a stranger's seal does not count
         verdict_id = ids1["verdict"].hex()
@@ -1634,7 +1638,89 @@ class TestVars1Conformance(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
 
+    def _minds_chain(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("minds_chain", ROOT_DIR / "tools" / "minds_chain.py")
+        mc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mc)
+        return mc
+
+    def test_17_attestation_evidence_is_complete_at_the_projection_tip(self) -> None:
+        """A supplier cannot hide a verdict or a seal the projection's tip holds; acceptance needs a witnessed
+        projection; without one the result is only what the supplied evidence supports (Monday F34, F35)."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        _, ids1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        d1 = ids1["decision"]
+        scope_id = mc.governing_scope(repo)
+        atoms: dict[bytes, bytes] = {}
+        bad = V.Cell(
+            h_schema=V.H_SCHEMA["verdict"],
+            h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/release/aaaaaaaaaaaa/contradicted")),
+            h_payload=d1,
+            h_attests=self._hv(atoms, [d1]),
+            slots=(V.H_EMPTY, V.H_VERDICT_INVALID, self._put_atom(atoms, V.atom_utf8("minds-maintainer"))),
+        )
+        tip = repo.ref_commit("minds")
+        c_bad = repo.build_candidate_commit("minds", atoms, [bad], [V.Seal.sign(sk, bad.id, scope_id)], parent_commit=tip)
+        repo.admit_and_advance("minds", c_bad, expected_old=tip)
+        _, ids2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])  # its projection's tip holds `bad`
+
+        bundle = json.loads(json.dumps(V.export_attestation(repo, "minds", d1, ids2["projection"])))
+        r = V.verify_attestation(bundle)
+        self.assertEqual((r["evidence"], r["attested"], r["attested_at_tip"], r["accepted"]),
+                         ("complete_at_tip", False, False, False))
+
+        # Hiding the INVALID verdict succeeds on supplied evidence alone — hence `evidence: supplied` — and is a
+        # refusal once a projection holds the cell
+        not_bad = lambda x: V.Seal.decode(bytes.fromhex(x)).h_target != bad.id
+        hidden = dict(bundle, verdicts=[v for v in bundle["verdicts"] if v != bad.encode().hex()],
+                      seals=[x for x in bundle["seals"] if not_bad(x)])
+        alone = V.verify_attestation({k: v for k, v in hidden.items() if k != "projection"})
+        self.assertEqual((alone["evidence"], alone["attested"], alone["accepted"]), ("supplied", True, False))
+        with self.assertRaisesRegex(V.VarsError, "omits 1 verdict"):
+            V.verify_attestation(hidden)
+
+        # Hiding only the seals on it fools the supplied computation, not the tip's
+        r = V.verify_attestation(dict(bundle, seals=[x for x in bundle["seals"] if not_bad(x)]))
+        self.assertEqual((r["attested"], r["attested_at_tip"], r["accepted"]), (True, False, False))
+
+        # An unwitnessed projection is not acceptance, and the CLI says so by its exit code
+        _, ids3 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        good = json.loads(json.dumps(V.export_attestation(repo, "minds", ids2["decision"], ids3["projection"])))
+        self.assertTrue(V.verify_attestation(good)["accepted"])
+        unwitnessed = dict(good, projection=dict(good["projection"], seals=[]))
+        r = V.verify_attestation(unwitnessed)
+        self.assertEqual((r["attested_at_tip"], r["active_at_tip"], r["projection_witnessed"], r["accepted"]),
+                         (True, True, False, False))
+        for b, code in ((good, 0), (unwitnessed, 1), ({k: v for k, v in good.items() if k != "projection"}, 1)):
+            path = Path(self.tmp.name) / "attestation.json"
+            path.write_text(json.dumps(b))
+            out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path)],
+                                 capture_output=True, text=True)
+            self.assertEqual(out.returncode, code, out.stdout + out.stderr)
+
+    def test_18_release_refuses_unless_head_is_main_and_clean(self) -> None:
+        """`release` records main@SHA only when the checks run on exactly that commit (Monday F33)."""
+        mc = self._minds_chain()
+        work = Path(self.tmp.name) / "work"
+        work.mkdir()
+        g = lambda *a: subprocess.run(["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout
+        g("init", "-q", "-b", "main")
+        g("commit", "-q", "--allow-empty", "-m", "one")
+        self.assertEqual(mc.release_target(work), (g("rev-parse", "main").strip(), None))
+        g("checkout", "-q", "-b", "other")
+        g("commit", "-q", "--allow-empty", "-m", "two")
+        self.assertIn("HEAD is not main", mc.release_target(work)[1] or "")
+        g("checkout", "-q", "--detach", "main")
+        self.assertIsNone(mc.release_target(work)[1], "a detached HEAD at main's commit is that commit")
+        g("checkout", "-q", "main")
+        (work / "x").write_text("x")
+        self.assertIn("not clean", mc.release_target(work)[1] or "")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
