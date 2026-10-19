@@ -2007,3 +2007,138 @@ class GitVarsRepo:
             "settled": settled,
             "provisional": provisional,
         }
+
+
+# ---------------------------------------------------------------------------
+# §4.4 Projection bundles: what a client without the repository holds and checks
+# ---------------------------------------------------------------------------
+BUNDLE_FORMAT = "vars-1.projection-bundle@1"
+
+
+def kernel_input_order(kernel_input: bytes) -> List[bytes]:
+    """The cell ids of a kernel input (§4.3), in its order; the kernel's output indexes cells by this order."""
+    def u32(off: int) -> int:
+        if off + 4 > len(kernel_input):
+            raise VarsError("kernel input truncated")
+        return struct.unpack_from("<I", kernel_input, off)[0]
+    n, p = u32(4), u32(12)
+    off = 16
+    for _ in range(p):
+        off += 32 + 8 + 4 * u32(off + 36)
+    ids = []
+    for _ in range(n):
+        ids.append(kernel_input[off:off + 32])
+        off += 160
+        k = u32(off + 8)
+        off += 12 + 32 * k
+        for _ in range(5):
+            off += 4 + 4 * u32(off)
+    return ids
+
+
+def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, with_data: bool = True) -> Dict[str, object]:
+    """A self-contained bundle for `projection_id` at the scope's tip: the cell, the atoms its check needs, every
+    seal on it, and (with `with_data`) the kernel's input and output at its tip, which its digests commit to."""
+    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(scope))
+    cell = cells.get(projection_id)
+    if cell is None or cell.h_schema != H_SCHEMA["projection"]:
+        raise VarsError("not a projection cell of this scope")
+    pol = atoms[cell.slots[4]]
+    need = [cell.slots[0], cell.slots[4], parse_pol1(pol)[1]]
+    bundle: Dict[str, object] = {
+        "format": BUNDLE_FORMAT,
+        "cell": cell.encode().hex(),
+        "atoms": [atoms[h].hex() for h in need],
+        "seals": sorted(s.encode().hex() for s in seals.values() if s.h_target == projection_id),
+    }
+    if with_data:
+        tip = parse_utf8(atoms[cell.slots[0]])
+        trees = [repo.read_cas_tree(c) for c in repo.commit_chain(tip)]
+        kernel_input, _ = kernel_facts(scope, trees)
+        bundle["input"] = kernel_input.hex()
+        bundle["output"] = kernel_runner().run(kernel_input).hex()
+    return bundle
+
+
+def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
+    """Check a projection bundle with no repository (§4.4).
+
+    Every seal must be a valid Ed25519 seal on this projection; `witnessed` says whether distinct keys of its
+    `witness_policy` meet the threshold. With `input` and `output`, both must hash to the projection's digests, and
+    the statuses are read by cell id. Any inconsistency raises VarsError; too few witnesses is `witnessed: false`.
+    This establishes what the named witnesses vouch for at `tip` — not freshness after it, and not Pass 3."""
+    if bundle.get("format") != BUNDLE_FORMAT:
+        raise VarsError("unknown projection bundle format")
+    cell = Cell.decode(bytes.fromhex(bundle["cell"]))
+    if cell.h_schema != H_SCHEMA["projection"] or len(cell.slots) != 5:
+        raise VarsError("bundle cell is not a projection")
+    atoms: Dict[bytes, bytes] = {}
+    for a in bundle["atoms"]:
+        raw = bytes.fromhex(a)
+        validate_atom(raw)
+        atoms[sha256(raw)] = raw
+    try:
+        tip = parse_utf8(atoms[cell.slots[0]])
+        thr, hvec_h = parse_pol1(atoms[cell.slots[4]])
+        keys = parse_hvec(atoms[hvec_h], require_sorted=True)
+    except KeyError:
+        raise VarsError("bundle lacks the projection's tip or witness policy atoms") from None
+    if any(weak_public_key(k) for k in keys) or not 1 <= thr <= len(keys):
+        raise VarsError("witness policy is malformed or names a weak key")
+    witnesses: Set[bytes] = set()
+    contexts: Set[bytes] = set()
+    for sh in bundle["seals"]:
+        seal = Seal.decode(bytes.fromhex(sh))  # verifies the Ed25519 signature
+        if seal.h_target != cell.id:
+            raise VarsError("a seal in the bundle names another cell than the projection")
+        contexts.add(seal.h_scope_ctx)
+        if seal.actor_pubkey in keys:
+            witnesses.add(seal.actor_pubkey)
+    result: Dict[str, object] = {
+        "projection": cell.id.hex(),
+        "tip": tip,
+        "rules": cell.slots[1].hex(),
+        "rules_implemented_here": cell.slots[1] == H_LENS_KERNEL,
+        "threshold": thr,
+        "witnesses": sorted(k.hex() for k in witnesses),
+        "witnessed": len(witnesses) >= thr,
+        "seal_contexts": sorted(c.hex() for c in contexts),
+        "data_ok": None,
+        "scope": None,
+        "statuses": None,
+    }
+    if "input" in bundle or "output" in bundle:
+        kernel_input = bytes.fromhex(bundle.get("input", ""))
+        output = bytes.fromhex(bundle.get("output", ""))
+        if sha256(kernel_input) != cell.slots[2]:
+            raise VarsError("bundle input does not hash to the projection's input digest")
+        if sha256(output) != cell.slots[3]:
+            raise VarsError("bundle output does not hash to the projection's state digest")
+        order = kernel_input_order(kernel_input)
+        n = len(order)
+        if len(output) < 4 + n:
+            raise VarsError("bundle output is shorter than its cell count")
+        result["data_ok"] = True
+        result["scope"] = order[int.from_bytes(output[:4], "little")].hex()
+        result["statuses"] = {
+            cid.hex(): {name: bool(output[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
+            for i, cid in enumerate(order)
+        }
+    return result
+
+
+def _main(argv: List[str]) -> int:
+    if len(argv) == 2 and argv[0] == "verify-projection":
+        try:
+            result = verify_projection(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
+        except (VarsError, ValueError, KeyError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["witnessed"] and result["data_ok"] in (True, None) else 1
+    print("usage: vars1.py verify-projection BUNDLE.json", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))

@@ -296,6 +296,14 @@ What a client without the history gets from a Settled projection, and what it do
   contracts, decisions or questions, which the host computes (§4.2 Pass 3). To read a status the client needs the
   output bytes themselves and checks them against `state`.
 
+**Bundle.** A client receives a projection as JSON `{"format": "vars-1.projection-bundle@1", "cell", "atoms",
+"seals", "input"?, "output"?}` (hex strings): the cell, the atoms of its `tip` and `witness_policy` (with the key
+vector), every seal on it, and optionally the kernel's input and output at `tip`. It checks, with no repository:
+every seal is a valid Ed25519 seal on this cell; distinct keys of `witness_policy` meet its threshold; and, given
+`input` and `output`, both hash to the projection's digests, after which the status bits are read by cell id (the
+output indexes cells in the input's order). Any inconsistency is a refusal; too few witnesses is a negative answer,
+not an error. `vars1.py verify-projection BUNDLE.json` does this; `export_projection` builds a bundle from a chain.
+
 ## 5. Replay against Book I
 
 `computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`. A checkpoint

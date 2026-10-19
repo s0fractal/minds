@@ -23,6 +23,7 @@ cd minds
 python3 -m unittest test_vars1          # conformance; every fold and lens runs kernel/lens.wasm and its twin
 (cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
 python3 test_vars1_props.py             # property-based invariants I0–I10 (I9, I10 need the proofs' executables)
+python3 vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
 ```
 
 ## Status

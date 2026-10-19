@@ -1511,6 +1511,47 @@ class TestVars1Conformance(unittest.TestCase):
             self.repo.admit_and_advance("core", c4, expected_old=c2)
 
 
+    def test_14_light_client_verifies_a_projection_bundle_without_the_repository(self) -> None:
+        """A client holding only a projection bundle checks its witness seals, and, given the kernel's input and
+        output bytes, checks them against the projection and reads the statuses by cell id."""
+        c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=1)
+        atoms1: dict[bytes, bytes] = {}
+        ax = self._axiom(atoms1, "core/fact", "a fact")
+        c1 = self._admit(atoms1, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], c0)
+        atoms2: dict[bytes, bytes] = {}
+        proj = self._projection(atoms2, "core/projection.c1", c1, [self.pk1, self.pk_peer], 2)
+        c2 = self._admit(atoms2, [proj], [V.Seal.sign(self.sk1, proj.id, s0.id)], c1)
+
+        one = V.export_projection(self.repo, "core", proj.id)
+        r1 = V.verify_projection(json.loads(json.dumps(one)))
+        self.assertFalse(r1["witnessed"], "1 of 2 witnesses has signed")
+        self.assertEqual(r1["tip"], c1)
+
+        self._admit({}, [], [V.Seal.sign(self.sk_peer, proj.id, s0.id)], c2)
+        bundle = json.loads(json.dumps(V.export_projection(self.repo, "core", proj.id)))
+        r2 = V.verify_projection(bundle)
+        self.assertTrue(r2["witnessed"])
+        self.assertTrue(r2["data_ok"])
+        self.assertTrue(r2["statuses"][ax.id.hex()]["active"], "the fact is Active at the projection's tip")
+        self.assertEqual(r2["scope"], s0.id.hex())
+
+        # Tampering is an error, never a quieter answer
+        bad_out = dict(bundle, output=bundle["output"][:-2] + ("00" if bundle["output"][-2:] != "00" else "01"))
+        with self.assertRaisesRegex(V.VarsError, "state"):
+            V.verify_projection(bad_out)
+        other = V.Seal.sign(self.sk_peer, ax.id, s0.id).encode().hex()
+        with self.assertRaisesRegex(V.VarsError, "seal"):
+            V.verify_projection(dict(bundle, seals=bundle["seals"] + [other]))
+
+        # The same check from the command line, with no repository
+        path = Path(self.tmp.name) / "bundle.json"
+        path.write_text(json.dumps(bundle))
+        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-projection", str(path)],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertTrue(json.loads(out.stdout)["witnessed"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
