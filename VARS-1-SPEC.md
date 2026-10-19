@@ -54,6 +54,9 @@ Non-canonical bytes are refused, never normalized.
 | `H_PROVISIONAL` | `UTF8provisional` | `b9d665ebd73a6d287e1e40b8c29cf2839d973b461511bfc7b0dd5623b9fe41e5` |
 | `H_OWNER` | `UTF8owner` | `4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e` |
 
+An intrinsic is known without reading the store: every consumer reads the same value whether or not its bytes
+are stored, and storing them changes no result.
+
 `H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
@@ -135,9 +138,10 @@ allowed only in `required_comp`,
 the transition from its parent checkpoint (or from the root), which replay must reproduce. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
 `foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 label)`, free text that nothing
 evaluates (the scope's origin is in its name, its authority in its slots). verdict: the
-contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
+contract, decision or question it judges, or, for an `H_VERDICT_INVALID` verdict, any cell it refutes; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
 `H_NOT_ASSESSED`}; `H_ATTESTED` has `ckpt_or_witness = H_EMPTY`, `H_REPLAYED` names a checkpoint or cycle witness,
-and `H_VERDICT_INVALID` and `H_NOT_ASSESSED` may do either. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
+and `H_VERDICT_INVALID` and `H_NOT_ASSESSED` may do either; a nonempty `ckpt_or_witness` is always a checkpoint or
+cycle witness. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
 
 ## 3. Store and gate
 
@@ -274,7 +278,10 @@ S, S × (target, ctx, key, commit)            seals whose signatures the host ve
 ```
 
 Cells are in forward topological order: every edge, and every payload or slot that is a cell id, names an older
-index born no later. `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
+index born no later. These rules read a payload or slot as a reference whenever it equals a cell id, whatever its
+field type, so the gate refuses a new cell whose id an older cell already names in a payload or slot: an opaque
+`digest` never turns into a reference to a later-born cell. (Typed references, which keep a digest opaque when
+its preimage appears, need new rules and so a new rules identity.) `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
 object. The module embeds the standard schema ids, `H_META_SCHEMA`, `H_EMPTY`, `H_OWNER`, `H_PROVISIONAL` and
 `H_VERDICT_INVALID`, and reads kinds, tiers, policy slots and verdict codes from the cell hashes itself.
 

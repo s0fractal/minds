@@ -2241,6 +2241,143 @@ class TestVars1Conformance(unittest.TestCase):
         self.repo.admit_and_advance("core", c, expected_old=old)
         self.assertTrue(self.repo.lens("core")["settled"][q.id])
 
+    def _try_admit(self, build):
+        """Admit `build(put, ax, d, c0, s0, T)` on a fresh `core` chain; None if admitted, else the refusal."""
+        T = TestVars1Conformance()
+        T.setUp()
+        try:
+            c0, s0, _ = T._bootstrap_genesis("core")
+            a: dict[bytes, bytes] = {}
+            put = lambda raw: T._put_atom(a, raw)
+            ax = V.Cell(V.H_SCHEMA["axiom"], put(V.atom_utf8("core/ax")), put(V.atom_utf8("axiom")))
+            d = V.Cell(V.H_SCHEMA["decision"], put(V.atom_utf8("core/d")), put(V.atom_utf8("decision")),
+                       slots=(V.H_OWNER, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+            cells = build(put, ax, d, c0, s0, T)
+            c = T.repo.build_candidate_commit("core", a, cells, [V.Seal.sign(T.sk1, x.id, s0.id) for x in cells],
+                                              parent_commit=c0)
+            T.repo.admit_and_advance("core", c, expected_old=c0)
+            return None
+        except V.VarsError as e:
+            return str(e)
+        finally:
+            T.tearDown()
+
+    def test_32_gate_validates_whole_objects(self) -> None:
+        """Codex R2-01: roots, environments, nodes and states are validated whole, verdicts by the kinds they name,
+        and a scope's payload is a UTF8 label; each case has its well-formed neighbour."""
+        canon = lambda doc: json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
+        node = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=V.H_I, right=V.H_K)
+
+        def comp(put, root_doc=None, env_doc=None):
+            env = put(canon(env_doc) if env_doc is not None else V.atom_environment([]))
+            rd = json.loads(V.atom_computation_root(V.H_I, env)) if root_doc is None else dict(root_doc, environment_id=env.hex())
+            return V.Cell(V.H_SCHEMA["computation"], put(V.atom_utf8("core/comp")), put(canon(rd)))
+
+        def verdict(put, target, code, ck=V.H_EMPTY, **kw):
+            return V.Cell(V.H_SCHEMA["verdict"], put(V.atom_utf8("core/verdict")), target.id,
+                          slots=(ck, code, put(V.atom_utf8("verifier"))), **kw)
+
+        def scope(put, s0, payload):
+            return V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8("core/SCOPE")), payload,
+                          h_supersedes=put(V.atom_hvec([s0.id])), h_loss=put(V.atom_utf8("rotate")), slots=s0.slots)
+
+        def atom_only(raw):
+            return lambda put, ax, d, *_: (put(raw), [ax])[1]
+
+        cases = {
+            "incomplete root": (
+                lambda put, ax, d, *_: [ax, comp(put, root_doc={"schema": "sigma-resume.root@draft-1"})],
+                lambda put, ax, d, *_: [ax, comp(put)]),
+            "incomplete environment": (
+                lambda put, ax, d, *_: [ax, comp(put, env_doc={"schema": "sigma-resume.environment@draft-1"})],
+                lambda put, ax, d, *_: [ax, comp(put, env_doc={"schema": "sigma-resume.environment@draft-1",
+                                                               "hashes": []})]),
+            "REPLAYED naming an axiom": (
+                lambda put, ax, d, *_: [ax, d, verdict(put, d, V.H_REPLAYED, ax.id, h_relies=put(V.atom_hvec([ax.id])),
+                                                       h_attests=put(V.atom_hvec([d.id])))],
+                None),
+            "ATTESTED judging an axiom": (
+                lambda put, ax, d, *_: [ax, verdict(put, ax, V.H_ATTESTED)],
+                lambda put, ax, d, *_: [ax, verdict(put, ax, V.H_VERDICT_INVALID)]),
+            "scope label not UTF8": (
+                lambda put, ax, d, c0, s0, T: [scope(put, s0, put(V.atom_u64(55)))],
+                lambda put, ax, d, c0, s0, T: [scope(put, s0, put(V.atom_utf8("rotated")))]),
+            "node atom": (atom_only(b"\x00\x00" + b"x" * 32), atom_only(node)),
+            "state atom": (atom_only(b"SGS1" + b"x" * 32 + b"X" + b"x" * 32),
+                           atom_only(SR.start(V.sha256(b"c").hex(), V.sha256(node))[2])),
+        }
+        for name, (bad, good) in cases.items():
+            with self.subTest(name):
+                self.assertIsNotNone(self._try_admit(bad), f"{name}: the malformed object was admitted")
+                if good is not None:
+                    self.assertIsNone(self._try_admit(good), f"{name}: the well-formed neighbour was refused")
+
+    def test_33_intrinsic_atoms_need_not_be_stored(self) -> None:
+        """Codex R2-02: the same checkpoint, its u64 slots naming intrinsic H_ZERO, is admitted whether or not the
+        zero atom is stored."""
+        def build(store):
+            def b(put, ax, d, c0, s0, T):
+                raw = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=V.H_I, right=V.H_K)
+                h = put(raw)
+                env = SR.Environment([h], {h: raw})
+                root = put(V.atom_computation_root(h, put(V.atom_environment([h]))))
+                doc, i, state = SR.start(root.hex(), h)
+                honest = SR.advance(doc, i, state, env, 0)
+                if store:
+                    put(V.atom_u64(0))
+                comp = V.Cell(V.H_SCHEMA["computation"], put(V.atom_utf8("core/comp")), root)
+                ck = V.Cell(V.H_SCHEMA["checkpoint"], put(V.atom_utf8("core/ck")), put(state),
+                            h_relies=put(V.atom_hvec([comp.id])),
+                            slots=(root, V.H_ZERO, V.H_ZERO, put(V.atom_u64(honest.checkpoint["peak_semantic_size"])),
+                                   V.H_PAUSED, V.H_ZERO))
+                ids.append(ck.id)
+                return [comp, ck]
+            return b
+        ids: list = []
+        self.assertEqual(V.sha256(V.atom_u64(0)), V.H_ZERO)
+        self.assertIsNone(self._try_admit(build(False)), "intrinsic H_ZERO without its bytes stored")
+        self.assertIsNone(self._try_admit(build(True)), "intrinsic H_ZERO with its bytes stored")
+        self.assertEqual(ids[0], ids[1])
+
+    def test_34_no_reference_to_a_later_born_cell(self) -> None:
+        """Codex R2-03: an opaque digest equal to a future cell's id does not become a backward-in-time reference;
+        that cell is refused, and any other cell is admitted."""
+        old, scope, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        put = lambda raw: self._put_atom(a, raw)
+        fa: dict[bytes, bytes] = {}
+        future = V.Cell(V.H_SCHEMA["axiom"], self._put_atom(fa, V.atom_utf8("core/planned")),
+                        self._put_atom(fa, V.atom_utf8("planned work")))
+        schema = V.Cell(V.H_META_SCHEMA, put(V.atom_utf8("core/opaque-schema")), V.H_EMPTY,
+                        slots=(put(V.atom_utf8("value:digest")),))
+        holder = V.Cell(schema.id, put(V.atom_utf8("core/opaque")), put(V.atom_utf8("checksum")), slots=(future.id,))
+        c1 = self.repo.build_candidate_commit("core", a, [schema, holder],
+                                              [V.Seal.sign(self.sk1, x.id, scope.id) for x in (schema, holder)],
+                                              parent_commit=old)
+        self.repo.admit_and_advance("core", c1, expected_old=old)
+        c2 = self.repo.build_candidate_commit("core", fa, [future], [V.Seal.sign(self.sk1, future.id, scope.id)],
+                                              parent_commit=c1)
+        with self.assertRaisesRegex(V.VarsError, "later-born cell"):
+            self.repo.admit_and_advance("core", c2, expected_old=c1)
+        other = dataclasses.replace(future, h_payload=self._put_atom(fa, V.atom_utf8("other work")))
+        c3 = self.repo.build_candidate_commit("core", fa, [other], [V.Seal.sign(self.sk1, other.id, scope.id)],
+                                              parent_commit=c1)
+        self.repo.admit_and_advance("core", c3, expected_old=c1)
+
+    def test_35_parents_come_from_the_commit_header(self) -> None:
+        """Codex R2-04: a `parent` line in the message is not a parent; a real second parent is still refused."""
+        old, _, _ = self._bootstrap_genesis("core")
+        tree = self.repo._git("rev-parse", old + "^{tree}").decode().strip()
+        msg = self.repo._git("commit-tree", tree, "-p", old, "-m", "ordinary\n\nparent " + "f" * 40).decode().strip()
+        try:
+            self.repo.admit_and_advance("core", msg, expected_old=old)
+        except V.VarsError as e:
+            self.fail(f"a one-parent commit was refused for its message: {e}")
+        tip = self.repo.ref_commit("core")
+        merge = self.repo._git("commit-tree", tree, "-p", tip, "-p", old, "-m", "merge").decode().strip()
+        with self.assertRaisesRegex(V.VarsError, "single parent"):
+            self.repo.admit_and_advance("core", merge, expected_old=tip)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

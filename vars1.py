@@ -220,6 +220,31 @@ INTRINSIC_UTF8: Set[bytes] = {
     H_REPLAYED, H_ATTESTED, H_VERDICT_INVALID, H_NOT_ASSESSED,
     H_PROVISIONAL, H_OWNER,
 }
+# Intrinsic atoms are known without reading the store (§1): their bytes, for every consumer that reads a value
+INTRINSIC_ATOMS: Dict[bytes, bytes] = {sha256(raw): raw for raw in (
+    b"HVEC", b"U64\x00" + b"\x00" * 8,
+    *(b"UTF8" + t for t in (b"NORMAL_FORM", b"PAUSED", b"BLOCKED_REFERENCE", b"CYCLE_PROVEN", b"REPLAYED",
+                            b"ATTESTED", b"INVALID", b"NOT_ASSESSED", b"provisional", b"owner")),
+)}
+
+
+assert set(INTRINSIC_ATOMS) <= INTRINSIC_HASHES
+
+
+def atom_of(h: bytes, atoms: Dict[bytes, bytes], what: str = "atom") -> bytes:
+    """The bytes of atom `h`, stored or intrinsic: whether an intrinsic is materialized never changes a result."""
+    raw = atoms.get(h)
+    if raw is None:
+        raw = INTRINSIC_ATOMS.get(h)
+    if raw is None:
+        raise VarsError(f"{what} {h.hex()[:12]} missing from cas/atoms/")
+    return raw
+
+
+def u64_of(h: bytes, atoms: Dict[bytes, bytes], what: str = "u64") -> int:
+    return parse_u64(atom_of(h, atoms, what))
+
+
 # Fields that may hold H_EMPTY to mean "none"; every other slot must have its declared type.
 # Closed: a schema naming another type is refused at the gate, so check_slot_type never sees one
 FIELD_TYPES = {"utf8", "u64", "pol1", "root", "digest", "wasm", "cell", "hash"}
@@ -359,6 +384,7 @@ def validate_atom(raw: bytes) -> None:
     elif raw[:4] == b"SGS1":
         if len(raw) > MAX_STATE_BYTES or len(raw) < 4 + 32 + 33:
             raise VarsError("invalid SGS1 state size")
+        sgs1_term_hash(raw)  # the whole state parses
     elif raw[:1] == b"{":
         try:
             doc = json.loads(raw.decode("utf-8"))
@@ -366,13 +392,24 @@ def validate_atom(raw: bytes) -> None:
             raise VarsError(f"invalid JSON atom: {e}") from None
         if json.dumps(doc, sort_keys=True, separators=(",", ":")).encode("utf-8") != raw:
             raise VarsError("non-canonical JSON atom")
-        if doc.get("schema") not in ("sigma-resume.environment@draft-1", "sigma-resume.root@draft-1"):
+        hex64 = lambda v: isinstance(v, str) and len(v) == 64 and all(ch in "0123456789abcdef" for ch in v)
+        if doc.get("schema") == "sigma-resume.root@draft-1":
+            if set(doc) != {"schema", "runtime_semantics_id", "cost_model_id", "input_term_hash", "environment_id"} \
+                    or not all(isinstance(doc[k], str) and doc[k] for k in ("runtime_semantics_id", "cost_model_id")) \
+                    or not hex64(doc["input_term_hash"]) or not hex64(doc["environment_id"]):
+                raise VarsError("ComputationRoot must have exactly its five fields, well typed")
+        elif doc.get("schema") == "sigma-resume.environment@draft-1":
+            hs = doc.get("hashes")
+            if set(doc) != {"schema", "hashes"} or not isinstance(hs, list) or not all(hex64(x) for x in hs) \
+                    or hs != sorted(set(hs)) or len(hs) > MAX_HVEC_LEN:
+                raise VarsError("Environment must be its schema and a sorted, distinct list of hashes")
+        else:
             raise VarsError("unknown JSON atom schema")
     elif raw[:8] == b"\x00asm\x01\x00\x00\x00":
         pass  # a wasm module: identity is its hash; only the rules this host implements are ever executed
     elif raw[0] in (0x00, 0x01, 0x02, 0xFF):
-        if len(raw) not in (34, 66):
-            raise VarsError("invalid SigmaNodeV2 length")
+        if SR.G.deser(raw) is None:
+            raise VarsError("invalid SigmaNodeV2 node")
     else:
         raise VarsError(f"unrecognized atom prefix: {raw[:4]!r}")
 
@@ -579,7 +616,7 @@ def _parent_checkpoint(
     if cells is None or c.h_relies == H_EMPTY:
         return None
     parent_ckpts = [
-        (parse_u64(atoms[cells[pid].slots[2]]), pid, cells[pid])
+        (u64_of(cells[pid].slots[2], atoms), pid, cells[pid])
         for pid in parse_hvec(atoms[c.h_relies], require_sorted=True)
         if pid in cells and cells[pid].h_schema == H_SCHEMA["checkpoint"] and cells[pid].slots[0] == c.slots[0]
     ]
@@ -657,9 +694,9 @@ def _replay_from_parent(
     if ctx_err:
         raise VarsError(f"checkpoint context error: {ctx_err}")
 
-    credit_total = parse_u64(atoms[c.slots[1]])
-    spent_total = parse_u64(atoms[c.slots[2]])
-    peak_size = parse_u64(atoms[c.slots[3]])
+    credit_total = u64_of(c.slots[1], atoms)
+    spent_total = u64_of(c.slots[2], atoms)
+    peak_size = u64_of(c.slots[3], atoms)
     outcome_h = c.slots[4]
     if credit_total < spent_total:
         raise VarsError("checkpoint credit_total < spent_total")
@@ -679,7 +716,7 @@ def _replay_from_parent(
             "state_id": p_cell.h_payload.hex(),
             "credit_total": parent_spent,
             "spent_total": parent_spent,
-            "peak_semantic_size": parse_u64(atoms[p_cell.slots[3]]),
+            "peak_semantic_size": u64_of(p_cell.slots[3], atoms),
             "kernel_outcome": "PAUSED",
             "transition_claim": {"actions": 0, "spent_delta": 0},
         }
@@ -708,7 +745,7 @@ def _replay_from_parent(
         or replay.checkpoint["peak_semantic_size"] != peak_size
     ):
         raise VarsError("forged checkpoint state_bytes, spent_total, or peak_size mismatch on replay")
-    if replay.checkpoint["transition_claim"]["actions"] != parse_u64(atoms[c.slots[5]]):
+    if replay.checkpoint["transition_claim"]["actions"] != u64_of(c.slots[5], atoms):
         raise VarsError("checkpoint actions differ from the replayed transition's action count")
 
     probe_doc = dict(replay.checkpoint, credit_total=spent_total)
@@ -806,10 +843,10 @@ def verify_cycle_witness_replay(c: Cell, atoms: Dict[bytes, bytes], *, gate_mode
     witness_doc = {
         "schema": "sigma-resume.cycle@draft-1",
         "computation_id": cid_bytes.hex(),
-        "entry_spent_total": parse_u64(atoms[c.slots[1]]),
+        "entry_spent_total": u64_of(c.slots[1], atoms),
         "entry_state_id": c.h_payload.hex(),
-        "cycle_action_count": parse_u64(atoms[c.slots[2]]),
-        "cycle_cost": parse_u64(atoms[c.slots[3]]),
+        "cycle_action_count": u64_of(c.slots[2], atoms),
+        "cycle_cost": u64_of(c.slots[3], atoms),
     }
     verdict = SR.verify_cycle((root_doc, cid_bytes.hex()), env, witness_doc)
     if verdict.startswith("NOT_ASSESSED") and gate_mode:
@@ -1135,7 +1172,8 @@ class GitVarsRepo:
 
         # Check #1: Single-parent linear chain (or Genesis)
         cat_commit = self._git("cat-file", "commit", candidate_commit).decode()
-        parents = [line.split()[1] for line in cat_commit.splitlines() if line.startswith("parent ")]
+        header = cat_commit.split("\n\n", 1)[0]  # the message may contain any line
+        parents = [line.split()[1] for line in header.splitlines() if line.startswith("parent ")]
         if expected_old is None:
             if parents:
                 raise VarsError("Check #1 failed: Genesis commit must have 0 parents")
@@ -1154,9 +1192,7 @@ class GitVarsRepo:
         known = set(atoms.keys()) | set(cells.keys()) | INTRINSIC_HASHES
 
         def req_atom(h: bytes, desc: str) -> bytes:
-            if h not in atoms:
-                raise VarsError(f"Check #4 failed: missing atom {h.hex()[:12]} for {desc}")
-            return atoms[h]
+            return atom_of(h, atoms, f"Check #4 failed: atom for {desc}")
 
         def origin_of(c: Cell) -> str:
             return parse_utf8(req_atom(c.h_slot_name, "H_slot_name")).split("/", 1)[0]
@@ -1256,8 +1292,8 @@ class GitVarsRepo:
                 check_slot_type(s_h, ftype, atoms, cells)
 
             # Payloads and enumerations by kind (§2 "Payloads and meaning")
-            if c.h_schema in (H_SCHEMA["axiom"], H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]) \
-                    and c.h_payload not in INTRINSIC_UTF8:
+            if c.h_schema in (H_SCHEMA["axiom"], H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"],
+                              H_SCHEMA["scope"]) and c.h_payload not in INTRINSIC_UTF8:
                 check_slot_type(c.h_payload, "utf8", atoms, cells)
             if c.h_schema == H_SCHEMA["computation"]:
                 _load_root_and_env(c.h_payload, atoms)
@@ -1270,6 +1306,7 @@ class GitVarsRepo:
                     raise VarsError("verdict_code is not one of REPLAYED, ATTESTED, INVALID, NOT_ASSESSED")
                 if c.slots[1] == H_ATTESTED and c.slots[0] != H_EMPTY:
                     raise VarsError("an ATTESTED verdict has an empty ckpt_or_witness")
+
 
             # Kind-specific structural & deterministic replay invariants
             if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
@@ -1299,6 +1336,12 @@ class GitVarsRepo:
                     raise VarsError("VERDICT with H_EMPTY checkpoint must use H_ATTESTED, not H_REPLAYED")
                 if c.slots[0] != H_EMPTY and c.slots[0] not in relies_ids:
                     raise VarsError("VERDICT with non-empty ckpt_or_witness must include it in H_relies")
+                if c.slots[0] != H_EMPTY and cells[c.slots[0]].h_schema not in (H_SCHEMA["checkpoint"],
+                                                                                H_SCHEMA["cycle_witness"]):
+                    raise VarsError("a verdict's ckpt_or_witness is a checkpoint or cycle witness")
+                if c.slots[1] != H_VERDICT_INVALID and cells[c.h_payload].h_schema not in (
+                        H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]):
+                    raise VarsError("only an INVALID verdict may judge a cell other than a contract, decision or question")
             elif c.h_schema == H_SCHEMA["acceptance"]:
                 target_origin = parse_utf8(req_atom(cells[c.h_payload].h_slot_name, "target slot")).split("/", 1)[0]
                 src_scope = parse_utf8(req_atom(c.slots[0], "source_scope"))
@@ -1315,8 +1358,16 @@ class GitVarsRepo:
             if s.h_target not in cells or s.h_scope_ctx not in cells:
                 raise VarsError("Check #4 failed: Seal target or scope_ctx missing from cas/cells/")
 
+        prior_cells = self.read_cas_tree(expected_old)[1] if expected_old is not None else {}
+        prior = set(prior_cells)
+        # References never point forward in time (§4.3): the rules read any payload or slot equal to a cell id as
+        # a reference, so a new cell may not have an id that an older cell already names there
+        named_before = {x for pc in prior_cells.values() for x in (pc.h_payload, *pc.slots)}
+        for cid in set(cells) - prior:
+            if cid in named_before:
+                raise VarsError(f"an older cell names {cid.hex()[:12]} in a payload or slot: a reference to a later-born cell")
+
         # Projections: the gate recomputes the rules at the named tip and refuses any digest that differs
-        prior = set(self.read_cas_tree(expected_old)[1]) if expected_old is not None else set()
         chain = set(self.commit_chain(expected_old)) if expected_old is not None else set()
         for cid, c in cells.items():
             if c.h_schema != H_SCHEMA["projection"] or cid in prior:
