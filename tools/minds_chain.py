@@ -10,6 +10,7 @@ is that key until a rotation adds others.
     tools/minds_chain.py release              # run every check, then record main@HEAD as a release
     tools/minds_chain.py show                 # releases and projections with their status
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
+    tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
 """
 from __future__ import annotations
 
@@ -129,6 +130,23 @@ def show(repo_dir: Path) -> List[Dict[str, object]]:
     return sorted(out, key=lambda r: r["name"])
 
 
+def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[bytes]:
+    """The latest projection whose tip already holds `decision_id` (so its statuses cover it), if any."""
+    chain = repo.commit_chain(repo.ref_commit(SCOPE))
+    _, cells, _ = repo.read_cas_tree(chain[-1])
+    atoms = repo.read_cas_tree(chain[-1])[0]
+    best: Optional[Tuple[int, bytes]] = None
+    for cid, c in cells.items():
+        if c.h_schema != V.H_SCHEMA["projection"]:
+            continue
+        tip = V.parse_utf8(atoms[c.slots[0]])
+        if tip in chain and decision_id in repo.read_cas_tree(tip)[1]:
+            pos = chain.index(tip)
+            if best is None or pos > best[0]:
+                best = (pos, cid)
+    return None if best is None else best[1]
+
+
 def run_checks(root: Path) -> Tuple[List[str], bool]:
     """Every check a release requires, as `name OK|FAILED` lines; the release is refused unless all pass."""
     def run(cmd: List[str], cwd: Path) -> bool:
@@ -175,6 +193,11 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "bundle" and len(argv) == 2:
         print(json.dumps(V.export_projection(V.GitVarsRepo(repo_dir), SCOPE, bytes.fromhex(argv[1])), indent=2))
+        return 0
+    if cmd == "attest" and len(argv) == 2:
+        repo = V.GitVarsRepo(repo_dir)
+        did = bytes.fromhex(argv[1])
+        print(json.dumps(V.export_attestation(repo, SCOPE, did, covering_projection(repo, did)), indent=2))
         return 0
     print(__doc__, file=sys.stderr)
     return 2

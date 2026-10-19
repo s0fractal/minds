@@ -308,6 +308,16 @@ every seal is a valid Ed25519 seal on this cell; distinct keys of `witness_polic
 output indexes cells in the input's order). Any inconsistency is a refusal; too few witnesses is a negative answer,
 not an error. `vars1.py verify-projection BUNDLE.json` does this; `export_projection` builds a bundle from a chain.
 
+**Attestation bundle.** For a contract or decision without `required_comp`, a client recomputes Pass 3 from
+`{"format": "vars-1.attestation-bundle@1", "cell", "scope", "atoms", "verdicts", "seals", "projection"?}`: the cell,
+the governing scope cell (its admission policy is the fallback `EvalPol`), the policy, statement, attests and
+verifier atoms, every verdict on the cell, every seal on the cell and on those verdicts, and optionally a projection
+bundle. It is attested when ATTESTED verdicts sealed by distinct keys of `EvalPol` meet its threshold, excluding
+verdicts contradicted by an INVALID verdict of the same verifier endorsed by a policy key (§4.2 Pass 3). With a
+projection whose tip holds the cell, the cell and the counted verdicts must be Active and not Stale there. A
+verdict or seal about another cell is a refusal. A decision that requires a computation needs replay, hence the
+repository. `vars1.py verify-attestation BUNDLE.json` does this; `export_attestation` builds a bundle.
+
 ## 5. Replay against Book I
 
 `computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`. A checkpoint

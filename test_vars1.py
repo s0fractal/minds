@@ -1576,6 +1576,65 @@ class TestVars1Conformance(unittest.TestCase):
             mc.init(self.repo_path, sk)
 
 
+    def test_16_light_client_verifies_a_release_attestation(self) -> None:
+        """A client holding only an attestation bundle recomputes Pass 3 for a decision: maintainer-attested, not
+        contradicted, and — with a later projection — Active and not Stale at that projection's tip."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("minds_chain", ROOT_DIR / "tools" / "minds_chain.py")
+        mc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mc)
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        c1, ids1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        c2, ids2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])  # its projection's tip is c1
+        repo = V.GitVarsRepo(self.repo_path)
+
+        bundle = json.loads(json.dumps(V.export_attestation(repo, "minds", ids1["decision"], ids2["projection"])))
+        r = V.verify_attestation(bundle)
+        self.assertTrue(r["attested"])
+        self.assertIn("main@" + "a" * 40, r["statement"])
+        self.assertEqual(r["authors"], [V.ed25519_pubkey(sk).hex()])
+        self.assertEqual(r["tip"], c1)
+        self.assertTrue(r["active_at_tip"])
+
+        # Without the maintainer's seal on the verdict there is no attestation; a stranger's seal does not count
+        verdict_id = ids1["verdict"].hex()
+        def seals_on(b, cid_hex):
+            return [x for x in b["seals"] if V.Seal.decode(bytes.fromhex(x)).h_target.hex() == cid_hex]
+        stripped = dict(bundle, seals=[x for x in bundle["seals"] if x not in seals_on(bundle, verdict_id)])
+        self.assertFalse(V.verify_attestation(stripped)["attested"])
+        scope_id = V.Cell.decode(bytes.fromhex(bundle["scope"])).id
+        stranger = V.Seal.sign(b"\x09" * 32, ids1["verdict"], scope_id).encode().hex()
+        self.assertFalse(V.verify_attestation(dict(stripped, seals=stripped["seals"] + [stranger]))["attested"])
+
+        # A verdict about another cell, or a seal on an unrelated cell, is a refusal
+        other = V.Cell.decode(bytes.fromhex(V.export_attestation(repo, "minds", ids2["decision"])["verdicts"][0]))
+        with self.assertRaisesRegex(V.VarsError, "verdict"):
+            V.verify_attestation(dict(bundle, verdicts=bundle["verdicts"] + [other.encode().hex()]))
+
+        # A contradicting INVALID verdict by the maintainer, under the same verifier, withdraws the attestation
+        atoms: dict[bytes, bytes] = {}
+        d1 = ids1["decision"]
+        bad = V.Cell(
+            h_schema=V.H_SCHEMA["verdict"],
+            h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/release/aaaaaaaaaaaa/contradicted")),
+            h_payload=d1,
+            h_attests=self._hv(atoms, [d1]),
+            slots=(V.H_EMPTY, V.H_VERDICT_INVALID, self._put_atom(atoms, V.atom_utf8("minds-maintainer"))),
+        )
+        tip = repo.ref_commit("minds")
+        c3 = repo.build_candidate_commit("minds", atoms, [bad], [V.Seal.sign(sk, bad.id, scope_id)], parent_commit=tip)
+        repo.admit_and_advance("minds", c3, expected_old=tip)
+        r3 = V.verify_attestation(json.loads(json.dumps(V.export_attestation(repo, "minds", d1))))
+        self.assertFalse(r3["attested"], "a contradicting INVALID verdict blocks the attestation, as in Pass 3")
+
+        path = Path(self.tmp.name) / "attestation.json"
+        path.write_text(json.dumps(bundle))
+        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path)],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

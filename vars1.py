@@ -2127,6 +2127,113 @@ def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
     return result
 
 
+ATTESTATION_FORMAT = "vars-1.attestation-bundle@1"
+
+
+def export_attestation(repo: "GitVarsRepo", scope: str, decision_id: bytes,
+                       projection_id: Optional[bytes] = None) -> Dict[str, object]:
+    """A self-contained bundle for a contract or decision at the scope's tip: the cell, the governing scope cell, the
+    atoms its evaluator policy and statement need, every verdict on it and every seal on it and on those verdicts,
+    and optionally a projection bundle whose statuses cover them."""
+    tip = repo.ref_commit(scope)
+    atoms, cells, seals = repo.read_cas_tree(tip)
+    d = cells.get(decision_id)
+    if d is None or d.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
+        raise VarsError("not a contract or decision cell of this scope")
+    s_cell = cells[repo._evaluate_commit_chain(scope, repo.commit_chain(tip))["active_scope_id"]]
+    pol = d.slots[3] if d.slots[3] != H_EMPTY else s_cell.slots[0]
+    verdicts = [c for c in cells.values() if c.h_schema == H_SCHEMA["verdict"] and c.h_payload == decision_id]
+    need = [pol, parse_pol1(atoms[pol])[1], d.h_payload]
+    for w in verdicts:
+        need += [w.h_attests, w.slots[2]]
+    targets = {decision_id} | {w.id for w in verdicts}
+    bundle: Dict[str, object] = {
+        "format": ATTESTATION_FORMAT,
+        "cell": d.encode().hex(),
+        "scope": s_cell.encode().hex(),
+        "atoms": sorted({atoms[h].hex() for h in need if h in atoms}),
+        "verdicts": sorted(w.encode().hex() for w in verdicts),
+        "seals": sorted(x.encode().hex() for x in seals.values() if x.h_target in targets),
+    }
+    if projection_id is not None:
+        bundle["projection"] = export_projection(repo, scope, projection_id)
+    return bundle
+
+
+def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
+    """Recompute §4.2 Pass 3 for one contract or decision from a bundle, with no repository.
+
+    `attested`: ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator policy (else the bundled
+    scope's admission policy), meet the threshold, after excluding verdicts contradicted by an INVALID verdict of the
+    same verifier endorsed by a policy key. With a projection bundle, `active_at_tip` says whether the cell and the
+    counted verdicts are Active and not Stale at its tip (None when the tip predates them). Any inconsistency raises
+    VarsError. Decisions that require a computation need replay, hence the repository, and are refused."""
+    if bundle.get("format") != ATTESTATION_FORMAT:
+        raise VarsError("unknown attestation bundle format")
+    d = Cell.decode(bytes.fromhex(bundle["cell"]))
+    if d.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"]) or len(d.slots) != 4:
+        raise VarsError("bundle cell is not a contract or decision")
+    if d.slots[1] != H_EMPTY:
+        raise VarsError("a decision that requires a computation needs replay, hence the repository")
+    sc = Cell.decode(bytes.fromhex(bundle["scope"]))
+    if sc.h_schema != H_SCHEMA["scope"]:
+        raise VarsError("bundle scope is not a scope cell")
+    atoms: Dict[bytes, bytes] = {}
+    for a in bundle["atoms"]:
+        raw = bytes.fromhex(a)
+        validate_atom(raw)
+        atoms[sha256(raw)] = raw
+    pol = d.slots[3] if d.slots[3] != H_EMPTY else sc.slots[0]
+    try:
+        thr, hvec_h = parse_pol1(atoms[pol])
+        keys = set(parse_hvec(atoms[hvec_h], require_sorted=True))
+    except KeyError:
+        raise VarsError("bundle lacks the evaluator policy atoms") from None
+    if any(weak_public_key(k) for k in keys) or not 1 <= thr <= len(keys):
+        raise VarsError("evaluator policy is malformed or names a weak key")
+    verdicts: Dict[bytes, Cell] = {}
+    for vh in bundle["verdicts"]:
+        w = Cell.decode(bytes.fromhex(vh))
+        if (w.h_schema != H_SCHEMA["verdict"] or w.h_payload != d.id or w.h_attests not in atoms
+                or d.id not in parse_hvec(atoms[w.h_attests], require_sorted=True)):
+            raise VarsError("a verdict in the bundle does not judge and attest this cell")
+        verdicts[w.id] = w
+    signers: Dict[bytes, set] = {d.id: set(), **{wid: set() for wid in verdicts}}
+    for sh in bundle["seals"]:
+        seal = Seal.decode(bytes.fromhex(sh))  # verifies the Ed25519 signature
+        if seal.h_target not in signers:
+            raise VarsError("a seal in the bundle names an unrelated cell")
+        signers[seal.h_target].add(seal.actor_pubkey)
+    contradicted = {w.slots[2] for wid, w in verdicts.items()
+                    if w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys}
+    counted = [wid for wid, w in verdicts.items()
+               if w.slots[0] == H_EMPTY and w.slots[1] == H_ATTESTED and w.slots[2] not in contradicted]
+    endorsers = set().union(*(signers[wid] & keys for wid in counted)) if counted else set()
+    result: Dict[str, object] = {
+        "cell": d.id.hex(),
+        "statement": parse_utf8(atoms[d.h_payload]) if d.h_payload in atoms else None,
+        "scope": sc.id.hex(),
+        "threshold": thr,
+        "policy_keys": sorted(k.hex() for k in keys),
+        "authors": sorted(k.hex() for k in signers[d.id]),
+        "endorsers": sorted(k.hex() for k in endorsers),
+        "attested": len(endorsers) >= thr,
+        "tip": None,
+        "active_at_tip": None,
+    }
+    if "projection" in bundle:
+        pr = verify_projection(bundle["projection"])
+        if not pr["data_ok"]:
+            raise VarsError("the projection in an attestation bundle must carry its input and output")
+        st = pr["statuses"]
+        result["tip"] = pr["tip"]
+        result["projection_witnessed"] = pr["witnessed"]
+        ids = [d.id.hex(), *(w.hex() for w in counted)]
+        if all(i in st for i in ids):
+            result["active_at_tip"] = all(st[i]["active"] and not st[i]["stale"] for i in ids)
+    return result
+
+
 def _main(argv: List[str]) -> int:
     if len(argv) == 2 and argv[0] == "verify-projection":
         try:
@@ -2136,7 +2243,15 @@ def _main(argv: List[str]) -> int:
             return 2
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result["witnessed"] and result["data_ok"] in (True, None) else 1
-    print("usage: vars1.py verify-projection BUNDLE.json", file=sys.stderr)
+    if len(argv) == 2 and argv[0] == "verify-attestation":
+        try:
+            result = verify_attestation(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
+        except (VarsError, ValueError, KeyError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["attested"] and result["active_at_tip"] in (True, None) else 1
+    print("usage: vars1.py verify-projection BUNDLE.json | verify-attestation BUNDLE.json", file=sys.stderr)
     return 2
 
 

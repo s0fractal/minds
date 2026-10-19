@@ -18,7 +18,8 @@ This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub a
 `decision` naming `main@<sha>`, the rules kernel and the checks that passed, attested by the maintainer's key, with a
 witnessed projection of the chain. `tools/minds_chain.py release` refuses unless every check passes;
 `tools/minds_chain.py show` lists releases; `tools/minds_chain.py bundle <projection>` gives a bundle for
-`vars1.py verify-projection`. The maintainer key never leaves `.git/vars/`; the roster grows by scope rotation.
+`vars1.py verify-projection`; `tools/minds_chain.py attest <decision>` gives a bundle for `vars1.py
+verify-attestation`, with the latest projection that covers the release. The maintainer key never leaves `.git/vars/`; the roster grows by scope rotation.
 
 ## Running
 
