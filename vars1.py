@@ -199,7 +199,7 @@ H_OWNER = sha256(b"UTF8owner")
 # The rules a scope is evaluated under are a stored object: the compiled rules kernel (`kernel/`, Rust -> wasm32,
 # reproducible). A scope names it by hash; this host implements exactly these rules.
 KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
-H_LENS_KERNEL = bytes.fromhex("2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747")
+H_LENS_KERNEL = bytes.fromhex("993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263")
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
@@ -492,6 +492,7 @@ SCHEMA_SPECS: Dict[str, List[str]] = {
     "acceptance": ["source_scope:utf8", "foreign_scope_cell:cell"],
     "scope": ["admission_policy:pol1", "acceptance_policy:pol1", "rules:wasm"],
     "verdict": ["ckpt_or_witness:cell", "verdict_code:utf8", "verifier_id:utf8"],
+    "projection": ["tip:utf8", "rules:wasm", "input:digest", "state:digest", "witness_policy:pol1"],
 }
 
 
@@ -757,6 +758,8 @@ def check_slot_type(h: bytes, typ: str, atoms: Dict[bytes, bytes], cells: Dict[b
             raise VarsError("slot type: POL1 threshold outside 1..len(pubkeys)")
     elif typ == "root":
         _load_root_and_env(h, atoms)
+    elif typ == "digest":
+        pass  # a bare SHA-256 value; it names bytes that need not be stored (§2, projection)
     elif typ == "wasm":
         atom(b"\x00asm")
     elif typ == "cell":
@@ -1222,8 +1225,12 @@ class GitVarsRepo:
                 if not (1 <= len(loss_raw) - 4 <= MAX_LOSS_BYTES):
                     raise VarsError("H_loss exceeds 4096 bytes")
 
-            for s_h in c.slots:
-                if s_h not in known:
+            digest_slots = {
+                i for i, d in enumerate(cells[c.h_schema].slots)
+                if d in atoms and parse_utf8(atoms[d]).endswith(":digest")
+            }
+            for i, s_h in enumerate(c.slots):
+                if i not in digest_slots and s_h not in known:
                     raise VarsError(f"Check #4 failed: slot {s_h.hex()[:12]} missing from CAS")
             # every slot must have the type its schema field declares ("name:type")
             for s_h, desc_h in zip(c.slots, cells[c.h_schema].slots):
@@ -1276,6 +1283,21 @@ class GitVarsRepo:
             if s.h_target not in cells or s.h_scope_ctx not in cells:
                 raise VarsError("Check #4 failed: Seal target or scope_ctx missing from cas/cells/")
 
+        # Projections: the gate recomputes the rules at the named tip and refuses any digest that differs
+        prior = set(self.read_cas_tree(expected_old)[1]) if expected_old is not None else set()
+        chain = set(self.commit_chain(expected_old)) if expected_old is not None else set()
+        for cid, c in cells.items():
+            if c.h_schema != H_SCHEMA["projection"] or cid in prior:
+                continue
+            tip = parse_utf8(req_atom(c.slots[0], "projection tip"))
+            if tip not in chain:
+                raise VarsError(f"projection tip {tip[:12]} is not a commit of refs/vars/heads/{scope} before this one")
+            if c.slots[1] != H_LENS_KERNEL:
+                raise VarsError("projection names rules this host does not implement")
+            h_in, h_state = self.projection_digests(scope, tip)
+            if (c.slots[2], c.slots[3]) != (h_in, h_state):
+                raise VarsError("projection digests differ from the gate's recomputation of the rules at its tip")
+
         # Run the commit-chain fold to verify admission authority on the new commit
         self._evaluate_commit_chain(scope, self.commit_chain(candidate_commit))
 
@@ -1290,6 +1312,13 @@ class GitVarsRepo:
     # -----------------------------------------------------------------------
     # §4 Commit-Chain Fold & Three-Pass Lensing
     # -----------------------------------------------------------------------
+    def projection_digests(self, scope: str, tip: str) -> Tuple[bytes, bytes]:
+        """`(sha256(kernel input), sha256(kernel output))` for the scope's chain up to and including `tip`: the
+        `input` and `state` a projection at `tip` must carry. Anyone holding the chain can recompute them."""
+        trees = [self.read_cas_tree(c) for c in self.commit_chain(tip)]
+        kernel_input, _ = kernel_facts(scope, trees)
+        return sha256(kernel_input), sha256(kernel_runner().run(kernel_input))
+
     def _evaluate_commit_chain(self, scope: str, commits: List[str]) -> Dict[str, object]:
         """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree."""
         trees = [self.read_cas_tree(c) for c in commits]
@@ -1865,6 +1894,13 @@ class GitVarsRepo:
             if c.h_schema == H_SCHEMA["axiom"]:
                 settled[cid] = True
                 provisional[cid] = False
+                continue
+            if c.h_schema == H_SCHEMA["projection"]:
+                # Settled once its witness policy has signed it (late co-signatures count)
+                w_thr, w_pks = pol_quorum(c.slots[4])
+                is_set = len(witness_endorsers(cid) & w_pks) >= w_thr
+                settled[cid] = is_set
+                provisional[cid] = not is_set
                 continue
 
             # Determine evaluation policy `EvalPol(v)`

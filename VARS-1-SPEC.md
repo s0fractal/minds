@@ -54,7 +54,7 @@ Non-canonical bytes are refused, never normalized.
 | `H_PROVISIONAL` | `UTF8provisional` | `b9d665ebd73a6d287e1e40b8c29cf2839d973b461511bfc7b0dd5623b9fe41e5` |
 | `H_OWNER` | `UTF8owner` | `4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e` |
 
-`H_LENS_KERNEL = 2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747` is not intrinsic: it is the
+`H_LENS_KERNEL = 993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
 ### 1.2 Cells (`cas/cells/`)
@@ -118,10 +118,11 @@ Each is a schema cell named `core/schema.<name>` with the descriptors below.
 | acceptance | `source_scope:utf8`, `foreign_scope_cell:cell` | `c661936c020c0d817b8516b93454af5a30fe4282d854c1b0f628731c80f95d66` |
 | scope | `admission_policy:pol1`, `acceptance_policy:pol1`, `rules:wasm` | `9aab50548f8fc7c5e2090fa89a73440af7de5e92d800b928261f13f20a4bd2a9` |
 | verdict | `ckpt_or_witness:cell`, `verdict_code:utf8`, `verifier_id:utf8` | `ad702699d5fc7b3d94138c38643c9889f1520a6e1c20760aa6b11a8e273dfdae` |
+| projection | `tip:utf8`, `rules:wasm`, `input:digest`, `state:digest`, `witness_policy:pol1` | `8029ae880cb62a8034f47ec44e8f5c5982ebc14a14be2c6893a3ab8f968aa818` |
 
 **Types.** `utf8`: a UTF8 atom or intrinsic UTF8 constant. `u64`: a U64 atom or `H_ZERO`. `pol1`: a POL1 atom
 whose key vector is present. `root`: a ComputationRoot whose Environment is present. `wasm`: a wasm atom.
-`cell`: a cell. `hash`: anything present or intrinsic. `H_EMPTY` is allowed only in `required_comp`,
+`cell`: a cell. `hash`: anything present or intrinsic. `digest`: any 32 bytes, not required to be stored. `H_EMPTY` is allowed only in `required_comp`,
 `expected_outcome`, `evaluator_policy` and `ckpt_or_witness`.
 
 **Payloads and meaning.** axiom, contract, decision, question: `id(UTF8 statement)`. computation:
@@ -131,7 +132,7 @@ whose key vector is present. `root`: a ComputationRoot whose Environment is pres
 {`H_PROVISIONAL`, `H_OWNER`}. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and
 `foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 scope name)`. verdict: the
 contract, decision or question it judges; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,
-`H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`.
+`H_NOT_ASSESSED`}, and `H_ATTESTED` exactly when `ckpt_or_witness = H_EMPTY`. projection: `H_EMPTY` (§4.4).
 
 ## 3. Store and gate
 
@@ -156,6 +157,10 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
    checkpoint replays as in §5; a cycle witness passes `sigma_resume.verify_cycle`.
 5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope
    cell of its origin. Seals count for it only under that scope and its admission keys.
+
+6. **Projections.** For every new projection cell, `tip` is the hex id of an earlier commit of this chain,
+   `rules = H_LENS_KERNEL`, and `(input, state)` equal the gate's own recomputation at `tip` (§4.4); otherwise
+   the commit is refused.
 
 The fold (§4.1) then runs over the whole chain, including step 3b. The seal and authority rules of step 3 (seal
 contexts and keys, cross-seals, a seal on every new cell, evaluator policies within the roster, foreign scopes)
@@ -232,7 +237,8 @@ A witness is excluded if an Active, non-Stale verdict on `v` with `H_VERDICT_INV
 `verifier_id`, endorsed by a key of `EvalPol(v)`, exists. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
 for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the union of witness
 endorsers meets `EvalPol(v)`; otherwise **Provisional**. Scope and custom schema cells are Settled iff
-Authorized; every other Active, non-Stale cell is Settled.
+Authorized; a projection is Settled iff its `CumulativeEndorsers` meet its `witness_policy`; every other Active,
+non-Stale cell is Settled.
 
 ### 4.3 Rules object
 
@@ -266,6 +272,17 @@ unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptan
 
 `vars1.py` keeps a Python fold and Passes 1–2 as a differential twin: a refusal by one and not the other, or any
 differing latch, scope or status bit, is a host fault (`TwinDivergence`), never a gate refusal.
+
+### 4.4 Projections
+
+A projection `Π = (tip, rules, input, state)` states the result of the rules at a commit: `input =
+SHA-256(kernel input for the chain up to tip)` and `state = SHA-256(kernel output)` (§4.3). The gate recomputes
+both before admitting it (§3 check 6), so a chain never holds a false projection. Its witnesses sign it with
+ordinary seals; once they meet `witness_policy` it is Settled.
+
+A client without the history checks a Settled projection by its witness seals alone; that is trust in the
+witness quorum, stated by the policy. Anyone holding the chain can recompute `input` and `state`, and the rules
+are deterministic and named by hash, so a false projection signed outside a chain is refuted by recomputation.
 
 ## 5. Replay against Book I
 

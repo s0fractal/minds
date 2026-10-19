@@ -100,7 +100,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(V.H_META_SCHEMA.hex(), "7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
         self.assertEqual(V.H_ZERO.hex(), "bd8ce1f0a5c552141dc052a9b66a200003a1b34dbf947dea1c1e32b9969cfe3c")
         self.assertEqual(V.H_ATTESTED.hex(), "7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c")
-        self.assertEqual(V.H_LENS_KERNEL.hex(), "2fefcfc0f38a5443198f1ec7eedd222289e14209baa3c1c3f7f9bfcfc1571747")
+        self.assertEqual(V.H_LENS_KERNEL.hex(), "993c237fca82d922f61e23759bf43486f17d861a7353c77768fd33c221723263")
         self.assertEqual(V.sha256((ROOT_DIR / "kernel" / "lens.wasm").read_bytes()), V.H_LENS_KERNEL)
         # The spec's schema table and intrinsic constants are the code's, digit for digit
         spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text(encoding="utf-8")
@@ -1392,6 +1392,55 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(lens["superseded"][v_q.id] and lens["active"][w_q.id], "question evaluator policy evicts")
         self.assertFalse(lens["superseded"][v_own.id] or lens["active"][w_own.id], "owner tier: author alone cannot evict")
         self.assertTrue(lens["effective"][target.id], "an ATTESTED verdict's invalidates edge has no effect")
+
+
+    def test_11_projection_is_recomputed_at_the_gate_and_settled_by_witnesses(self) -> None:
+        """A projection Π = (tip, rules, input, state) is admitted only if the gate's own recomputation of the rules
+        at `tip` gives the same input and state digests; it is Settled once its witness policy has signed it."""
+        c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=2, acc_threshold=2)
+        atoms1: dict[bytes, bytes] = {}
+        ax = self._axiom(atoms1, "core/fact", "a fact")
+        c1 = self._admit(atoms1, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], c0)
+
+        h_in, h_state = self.repo.projection_digests("core", c1)
+        self.assertEqual(len(h_in), 32)
+        self.assertEqual(len(h_state), 32)
+
+        def projection(atoms: dict[bytes, bytes], name: str, tip: str, state: bytes) -> V.Cell:
+            return V.Cell(
+                h_schema=V.H_SCHEMA["projection"],
+                h_slot_name=self._put_atom(atoms, V.atom_utf8(name)),
+                h_payload=V.H_EMPTY,
+                slots=(
+                    self._put_atom(atoms, V.atom_utf8(tip)),
+                    V.H_LENS_KERNEL,
+                    h_in,
+                    state,
+                    self._put_atom(atoms, V.atom_pol1(2, self._hv(atoms, [self.pk1, self.pk2]))),
+                ),
+            )
+
+        # A false state digest is refused: the gate recomputes it
+        atoms_bad: dict[bytes, bytes] = {}
+        bad = projection(atoms_bad, "core/projection.bad", c1, bytes(32))
+        c_bad = self.repo.build_candidate_commit("core", atoms_bad, [bad], [V.Seal.sign(self.sk1, bad.id, s0.id)], parent_commit=c1)
+        with self.assertRaisesRegex(V.VarsError, "projection"):
+            self.repo.admit_and_advance("core", c_bad, expected_old=c1)
+
+        # A tip outside the chain is refused
+        atoms_off: dict[bytes, bytes] = {}
+        off = projection(atoms_off, "core/projection.off", "0" * 40, h_state)
+        c_off = self.repo.build_candidate_commit("core", atoms_off, [off], [V.Seal.sign(self.sk1, off.id, s0.id)], parent_commit=c1)
+        with self.assertRaisesRegex(V.VarsError, "projection"):
+            self.repo.admit_and_advance("core", c_off, expected_old=c1)
+
+        # The true projection is admitted; one witness of 2-of-2 leaves it Provisional, the second settles it
+        atoms2: dict[bytes, bytes] = {}
+        good = projection(atoms2, "core/projection.c1", c1, h_state)
+        c2 = self._admit(atoms2, [good], [V.Seal.sign(self.sk1, good.id, s0.id)], c1)
+        self.assertTrue(self.repo.lens("core")["provisional"][good.id])
+        self._admit({}, [], [V.Seal.sign(self.sk2, good.id, s0.id)], c2)
+        self.assertTrue(self.repo.lens("core")["settled"][good.id])
 
 
 if __name__ == "__main__":

@@ -126,7 +126,7 @@ const S_QUESTION: H = h("1293a1513baa6e0e1edfdcf8c8f4b992efa1391ddbc0889efe9698d
 const S_ACCEPTANCE: H = h("c661936c020c0d817b8516b93454af5a30fe4282d854c1b0f628731c80f95d66");
 const S_SCOPE: H = h("9aab50548f8fc7c5e2090fa89a73440af7de5e92d800b928261f13f20a4bd2a9");
 const S_VERDICT: H = h("ad702699d5fc7b3d94138c38643c9889f1520a6e1c20760aa6b11a8e273dfdae");
-const STANDARD: [H; 10] = [
+const STANDARD: [H; 11] = [
     h("aaf70509e078bf1f833492eb82a116e4122232d424cf1668c05a9dd25855dcda"), // axiom
     S_CONTRACT,
     h("1c97bc0b74ffc978ade540c55592b294b0d9f2502b94b969f89ef00d99dd10bb"), // computation
@@ -137,6 +137,7 @@ const STANDARD: [H; 10] = [
     S_ACCEPTANCE,
     S_SCOPE,
     S_VERDICT,
+    h("8029ae880cb62a8034f47ec44e8f5c5982ebc14a14be2c6893a3ab8f968aa818"), // projection
 ];
 
 // Edge kinds, in input order.
