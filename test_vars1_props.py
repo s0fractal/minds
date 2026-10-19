@@ -44,9 +44,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 ROOT_DIR = Path(__file__).resolve().parent
-PROJECTS_DIR = ROOT_DIR.parent
 sys.path.insert(0, str(ROOT_DIR))
-sys.path.insert(0, str(PROJECTS_DIR / "sigma-glyph" / "impl"))
 
 import sigma_glyph as SG  # noqa: E402
 import sigma_resume as SR  # noqa: E402

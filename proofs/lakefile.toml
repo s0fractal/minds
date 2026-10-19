@@ -4,11 +4,11 @@ defaultTargets = ["Vars1"]
 [[lean_lib]]
 name = "Vars1"
 
-# Stage 2 link to Book I's mechanized evaluator. Not a default target: it reads
-# the sibling checkout ~/Projects/sigma-glyph/proofs (pinned in VARS-1-SPEC.md; releases record the commit).
+# Stage 2 link to Book I's mechanized evaluator. Not a default target. SigmaEval/ holds three files copied from
+# sigma-glyph v0.8.0, identical at the spec's pin (see SigmaEval/SOURCE).
 [[lean_lib]]
 name = "SigmaEval"
-srcDir = "../../sigma-glyph/proofs"
+srcDir = "SigmaEval"
 roots = ["Sha256", "MachineBytes", "EvalMachine"]
 
 [[lean_lib]]

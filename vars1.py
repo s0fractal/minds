@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VARS-1 reference implementation (no dependencies beyond `sigma-glyph`'s `sigma_resume`).
+"""VARS-1 reference implementation (no dependencies beyond `sigma-glyph`'s `sigma_resume`, from PyPI).
 
 Section numbers refer to VARS-1-SPEC.md: objects (§1), standard schemas (§2), store and admission gate (§3),
 fold and lens (§4), replay against Book I (§5). The fold and lens Passes 1-2 are decided by `kernel/lens.wasm`;
@@ -159,10 +159,20 @@ def _validate_book1_atom(raw: bytes) -> None:
 STD_SCHEMA_IDS: Set[bytes] = set(H_SCHEMA.values())
 STD_SCHEMA_ATOMS[H_LENS_KERNEL] = KERNEL_ATOM  # every genesis stores the rules object
 
-_SIGMA_IMPL_DIR = Path(__file__).resolve().parent.parent / "sigma-glyph" / "impl"
-if str(_SIGMA_IMPL_DIR) not in sys.path:
-    sys.path.insert(0, str(_SIGMA_IMPL_DIR))
-import sigma_resume as SR  # noqa: E402
+try:
+    import sigma_resume as SR  # noqa: E402  (sigma-glyph from PyPI: requirements.txt)
+except ImportError:
+    raise RuntimeError("install Book I: python3 -m venv .venv && .venv/bin/pip install --require-hashes "
+                       "-r requirements.txt, then run with .venv/bin/python") from None
+# Book I as the spec pins it (sigma-glyph c864d3e): the modules' bytes, however they were installed
+BOOK_I_SHA256 = {
+    "sigma_resume.py": "575a198d47519f56cb8cf75458d5d9754492433f98650d1ddf1f3580a363e858",
+    "sigma_glyph.py": "f4d9990d40f07c8cfd3aa10512c2195a0a04e8dc78bc955c0f53dfe737d3feb4",
+}
+for _mod in (SR, SR.G):
+    _p = Path(_mod.__file__)
+    if sha256(_p.read_bytes()).hex() != BOOK_I_SHA256[_p.name]:
+        raise RuntimeError(f"{_p} is not Book I as VARS-1-SPEC.md pins it (sigma-glyph c864d3e)")
 
 
 # ---------------------------------------------------------------------------

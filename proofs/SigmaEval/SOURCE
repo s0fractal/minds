@@ -1,0 +1,7 @@
+Copied unchanged from github.com/s0fractal/sigma-glyph, proofs/, tag v0.8.0
+(3890daebf8c6c2b9d6746b606f05274e03295c65); identical at c864d3e, the Book I revision VARS-1-SPEC.md pins.
+Copyright s0fractal; see that repository's license. test_vars1 checks these hashes.
+
+a1b4e8e1759a6356daec98a536c24bcd8c75aeed21be33e9e40f905fd520577b  Sha256.lean
+ca04fcd606e40c71e3644808cfdfad12440dee2667b24415b8210445229a9464  MachineBytes.lean
+6645514aaadaacd808546dae3e1b70c2584104a4eeec3bc3db486ab8dc5253bb  EvalMachine.lean

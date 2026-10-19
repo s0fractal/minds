@@ -5,12 +5,13 @@ Every fold and `lens()` runs the rules kernel (`kernel/lens.wasm`) and its Pytho
 every `lens()` is also re-run on a separate kernel instance.
 Covers golden vectors, the gate's rejections, the local compute/checkpoint/verdict loop, rebinding and rollback,
 foreign import and acceptance, scope rotation without retroactivity, replay trust, and all Ed25519 vectors of
-`primitives/vectors/verify-sig.json`.
+`vectors/verify-sig.json` (from primitives, see vectors/SOURCE).
 """
 from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,9 +20,7 @@ import unittest
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
-PROJECTS_DIR = ROOT_DIR.parent
 sys.path.insert(0, str(ROOT_DIR))
-sys.path.insert(0, str(PROJECTS_DIR / "sigma-glyph" / "impl"))
 
 import sigma_glyph as SG  # noqa: E402
 import sigma_resume as SR  # noqa: E402
@@ -706,8 +705,8 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_05_signatures_names_dependencies_verdicts_acceptance(self) -> None:
         """Signature vectors, slot names, dependencies, replay ceiling, contradictory verdicts, acceptance boundaries."""
-        # --- 1. Run all 34 Ed25519 vectors in `primitives/vectors/verify-sig.json` ---
-        vectors_path = PROJECTS_DIR / "primitives" / "vectors" / "verify-sig.json"
+        # --- 1. Run all 34 Ed25519 vectors in `vectors/verify-sig.json` ---
+        vectors_path = ROOT_DIR / "vectors" / "verify-sig.json"
         doc = json.loads(vectors_path.read_text(encoding="utf-8"))
         self.assertEqual(len(doc["vectors"]), 50)
         ed25519_vecs = [v for v in doc["vectors"] if "alg" not in v["input"]]
@@ -1792,15 +1791,15 @@ class TestVars1Conformance(unittest.TestCase):
         def spy(root, rules):
             got.update(head=subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True,
                                            text=True).stdout.strip(), f=(root / "f").read_text(), rules=rules,
-                       sibling=(root.parent / "sigma-glyph").resolve() == (work.parent / "sigma-glyph").resolve())
+                       sibling=(root.parent / "sigma-glyph").exists())
             return ["spy OK"], True
         real, mc.run_checks = mc.run_checks, spy
         try:
-            self.assertEqual(mc.checks_at(work, first, b"\x01" * 32),
-                             (["siblings are the current checkouts: this release does not pin them OK", "spy OK"], True))
+            self.assertEqual(mc.checks_at(work, first, b"\x01" * 32), (["spy OK"], True))
         finally:
             mc.run_checks = real
-        self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": True})
+        self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": False},
+                         "nothing beside the worktree: the commit carries its dependencies")
         self.assertEqual(g("worktree", "list", "--porcelain").count("worktree "), 1, "the worktree is removed")
         self.assertEqual((work / "f").read_text(), "two", "the checkout itself is untouched")
         g("checkout", "-q", "-b", "side")
@@ -1929,9 +1928,9 @@ class TestVars1Conformance(unittest.TestCase):
             mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=bad_checks)
 
     def test_24_releases_pin_the_sibling_checkouts(self) -> None:
-        """Monday (F36 review, note): a release records the sigma-glyph and primitives commits; checks run on those
+        """Monday (F36 review, note): releases that pinned sigma-glyph and primitives commits are checked on those
         commits, extracted beside the worktree, not on whatever the sibling checkouts hold, and Book I is compared
-        with the spec's pin."""
+        with the spec's pin. Releases since minds carries its dependencies pin nothing and see no siblings."""
         mc = self._minds_chain()
         proj = Path(self.tmp.name) / "proj"
 
@@ -1963,6 +1962,8 @@ class TestVars1Conformance(unittest.TestCase):
 
         seen = {}
         def spy(root, rules):
+            if not (root.parent / "sigma-glyph").exists():
+                return ["spy OK"], True
             seen.update(book=(root.parent / "sigma-glyph" / "impl" / "sigma_resume.py").read_text(),
                         readme=(root.parent / "sigma-glyph" / "README").read_text(),
                         vectors=(root.parent / "primitives" / "v").read_text(),
@@ -1979,15 +1980,10 @@ class TestVars1Conformance(unittest.TestCase):
             lines, ok = mc.checks_at(minds, m1, V.H_LENS_KERNEL, {"sigma-glyph": s_new, "primitives": p1})
             self.assertFalse(ok)
             self.assertIn(f"sigma-glyph Book I equals the spec's pin {pin} FAILED", lines)
-            lines, ok = mc.checks_at(minds, m1, V.H_LENS_KERNEL)
-            self.assertTrue(ok and seen["linked"] and seen["book"] == "book two")
-            self.assertIn("siblings are the current checkouts: this release does not pin them OK", lines)
+            self.assertEqual(mc.checks_at(minds, m1, V.H_LENS_KERNEL), (["spy OK"], True))
         finally:
             mc.run_checks, mc.SIGMA_PIN = real_checks, real_pin
 
-        self.assertEqual(mc.sibling_revs(minds), ({"sigma-glyph": s_new, "primitives": gp("rev-parse", "HEAD")}, None))
-        (sg / "README").write_text("dirty")
-        self.assertIn("sigma-glyph checkout has uncommitted changes", mc.sibling_revs(minds)[1] or "")
 
         # The statement carries the pins, and verify-release hands them to the checks
         stmt = f"minds release main@{m1} rules@{V.H_LENS_KERNEL.hex()} sigma-glyph@{s_same} primitives@{p1}; checks: x"
@@ -2518,6 +2514,31 @@ class TestVars1Conformance(unittest.TestCase):
         code, err = offline("verify-attestation", hidden)
         self.assertEqual(code, 2)
         self.assertIn("omits 1 verdict", err)
+
+    def test_37_dependencies_are_pinned_by_content(self) -> None:
+        """minds carries its dependencies: Book I from PyPI, checked by the modules' bytes at import (a modified
+        sigma_resume first on the path is refused); the vendored Lean sources and vectors match their SOURCE."""
+        for d in ("proofs/SigmaEval", "vectors"):
+            listed = {}
+            for line in (ROOT_DIR / d / "SOURCE").read_text().splitlines():
+                parts = line.split()
+                if len(parts) == 2 and len(parts[0]) == 64:
+                    listed[parts[1]] = parts[0]
+            self.assertTrue(listed, d)
+            on_disk = {f.name for f in (ROOT_DIR / d).iterdir() if f.name != "SOURCE"}
+            self.assertEqual(set(listed), on_disk, f"{d}: SOURCE lists exactly the files present")
+            for name, digest in listed.items():
+                self.assertEqual(V.sha256((ROOT_DIR / d / name).read_bytes()).hex(), digest, f"{d}/{name}")
+
+        fake = Path(self.tmp.name) / "fake"
+        fake.mkdir()
+        (fake / "sigma_resume.py").write_bytes(Path(SR.__file__).read_bytes() + b"\n# modified\n")
+        out = subprocess.run([sys.executable, "-c", "import vars1"], cwd=ROOT_DIR, capture_output=True, text=True,
+                             env={**os.environ, "PYTHONPATH": str(fake)})
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("is not Book I", out.stderr)
+        ok = subprocess.run([sys.executable, "-c", "import vars1"], cwd=ROOT_DIR, capture_output=True, text=True)
+        self.assertEqual(ok.returncode, 0, ok.stderr)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@ is that key until `join` adds others. With more than one key, every release need
 from every key on the roster: another member runs `verify-release`, which reruns the checks on the released commit
 in its own worktree and records that member's verdict.
 
+Run it with the interpreter that has requirements.txt installed (`.venv/bin/python tools/minds_chain.py ...`):
+the checks run the test suites with that same interpreter.
+
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
     tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check on main in a
                                               # fresh worktree, then record main
@@ -249,23 +252,12 @@ def parse_release(statement: str) -> Tuple[str, bytes, Optional[Dict[str, str]]]
     return m.group(1), bytes.fromhex(m.group(2)), pins
 
 
-def sibling_revs(repo_dir: Path) -> Tuple[Dict[str, str], Optional[str]]:
-    """The commits of the sibling checkouts beside `repo_dir`, and why a release may not pin them now, if so."""
-    revs: Dict[str, str] = {}
-    for sib in SIBLINGS:
-        d = Path(repo_dir).resolve().parent / sib
-        git = lambda *a: subprocess.run(["git", "-C", str(d), *a], capture_output=True, text=True, check=True).stdout
-        revs[sib] = git("rev-parse", "--verify", "HEAD^{commit}").strip()
-        if git("status", "--porcelain", "--untracked-files=no").strip():
-            return revs, f"the {sib} checkout has uncommitted changes"
-    return revs, None
-
-
 def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
-    """Run every check on commit `sha` in a fresh worktree under `.git/vars/verify/`. With `siblings`, each sibling
-    is extracted at the pinned commit beside it (read from the sibling repository with `git archive`) and Book I is
-    compared with the spec's pin; without, the current sibling checkouts are linked, and a line says so. The
-    worktree and the extracted siblings are removed afterwards."""
+    """Run every check on commit `sha` in a fresh worktree under `.git/vars/verify/`. A commit now carries
+    its dependencies (sigma-glyph from PyPI by requirements.txt, run by this interpreter; vendored Lean sources and
+    vectors), so nothing sits beside the worktree. An older release that pinned sibling commits (`siblings`) gets
+    each extracted at that commit beside it (read from the sibling repository with `git archive`), and Book I is
+    compared with the spec's pin. The worktree and any extracted siblings are removed afterwards."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True)
     git("merge-base", "--is-ancestor", sha, "main")
     parent = Path(repo_dir).resolve().parent
@@ -279,14 +271,11 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
         elif dst.exists():
             shutil.rmtree(dst)
         if siblings is None:
-            dst.symlink_to(parent / sib)
             continue
         dst.mkdir()
         arc = subprocess.run(["git", "-C", str(parent / sib), "archive", siblings[sib]], capture_output=True, check=True)
         subprocess.run(["tar", "-x", "-C", str(dst)], input=arc.stdout, check=True)
-    if siblings is None:
-        pre.append(("siblings are the current checkouts: this release does not pin them", True))
-    else:
+    if siblings is not None:
         same = subprocess.run(["git", "-C", str(parent / "sigma-glyph"), "diff", "--quiet", SIGMA_PIN,
                                siblings["sigma-glyph"], "--", *BOOK_I]).returncode == 0
         pre.append((f"sigma-glyph Book I equals the spec's pin {SIGMA_PIN}", same))
@@ -363,20 +352,18 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "release":
         main_sha, why = release_target(repo_dir)
-        sibs, why_sib = sibling_revs(repo_dir)
-        why = why or why_sib
         if why:
             print(f"refused: {why}", file=sys.stderr)
             return 1
-        checks, ok = checks_at(repo_dir, main_sha, V.H_LENS_KERNEL, sibs)  # fresh: nothing left from earlier builds
+        checks, ok = checks_at(repo_dir, main_sha, V.H_LENS_KERNEL)  # fresh: nothing left from earlier builds
         print("\n".join(checks))
         if not ok:
             print("refused: a check failed", file=sys.stderr)
             return 1
-        if release_target(repo_dir) != (main_sha, None) or sibling_revs(repo_dir) != (sibs, None):
-            print("refused: main, HEAD, the tree or a sibling changed while the checks ran", file=sys.stderr)
+        if release_target(repo_dir) != (main_sha, None):
+            print("refused: main, HEAD or the tree changed while the checks ran", file=sys.stderr)
             return 1
-        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks, sibs)
+        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks)
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
     if cmd == "join" and len(argv) == 3:

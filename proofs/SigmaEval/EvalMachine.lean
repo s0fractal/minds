@@ -1,0 +1,440 @@
+/- Book I evaluator, mechanized (Lean 4 core).
+
+   A faithful model of the v0.5 hash-thunk machine (`step5`/`eval_hash` in
+   impl/sigma_glyph.py): leftmost-outermost reduction with lazy left-spine
+   resolution and size-priced ATP under the hash-leaf size model. Terms are
+   graphs of materialized nodes over unresolved hashes (thunks); genesis
+   I/K/S are recognized by hash without a store (§5.1). The differential
+   bridge proofs/eval_bridge_check.py ties this to the live oracle on every
+   eval conformance vector (result hash AND atp_spent, byte-exact).
+
+   Theorems:
+     * step_cost_pos — every priced action costs ≥ 1 (the spec's "minimum
+                       cost of any action is 1"): reduction cannot stall on a
+                       zero-cost loop, so eval is total by construction
+     * eval_spent_le — `eval` never spends more than its budget: spent ≤ atp
+                       (Book I §3.4 "spent never exceeds atp", now a theorem
+                       for ALL terms and budgets, not just the pinned vectors)
+     * eval_settles  — with fuel above the remaining budget, the configuration
+                       `eval` RETURNS is a normal form of `step`: the machine
+                       has actually settled on one of the three outcomes, it
+                       was not cut off by the fuel counter (the claim `eval`'s
+                       fuel-out branch used to make in a source comment only)
+     * force_mono / step_mono / eval_mono / evalHash_mono / evalHash_stable —
+                       store monotonicity. `eval` has three inputs, and an absent
+                       hash is a canonical outcome (§3.5), so availability is
+                       inside the semantics. These bound how far that goes:
+                       extending a store can turn an Unresolved answer into
+                       something else and can NEVER change a normal form or an
+                       exhaustion. The differential bridge for them is
+                       proofs/store_mono_bridge_check.py, which grows and shrinks
+                       the store under the live oracle on every eval vector.
+   Totality is definitional (fuel-indexed structural recursion, a total
+   function); determinism is definitional (it is a function). The bridge is
+   the empirical check that this total, budget-respecting function IS the
+   oracle. -/
+import MachineBytes
+
+namespace EvalMachine
+
+open MachineBytes (Bytes)
+
+/-- Hash-thunk terms (mirrors impl/sigma_glyph.py: thunk/lit/ref/dis/app). -/
+inductive Term where
+  | thunk (h : Bytes)
+  | lit (atom : Bytes)
+  | ref (target : Bytes)
+  | dis (reason : Bytes)
+  | app (f a : Term)
+deriving Repr, Inhabited
+
+/-- Hash-leaf size model (ADR-001×003): materialized nodes count 1, an
+    unresolved hash leaf counts 1, a materialized REF counts 2. -/
+def size : Term → Nat
+  | .app f a => 1 + size f + size a
+  | .ref _ => 2
+  | _ => 1
+
+/-- NodeHash of a term (hash-transparent on thunks). -/
+def termHash : Term → Bytes
+  | .thunk h => h
+  | .lit a => MachineBytes.nodeHash (.lit a)
+  | .ref h => MachineBytes.nodeHash (.ref h)
+  | .dis r => MachineBytes.nodeHash (.dis r)
+  | .app f a => MachineBytes.nodeHash (.app (termHash f) (termHash a))
+
+/-- reason hashes (§4.2 / §3.4 canonical outcomes). -/
+def rInvalid : Bytes := Sha256.sha256 ("Invalid Object".toUTF8.toList)
+def rATP : Bytes := Sha256.sha256 ("ATP Exhausted".toUTF8.toList)
+def rUnres : Bytes := Sha256.sha256 ("Unresolved Reference".toUTF8.toList)
+
+/-- genesis atoms and node hashes (§5.1, intrinsic). -/
+def atomI : Bytes := Sha256.sha256 ("I".toUTF8.toList)
+def atomK : Bytes := Sha256.sha256 ("K".toUTF8.toList)
+def atomS : Bytes := Sha256.sha256 ("S".toUTF8.toList)
+def gI : Bytes := MachineBytes.nodeHash (.lit atomI)
+def gK : Bytes := MachineBytes.nodeHash (.lit atomK)
+def gS : Bytes := MachineBytes.nodeHash (.lit atomS)
+
+def isGenesis (h : Bytes) : Bool := h = gI || h = gK || h = gS
+
+/-- O(1) glyph check for redex heads (§3.2 Identity by Hash): a thunk carries
+    its hash; a materialized LITERAL hashes; nothing else can equal a
+    LITERAL's NodeHash (modulo CP-24). -/
+def glyphEq : Term → Bytes → Bool
+  | .thunk h, gh => h = gh
+  | .lit a, gh => MachineBytes.nodeHash (.lit a) = gh
+  | _, _ => false
+
+/-- CAS: bytes are keyed by their SHA-256. -/
+abbrev Store := List Bytes
+
+def storeGet (st : Store) (h : Bytes) : Option Bytes :=
+  st.find? (fun b => Sha256.sha256 b = h)
+
+/-- Node → Term (a freshly materialized node has thunk children). -/
+def ofNode : MachineBytes.Node → Term
+  | .lit a => .lit a
+  | .ref t => .ref t
+  | .dis r => .dis r
+  | .app l r => .app (.thunk l) (.thunk r)
+
+/-- Materialize ONE node from hash h; genesis intrinsic, deser failure →
+    Canonical Invalid Object. `none` = unresolved (not in store, not genesis). -/
+def force (h : Bytes) (st : Store) : Option Term :=
+  if h = gI then some (.lit atomI)
+  else if h = gK then some (.lit atomK)
+  else if h = gS then some (.lit atomS)
+  else match storeGet st h with
+    | none => none
+    | some b => match MachineBytes.deserialize b with
+        | none => some (.dis rInvalid)
+        | some n => some (ofNode n)
+
+/-- one priced action of the machine. -/
+inductive StepResult where
+  | nf                              -- normal form
+  | exhausted                       -- demanded action unaffordable
+  | unresolved                      -- demanded hash absent
+  | step (t : Term) (cost : Nat)    -- fired: new term, cost spent
+deriving Repr
+
+/-- `step t remaining store` — leftmost-outermost, lazy spine, size-priced.
+    Structural recursion on the term: the spine descent recurses only on the
+    subterms of an `app`. Redex heads (§3.1) are recognized by hash: R-I when
+    the function is ⟨I⟩; R-K when it is `app ⟨K⟩ _`; R-S when it is
+    `app (app ⟨S⟩ _) _` (note `glyphEq` is false on any `app`, so R-K/R-S only
+    fire on the exact spine shapes — matching step5). -/
+def step (t : Term) (remaining : Nat) (st : Store) : StepResult :=
+  match t with
+  | .thunk h =>
+      if isGenesis h then .nf                       -- NF leaf by hash (§5.1)
+      else if remaining < 1 then .exhausted
+      else match force h st with
+        | none => .unresolved
+        | some v =>
+            let c := size v                          -- 1/2/3 by node kind
+            if c > remaining then .exhausted         -- fetched bytes discarded
+            else .step v c
+  | .ref h =>
+      if remaining < 1 then .exhausted
+      else .step (.thunk h) 1                        -- R-R: one level
+  | .lit _ => .nf
+  | .dis _ => .nf
+  | .app f a =>
+      -- descent: demand the function spine, then the argument (step5's tail)
+      let descend : StepResult :=
+        match step f remaining st with
+        | .step f' c => .step (.app f' a) c
+        | .nf =>
+            match step a remaining st with
+            | .step a' c => .step (.app f a') c
+            | other => other
+        | other => other
+      match f with
+      | .app (.app f11 f12) f2 =>                    -- f = ((f11 f12) f2)
+          if glyphEq f11 gS then                     -- R-S: x=f12, y=f2, z=a
+            (if 1 + size a > remaining then .exhausted
+             else .step (.app (.app f12 a) (.app f2 a)) (1 + size a))
+          else descend
+      | .app f1 f2 =>                                -- f = (f1 f2), f1 not an app
+          if glyphEq f1 gK then
+            (if remaining < 1 then .exhausted else .step f2 1)  -- R-K
+          else descend
+      | _ =>                                         -- f not an app
+          if glyphEq f gI then
+            (if remaining < 1 then .exhausted else .step a 1)   -- R-I
+          else descend
+  termination_by sizeOf t
+
+/-- iterate `step` under a fuel bound (fuel = an upper bound on the number of
+    priced actions; `atp + 1` always suffices since each action costs ≥ 1).
+    Returns (result term, atp spent). Total: structural recursion on fuel. -/
+def eval : Nat → Term → Nat → Nat → Store → Term × Nat
+  | 0,        t, _,   spent, _  => (t, spent)          -- fuel out (unreached at atp+1)
+  | fuel + 1, t, atp, spent, st =>
+      match step t (atp - spent) st with
+      | .nf => (t, spent)
+      | .exhausted => (.dis rATP, spent)
+      | .unresolved => (.dis rUnres, spent)
+      | .step t' c => eval fuel t' atp (spent + c) st
+
+/-- top-level: eval a term hash under a budget. -/
+def evalHash (h : Bytes) (atp : Nat) (st : Store) : Term × Nat :=
+  eval (atp + 1) (.thunk h) atp 0 st
+
+/- ---------- theorems ---------- -/
+
+/- ---------- store monotonicity ----------
+
+   The evaluator has three inputs, not two. `evalHash h atp st` reads the store,
+   and a hash absent from it is a *canonical* outcome (§3.5), so availability sits
+   inside the semantics: two conforming nodes with the same term and the same
+   budget can return different canonical results if one holds bytes the other
+   does not.
+
+   What makes that safe rather than merely admitted is the direction of the
+   difference. Extending a store can turn an `Unresolved` outcome into something
+   else; it can never change a normal form or an exhaustion. These lemmas prove
+   that, so the honest determinism statement is: `eval` is a function of
+   (term, budget, store), and its answer is stable under everything a store
+   can *gain*.
+
+   `Extends` is stated on lookups rather than as list inclusion. Inclusion alone
+   is not enough: `storeGet` returns the *first* element whose hash matches, so a
+   larger store could answer with different bytes of the same hash. That case
+   needs a collision, and rather than assume SHA-256 injective — which is false by
+   counting and unprovable here — the hypothesis is exactly the property a
+   content-addressed store is supposed to have. -/
+
+/-- `s₂` answers every lookup `s₁` answers, with the same bytes. -/
+def Extends (s₂ s₁ : Store) : Prop :=
+  ∀ h b, storeGet s₁ h = some b → storeGet s₂ h = some b
+
+theorem Extends.refl (s : Store) : Extends s s := fun _ _ h => h
+
+theorem Extends.trans {a b c : Store} (hab : Extends a b) (hbc : Extends b c) :
+    Extends a c := fun h x m => hab h x (hbc h x m)
+
+/-- Materialization is monotone: what one store resolves, a larger one resolves
+    the same way. The genesis intrinsics need no store at all (§5.1). -/
+theorem force_mono {s₂ s₁ : Store} (ext : Extends s₂ s₁) (h : Bytes) (t : Term) :
+    force h s₁ = some t → force h s₂ = some t := by
+  unfold force
+  split
+  · exact id
+  · split
+    · exact id
+    · split
+      · exact id
+      · cases hg : storeGet s₁ h with
+        | none => simp [hg]
+        | some b => simp [hg, ext h b hg]
+
+/-- One action is monotone unless it was the unresolved one. -/
+theorem step_mono {s₂ s₁ : Store} (ext : Extends s₂ s₁) (t : Term) (rem : Nat) :
+    step t rem s₂ = step t rem s₁ ∨ step t rem s₁ = .unresolved := by
+  fun_induction step t rem s₁ <;> grind [force_mono, step]
+
+/-- The run is monotone unless it ended unresolved: extending the store cannot
+    change a normal form or an exhaustion into anything else. -/
+theorem eval_mono {s₂ s₁ : Store} (ext : Extends s₂ s₁)
+    (fuel : Nat) (t : Term) (atp spent : Nat) :
+    eval fuel t atp spent s₂ = eval fuel t atp spent s₁
+      ∨ (eval fuel t atp spent s₁).1 = .dis rUnres := by
+  induction fuel generalizing t spent with
+  | zero => left; rfl
+  | succ fuel ih =>
+      rw [eval, eval]
+      rcases step_mono ext t (atp - spent) with same | unres
+      · rw [same]
+        cases hstep : step t (atp - spent) s₁ with
+        | nf => left; rfl
+        | exhausted => left; rfl
+        | unresolved => right; rfl
+        | step t' c => exact ih t' (spent + c)
+      · rw [unres]
+        cases hstep : step t (atp - spent) s₂ with
+        | nf => right; rfl
+        | exhausted => right; rfl
+        | unresolved => right; rfl
+        | step t' c => right; rfl
+
+/-- Top level, and the statement the README makes: the answer depends on the
+    store, and only an `Unresolved` answer can be changed by adding to it. -/
+theorem evalHash_mono {s₂ s₁ : Store} (ext : Extends s₂ s₁) (h : Bytes) (atp : Nat) :
+    evalHash h atp s₂ = evalHash h atp s₁
+      ∨ (evalHash h atp s₁).1 = .dis rUnres :=
+  eval_mono ext (atp + 1) (.thunk h) atp 0
+
+/-- The same, contrapositive and usable: a settled answer is stable. -/
+theorem evalHash_stable {s₂ s₁ : Store} (ext : Extends s₂ s₁) (h : Bytes) (atp : Nat)
+    (settled : (evalHash h atp s₁).1 ≠ .dis rUnres) :
+    evalHash h atp s₂ = evalHash h atp s₁ := by
+  rcases evalHash_mono ext h atp with same | unres
+  · exact same
+  · exact absurd unres settled
+
+
+/-- the hash-leaf size of any term is ≥ 1. -/
+theorem size_pos (t : Term) : 1 ≤ size t := by
+  cases t <;> simp [size] <;> omega
+
+/-- both bounds at once, in a shape `fun_induction step` can chew on: whatever
+    `step` returns, a fired action's cost sits in `[1, remaining]`.
+
+    Tactic transparency (Kimi v0.6.4 focused review P2): `fun_induction step`
+    produces one goal per branch of `step`; `grind [size_pos, size]` discharges
+    each. The manual skeleton it automates, per branch:
+    - `.nf`/`.exhausted`/`.unresolved`: goal is `True` — trivial.
+    - thunk-force: `c = size v`, guarded by `¬(size v > rem)`; `1 ≤ c` from
+      `size_pos`, `c ≤ rem` from the guard.
+    - `.ref` (R-R) / R-I / R-K: `c = 1`, guard `¬(rem < 1)`.
+    - R-S: `c = 1 + size a`, guard `¬(1 + size a > rem)`.
+    - descend: the sub-call's bound is the induction hypothesis.
+    (The `grind`s are cross-checked empirically by the 33-vector eval bridge.) -/
+theorem step_bounds (t : Term) (rem : Nat) (st : Store) :
+    (match step t rem st with
+     | .step _ c => 1 ≤ c ∧ c ≤ rem
+     | _ => True) := by
+  fun_induction step t rem st <;> grind [size_pos, size]
+
+/-- a fired action never costs more than the remaining budget. -/
+theorem step_cost_le (t : Term) (rem : Nat) (st : Store) (t' : Term) (c : Nat)
+    (h : step t rem st = .step t' c) : c ≤ rem := by
+  have := step_bounds t rem st; rw [h] at this; exact this.2
+
+/-- every priced action costs ≥ 1: the machine cannot loop at zero cost, so
+    reduction strictly draws down the budget (spec §3.4 "minimum cost 1"). -/
+theorem step_cost_pos (t : Term) (rem : Nat) (st : Store) (t' : Term) (c : Nat)
+    (h : step t rem st = .step t' c) : 1 ≤ c := by
+  have := step_bounds t rem st; rw [h] at this; exact this.1
+
+/-- `eval` never overspends: spent ≤ atp for all terms, budgets, fuel.
+    (Uses `step_cost_le`: an accepted step's cost fits in `atp - spent`.) -/
+theorem eval_spent_le (fuel : Nat) (t : Term) (atp spent : Nat) (st : Store)
+    (h : spent ≤ atp) : (eval fuel t atp spent st).2 ≤ atp := by
+  induction fuel generalizing t spent with
+  | zero => simpa [eval] using h
+  | succ fuel ih =>
+      rw [eval]
+      split
+      · exact h
+      · exact h
+      · exact h
+      · rename_i t' c heq
+        have hc : c ≤ atp - spent := step_cost_le _ _ _ _ _ heq
+        exact ih t' (spent + c) (by omega)
+
+/-- top-level corollary: `evalHash` respects its budget. -/
+theorem evalHash_spent_le (hsh : Bytes) (atp : Nat) (st : Store) :
+    (evalHash hsh atp st).2 ≤ atp :=
+  eval_spent_le _ _ _ _ _ (Nat.zero_le _)
+
+/-- fuel sufficiency / outcome classification: once the fuel exceeds the
+    remaining budget, the configuration `eval` RETURNS is a normal form of
+    `step` — no further action fires on it.
+
+    This is the theorem behind `eval`'s "unreached at atp+1" comment. Each
+    accepted action costs ≥ 1 (`step_cost_pos`) and no more than what is left
+    (`step_cost_le`), so `atp - spent` strictly decreases and the fuel counter
+    cannot be what stopped the machine: the returned pair is a genuine
+    outcome, not a truncated trace. Because `step` on the returned
+    configuration is `.nf`, and `eval` reaches its three exits only via
+    `step`'s `.nf` / `.exhausted` / `.unresolved` results, every run lands on
+    exactly one of normal form, `DISSONANCE(ATP Exhausted)` (the `.exhausted`
+    exit returns `.dis rATP`) or `DISSONANCE(Unresolved Reference)` (the
+    `.unresolved` exit returns `.dis rUnres`) — Book I §3.4/§4.2.
+
+    Scope, precisely: this is about the returned CONFIGURATION, and it does
+    not claim the three outcome TERMS are pairwise distinct — a term whose
+    normal form is materialized from the store can be the `.dis rATP` leaf
+    itself. What is proved is that the machine is settled when it answers. -/
+theorem eval_settles (fuel : Nat) (t : Term) (atp spent : Nat) (st : Store)
+    (hf : atp - spent < fuel) :
+    step (eval fuel t atp spent st).1 (atp - (eval fuel t atp spent st).2) st
+      = .nf := by
+  induction fuel generalizing t spent with
+  | zero => omega                                  -- `atp - spent < 0` is false
+  | succ fuel ih =>
+      rw [eval]
+      cases hs : step t (atp - spent) st with
+      | nf => simp only [hs]                       -- returns (t, spent) itself
+      | exhausted => rw [step]                     -- returns the ATP leaf: NF
+      | unresolved => rw [step]                    -- returns the UNRES leaf: NF
+      | step t' c =>
+          have h1 : 1 ≤ c := step_cost_pos _ _ _ _ _ hs
+          have h2 : c ≤ atp - spent := step_cost_le _ _ _ _ _ hs
+          exact ih t' (spent + c) (by omega)       -- the budget strictly shrank
+
+/-- top-level corollary at the fuel `evalHash` actually passes (`atp + 1`):
+    the machine settles on every input, under every budget, in every store. -/
+theorem evalHash_settles (hsh : Bytes) (atp : Nat) (st : Store) :
+    step (evalHash hsh atp st).1 (atp - (evalHash hsh atp st).2) st = .nf :=
+  eval_settles _ _ _ _ _ (by omega)
+
+/- ---------- the ADR-001 memory bound, ON the concrete evaluator ----------
+   `SizeBound.lean` proves `size ≤ spent + 1` for an abstract seven-row
+   accounting model, and `bridge_check.py` checks the per-step premise on
+   live oracle traces without row-by-row correspondence. Here the premise is
+   a THEOREM about the faithful evaluator itself: every priced action's size
+   growth is ≤ cost − 1, so the bound holds end-to-end with no classifier. -/
+
+/-- per-step memory accounting (the exact §3.4 row correspondence): a fired
+    action grows the term by at most `cost − 1` (`size t' + 1 ≤ size t + c`).
+    Note R-S is the only growing rule and it holds *unconditionally* — the
+    discarded ⟨S⟩ head contributes `size ≥ 0` of slack, no leaf assumption. -/
+theorem size_step (t : Term) (rem : Nat) (st : Store) :
+    (match step t rem st with
+     | .step t' c => size t' + 1 ≤ size t + c
+     | _ => True) := by
+  fun_induction step t rem st <;> grind [size, size_pos]
+
+/-- `eval` preserves the memory bound `size ≤ spent + 1`. -/
+theorem eval_size_bound (fuel : Nat) (t : Term) (atp spent : Nat) (st : Store)
+    (h : size t ≤ spent + 1) :
+    size (eval fuel t atp spent st).1 ≤ (eval fuel t atp spent st).2 + 1 := by
+  induction fuel generalizing t spent with
+  | zero => simpa [eval] using h
+  | succ fuel ih =>
+      rw [eval]
+      split
+      · simpa using h
+      · simp [size]        -- ATP Exhausted: DISSONANCE leaf, size 1 ≤ spent+1
+      · simp [size]        -- Unresolved Reference: likewise
+      · rename_i t' c heq
+        have hs := size_step t (atp - spent) st
+        rw [heq] at hs
+        exact ih t' (spent + c) (by omega)
+
+/-- the memory bound on the top-level evaluator: the materialized result of
+    `evalHash` never exceeds `spent + 1` nodes (ADR-001, §3.4), now a Lean
+    theorem about the same function the differential bridge pins to the
+    oracle — the step-tag / row-correspondence gap, closed by proof. -/
+theorem evalHash_size_bound (hsh : Bytes) (atp : Nat) (st : Store) :
+    size (evalHash hsh atp st).1 ≤ (evalHash hsh atp st).2 + 1 :=
+  eval_size_bound _ _ _ _ _ (by simp [size])
+
+/-- PEAK memory, not just the answer: every configuration `evalHash`'s trace
+    passes through is ≤ `atp + 1` nodes.
+
+    `evalHash_size_bound` bounds the RETURNED configuration only, and the
+    returned one is routinely the smallest: the trace of a store-backed
+    `S K K I` peaks at 7 nodes and answers with 1. The quantifier over `k` is
+    what makes this a peak bound — `eval k` runs at most `k` actions and its
+    fuel-out branch returns the configuration reached, so `eval k t atp 0 st`
+    for `k = 0, 1, 2, …` enumerates exactly the configurations of the
+    `evalHash hsh atp st` run (which is `eval (atp+1)`), each of them bounded
+    here. Two steps: `eval_size_bound` gives `size ≤ spent k + 1` at the k-th
+    configuration, `eval_spent_le` gives `spent k ≤ atp` at every k.
+
+    So the ADR-001 accounting prices peak memory, not merely the result — on
+    the evaluator itself, with no reachability side-condition. (`SizeBound`'s
+    `memory_bound` does quantify over all reachable states, but of the
+    abstract seven-row model, not of this evaluator.) -/
+theorem evalHash_peak_size (hsh : Bytes) (atp : Nat) (st : Store) (k : Nat) :
+    size (eval k (.thunk hsh) atp 0 st).1 ≤ atp + 1 :=
+  Nat.le_trans (eval_size_bound _ _ _ _ _ (by simp [size]))
+    (Nat.succ_le_succ (eval_spent_le _ _ _ _ _ (Nat.zero_le _)))
+
+end EvalMachine

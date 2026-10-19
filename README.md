@@ -37,29 +37,28 @@ alone after that. To give both a veto, pin both keys when you verify:
 
 `join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every
 member. A member runs `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the
-checks at the commit the release names, in its own worktree, with `sigma-glyph` and `primitives` extracted at the
-commits the release pins, records ATTESTED or INVALID under its own key, and witnesses the projections that name
+checks at the commit the release names, in its own worktree, records ATTESTED or INVALID under its own key, and witnesses the projections that name
 it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
 member's own ATTESTED.
 
 ## Running
 
-The code expects sibling checkouts of [sigma-glyph](https://github.com/s0fractal/sigma-glyph) and
-[primitives](https://github.com/s0fractal/primitives), and `node` for the wasm kernel:
+minds needs `node` for the wasm kernel and Book I, [sigma-glyph](https://github.com/s0fractal/sigma-glyph) 0.8.0
+from PyPI, pinned by hash in `requirements.txt`; `vars1.py` also checks the installed modules' bytes against the
+revision the spec pins. The Lean link's three sigma-glyph files and the Ed25519 vectors from
+[primitives](https://github.com/s0fractal/primitives) are copied in (`proofs/SigmaEval/SOURCE`, `vectors/SOURCE`).
 
 ```
-git clone https://github.com/s0fractal/minds
-git clone https://github.com/s0fractal/sigma-glyph
-git clone https://github.com/s0fractal/primitives
-cd minds
-python3 -m unittest test_vars1          # conformance; every fold and lens runs kernel/lens.wasm and its twin
+git clone https://github.com/s0fractal/minds && cd minds
+python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
 (cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
-python3 test_vars1_props.py             # property-based invariants I0–I11 (I9, I10 need the proofs' executables)
-python3 vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
+.venv/bin/python -m unittest test_vars1     # conformance; every fold and lens runs kernel/lens.wasm and its twin
+.venv/bin/python test_vars1_props.py        # property-based invariants I0–I11 (I9, I10 need the proofs' executables)
+.venv/bin/python vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
 ```
 
 A client that only checks bundles needs none of this: `verify/minds_verify.py` is one standard-library file with no
-sibling imports, no git and no network. Copy it anywhere and run
+dependencies, no git and no network. Copy it anywhere and run
 
 ```
 python3 -I minds_verify.py verify-attestation BUNDLE.json --require PUBKEY   # exit 0 only on acceptance
