@@ -345,6 +345,24 @@ witness the projection. A verdict or seal about another
 cell is a refusal. A decision that requires a computation needs replay, hence the repository.
 `vars1.py verify-attestation BUNDLE.json [--require PUBKEY]...` exits 0 only on acceptance; `export_attestation` builds a bundle.
 
+**Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
+`sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
+that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json` (same
+arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;
+no bundle check reads one. Only `rules = H_LENS_KERNEL` is interpreted: a projection naming other rules is reported
+`rules_status: "unsupported"` — its seals and digests are checked, but its input and output are not read as
+statuses, scope or Pass 3, and nothing is accepted on it (`verify-projection` exits 1).
+
+Every result carries `explain`, derived from the bundle by the same computation as the verdict fields; it is a
+reading aid, not authority, and a doubting reader recomputes. For a projection: the rules identity and its status,
+the witness policy, each seal with its key, context and whether it counted, the policy keys that did not witness,
+and the scope epoch (the governing scope cell at `tip`). For an attestation: the evaluator policy, whether it is
+the cell's own or the scope's admission policy, its threshold and keys; the counted verdicts with their verifier
+ids and the policy keys endorsing each, over the supplied verdicts and at `tip`; the verifiers blocked by INVALID
+verdicts at `tip` and those blocked by INVALID verdicts supplied from after it, with the endorsers so withdrawn;
+the scope epoch; and, for each pinned key, why it is missing (no endorsement at `tip`, an endorsement withdrawn
+after `tip`, no witness seal on the projection, or no readable tip at all).
+
 ## 5. Replay against Book I
 
 `computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`. A checkpoint
@@ -371,4 +389,8 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11).
+- `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and
+  run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
+  INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an
+  unsupported rules identity, with the `explain` trace checked in each case.
 - `proofs/`: the theorems listed in `proofs/README.md`.

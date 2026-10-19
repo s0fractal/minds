@@ -2378,6 +2378,147 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "single parent"):
             self.repo.admit_and_advance("core", merge, expected_old=tip)
 
+    def test_36_offline_verifier_in_a_fresh_folder(self) -> None:
+        """Codex direction 2: verify/minds_verify.py alone, copied into a folder with no .git and no siblings and run
+        with `python3 -I -S`, verifies real exported bundles and explains acceptance and refusal: counted witnesses
+        and keys, blocked verifiers at and after the tip, the scope epoch, the policy, why a pinned key is missing,
+        and an unsupported rules identity."""
+        mc = self._minds_chain()
+        ska, skb = b"\x07" * 32, b"\x08" * 32
+        pka, pkb = V.ed25519_pubkey(ska), V.ed25519_pubkey(skb)
+        mc.init(self.repo_path, ska)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, ska, "b" * 40, ["x OK"])
+        scope1 = mc.governing_scope(repo)
+
+        fresh_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh_tmp.cleanup)
+        fresh = Path(fresh_tmp.name) / "client"
+        fresh.mkdir()
+        (fresh / "minds_verify.py").write_bytes((ROOT_DIR / "verify" / "minds_verify.py").read_bytes())
+        self.assertEqual(sorted(p.name for p in fresh.iterdir()), ["minds_verify.py"])
+        self.assertFalse(any((d / ".git").exists() for d in (fresh, *fresh.parents)), "no repository around it")
+        self.assertFalse((fresh.parent / "sigma-glyph").exists() or (fresh.parent / "primitives").exists())
+        env = {"PATH": "/usr/bin:/bin"}
+        loaded = subprocess.run([sys.executable, "-I", "-S", "-c",
+                                 "import sys; sys.path.insert(0, '.'); import minds_verify; "
+                                 "print(sorted(m for m in sys.modules if m != '__main__' and m.split('.')[0] not in sys.stdlib_module_names))"],
+                                cwd=fresh, env=env, capture_output=True, text=True)
+        self.assertEqual(loaded.stdout.strip(), "['minds_verify']", loaded.stderr)
+
+        def offline(cmd, bundle, *args):
+            (fresh / "bundle.json").write_text(json.dumps(bundle))
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", cmd, "bundle.json", *args],
+                                 cwd=fresh, env=env, capture_output=True, text=True)
+            (fresh / "bundle.json").unlink()
+            return out.returncode, (json.loads(out.stdout) if out.returncode in (0, 1) else out.stderr)
+
+        # A real bundle verifies offline, and the trace names what was counted
+        b1 = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        code, r = offline("verify-attestation", b1)
+        self.assertEqual((code, r["accepted"], r["rules_status"]), (0, True, "known"))
+        ex = r["explain"]
+        self.assertEqual(ex["at_tip"]["counted"], [{"verdict": r1["verdict"].hex(), "verifier": "minds-maintainer",
+                                                    "endorsers": [pka.hex()]}])
+        self.assertEqual(ex["supplied"]["counted"], ex["at_tip"]["counted"])
+        self.assertEqual((ex["at_tip"]["blocked_verifiers"], ex["after_tip"]["blocked_verifiers"]), ([], []))
+        self.assertEqual(ex["scope_epoch"], scope1.hex())
+        self.assertEqual((ex["policy"]["source"], ex["policy"]["threshold"], ex["policy"]["keys"]),
+                         ("evaluator_policy", 1, [pka.hex()]))
+        self.assertEqual(ex["rules"]["status"], "known")
+        self.assertEqual(r, V.verify_attestation(b1), "vars1.py and the standalone file are one implementation")
+        code, p = offline("verify-projection", b1["projection"])
+        self.assertEqual((code, p["explain"]["scope_epoch"], p["explain"]["witnesses_missing"]), (0, scope1.hex(), []))
+        self.assertEqual([(s["key"], s["counted"]) for s in p["explain"]["witness_seals"]], [(pka.hex(), True)])
+        pcell = V.Cell.decode(bytes.fromhex(b1["projection"]["cell"]))
+        ctx = V.Seal.decode(bytes.fromhex(b1["projection"]["seals"][0])).h_scope_ctx
+        stranger = V.ed25519_pubkey(b"\x09" * 32)
+        alien = V.Seal.sign(b"\x09" * 32, pcell.id, ctx).encode().hex()
+        code, p = offline("verify-projection", dict(b1["projection"], seals=[alien]))
+        self.assertEqual((code, p["witnessed"], p["explain"]["witnesses_missing"]), (1, False, [pka.hex()]))
+        self.assertEqual([(s["key"], s["counted"]) for s in p["explain"]["witness_seals"]], [(stranger.hex(), False)])
+
+        # Mutated output bytes: refused
+        out = b1["projection"]["output"]
+        flipped = dict(b1, projection=dict(b1["projection"], output=out[:-2] + ("00" if out[-2:] != "00" else "01")))
+        code, err = offline("verify-attestation", flipped)
+        self.assertEqual(code, 2)
+        self.assertIn("state digest", err)
+
+        # An unknown rules identity: witnessed and digest-consistent, yet never read as known
+        other = dataclasses.replace(pcell, slots=(pcell.slots[0], V.sha256(b"other rules"), *pcell.slots[2:]))
+        foreign = dict(b1["projection"], cell=other.encode().hex(), seals=[V.Seal.sign(ska, other.id, ctx).encode().hex()])
+        code, p = offline("verify-projection", foreign)
+        self.assertEqual((code, p["witnessed"], p["data_ok"], p["rules_status"], p["statuses"], p["scope"]),
+                         (1, True, True, "unsupported", None, None))
+        self.assertIn("only H_LENS_KERNEL", p["explain"]["rules"]["reason"])
+        code, r = offline("verify-attestation", dict(b1, projection=foreign))
+        self.assertEqual(code, 1, r)
+        self.assertEqual((code, r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted"]),
+                         (1, "unsupported", "supplied", None, False))
+
+        # A second member joins: the scope rotates; the earlier bundle keeps the epoch of its projection's tip
+        mc.join(self.repo_path, ska, pkb, "bob")
+        scope2 = mc.governing_scope(repo)
+        self.assertNotEqual(scope1, scope2)
+        _, r3 = mc.release(self.repo_path, ska, "c" * 40, ["x OK"])
+        mc.verify_release(self.repo_path, skb, r3["decision"], "bob", checks=lambda *a, **kw: (["x OK"], True))
+        _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["x OK"])
+        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["x OK"], True))
+        b1 = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        code, r = offline("verify-attestation", b1)
+        self.assertEqual((code, r["explain"]["scope_epoch"]), (0, scope1.hex()))
+        b3 = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r4["projection"])))
+        code, r = offline("verify-attestation", b3, "--require", pka.hex(), "--require", pkb.hex())
+        self.assertEqual((code, r["accepted"], r["explain"]["scope_epoch"]), (0, True, scope2.hex()))
+        self.assertEqual(sorted((c["verifier"], c["endorsers"]) for c in r["explain"]["at_tip"]["counted"]),
+                         [("bob", [pkb.hex()]), ("minds-maintainer", [pka.hex()])])
+        self.assertEqual({c["verdict"] for c in r["explain"]["at_tip"]["counted"]},
+                         {c.id.hex() for c in map(lambda h: V.Cell.decode(bytes.fromhex(h)), b3["verdicts"])})
+        self.assertEqual((r["explain"]["policy"]["threshold"], r["explain"]["required"]),
+                         (2, [{"key": pka.hex(), "reasons": []}, {"key": pkb.hex(), "reasons": []}]))
+        # Substituting the rotated scope (with its atoms) into the earlier bundle: refused
+        rotated = dict(b1, scope=b3["scope"], atoms=sorted(set(b1["atoms"]) | set(b3["atoms"])))
+        code, err = offline("verify-attestation", rotated)
+        self.assertEqual(code, 2)
+        self.assertIn("does not govern", err)
+
+        # Bob withdraws after p4's tip: one of two witnesses gone, and a reader pinning Bob is told why
+        mc.verify_release(self.repo_path, skb, r3["decision"], "bob", checks=lambda *a, **kw: (["x FAILED"], False))
+        b3 = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r4["projection"])))
+        code, r = offline("verify-attestation", b3, "--require", pka.hex(), "--require", pkb.hex(),
+                          "--require", stranger.hex())
+        self.assertEqual((code, r["attested_at_tip"], r["contradicted_after_tip"], r["accepted"]), (1, True, True, False))
+        ex = r["explain"]
+        self.assertEqual((ex["at_tip"]["blocked_verifiers"], ex["after_tip"]["blocked_verifiers"]), ([], ["bob"]))
+        self.assertEqual(ex["after_tip"]["withdrawn_endorsers"], [pkb.hex()])
+        self.assertEqual([c["verifier"] for c in ex["after_tip"]["counted"]], ["minds-maintainer"])
+        self.assertEqual(r["required_missing"], [pkb.hex(), stranger.hex()])
+        self.assertEqual(ex["required"], [
+            {"key": pka.hex(), "reasons": []},
+            {"key": pkb.hex(), "reasons": ["its endorsement is withdrawn by an INVALID verdict after the tip"]},
+            {"key": stranger.hex(), "reasons": ["does not endorse the cell at the projection's tip",
+                                                "did not witness the projection"]},
+        ])
+
+        # Once a projection's tip holds Bob's INVALID it blocks there, and leaving it out is a refusal
+        _, r5 = mc.release(self.repo_path, ska, "e" * 40, ["x OK"])
+        mc.verify_release(self.repo_path, skb, r5["decision"], "bob", checks=lambda *a, **kw: (["x OK"], True))
+        b5 = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r5["projection"])))
+        code, r = offline("verify-attestation", b5)
+        self.assertEqual((code, r["attested_at_tip"], r["explain"]["at_tip"]["blocked_verifiers"]), (1, False, ["bob"]))
+        self.assertEqual((r["explain"]["supplied"]["blocked_verifiers"],
+                          [c["verifier"] for c in r["explain"]["at_tip"]["counted"]]), (["bob"], ["minds-maintainer"]))
+        invalid = [v for v in b5["verdicts"] if V.Cell.decode(bytes.fromhex(v)).slots[1] == V.H_VERDICT_INVALID]
+        self.assertEqual(len(invalid), 1)
+        bad_id = V.Cell.decode(bytes.fromhex(invalid[0])).id
+        hidden = dict(b5, verdicts=[v for v in b5["verdicts"] if v not in invalid],
+                      seals=[x for x in b5["seals"] if V.Seal.decode(bytes.fromhex(x)).h_target != bad_id])
+        code, err = offline("verify-attestation", hidden)
+        self.assertEqual(code, 2)
+        self.assertIn("omits 1 verdict", err)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

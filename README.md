@@ -58,6 +58,18 @@ python3 test_vars1_props.py             # property-based invariants I0–I11 (I9
 python3 vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
 ```
 
+A client that only checks bundles needs none of this: `verify/minds_verify.py` is one standard-library file with no
+sibling imports, no git and no network. Copy it anywhere and run
+
+```
+python3 -I minds_verify.py verify-attestation BUNDLE.json --require PUBKEY   # exit 0 only on acceptance
+python3 -I minds_verify.py verify-projection BUNDLE.json
+```
+
+Each result has an `explain` trace (counted witnesses and keys, blocked verifiers at and after the tip, the scope
+epoch, the policy, why a pinned key is missing, and whether the rules identity is one it interprets). It is derived
+from the bundle, not authority; `vars1.py` delegates to the same file (spec §4.4).
+
 ## Status
 
 Experimental. The conformance suite, the property suite and the Lean proofs pass; the proofs' hypotheses and
