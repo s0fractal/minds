@@ -11,6 +11,7 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 - `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
 - `tools/minds_chain.py` — minds governs itself with VARS-1 (below).
+- `tools/bench_chain.py` — how admission and `lens()` cost grows with chain length (cold and warm instance).
 
 ## Self-governance
 
@@ -79,5 +80,11 @@ conformance suite and the property suite. The proofs' hypotheses and unlinked pa
 compiled). Other AI agents have reviewed it adversarially, and their reproduced findings are fixed with
 regression tests; no independent human has reviewed it. Radicle replicates `refs/vars/*` signed and with history
 (`tools/radicle-probe.sh`, two local nodes, rad 1.10.3).
+
+The host reads each chain commit once, as the objects its `git diff-tree` delta adds, and keeps checked objects by
+content hash and folds by tip commit; new bytes are always read, hashed against their name and checked. A cold
+process pays one Ed25519 check per seal (pure Python), so admission and lens grow linearly with history; a warm
+instance admits a commit in well under a second at 320 commits (`tools/bench_chain.py`). The rules kernel itself
+still takes the whole commit log as input, as the spec defines it.
 
 MIT licensed.

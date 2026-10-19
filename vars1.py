@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import sys
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -546,10 +547,10 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[L
                 parents_of[u].add(v)
                 children_of[v].add(u)
     indeg = {u: len(parents_of[u]) for u in cells}
-    queue = sorted(u for u, d in indeg.items() if d == 0)
+    queue = deque(sorted(u for u, d in indeg.items() if d == 0))
     order: List[bytes] = []
     while queue:
-        u = queue.pop(0)
+        u = queue.popleft()
         order.append(u)
         for ch in sorted(children_of[u]):
             indeg[ch] -= 1
@@ -558,6 +559,10 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[L
     if len(order) != len(cells):
         raise VarsError("cell references are cyclic")
     return order, parents_of, children_of
+
+
+# What one chain commit adds to its parent's tree (the whole tree for the genesis commit): atoms, cells, seals by hash
+Delta = Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]
 
 
 def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, List[bytes]]]:
@@ -574,17 +579,23 @@ def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, Li
     return (thr, pks) if len(set(pks)) >= thr else None
 
 
-def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "Cell"], Dict[bytes, "Seal"]]]) -> Tuple[bytes, List[bytes]]:
+def kernel_facts(scope: str, deltas: List["Delta"]) -> Tuple[bytes, List[bytes]]:
     """Encode a commit log as the rules kernel's input (§4.3): parsed cells, verified seals, POL1 rosters.
 
+    `deltas[i]` holds what commit i adds to its parent's tree, so an object's birth is the index of its delta.
     Only parsing happens here: the order of cells, interned origins and keys, and edge lists as cell indices."""
-    atoms, cells, seals = trees[-1]
+    atoms: Dict[bytes, bytes] = {}
+    cells: Dict[bytes, Cell] = {}
+    seals: Dict[bytes, Seal] = {}
     birth_c: Dict[bytes, int] = {}
     birth_s: Dict[bytes, int] = {}
-    for i, (_, cs, ss) in enumerate(trees):
-        for cid in cs:
+    for i, (d_atoms, d_cells, d_seals) in enumerate(deltas):
+        atoms.update(d_atoms)
+        cells.update(d_cells)
+        seals.update(d_seals)
+        for cid in d_cells:
             birth_c.setdefault(cid, i)
-        for sid in ss:
+        for sid in d_seals:
             birth_s.setdefault(sid, i)
     order, _, _ = topo_order(cells, atoms)
     pos = {cid: i for i, cid in enumerate(order)}
@@ -603,7 +614,7 @@ def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "
     keys = sorted({pk for _, pks in pols.values() for pk in pks} | {s.actor_pubkey for s in seals.values()})
     key_ix = {k: i for i, k in enumerate(keys)}
 
-    out = bytearray(struct.pack("<4I", len(trees), len(order), len(keys), len(pols)))
+    out = bytearray(struct.pack("<4I", len(deltas), len(order), len(keys), len(pols)))
     for h in sorted(pols):
         thr, pks = pols[h]
         out += h + struct.pack(f"<{2 + len(pks)}I", thr, len(pks), *(key_ix[k] for k in pks))
@@ -629,6 +640,9 @@ class GitVarsRepo:
         self.repo_dir = Path(repo_dir)
         self._blob_by_oid: Dict[str, bytes] = {}
         self._oid_by_raw: Dict[bytes, str] = {}
+        self._delta_by_commit: Dict[str, Delta] = {}
+        self._checked: Dict[Tuple[str, bytes], object] = {}
+        self._fold_memo: Dict[Tuple[str, str], Dict[str, object]] = {}
 
     def _git(self, *args: str, input_bytes: Optional[bytes] = None) -> bytes:
         res = subprocess.run(
@@ -651,41 +665,117 @@ class GitVarsRepo:
         return res.stdout.strip() if res.returncode == 0 else None
 
     def commit_chain(self, tip_commit: str) -> List[str]:
-        out = self._git("rev-list", "--reverse", tip_commit).decode().splitlines()
-        return [c.strip() for c in out if c.strip()]
+        """The commits from genesis to `tip_commit`, oldest first. A chain is one line of single-parent commits (the
+        gate's Check #1), so a history with a merge or a second root is refused rather than linearized."""
+        chain: List[str] = []
+        for line in self._git("rev-list", "--reverse", "--parents", tip_commit).decode().splitlines():
+            commit, *parents = line.split()
+            if parents != chain[-1:]:
+                raise VarsError(f"commit {commit[:12]} does not continue a single-parent chain")
+            chain.append(commit)
+        return chain
+
+    # Reading the store. A commit's tree is its parent's tree plus what the commit adds (the gate refuses anything
+    # else, Check #2), so the host reads each commit once, as the delta `git diff-tree` reports, and never re-reads
+    # history. Two caches make that hold across calls, both keyed by content and filled only after the checks pass:
+    # `_delta_by_commit` (a commit id names its tree and its parent) and `_checked` (an object's SHA-256 names its
+    # bytes, so decoding and the seal signature check are done once per object). Bytes not yet seen are always read
+    # from Git, hashed against their path and checked: a cache never stands in for new bytes.
+    _CAS_PATH = re.compile(r"^cas/(atoms|cells|seals)/([0-9a-f]{2})/([0-9a-f]{62})$")
+
+    def _checked_object(self, kind: str, h: bytes, raw: bytes, path: str) -> object:
+        if sha256(raw) != h:
+            raise VarsError(f"CAS SHA-256 mismatch at {path}")
+        hit = self._checked.get((kind, h))
+        if hit is not None:
+            return hit
+        if kind == "atoms":
+            validate_atom(raw)
+            obj: object = raw
+        elif kind == "cells":
+            obj = Cell.decode(raw)
+        else:
+            obj = Seal.decode(raw)
+        self._checked[(kind, h)] = obj
+        return obj
+
+    def _read_blobs(self, oids: List[str]) -> None:
+        """Read the blobs not yet held, with one `git cat-file --batch`; a missing object is a refusal."""
+        want = [o for o in dict.fromkeys(oids) if o not in self._blob_by_oid]
+        if not want:
+            return
+        out = self._git("cat-file", "--batch", input_bytes=("\n".join(want) + "\n").encode())
+        at = 0
+        for oid in want:
+            nl = out.index(b"\n", at)
+            header = out[at:nl].decode().split()
+            if len(header) != 3 or header[0] != oid or header[1] != "blob":
+                raise VarsError(f"git object {oid} is missing or not a blob ({' '.join(header[1:])})")
+            size = int(header[2])
+            raw = out[nl + 1:nl + 1 + size]
+            if len(raw) != size or out[nl + 1 + size:nl + 2 + size] != b"\n":
+                raise VarsError(f"git cat-file returned a short object {oid}")
+            at = nl + 2 + size
+            self._blob_by_oid[oid] = raw
+            self._oid_by_raw[raw] = oid
+
+    def _load_deltas(self, commits: List[str]) -> None:
+        """Fill `_delta_by_commit` for `commits` (consecutive chain commits) with one `git diff-tree --stdin`."""
+        missing = [c for c in commits if c not in self._delta_by_commit]
+        if not missing:
+            return
+        out = self._git("diff-tree", "--stdin", "-r", "--root", "--always", "--no-renames", "--no-abbrev",
+                        input_bytes=("\n".join(missing) + "\n").encode()).decode()
+        entries: Dict[str, List[Tuple[str, bytes, str, str]]] = {}
+        cur: Optional[List[Tuple[str, bytes, str, str]]] = None
+        for line in out.splitlines():
+            if not line:
+                continue
+            if not line.startswith(":"):
+                cur = entries.setdefault(line.split()[0], [])
+                continue
+            if cur is None:
+                raise VarsError("git diff-tree output without a commit")
+            meta, path = line.split("\t", 1)
+            _src_mode, mode, _src_oid, oid, status = meta[1:].split()
+            if status != "A":
+                raise VarsError(f"non-A tree change {status} at {path}: a chain commit only adds objects")
+            if mode != "100644":
+                raise VarsError(f"non-100644 mode {mode} at {path}")
+            m = self._CAS_PATH.match(path)
+            if not m:
+                raise VarsError(f"invalid cas path: {path}")
+            kind, aa, bb = m.groups()
+            cur.append((kind, bytes.fromhex(aa + bb), oid, path))
+        if set(entries) != set(missing):
+            raise VarsError("git diff-tree did not report every chain commit")
+        self._read_blobs([oid for es in entries.values() for _, _, oid, _ in es])
+        for commit in missing:
+            delta: Delta = ({}, {}, {})
+            for kind, h, oid, path in entries[commit]:
+                obj = self._checked_object(kind, h, self._blob_by_oid[oid], path)
+                delta[("atoms", "cells", "seals").index(kind)][h] = obj
+            self._delta_by_commit[commit] = delta
+
+    def read_commit_delta(self, commit_oid: str) -> Delta:
+        """What `commit_oid` adds to its parent's tree (all of it for a genesis commit), every object checked."""
+        self._load_deltas([commit_oid])
+        return self._delta_by_commit[commit_oid]
+
+    def chain_deltas(self, commits: List[str]) -> List[Delta]:
+        self._load_deltas(commits)
+        return [self.read_commit_delta(c) for c in commits]
 
     def read_cas_tree(self, commit_oid: str) -> Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]:
+        """The whole CAS of `commit_oid`, each kind ordered by hash (as the tree lists it)."""
         atoms: Dict[bytes, bytes] = {}
         cells: Dict[bytes, Cell] = {}
         seals: Dict[bytes, Seal] = {}
-        ls = self._git("ls-tree", "-r", commit_oid).decode().splitlines()
-        for line in ls:
-            if not line.strip():
-                continue
-            meta, path = line.split("\t", 1)
-            mode, _obj_type, oid = meta.split()
-            if mode != "100644":
-                raise VarsError(f"non-100644 mode {mode} at {path}")
-            m = re.match(r"^cas/(atoms|cells|seals)/([0-9a-f]{2})/([0-9a-f]{62})$", path)
-            if not m:
-                raise VarsError(f"invalid cas path: {path}")
-            kind_dir, aa, bb = m.groups()
-            expected_h = bytes.fromhex(aa + bb)
-            raw = self._blob_by_oid.get(oid)
-            if raw is None:
-                raw = self._git("cat-file", "blob", oid)
-                self._blob_by_oid[oid] = raw
-                self._oid_by_raw[raw] = oid
-            if sha256(raw) != expected_h:
-                raise VarsError(f"CAS SHA-256 mismatch at {path}")
-            if kind_dir == "atoms":
-                validate_atom(raw)
-                atoms[expected_h] = raw
-            elif kind_dir == "cells":
-                cells[expected_h] = Cell.decode(raw)
-            elif kind_dir == "seals":
-                seals[expected_h] = Seal.decode(raw)
-        return atoms, cells, seals
+        for d_atoms, d_cells, d_seals in self.chain_deltas(self.commit_chain(commit_oid)):
+            atoms.update(d_atoms)
+            cells.update(d_cells)
+            seals.update(d_seals)
+        return dict(sorted(atoms.items())), dict(sorted(cells.items())), dict(sorted(seals.items()))
 
     def build_candidate_commit(
         self,
@@ -1004,18 +1094,24 @@ class GitVarsRepo:
     def projection_digests(self, scope: str, tip: str) -> Tuple[bytes, bytes]:
         """`(sha256(kernel input), sha256(kernel output))` for the scope's chain up to and including `tip`: the
         `input` and `state` a projection at `tip` must carry. Anyone holding the chain can recompute them."""
-        trees = [self.read_cas_tree(c) for c in self.commit_chain(tip)]
-        kernel_input, _ = kernel_facts(scope, trees)
+        kernel_input, _ = kernel_facts(scope, self.chain_deltas(self.commit_chain(tip)))
         return sha256(kernel_input), sha256(kernel_runner().run(kernel_input))
 
     def _evaluate_commit_chain(self, scope: str, commits: List[str]) -> Dict[str, object]:
-        """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree."""
-        trees = [self.read_cas_tree(c) for c in commits]
+        """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree.
+
+        The result for a chain is memoized by its tip commit (which names the whole chain): callers must not mutate
+        it. Only a fold that both the kernel and its twin admitted is kept."""
+        key = (scope, commits[-1]) if commits else None
+        hit = self._fold_memo.get(key) if key else None
+        if hit is not None:
+            return hit
+        deltas = self.chain_deltas(commits)
         try:
-            twin, twin_err = self._fold_twin(scope, trees), None
+            twin, twin_err = self._fold_twin(scope, deltas), None
         except VarsError as e:
             twin, twin_err = None, e
-        kernel_input, order = kernel_facts(scope, trees)
+        kernel_input, order = kernel_facts(scope, deltas)
         try:
             out = kernel_runner().run(kernel_input)
         except KernelRefusal as e:
@@ -1044,7 +1140,7 @@ class GitVarsRepo:
         for k, v in kernel.items():
             if twin[k] != v:
                 raise TwinDivergence(f"rules kernel and host fold disagree on {k}")
-        return {
+        result = {
             **twin,
             **kernel,
             "kernel_input": kernel_input,
@@ -1052,9 +1148,20 @@ class GitVarsRepo:
             "kernel_status": {cid: {name: bool(status[i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
                               for i, cid in enumerate(order)},
         }
+        if key:
+            while len(self._fold_memo) >= 4:
+                self._fold_memo.pop(next(iter(self._fold_memo)))
+            self._fold_memo[key] = result
+        return result
 
-    def _fold_twin(self, scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]]) -> Dict[str, object]:
-        """The host's differential twin of the kernel fold (§4.1), plus the endorser sets Pass 3 needs."""
+    def _fold_twin(self, scope: str, deltas: List[Delta]) -> Dict[str, object]:
+        """The host's differential twin of the kernel fold (§4.1), plus the endorser sets Pass 3 needs.
+
+        It reads each commit's delta once and keeps indexes (seals by target, cells by origin and name, the edges
+        and latches still open), so a commit costs what it adds and what its new seals touch, not the history
+        before it. Every quantity the per-commit rules read is either fixed at an object's birth (contents, birth
+        signers) or changes only through a new seal on that cell or a change of S_base; the open latches are
+        re-read on exactly those events, which is when the full recount could change its answer."""
         latched_scope_auth: Set[bytes] = set()
         latched_acc_auth: Set[bytes] = set()
         latched_schema_auth: Set[bytes] = set(STD_SCHEMA_IDS)
@@ -1063,35 +1170,66 @@ class GitVarsRepo:
         cumulative_endorsers: Dict[bytes, Set[bytes]] = {}
         foreign_endorsers_by_scope: Dict[Tuple[bytes, bytes], Set[bytes]] = {}
         self_sealed_foreign_scopes: Set[bytes] = set()
-        seen_cells: Set[bytes] = set()
-        seen_seals: Set[bytes] = set()
         active_scope_id: Optional[bytes] = None
 
-        for idx, (atoms, cells, seals) in enumerate(trees):
+        atoms: Dict[bytes, bytes] = {}
+        cells: Dict[bytes, Cell] = {}
+        seals: Dict[bytes, Seal] = {}
+        seals_on: Dict[bytes, List[Seal]] = {}  # target cell -> its seals
+        foreign_scope_ids: List[bytes] = []  # foreign schema.scope cells not (yet) self-sealed
+        # Self-sealed foreign scopes by origin. Sticky: seals are append-only, so a scope stays self-sealed.
+        valid_foreign_scopes: Dict[str, List[Tuple[bytes, Set[bytes]]]] = {}
+        foreign_by_origin: Dict[str, List[bytes]] = {}  # non-standard foreign cells by origin
+        open_cell_latches: Set[bytes] = set()  # local acceptance / custom schema cells not yet latched
+        open_edges: Dict[bytes, List[Tuple[str, bytes]]] = {}  # w -> its eviction edges not yet latched
+        bound_by_name: Dict[bytes, List[bytes]] = {}  # name -> local non-standard cells bound to it
+        latched_sup: Dict[bytes, Set[bytes]] = {}
+        any_sup: Dict[bytes, Set[bytes]] = {}
+        prev_base: Optional[bytes] = None
 
-            def pol_quorum(pol_hash: bytes) -> Tuple[int, Set[bytes]]:
-                thr, hvec_h = parse_pol1(atoms[pol_hash])
-                pks_list = parse_hvec(atoms[hvec_h], require_sorted=True)
-                for pk in pks_list:
-                    if weak_public_key(pk):
-                        raise VarsError("weak or non-canonical Ed25519 public key in POL1")
-                    try:
-                        _ed_dec(pk)
-                    except ValueError as e:
-                        raise VarsError(f"invalid Ed25519 curve point in POL1: {e}") from None
-                pks = set(pks_list)
-                if len(pks) < thr:
-                    raise VarsError("POL1 threshold exceeds pubkey count")
-                return thr, pks
+        def pol_quorum(pol_hash: bytes) -> Tuple[int, Set[bytes]]:
+            thr, hvec_h = parse_pol1(atoms[pol_hash])
+            pks_list = parse_hvec(atoms[hvec_h], require_sorted=True)
+            for pk in pks_list:
+                if weak_public_key(pk):
+                    raise VarsError("weak or non-canonical Ed25519 public key in POL1")
+                try:
+                    _ed_dec(pk)
+                except ValueError as e:
+                    raise VarsError(f"invalid Ed25519 curve point in POL1: {e}") from None
+            pks = set(pks_list)
+            if len(pks) < thr:
+                raise VarsError("POL1 threshold exceeds pubkey count")
+            return thr, pks
 
-            def cell_origin(c: Cell) -> str:
-                return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
+        def cell_origin(c: Cell) -> str:
+            return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
 
-            def hvec_items(h: bytes) -> List[bytes]:
-                return [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
+        def hvec_items(h: bytes) -> List[bytes]:
+            return [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
 
-            new_cids = set(cells.keys()) - seen_cells
-            new_sids = set(seals.keys()) - seen_seals
+        def signers(cid: bytes, ctx: bytes, allowed_pks: Set[bytes]) -> Set[bytes]:
+            return {s.actor_pubkey for s in seals_on.get(cid, ()) if s.h_scope_ctx == ctx and s.actor_pubkey in allowed_pks}
+
+        def sup_reach(src: bytes, adj: Dict[bytes, Set[bytes]]) -> Set[bytes]:
+            out: Set[bytes] = set()
+            todo = list(adj.get(src, ()))
+            while todo:
+                nxt = todo.pop()
+                if nxt not in out:
+                    out.add(nxt)
+                    todo.extend(adj.get(nxt, ()))
+            return out
+
+        for idx, (d_atoms, d_cells, d_seals) in enumerate(deltas):
+            atoms.update(d_atoms)
+            cells.update(d_cells)
+            seals.update(d_seals)
+            for s in d_seals.values():
+                seals_on.setdefault(s.h_target, []).append(s)
+            new_cids = set(d_cells)
+            new_sids = set(d_seals)
+            touched = {s.h_target for s in d_seals.values()}  # cells with a new seal in this commit
 
             if idx == 0:
                 local_scopes = [
@@ -1127,41 +1265,55 @@ class GitVarsRepo:
             s_base = cells[s_base_id]
             adm_thr, adm_pks = pol_quorum(s_base.slots[0])
             acc_thr, acc_pks = pol_quorum(s_base.slots[1])
+            base_changed = s_base_id != prev_base
 
-            # Self-sealed foreign scopes present in cas/cells/
-            valid_foreign_scopes: Dict[str, List[Tuple[bytes, Set[bytes]]]] = {}
-            for scid, sc in cells.items():
-                if sc.h_schema == H_SCHEMA["scope"] and cell_origin(sc) != scope:
-                    f_origin = cell_origin(sc)
-                    f_thr, f_pks = pol_quorum(sc.slots[0])
-                    pol_quorum(sc.slots[1])
-                    f_signers = {
-                        seals[sid].actor_pubkey
-                        for sid in seals
-                        if seals[sid].h_target == scid
-                        and seals[sid].h_scope_ctx == scid
-                        and seals[sid].actor_pubkey in f_pks
-                    }
-                    if len(f_signers) >= f_thr:
-                        self_sealed_foreign_scopes.add(scid)
-                        valid_foreign_scopes.setdefault(f_origin, []).append((scid, f_pks))
+            # Index this commit's cells
+            new_foreign_cells: List[bytes] = []
+            for cid in sorted(new_cids):
+                c = cells[cid]
+                any_sup[cid] = set(hvec_items(c.h_supersedes))
+                if cid in STD_SCHEMA_IDS:
+                    continue
+                c_orig = cell_origin(c)
+                if c_orig == scope:
+                    bound_by_name.setdefault(c.h_slot_name, []).append(cid)
+                else:
+                    foreign_by_origin.setdefault(c_orig, []).append(cid)
+                    new_foreign_cells.append(cid)
+                if c.h_schema == H_SCHEMA["scope"] and c_orig != scope:
+                    foreign_scope_ids.append(cid)
 
-            # foreign endorsements accumulate the same way. Recount every foreign cell against each
-            # self-sealed scope of its origin, so a foreign co-signature added later is not ignored.
-            for fcid, fc in cells.items():
+            # Self-sealed foreign scopes present in cas/cells/ (a scope's POL1s are checked when it is born)
+            newly_valid: List[Tuple[str, bytes, Set[bytes]]] = []
+            for scid in list(foreign_scope_ids):
+                if scid not in new_cids and scid not in touched:
+                    continue  # nothing it is counted from has changed
+                sc = cells[scid]
+                f_origin = cell_origin(sc)
+                f_thr, f_pks = pol_quorum(sc.slots[0])
+                pol_quorum(sc.slots[1])
+                if len(signers(scid, scid, f_pks)) >= f_thr:
+                    self_sealed_foreign_scopes.add(scid)
+                    valid_foreign_scopes.setdefault(f_origin, []).append((scid, f_pks))
+                    newly_valid.append((f_origin, scid, f_pks))
+                    foreign_scope_ids.remove(scid)
+
+            # foreign endorsements accumulate the same way: a foreign cell's count against each self-sealed scope of
+            # its origin is redone when the cell gets a new seal or its origin gets a new self-sealed scope
+            recount: Set[Tuple[bytes, bytes]] = set()
+            for fcid in new_foreign_cells + [t for t in touched if t in cells and t not in new_cids]:
+                fc = cells[fcid]
                 if fcid in STD_SCHEMA_IDS or cell_origin(fc) == scope:
                     continue
-                for sf_id, sf_pks in valid_foreign_scopes.get(cell_origin(fc), []):
-                    foreign_endorsers_by_scope[(fcid, sf_id)] = {
-                        seals[sid].actor_pubkey
-                        for sid in seals
-                        if seals[sid].h_target == fcid
-                        and seals[sid].h_scope_ctx == sf_id
-                        and seals[sid].actor_pubkey in sf_pks
-                    }
+                recount.update((fcid, sf_id) for sf_id, _ in valid_foreign_scopes.get(cell_origin(fc), []))
+            for f_origin, sf_id, _ in newly_valid:
+                recount.update((fcid, sf_id) for fcid in foreign_by_origin.get(f_origin, []))
+            pks_of_scope = {sf_id: sf_pks for vs in valid_foreign_scopes.values() for sf_id, sf_pks in vs}
+            for fcid, sf_id in recount:
+                foreign_endorsers_by_scope[(fcid, sf_id)] = signers(fcid, sf_id, pks_of_scope[sf_id])
 
             # Check #3: Every new local seal must bind to s_base_id and be signed by a roster member
-            for sid in new_sids:
+            for sid in sorted(new_sids):
                 s = seals[sid]
                 target_c = cells[s.h_target]
                 ctx_c = cells[s.h_scope_ctx]
@@ -1183,7 +1335,7 @@ class GitVarsRepo:
                     cumulative_endorsers.setdefault(s.h_target, set()).add(s.actor_pubkey)
 
             # Check #3: every new non-standard cell must carry valid seals
-            for cid in new_cids:
+            for cid in sorted(new_cids):
                 if cid in STD_SCHEMA_IDS:
                     continue
                 c = cells[cid]
@@ -1192,12 +1344,7 @@ class GitVarsRepo:
                     # writing a cell, and InitialEndorsers, count roster keys only (a projection's outside witnesses
                     # sign it, they do not write it)
                     roster = adm_pks | (acc_pks if c.h_schema == H_SCHEMA["acceptance"] else set())
-                    c_signers = {
-                        seals[sid].actor_pubkey
-                        for sid in seals
-                        if seals[sid].h_target == cid and seals[sid].h_scope_ctx == s_base_id
-                        and seals[sid].actor_pubkey in roster
-                    }
+                    c_signers = signers(cid, s_base_id, roster)
                     if not c_signers:
                         raise VarsError(f"New local cell {cid.hex()[:12]} lacks a valid Seal under active SCOPE")
                     initial_endorsers[cid] = set(c_signers)
@@ -1219,25 +1366,8 @@ class GitVarsRepo:
                         raise VarsError(f"foreign cell {cid.hex()[:12]} from {c_orig!r} lacks self-sealed foreign SCOPE")
                     f_ends_union: Set[bytes] = set()
                     for sf_id, sf_pks in f_scopes:
-                        sf_ends = {
-                            seals[sid].actor_pubkey
-                            for sid in seals
-                            if seals[sid].h_target == cid
-                            and seals[sid].h_scope_ctx == sf_id
-                            and seals[sid].actor_pubkey in sf_pks
-                        }
-                        f_ends_union |= sf_ends
+                        f_ends_union |= signers(cid, sf_id, sf_pks)
                     initial_endorsers[cid] = f_ends_union
-
-            # Strictly epoch-scoped endorsers under s_base_id
-            def endorsers_under_base(cid: bytes, allowed_pks: Set[bytes]) -> Set[bytes]:
-                return {
-                    seals[sid].actor_pubkey
-                    for sid in seals
-                    if seals[sid].h_target == cid
-                    and seals[sid].h_scope_ctx == s_base_id
-                    and seals[sid].actor_pubkey in allowed_pks
-                }
 
             # At most one new local schema.scope cell in any transition commit
             pending_next_scope: Optional[bytes] = None
@@ -1258,101 +1388,98 @@ class GitVarsRepo:
                         or s_next.h_invalidates != H_EMPTY
                     ):
                         raise VarsError("new schema.scope cell must supersede active SCOPE only")
-                    if len(endorsers_under_base(s_next_id, adm_pks)) < adm_thr:
+                    if len(signers(s_next_id, s_base_id, adm_pks)) < adm_thr:
                         raise VarsError("new schema.scope cell lacks admission quorum under active SCOPE")
                     pending_next_scope = s_next_id
 
-            # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells
-            for cid, c in cells.items():
-                if cell_origin(c) != scope:
-                    continue
-                if c.h_schema == H_SCHEMA["acceptance"] and cid not in latched_acc_auth:
+            # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells. An open
+            # latch is re-read when its cell is new, gets a new seal, or S_base changes; nothing else moves it.
+            for cid in new_cids:
+                c = cells[cid]
+                if cell_origin(c) == scope and (
+                    (c.h_schema == H_SCHEMA["acceptance"] and cid not in latched_acc_auth)
+                    or (c.h_schema == H_META_SCHEMA and cid not in latched_schema_auth)
+                ):
+                    open_cell_latches.add(cid)
+            for cid in sorted(open_cell_latches if base_changed else open_cell_latches & (new_cids | touched)):
+                c = cells[cid]
+                if c.h_schema == H_SCHEMA["acceptance"]:
                     if c.slots[1] not in self_sealed_foreign_scopes:
                         raise VarsError("ACCEPTANCE foreign_scope_cell is not self-sealed")
-                    if len(endorsers_under_base(cid, acc_pks)) >= acc_thr:
+                    if len(signers(cid, s_base_id, acc_pks)) >= acc_thr:
                         latched_acc_auth.add(cid)
-                elif c.h_schema == H_META_SCHEMA and cid not in latched_schema_auth:
-                    if len(endorsers_under_base(cid, adm_pks)) >= adm_thr:
-                        latched_schema_auth.add(cid)
+                        open_cell_latches.discard(cid)
+                elif len(signers(cid, s_base_id, adm_pks)) >= adm_thr:
+                    latched_schema_auth.add(cid)
+                    open_cell_latches.discard(cid)
 
-            # Latch eviction / invalidation edges under s_base
-            for wid, w in cells.items():
+            # Latch eviction / invalidation edges under s_base (re-read on the same events as above, keyed by w)
+            for wid in new_cids:
+                w = cells[wid]
                 if w.h_schema == H_META_SCHEMA:
                     continue
-                w_ends_adm = endorsers_under_base(wid, adm_pks)
-                w_ends_acc = endorsers_under_base(wid, acc_pks)
-                for edge_kind, mh in (
-                    ("invalidates", w.h_invalidates),
-                    ("retires", w.h_retires),
-                    ("supersedes", w.h_supersedes),
-                ):
-                    for vid in hvec_items(mh):
-                        if (wid, vid, edge_kind) in latched_edge_auth:
-                            continue
-                        v = cells[vid]
-                        # Total Governing Policy Function Pol_i(v) & AuthorCanEvict(v)
-                        if v.h_schema == H_SCHEMA["scope"] or (
-                            v.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]) and v.slots[0] == H_OWNER
-                        ):
-                            p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm
-                            author_can = False
-                        elif v.h_schema == H_SCHEMA["acceptance"]:
-                            p_thr, p_pks, w_ends = acc_thr, acc_pks, w_ends_acc
-                            author_can = False
-                        elif v.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]) and v.slots[0] == H_PROVISIONAL:
-                            p_thr, p_pks = pol_quorum(v.slots[3]) if v.slots[3] != H_EMPTY else (adm_thr, adm_pks)
-                            w_ends = w_ends_adm
-                            author_can = True
-                        elif v.h_schema == H_SCHEMA["question"]:
-                            p_thr, p_pks = pol_quorum(v.slots[1]) if v.slots[1] != H_EMPTY else (adm_thr, adm_pks)
-                            w_ends = w_ends_adm
-                            author_can = True
-                        else:
-                            p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm
-                            author_can = True
+                edges = [(kind, vid) for kind, mh in (("invalidates", w.h_invalidates), ("retires", w.h_retires),
+                                                      ("supersedes", w.h_supersedes)) for vid in hvec_items(mh)]
+                if edges:
+                    open_edges[wid] = edges
+            for wid in list(open_edges if base_changed else (open_edges.keys() & (new_cids | touched))):
+                w_ends_adm = signers(wid, s_base_id, adm_pks)
+                w_ends_acc = signers(wid, s_base_id, acc_pks)
+                still_open: List[Tuple[str, bytes]] = []
+                for edge_kind, vid in open_edges[wid]:
+                    v = cells[vid]
+                    # Total Governing Policy Function Pol_i(v) & AuthorCanEvict(v)
+                    if v.h_schema == H_SCHEMA["scope"] or (
+                        v.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]) and v.slots[0] == H_OWNER
+                    ):
+                        p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm
+                        author_can = False
+                    elif v.h_schema == H_SCHEMA["acceptance"]:
+                        p_thr, p_pks, w_ends = acc_thr, acc_pks, w_ends_acc
+                        author_can = False
+                    elif v.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]) and v.slots[0] == H_PROVISIONAL:
+                        p_thr, p_pks = pol_quorum(v.slots[3]) if v.slots[3] != H_EMPTY else (adm_thr, adm_pks)
+                        w_ends = w_ends_adm
+                        author_can = True
+                    elif v.h_schema == H_SCHEMA["question"]:
+                        p_thr, p_pks = pol_quorum(v.slots[1]) if v.slots[1] != H_EMPTY else (adm_thr, adm_pks)
+                        w_ends = w_ends_adm
+                        author_can = True
+                    else:
+                        p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm
+                        author_can = True
 
-                        quorum_ok = len(w_ends & p_pks) >= p_thr
-                        author_ok = (
-                            edge_kind in ("supersedes", "retires")
-                            and author_can
-                            and cell_origin(v) == scope  # foreign birth signers are not local authors
-                            and bool(w_ends & initial_endorsers.get(vid, set()))
-                        )
-                        if quorum_ok or author_ok:
-                            latched_edge_auth.add((wid, vid, edge_kind))
+                    quorum_ok = len(w_ends & p_pks) >= p_thr
+                    author_ok = (
+                        edge_kind in ("supersedes", "retires")
+                        and author_can
+                        and cell_origin(v) == scope  # foreign birth signers are not local authors
+                        and bool(w_ends & initial_endorsers.get(vid, set()))
+                    )
+                    if quorum_ok or author_ok:
+                        latched_edge_auth.add((wid, vid, edge_kind))
+                        if edge_kind == "supersedes":
+                            latched_sup.setdefault(wid, set()).add(vid)
+                    else:
+                        still_open.append((edge_kind, vid))
+                if still_open:
+                    open_edges[wid] = still_open
+                else:
+                    del open_edges[wid]
 
             # unique binding per H_slot_name, checked after this commit's authorization latch.
             # Every new local cell c (except a scope cell, which has its own single-lineage rule) must reach every
             # other local cell bound to the same name through supersedes edges: c's own first hop may still await
             # co-signatures (c stays inactive until all its supersedes edges latch), every later hop must already be
             # latched. Latches never unlatch and Superseded is transitive in Pass 1, so at most one binding is Active.
-            latched_sup: Dict[bytes, Set[bytes]] = {}
-            for e_w, e_v, e_kind in latched_edge_auth:
-                if e_kind == "supersedes":
-                    latched_sup.setdefault(e_w, set()).add(e_v)
-            any_sup: Dict[bytes, Set[bytes]] = {oid: set(hvec_items(oc.h_supersedes)) for oid, oc in cells.items()}
-
-            def sup_reach(src: bytes, adj: Dict[bytes, Set[bytes]]) -> Set[bytes]:
-                out: Set[bytes] = set()
-                todo = list(adj.get(src, ()))
-                while todo:
-                    nxt = todo.pop()
-                    if nxt not in out:
-                        out.add(nxt)
-                        todo.extend(adj.get(nxt, ()))
-                return out
-
-            bound_by_name: Dict[bytes, List[bytes]] = {}
-            for oid, oc in cells.items():
-                if oid not in STD_SCHEMA_IDS and cell_origin(oc) == scope:
-                    bound_by_name.setdefault(oc.h_slot_name, []).append(oid)
             for cid in sorted(new_cids):
                 c = cells[cid]
                 if cid in STD_SCHEMA_IDS or cell_origin(c) != scope or c.h_schema == H_SCHEMA["scope"]:
                     continue
-                peers = [oid for oid in bound_by_name.get(c.h_slot_name, []) if oid != cid]
+                peers = sorted(oid for oid in bound_by_name.get(c.h_slot_name, []) if oid != cid)
                 if not peers:
                     continue
+
                 def binding_reach(src: bytes) -> Set[bytes]:
                     first = set(hvec_items(cells[src].h_supersedes))
                     out = set(first)
@@ -1381,9 +1508,7 @@ class GitVarsRepo:
             if pending_next_scope is not None:
                 latched_scope_auth.add(pending_next_scope)
                 active_scope_id = pending_next_scope
-
-            seen_cells |= new_cids
-            seen_seals |= new_sids
+            prev_base = s_base_id
 
         return {
             "atoms": atoms,
@@ -1712,8 +1837,7 @@ def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, wit
     }
     if with_data:
         tip = parse_utf8(atoms[cell.slots[0]])
-        trees = [repo.read_cas_tree(c) for c in repo.commit_chain(tip)]
-        kernel_input, _ = kernel_facts(scope, trees)
+        kernel_input, _ = kernel_facts(scope, repo.chain_deltas(repo.commit_chain(tip)))
         bundle["input"] = kernel_input.hex()
         bundle["output"] = kernel_runner().run(kernel_input).hex()
     return bundle

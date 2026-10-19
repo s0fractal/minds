@@ -130,18 +130,25 @@ class MemoRepo(V.GitVarsRepo):
                 self._blob_by_oid[oid] = r
         return super().build_candidate_commit(scope, atoms, cells, seals, parent_commit, extra_tree_entries)
 
-    def read_cas_tree(self, commit_oid):
-        hit = self._tree_memo.get(commit_oid)
-        if hit is None:
-            hit = super().read_cas_tree(commit_oid)
-            self._tree_memo[commit_oid] = hit
+    def _shuffled(self, dicts):
         out = []
-        for d in hit:
+        for d in dicts:
             items = list(d.items())
             if self._shuffle is not None:
                 self._shuffle.shuffle(items)
             out.append(dict(items))
         return tuple(out)
+
+    def read_cas_tree(self, commit_oid):
+        hit = self._tree_memo.get(commit_oid)
+        if hit is None:
+            hit = super().read_cas_tree(commit_oid)
+            self._tree_memo[commit_oid] = hit
+        return self._shuffled(hit)
+
+    def read_commit_delta(self, commit_oid):
+        # the fold and the kernel facts read the chain as per-commit deltas: shuffle those too (I6)
+        return self._shuffled(super().read_commit_delta(commit_oid))
 
 
 def lens_digest(lens: dict) -> Dict[str, List[str]]:

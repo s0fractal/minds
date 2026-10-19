@@ -2540,6 +2540,77 @@ class TestVars1Conformance(unittest.TestCase):
         ok = subprocess.run([sys.executable, "-c", "import vars1"], cwd=ROOT_DIR, capture_output=True, text=True)
         self.assertEqual(ok.returncode, 0, ok.stderr)
 
+    def _raw_commit(self, parent: str, entries: list[tuple[str, str]]) -> str:
+        """A commit adding `(path, blob oid)` entries to `parent`'s tree, objects not checked (write-tree --missing-ok)."""
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(self.tmp.name) / "raw-index")}
+        git = lambda *a, inp=None: subprocess.run(["git", "-C", str(self.repo_path), *a], input=inp, env=env,
+                                                  capture_output=True, check=True).stdout.decode().strip()
+        git("read-tree", parent)
+        git("update-index", "--add", "--index-info",
+            inp="".join(f"100644 {oid}\t{path}\n" for path, oid in entries).encode())
+        return git("commit-tree", git("write-tree", "--missing-ok"), "-p", parent, "-m", "raw")
+
+    def _blob(self, raw: bytes) -> str:
+        return subprocess.run(["git", "-C", str(self.repo_path), "hash-object", "-w", "--stdin"], input=raw,
+                              capture_output=True, check=True).stdout.decode().strip()
+
+    def test_38_caches_never_stand_in_for_new_bytes(self) -> None:
+        """The host reads each commit once (its diff-tree delta) and keeps checked objects by content hash. New bytes
+        are always read, hashed against their path and checked: a forged seal, bytes that do not hash to an
+        already-checked object's name, and a missing object are refused by an instance whose caches hold the history;
+        a missing object of an admitted commit is refused by a fresh instance. Caches change no result."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        repo = self.repo
+        atoms: dict[bytes, bytes] = {}
+        ax1 = self._axiom(atoms, "core/ax.1", "first")
+        c1 = self._admit(atoms, [ax1], [V.Seal.sign(self.sk1, ax1.id, s0.id)], c0)
+
+        # A forged seal: the same target, context and key as a valid one, one signature bit flipped
+        atoms2: dict[bytes, bytes] = {}
+        ax2 = self._axiom(atoms2, "core/ax.2", "second")
+        good = V.Seal.sign(self.sk1, ax2.id, s0.id)
+        forged = dataclasses.replace(good, signature=bytes([good.signature[0] ^ 1]) + good.signature[1:])
+        cand = repo.build_candidate_commit("core", atoms2, [ax2], [forged], parent_commit=c1)
+        with self.assertRaisesRegex(V.VarsError, "invalid or weak-key Ed25519 signature on SEAL"):
+            repo.admit_and_advance("core", cand, expected_old=c1)
+
+        # Bytes under the name of an object this instance has already checked (from a refused, unsealed candidate)
+        cand = repo.build_candidate_commit("core", atoms2, [ax2], [], parent_commit=c1)
+        with self.assertRaisesRegex(V.VarsError, "lacks a valid Seal"):
+            repo.admit_and_advance("core", cand, expected_old=c1)
+        self.assertIn(("cells", ax2.id), repo._checked)
+        enc = ax2.encode()
+        # (and, for a seal not yet checked, bytes that do not hash to its name)
+        for kind, h, raw in (("cells", ax2.id, enc[:-1] + bytes([enc[-1] ^ 1])),
+                             ("seals", good.id, good.encode()[:-1] + b"\x00")):
+            path = f"cas/{kind}/{h.hex()[:2]}/{h.hex()[2:]}"
+            cand = self._raw_commit(c1, [(path, self._blob(raw))])
+            with self.assertRaisesRegex(V.VarsError, "CAS SHA-256 mismatch"):
+                repo.admit_and_advance("core", cand, expected_old=c1)
+
+        # A tree entry whose object is not in the store
+        h = V.sha256(V.atom_utf8("never stored"))
+        cand = self._raw_commit(c1, [(f"cas/atoms/{h.hex()[:2]}/{h.hex()[2:]}", "ab" * (len(c1) // 2))])
+        with self.assertRaisesRegex(V.VarsError, "missing"):
+            repo.admit_and_advance("core", cand, expected_old=c1)
+
+        # After the refusals the valid commit is admitted, and a fresh instance computes the same fold and lens
+        c2 = self._admit(atoms2, [ax2], [good], c1)
+        warm = repo.lens("core")
+        cold = V.GitVarsRepo(self.repo_path).lens("core")
+        for name in ("active", "stale", "settled", "provisional"):
+            self.assertEqual(warm[name], cold[name], name)
+        self.assertEqual(warm["kernel_input"], cold["kernel_input"])
+        self.assertTrue(cold["active"][ax2.id])
+
+        # An admitted commit's object goes missing: a fresh instance (nothing cached) refuses the chain
+        ls = subprocess.run(["git", "-C", str(self.repo_path), "ls-tree", "-r", c2], capture_output=True, text=True,
+                            check=True).stdout
+        oid = next(line.split()[2] for line in ls.splitlines() if line.endswith(ax1.id.hex()[2:]))
+        (self.repo_path / ".git" / "objects" / oid[:2] / oid[2:]).unlink()
+        with self.assertRaisesRegex(V.VarsError, "missing"):
+            V.GitVarsRepo(self.repo_path).lens("core")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
