@@ -31,6 +31,9 @@ and, for some theorems, `Classical.choice`.
 | `ReplayAttack.lean` | `pre_lineage_unsound` | a verifier that trusts an unverified parent is unsound (explicit counterexample) |
 | `Pass3Replay.lean` | `settled_full_replay` | a Settled contract with `required_comp` has a full replay from root to a normal form with the expected term hash |
 | `Vars1Sigma/Link.lean` | `run_eq_adv`, `book_verify_sound` | the abstract machine instantiated with `EvalMachine.step`; replay soundness for Book I |
+| `Refs.lean` | `v2_opaque`, `v2_stable` | rules v2 (RULES-V2.md): an untyped position is never a reference; typed references do not change when cells are added, so a digest stays opaque when its preimage is admitted |
+| | `v1_unstable`, `v1_stable_of_interim` | v1 references change when a cell is added (counterexample); the gate's interim rule keeps them fixed |
+| | `v2_persists`, `epoch_append` | with no rotation back to v1, every scope after a v2 scope names v2; a cell's epoch is fixed at birth |
 | `ExecProof.lean` | `pass1_correct` | the executable Pass 1 (`Exec.lean`) satisfies `IsPass1`, and its `sup`/`act` bits are the model's `Superseded`/`Active`, on the world its facts describe |
 | | `stale_correct` | the executable Pass 2 is the model's `Stale = lfp Φ` |
 

@@ -8,6 +8,8 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
   `cargo build --release --target wasm32-unknown-unknown`; the build is reproducible and must hash to
   `H_LENS_KERNEL`). Scopes name these rules by hash; the host only parses, hashes and verifies signatures, and
   keeps a Python twin of the rules for differential checking.
+- `RULES-V2.md`, `kernel2/` — rules v2, typed cell references (prototype, not adopted): `kernel2/lens2.wasm`
+  hashes to `H_LENS_KERNEL_V2`; a scope that names it reads only `cell`-typed positions as references.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 - `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
 - `tools/minds_chain.py` — minds governs itself with VARS-1 (below).

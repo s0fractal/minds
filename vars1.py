@@ -205,6 +205,16 @@ H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
+# Rules v2 (RULES-V2.md, prototype): typed cell references, explicit in the kernel input. A scope's epoch runs the
+# rules it names; this host keeps both modules, so every past tip stays recomputable under the rules it had.
+KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
+H_LENS_KERNEL_V2 = bytes.fromhex("4605f0db0df40b98ba888a23463d8bd6b540fb74f94eeb297065481af1f14297")
+KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
+if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
+    raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
+RULES_MODULES: Dict[bytes, Path] = {H_LENS_KERNEL: KERNEL_DIR / "lens.wasm", H_LENS_KERNEL_V2: KERNEL2_DIR / "lens2.wasm"}
+RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM}
+KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 INTRINSIC_HASHES: Set[bytes] = {
     H_I, H_K, H_S, H_FALSE, H_INVALID,
@@ -865,6 +875,8 @@ KERNEL_CODES = {
     -17: "foreign cell without self-sealed scope", -18: "several new local scopes", -19: "new scope shape",
     -20: "new scope lacks admission quorum", -21: "acceptance not pinned to a self-sealed scope",
     -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
+    -6: "reference list differs from the rules' reading", -24: "last commit is not governed by these rules",
+    -25: "rotation back to the v1 rules",
 }
 
 
@@ -881,11 +893,13 @@ class TwinDivergence(RuntimeError):
 
 
 class KernelRunner:
-    """Runs `kernel/lens.wasm` under Node (WebAssembly, no other dependency): the rules object of §4.3."""
+    """Runs a rules module (`kernel/lens.wasm`, or `kernel2/lens2.wasm` for v2) under Node (WebAssembly, no other
+    dependency): the rules object of §4.3."""
 
-    def __init__(self) -> None:
+    def __init__(self, rules: bytes = H_LENS_KERNEL) -> None:
+        self.rules = rules
         self.proc = subprocess.Popen(
-            ["node", str(KERNEL_DIR / "run.mjs"), str(KERNEL_DIR / "lens.wasm")],
+            ["node", str(KERNEL_DIR / "run.mjs"), str(RULES_MODULES[rules])],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
         )
 
@@ -902,6 +916,8 @@ class KernelRunner:
 
     def statuses(self, lens: Dict[str, object]) -> Dict[bytes, Dict[str, bool]]:
         """Kernel statuses for a lens result, keyed by cell id, from a fresh run of its kernel input."""
+        if lens.get("rules", H_LENS_KERNEL) != self.rules:
+            raise RuntimeError("this lens was computed under other rules than this runner's")
         out = self.run(lens["kernel_input"])
         n = len(lens["kernel_order"])
         return {cid: {name: bool(out[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
@@ -912,18 +928,78 @@ class KernelRunner:
         self.proc.wait(timeout=10)
 
 
-_KERNEL: Optional[KernelRunner] = None
+_KERNELS: Dict[bytes, KernelRunner] = {}
 
 
-def kernel_runner() -> KernelRunner:
-    global _KERNEL
-    if _KERNEL is None:
-        _KERNEL = KernelRunner()
-    return _KERNEL
+def kernel_runner(rules: bytes = H_LENS_KERNEL) -> KernelRunner:
+    if rules not in _KERNELS:
+        _KERNELS[rules] = KernelRunner(rules)
+    return _KERNELS[rules]
 
 
-def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[List[bytes], Dict[bytes, Set[bytes]], Dict[bytes, Set[bytes]]]:
-    """Forward topological order (oldest first) over every cell reference, with parents (older) and children (newer)."""
+def schema_cell_mask(c: "Cell", atoms: Dict[bytes, bytes]) -> int:
+    """A schema cell's `cell`-typed descriptors, bit s for slot s (rules v2, §4.3): host parsing of its UTF8 atoms."""
+    mask = 0
+    for s, d in enumerate(c.slots):
+        raw = atoms.get(d)
+        if raw is not None and raw[:4] == b"UTF8" and raw[4:].decode("utf-8", "replace").partition(":")[2] == "cell":
+            mask |= 1 << s
+    return mask
+
+
+def commit_rules(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "Cell"], Dict[bytes, "Seal"]]]) -> List[bytes]:
+    """The rules of each commit's epoch: those named by the scope governing it (fixed at its start, §0). Parsed:
+    the genesis scope, then the newest local scope born in an earlier commit (§3 check 1 makes it the governing one;
+    the kernel recomputes it). A commit log the gate would refuse may get any answer here; the kernel refuses it."""
+    out: List[bytes] = []
+    cur: Optional[Cell] = None
+    seen: Set[bytes] = set()
+    name = b"UTF8" + f"{scope}/SCOPE".encode()
+    for i, (atoms, cells, _) in enumerate(trees):
+        new = [c for cid, c in cells.items()
+               if cid not in seen and c.h_schema == H_SCHEMA["scope"] and atoms.get(c.h_slot_name) == name]
+        if i == 0 and len(new) == 1:
+            cur = new[0]
+        out.append(cur.slots[2] if cur is not None and len(cur.slots) == 3 else H_LENS_KERNEL)
+        if i > 0 and len(new) == 1:
+            cur = new[0]
+        seen |= set(cells)
+    return out
+
+
+def cell_refs(c: "Cell", cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes], v1: bool) -> List[Tuple[int, bytes]]:
+    """The reference positions of a cell (0 payload, 1 + s slot s) and the cells they name. v1 reads every payload or
+    slot equal to a cell id as a reference; v2 (RULES-V2.md) reads only the payload of a verdict or acceptance and
+    the slots its schema declares `cell`."""
+    vals = (c.h_payload, *c.slots)
+    if v1:
+        return [(p, x) for p, x in enumerate(vals) if x in cells]
+    if c.h_schema == H_META_SCHEMA:
+        return []
+    sc = cells.get(c.h_schema)
+    mask = schema_cell_mask(sc, atoms) if sc is not None else 0
+    typed = [0] if c.h_schema in (H_SCHEMA["verdict"], H_SCHEMA["acceptance"]) else []
+    typed += [1 + s for s in range(len(c.slots)) if mask >> s & 1 and c.slots[s] != H_EMPTY]
+    return [(p, vals[p]) for p in typed if vals[p] in cells]
+
+
+def chain_refs(scope: str, trees) -> Tuple[Dict[bytes, List[Tuple[int, bytes]]], Dict[bytes, int], List[bytes]]:
+    """Every cell's references, each read by the rules of its birth epoch; with births and per-commit rules."""
+    atoms, cells, _ = trees[-1]
+    rules = commit_rules(scope, trees)
+    birth: Dict[bytes, int] = {}
+    for i, (_, cs, _) in enumerate(trees):
+        for cid in cs:
+            birth.setdefault(cid, i)
+    refs = {cid: cell_refs(c, cells, atoms, rules[birth[cid]] == H_LENS_KERNEL) for cid, c in cells.items()}
+    return refs, birth, rules
+
+
+def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes],
+               value_refs: Optional[Dict[bytes, List[Tuple[int, bytes]]]] = None
+               ) -> Tuple[List[bytes], Dict[bytes, Set[bytes]], Dict[bytes, Set[bytes]]]:
+    """Forward topological order (oldest first) over every cell reference, with parents (older) and children (newer).
+    `value_refs` are the payload and slot references the rules read (`chain_refs`); by default, v1's reading."""
 
     def hvec_items(h: bytes) -> List[bytes]:
         return [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
@@ -934,7 +1010,10 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[L
         refs: Set[bytes] = set()
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             refs.update(hvec_items(mh))
-        refs.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        if value_refs is None:
+            refs.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        else:
+            refs.update(x for _, x in value_refs[u])
         for v in refs:
             if v in cells and v != u:
                 parents_of[u].add(v)
@@ -968,19 +1047,24 @@ def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, Li
     return (thr, pks) if len(set(pks)) >= thr else None
 
 
+def chain_rules(scope: str, trees) -> bytes:
+    """The rules that evaluate a commit log: those of its last commit's epoch (RULES-V2.md §4)."""
+    return commit_rules(scope, trees)[-1]
+
+
 def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "Cell"], Dict[bytes, "Seal"]]]) -> Tuple[bytes, List[bytes]]:
-    """Encode a commit log as the rules kernel's input (§4.3): parsed cells, verified seals, POL1 rosters.
+    """Encode a commit log as the input of the rules that evaluate it (§4.3): parsed cells, verified seals, POL1
+    rosters; for v2, schema masks and every cell's reference positions too.
 
     Only parsing happens here: the order of cells, interned origins and keys, and edge lists as cell indices."""
     atoms, cells, seals = trees[-1]
-    birth_c: Dict[bytes, int] = {}
+    value_refs, birth_c, rules = chain_refs(scope, trees)
+    v2 = rules[-1] != H_LENS_KERNEL
     birth_s: Dict[bytes, int] = {}
     for i, (_, cs, ss) in enumerate(trees):
-        for cid in cs:
-            birth_c.setdefault(cid, i)
         for sid in ss:
             birth_s.setdefault(sid, i)
-    order, _, _ = topo_order(cells, atoms)
+    order, _, _ = topo_order(cells, atoms, value_refs if v2 else None)
     pos = {cid: i for i, cid in enumerate(order)}
 
     def origin(c: "Cell") -> str:
@@ -997,7 +1081,8 @@ def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "
     keys = sorted({pk for _, pks in pols.values() for pk in pks} | {s.actor_pubkey for s in seals.values()})
     key_ix = {k: i for i, k in enumerate(keys)}
 
-    out = bytearray(struct.pack("<4I", len(trees), len(order), len(keys), len(pols)))
+    out = bytearray(struct.pack("<I", KERNEL2_MAGIC) if v2 else b"")
+    out += struct.pack("<4I", len(trees), len(order), len(keys), len(pols))
     for h in sorted(pols):
         thr, pks = pols[h]
         out += h + struct.pack(f"<{2 + len(pks)}I", thr, len(pks), *(key_ix[k] for k in pks))
@@ -1005,9 +1090,15 @@ def kernel_facts(scope: str, trees: List[Tuple[Dict[bytes, bytes], Dict[bytes, "
         c = cells[cid]
         out += cid + c.h_schema + c.h_payload + c.h_slot_name + c.h_loss
         out += struct.pack("<3I", origin_ix[origin(c)], birth_c[cid], len(c.slots)) + b"".join(c.slots)
+        if v2:
+            mask = schema_cell_mask(c, atoms) if c.h_schema == H_META_SCHEMA else 0
+            out += struct.pack("<2I", mask & 0xFFFFFFFF, mask >> 32)
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             items = [] if mh == H_EMPTY else parse_hvec(atoms[mh], require_sorted=True)
             out += struct.pack(f"<{1 + len(items)}I", len(items), *(pos[v] for v in items))
+        if v2:
+            rs = value_refs[cid]
+            out += struct.pack(f"<{1 + 2 * len(rs)}I", len(rs), *(w for p, x in rs for w in (p, pos[x])))
     out += struct.pack("<I", len(seals))
     for sid in sorted(seals):
         sl = seals[sid]
@@ -1237,8 +1328,8 @@ class GitVarsRepo:
             is_scope_name = slot_str == f"{slot_str.split('/', 1)[0]}/SCOPE"
             if (c.h_schema == H_SCHEMA["scope"]) != is_scope_name:
                 raise VarsError(f"reserved scope name: {slot_str!r} must be <origin>/SCOPE iff the cell is a schema.scope")
-            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] != H_LENS_KERNEL:
-                raise VarsError("scope names rules this host does not implement (slots[2] != H_LENS_KERNEL)")
+            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES_MODULES:
+                raise VarsError("scope names rules this host does not implement (slots[2] not v1 or v2)")
             if c.h_schema == H_META_SCHEMA:
                 if c.h_payload != H_EMPTY or any(
                     m != H_EMPTY for m in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates, c.h_loss)
@@ -1358,25 +1449,35 @@ class GitVarsRepo:
             if s.h_target not in cells or s.h_scope_ctx not in cells:
                 raise VarsError("Check #4 failed: Seal target or scope_ctx missing from cas/cells/")
 
-        prior_cells = self.read_cas_tree(expected_old)[1] if expected_old is not None else {}
+        prior_chain = self.commit_chain(expected_old) if expected_old is not None else []
+        prior_trees = [self.read_cas_tree(x) for x in prior_chain]
+        prior_cells = prior_trees[-1][1] if prior_trees else {}
         prior = set(prior_cells)
-        # References never point forward in time (§4.3): the rules read any payload or slot equal to a cell id as
-        # a reference, so a new cell may not have an id that an older cell already names there
-        named_before = {x for pc in prior_cells.values() for x in (pc.h_payload, *pc.slots)}
+        # References never point forward in time (§4.3): v1 rules read any payload or slot equal to a cell id as a
+        # reference, so a new cell may not have an id that an older cell born in a v1 epoch names there. Cells born
+        # under v2 rules read references by type (RULES-V2.md): their opaque values veto nothing.
+        prior_rules = commit_rules(scope, prior_trees) if prior_trees else []
+        born: Dict[bytes, int] = {}
+        for i, (_, cs, _) in enumerate(prior_trees):
+            for x in cs:
+                born.setdefault(x, i)
+        named_before = {x for pid, pc in prior_cells.items() if prior_rules[born[pid]] == H_LENS_KERNEL
+                        for x in (pc.h_payload, *pc.slots)}
         for cid in set(cells) - prior:
             if cid in named_before:
                 raise VarsError(f"an older cell names {cid.hex()[:12]} in a payload or slot: a reference to a later-born cell")
 
         # Projections: the gate recomputes the rules at the named tip and refuses any digest that differs
-        chain = set(self.commit_chain(expected_old)) if expected_old is not None else set()
+        chain = set(prior_chain)
         for cid, c in cells.items():
             if c.h_schema != H_SCHEMA["projection"] or cid in prior:
                 continue
             tip = parse_utf8(req_atom(c.slots[0], "projection tip"))
             if tip not in chain:
                 raise VarsError(f"projection tip {tip[:12]} is not a commit of refs/vars/heads/{scope} before this one")
-            if c.slots[1] != H_LENS_KERNEL:
-                raise VarsError("projection names rules this host does not implement")
+            tip_trees = prior_trees[:prior_chain.index(tip) + 1]
+            if c.slots[1] != chain_rules(scope, tip_trees):
+                raise VarsError("projection names other rules than those of its tip's epoch")
             h_in, h_state = self.projection_digests(scope, tip)
             if (c.slots[2], c.slots[3]) != (h_in, h_state):
                 raise VarsError("projection digests differ from the gate's recomputation of the rules at its tip")
@@ -1400,7 +1501,7 @@ class GitVarsRepo:
         `input` and `state` a projection at `tip` must carry. Anyone holding the chain can recompute them."""
         trees = [self.read_cas_tree(c) for c in self.commit_chain(tip)]
         kernel_input, _ = kernel_facts(scope, trees)
-        return sha256(kernel_input), sha256(kernel_runner().run(kernel_input))
+        return sha256(kernel_input), sha256(kernel_runner(chain_rules(scope, trees)).run(kernel_input))
 
     def _evaluate_commit_chain(self, scope: str, commits: List[str]) -> Dict[str, object]:
         """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree."""
@@ -1410,8 +1511,9 @@ class GitVarsRepo:
         except VarsError as e:
             twin, twin_err = None, e
         kernel_input, order = kernel_facts(scope, trees)
+        value_refs, _, rules = chain_refs(scope, trees)
         try:
-            out = kernel_runner().run(kernel_input)
+            out = kernel_runner(rules[-1]).run(kernel_input)
         except KernelRefusal as e:
             if twin_err is None:
                 raise TwinDivergence(f"{e}, but the host fold admits the commit log") from None
@@ -1443,6 +1545,8 @@ class GitVarsRepo:
             **kernel,
             "kernel_input": kernel_input,
             "kernel_order": order,
+            "rules": rules[-1],
+            "value_refs": value_refs,
             "kernel_status": {cid: {name: bool(status[i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
                               for i, cid in enumerate(order)},
         }
@@ -1654,6 +1758,8 @@ class GitVarsRepo:
                         raise VarsError("new schema.scope cell must supersede active SCOPE only")
                     if len(endorsers_under_base(s_next_id, adm_pks)) < adm_thr:
                         raise VarsError("new schema.scope cell lacks admission quorum under active SCOPE")
+                    if s_base.slots[2] != H_LENS_KERNEL and s_next.slots[2] == H_LENS_KERNEL:
+                        raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
                     pending_next_scope = s_next_id
 
             # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells
@@ -1815,7 +1921,8 @@ class GitVarsRepo:
         def cell_origin(c: Cell) -> str:
             return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
 
-        forward_order, parents_of, children_of = topo_order(cells, atoms)
+        forward_order, parents_of, children_of = topo_order(
+            cells, atoms, fold["value_refs"] if fold["rules"] != H_LENS_KERNEL else None)
         reverse_order = list(reversed(forward_order))
 
         # Pass 1 (Reverse-Topological: newest/sinks -> oldest/sources)
@@ -2072,6 +2179,7 @@ class GitVarsRepo:
         return {
             "kernel_input": fold["kernel_input"],
             "kernel_order": forward_order,
+            "rules": fold["rules"],
             "cells": cells,
             "atoms": atoms,
             "accepted": accepted,
@@ -2105,8 +2213,10 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
             raise VarsError("kernel input truncated")
         return kernel_input[off:off + n]
 
-    n, p = u32(4), u32(12)
-    off = 16
+    v2 = len(kernel_input) >= 4 and u32(0) == KERNEL2_MAGIC  # rules v2 inputs begin with "VAR2" (RULES-V2.md)
+    base = 4 if v2 else 0
+    n, p = u32(base + 4), u32(base + 12)
+    off = base + 16
     pols: Dict[bytes, Tuple[int, List[int]]] = {}
     for _ in range(p):
         k = u32(off + 36)
@@ -2120,19 +2230,30 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
         off += 12
         slots = [take(off + 32 * j, 32) for j in range(k)]
         off += 32 * k
+        if v2:
+            off += 8  # the schema mask; the kernel checks the reference list against it
         edges = []
         for _ in range(5):
             m = u32(off)
             edges.append([u32(off + 4 + 4 * j) for j in range(m)])
             off += 4 + 4 * m
+        refs: Optional[List[int]] = None
+        if v2:
+            m = u32(off)
+            refs = [u32(off + 8 + 8 * j) for j in range(m)]
+            off += 4 + 8 * m
         cells.append({"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
-                      "relies": edges[0], "attests": edges[1], "edges": edges})
+                      "relies": edges[0], "attests": edges[1], "edges": edges, "refs": refs})
     seals = []
     for j in range(u32(off)):
         seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
     if off + 4 + 16 * len(seals) != len(kernel_input):
         raise VarsError("kernel input has trailing bytes")
-    return {"pols": pols, "cells": cells, "seals": seals}
+    pos = {c["id"]: i for i, c in enumerate(cells)}
+    for c in cells:
+        if c["refs"] is None:  # v1: every payload or slot equal to a cell id
+            c["refs"] = [pos[x] for x in (c["payload"], *c["slots"]) if x in pos]
+    return {"pols": pols, "cells": cells, "seals": seals, "rules": H_LENS_KERNEL_V2 if v2 else H_LENS_KERNEL}
 
 
 def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
@@ -2154,7 +2275,7 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
     pos = {c["id"]: i for i, c in enumerate(kc)}
     children: List[Set[int]] = [set() for _ in range(n)]
     for u, c in enumerate(kc):
-        refs = {v for e in c["edges"] for v in e} | {pos[x] for x in (c["payload"], *c["slots"]) if x in pos}
+        refs = {v for e in c["edges"] for v in e} | set(c["refs"])
         for v in refs - {u}:
             children[v].add(u)
     # live accepted scopes of foreign cells, newest first (children are newer)
@@ -2236,7 +2357,7 @@ def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, wit
         trees = [repo.read_cas_tree(c) for c in repo.commit_chain(tip)]
         kernel_input, _ = kernel_facts(scope, trees)
         bundle["input"] = kernel_input.hex()
-        bundle["output"] = kernel_runner().run(kernel_input).hex()
+        bundle["output"] = kernel_runner(chain_rules(scope, trees)).run(kernel_input).hex()
     return bundle
 
 
@@ -2278,7 +2399,7 @@ def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
         "projection": cell.id.hex(),
         "tip": tip,
         "rules": cell.slots[1].hex(),
-        "rules_implemented_here": cell.slots[1] == H_LENS_KERNEL,
+        "rules_implemented_here": cell.slots[1] in RULES_MODULES,
         "threshold": thr,
         "witnesses": sorted(k.hex() for k in witnesses),
         "witnessed": len(witnesses) >= thr,
@@ -2294,6 +2415,8 @@ def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
             raise VarsError("bundle input does not hash to the projection's input digest")
         if sha256(output) != cell.slots[3]:
             raise VarsError("bundle output does not hash to the projection's state digest")
+        if cell.slots[1] in RULES_MODULES and parse_kernel_input(kernel_input)["rules"] != cell.slots[1]:
+            raise VarsError("bundle input is not encoded for the rules the projection names")
         order = kernel_input_order(kernel_input)
         n = len(order)
         if len(output) < 4 + n:

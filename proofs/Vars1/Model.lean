@@ -29,7 +29,9 @@ for contract/decision cells (`false` = `H_PROVISIONAL`). `customPol` is
 `slots[3]` (contract/decision) or `slots[1]` (question) when not `H_EMPTY`.
 For a scope cell, `pol0`/`pol1` are `slots[0]`/`slots[1]`.
 `payload` is `H_payload` when it names a cell; `refs` are every cell the cell
-references (all five morphism fields, payload, cell-valued slots). -/
+references: the five morphism fields and the payload and slots the rules read as
+references — every one equal to a cell id under v1, the typed ones under v2
+(`Vars1/Refs.lean`, RULES-V2.md). Nothing below depends on which reading made the list. -/
 structure CellInfo (C P : Type) where
   schema : Schema
   isLocal : Bool

@@ -58,6 +58,8 @@ PEERS = ("peerB", "peerC")
 SKS = [bytes([i + 1]) * 32 for i in range(6)]
 PKS = [V.ed25519_pubkey(sk) for sk in SKS]
 LOCAL_KEYS = [0, 1, 2]
+RULES = {"v1": V.H_LENS_KERNEL, "v2": V.H_LENS_KERNEL_V2}  # RULES-V2.md: a scope names its epoch's rules
+FIELD_MIXES = [["utf8"], ["cell"], ["digest"], ["hash"], ["cell", "digest"], ["digest", "cell", "hash"]]
 
 # ---------------------------------------------------------------------------
 # Book I fixtures: an honest computation APPLY(I, K) ->* K, and a computation of I whose "fake" states carry K
@@ -174,7 +176,7 @@ class Interp:
         self.seals: Dict[bytes, V.Seal] = {}
         self.atoms: Dict[bytes, bytes] = dict(V.STD_SCHEMA_ATOMS)
         self.cur: Optional[str] = None  # handle of the active local scope
-        self.history: List[dict] = []  # per admitted commit: scope id at start, cells, seals, new ids
+        self.history: List[dict] = []  # per admitted commit: scope id at start, its rules, cells, seals, new ids
         self.tips: List[str] = []
         self.crashes: List[str] = []
 
@@ -230,14 +232,16 @@ class Interp:
                         h_schema=V.H_SCHEMA["scope"],
                         h_slot_name=_put(atoms, V.atom_utf8(f"{origin}/SCOPE")),
                         h_payload=_put(atoms, V.atom_utf8(payload)),
-                        slots=(self._pol(atoms, adm_thr, adm), self._pol(atoms, acc_thr, acc), V.H_LENS_KERNEL),
+                        slots=(self._pol(atoms, adm_thr, adm), self._pol(atoms, acc_thr, acc), RULES[op.get("rules", "v1")]),
                         **kw,
                     )
+                    if op.get("rules", "v1") == "v2":
+                        atoms[V.H_LENS_KERNEL_V2] = V.KERNEL2_ATOM
                     ctx = cell.id if kind != "rotate" else self.ids[self.cur]
                     for k in op["signers"]:
                         new_seals.append(V.Seal.sign(SKS[k], cell.id, ctx))
                     self._register(op["h"], cell, new_cells, origin=origin, kind="scope", name=f"{origin}/SCOPE",
-                                   adm=list(adm), acc=list(acc), adm_thr=adm_thr)
+                                   adm=list(adm), acc=list(acc), adm_thr=adm_thr, rules=op.get("rules", "v1"))
                     if kind == "genesis":
                         atoms.update(COMP_ATOMS)
                     if kind in ("genesis", "rotate"):
@@ -255,7 +259,7 @@ class Interp:
                     for k in op["signers"]:
                         new_seals.append(V.Seal.sign(SKS[k], cell.id, ctx))
                     self._register(op["h"], cell, new_cells, origin=op["origin"], kind=op["kind"], name=op["name"],
-                                   **{k: op[k] for k in ("tier", "req", "exp", "pol", "schema") if k in op})
+                                   **{k: op[k] for k in ("tier", "req", "exp", "pol", "schema", "fields") if k in op})
                 elif kind == "seal":
                     if op["target"] not in self.ids:
                         continue
@@ -288,8 +292,10 @@ class Interp:
         self.cur = next_cur
         self.tip = cand
         self.tips.append(cand)
+        start = scope_at_start if scope_at_start is not None else self.ids[next_cur]
         self.history.append({
-            "scope": scope_at_start if scope_at_start is not None else self.ids[next_cur],
+            "scope": start,
+            "rules": self.cell_by_id[start].slots[2],
             "cells": dict(self.cell_by_id),
             "seals": list(self.seals.values()),
             "new": {c.id for c in new_cells},
@@ -336,13 +342,26 @@ class Interp:
             kw["h_loss"] = _put(atoms, V.atom_utf8(f"loss {op['h']}"))
         name = _put(atoms, V.atom_utf8(op["name"]))
         text = _put(atoms, V.atom_utf8(f"{kind} {op['h']}"))
-        if kind == "schema":  # custom schema cell: H_EMPTY payload and edges, one utf8 field
+        if kind == "schema":  # custom schema cell: H_EMPTY payload and edges, typed fields (default one utf8 field)
+            fields = op.get("fields", ["utf8"])
             return V.Cell(h_schema=V.H_META_SCHEMA, h_slot_name=name, h_payload=V.H_EMPTY,
-                          slots=(_put(atoms, V.atom_utf8("note:utf8")),))
-        if kind == "custom":  # an instance of a custom schema
+                          slots=tuple(_put(atoms, V.atom_utf8(f"f{i}:{t}")) for i, t in enumerate(fields)))
+        if kind == "custom":  # an instance of a custom schema; `vals` gives cell-valued payload or slots by handle
             if op["schema"] not in self.ids:
                 return None
-            return V.Cell(h_schema=self.ids[op["schema"]], h_slot_name=name, h_payload=text, slots=(text,), **kw)
+            fields = self.meta[op["schema"]].get("fields", ["utf8"])
+
+            def value(v):
+                if v is None:
+                    return text
+                if v.startswith("cell:"):
+                    return self.ids.get(v[5:], text)
+                return bytes.fromhex(v[4:])  # "raw:<hex>": an opaque digest, maybe a planned cell's id
+
+            vals = op.get("vals", {})
+            slots = tuple(value(vals.get(str(i))) for i in range(len(fields)))
+            payload = value(vals["p"]) if "p" in vals else text
+            return V.Cell(h_schema=self.ids[op["schema"]], h_slot_name=name, h_payload=payload, slots=slots, **kw)
         sch = V.H_SCHEMA[kind]
         if kind == "axiom":
             return V.Cell(h_schema=sch, h_slot_name=name, h_payload=text, **kw)
@@ -400,7 +419,8 @@ class Gen:
         acc = self.subset(LOCAL_KEYS)
         adm_thr = self.r.randint(1, len(adm))
         return [{"op": "genesis", "h": self.h(), "adm": adm, "adm_thr": adm_thr, "acc": acc,
-                 "acc_thr": self.r.randint(1, len(acc)), "signers": sorted(self.r.sample(adm, adm_thr))}]
+                 "acc_thr": self.r.randint(1, len(acc)), "signers": sorted(self.r.sample(adm, adm_thr)),
+                 "rules": "v2" if self.r.random() < 0.3 else "v1"}]
 
     def signers(self, it: Interp, acceptance=False, origin=SCOPE, fscope=None) -> List[int]:
         if origin == SCOPE:
@@ -428,7 +448,7 @@ class Gen:
         h = self.h()
         if kind == "schema":  # unique name, no edges; signed by a random subset, so late seals may latch it
             return {"op": "cell", "h": h, "origin": SCOPE, "kind": kind, "name": f"{SCOPE}/sch.u{h}", "edges": {},
-                    "signers": self.signers(it)}
+                    "signers": self.signers(it), "fields": r.choice(FIELD_MIXES)}
         op = {"op": "cell", "h": h, "origin": SCOPE, "kind": kind, "edges": {}}
         allh = self.handles(it, lambda hh, m: m["kind"] != "scope")
         same_kind_local = lambda hh, m: m["origin"] == SCOPE and m["kind"] == kind  # noqa: E731
@@ -501,10 +521,8 @@ class Gen:
             if op["code"] == "INVALID" and r.random() < 0.6:
                 op["edges"]["invalidates"] = [op["target"]]
         elif kind == "custom":
-            schemas = self.handles(it, lambda hh, m: m["kind"] == "schema")
-            if not schemas:
+            if not self.custom_vals(it, op):
                 return None
-            op["schema"] = r.choice(schemas)
         elif kind == "acceptance":
             foreign = self.handles(it, lambda hh, m: m["origin"] != SCOPE and (m["kind"] != "scope" or r.random() < 0.3))
             if not foreign:
@@ -526,6 +544,93 @@ class Gen:
         op["edges"] = {k: v for k, v in op["edges"].items() if v}
         return op
 
+    def custom_vals(self, it: Interp, op: dict, origin: str = SCOPE) -> bool:
+        """Pick a custom schema and values for its fields: `cell` names a cell (preferably of `origin`), `digest`
+        and `hash` sometimes name one too (opaque under v2, a reference under v1), and the payload sometimes."""
+        r = self.r
+        schemas = self.handles(it, lambda hh, m: m["kind"] == "schema")
+        if not schemas:
+            return False
+        op["schema"] = r.choice(schemas)
+        fields = it.meta[op["schema"]].get("fields", ["utf8"])
+        same = self.handles(it, lambda hh, m: m["kind"] != "scope" and m["origin"] == origin)
+        anyc = self.handles(it, lambda hh, m: m["kind"] != "scope")
+        vals: Dict[str, str] = {}
+        for i, t in enumerate(fields):
+            pool = same if same and r.random() < 0.7 else anyc
+            if t == "cell" and pool:
+                vals[str(i)] = "cell:" + r.choice(pool)
+            elif t in ("digest", "hash") and pool and r.random() < 0.6:
+                vals[str(i)] = "cell:" + r.choice(pool)
+            elif t == "digest" and r.random() < 0.5:
+                vals[str(i)] = "raw:" + bytes(r.randrange(256) for _ in range(32)).hex()
+        if (same or anyc) and r.random() < 0.3:
+            vals["p"] = "cell:" + r.choice(same or anyc)
+        op["vals"] = vals
+        return True
+
+    def planned(self, it: Interp) -> List[dict]:
+        """A custom cell whose digest is the id of a cell planned for a later commit: refused then if the holder was
+        born in a v1 epoch (the interim rule), admitted and opaque if it was born in a v2 one (RULES-V2.md)."""
+        r = self.r
+        digest_schemas = self.handles(it, lambda hh, m: m["kind"] == "schema" and "digest" in m.get("fields", []))
+        if not digest_schemas:
+            return []
+        hp, hh = self.h(), self.h()
+        name = f"{SCOPE}/axiom.p{hp}"
+        future = V.Cell(V.H_SCHEMA["axiom"], V.sha256(V.atom_utf8(name)), V.sha256(V.atom_utf8(f"axiom {hp}")))
+        sch = r.choice(digest_schemas)
+        slot = it.meta[sch]["fields"].index("digest")
+        holder = {"op": "cell", "h": hh, "origin": SCOPE, "kind": "custom", "name": f"{SCOPE}/custom.u{hh}",
+                  "edges": {}, "schema": sch, "vals": {str(slot): "raw:" + future.id.hex()},
+                  "signers": self.signers(it)}
+        for i, t in enumerate(it.meta[sch]["fields"]):
+            if t == "cell":
+                cs = self.handles(it, lambda h2, m: m["kind"] != "scope")
+                if not cs:
+                    return []
+                holder["vals"][str(i)] = "cell:" + r.choice(cs)
+        self.pending.insert(0, lambda it2: [{"op": "cell", "h": hp, "origin": SCOPE, "kind": "axiom", "name": name,
+                                             "edges": {}, "signers": self.subset(it2.roster()[0])}])
+        return [holder]
+
+    def custom_chain(self, it: Interp) -> List[dict]:
+        """A custom schema with `cell`, `digest` or `hash` fields, a foreign cell X, then a foreign cell Y of X's
+        origin whose fields all hold X's id, and an acceptance of Y. Whether X is accepted through Y depends on the
+        rules of Y's epoch: under v1 every field is a reference, under v2 only `cell` (RULES-V2.md)."""
+        r = self.r
+        ops: List[dict] = []
+        peer = r.choice(PEERS)
+        fss = self.handles(it, lambda hh, m: m["kind"] == "scope" and m["origin"] == peer)
+        if fss:
+            fs, keys = r.choice(fss), None
+        else:
+            f = self.fscope(it)
+            f.update(peer=peer, signers=sorted(r.sample(f["keys"], f["thr"])))
+            f.pop("edges", None)
+            ops.append(f)
+            fs, keys = f["h"], f["keys"]
+        keys = keys or it.meta[fs]["adm"]
+        hs, hx = self.h(), self.h()
+        fields = r.choice([["digest"], ["cell"], ["hash"], ["cell", "digest"], ["digest", "hash"]])
+        ops.append({"op": "cell", "h": hs, "origin": SCOPE, "kind": "schema", "name": f"{SCOPE}/sch.u{hs}",
+                    "edges": {}, "signers": self.full(it.roster()[0]), "fields": fields})
+        ops.append({"op": "cell", "h": hx, "origin": peer, "kind": "axiom", "name": f"{peer}/axiom.{hx}", "ctx": fs,
+                    "edges": {}, "signers": self.subset(keys)})
+        hy, ha = self.h(), self.h()
+        vals = {str(i): f"cell:{hx}" for i in range(len(fields))}
+        if r.random() < 0.3:
+            vals["p"] = f"cell:{hx}"
+
+        def later(it2):
+            return [{"op": "cell", "h": hy, "origin": peer, "kind": "custom", "name": f"{peer}/custom.{hy}", "ctx": fs,
+                     "schema": hs, "vals": vals, "edges": {}, "signers": self.subset(keys)},
+                    {"op": "cell", "h": ha, "origin": SCOPE, "kind": "acceptance", "name": f"{SCOPE}/acceptance.{ha}",
+                     "target": hy, "peer": peer, "fscope": fs, "edges": {},
+                     "signers": self.full(sorted(set(it2.roster()[1])))}]
+        self.pending.insert(0, later)
+        return ops
+
     def bad_slot(self, it: Interp, kind: str) -> dict:
         r = self.r
         slot = {"contract": r.choice([0, 3, 3]), "question": r.choice([0, 1]), "checkpoint": 0}[kind]
@@ -541,8 +646,10 @@ class Gen:
         fs = r.choice(fscopes)
         peer = it.meta[fs]["origin"]
         h = self.h()
-        kind = r.choice(["axiom"] * 4 + ["verdict", "contract"])
+        kind = r.choice(["axiom"] * 4 + ["verdict", "contract", "custom", "custom"])
         op = {"op": "cell", "h": h, "origin": peer, "kind": kind, "name": f"{peer}/{kind}.{h}", "ctx": fs, "edges": {}}
+        if kind == "custom" and not self.custom_vals(it, op, origin=peer):
+            return None
         same_peer = self.handles(it, lambda hh, m: m["origin"] == peer and m["kind"] != "scope")
         op["edges"]["relies"] = self.pick(same_peer, 0.6, r.randint(1, 2)) + self.pick(
             self.handles(it, lambda hh, m: m["kind"] != "scope"), 0.15)
@@ -569,7 +676,8 @@ class Gen:
         keys = self.subset([3, 4] + ([r.choice(LOCAL_KEYS)] if r.random() < 0.3 else []))
         thr = r.randint(1, len(keys))
         signers = sorted(r.sample(keys, thr if r.random() < 0.9 else max(0, thr - 1)))
-        op = {"op": "fscope", "h": self.h(), "peer": peer, "keys": keys, "thr": thr, "signers": signers}
+        op = {"op": "fscope", "h": self.h(), "peer": peer, "keys": keys, "thr": thr, "signers": signers,
+              "rules": "v2" if r.random() < 0.3 else "v1"}
         if r.random() < 0.15:  # a foreign scope cell superseding some scope cell (local or foreign)
             op["edges"] = {"supersedes": self.pick(self.handles(it, lambda hh, m: m["kind"] == "scope"))}
         return op
@@ -581,8 +689,10 @@ class Gen:
         adm = self.subset(LOCAL_KEYS + [5])
         acc = self.subset(LOCAL_KEYS + [5])
         signers = self.subset(adm_now, lo=min(len(adm_now), max(1, thr_now if r.random() < 0.8 else 1)))
+        now = it.meta[it.cur].get("rules", "v1")
+        rules = ("v1" if r.random() < 0.1 else "v2") if now == "v2" else ("v2" if r.random() < 0.35 else "v1")
         return {"op": "rotate", "h": self.h(), "adm": adm, "adm_thr": r.randint(1, len(adm)), "acc": acc,
-                "acc_thr": r.randint(1, len(acc)), "signers": signers}
+                "acc_thr": r.randint(1, len(acc)), "signers": signers, "rules": rules}
 
     def seal(self, it: Interp) -> Optional[dict]:
         r = self.r
@@ -792,6 +902,12 @@ class Gen:
             return self.rebind_chain(it)
         if x < 0.42:
             return self.attest_bundle(it)
+        if x < 0.47:
+            ops = self.planned(it)
+            if ops:
+                return ops
+        if x < 0.53:
+            return self.custom_chain(it)
         ops: List[dict] = []
         for _ in range(r.choice([1, 1, 2, 2, 3])):
             x = r.random()
@@ -928,14 +1044,36 @@ def oracle_auth(it: Interp) -> Dict[str, Set[bytes]]:
     return out
 
 
-def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], latched_acc: Set[bytes]) -> Dict[bytes, bool]:
+def spec_value_refs(it: Interp, atoms, cells: Dict[bytes, V.Cell]) -> Dict[bytes, Set[bytes]]:
+    """RULES-V2.md §2 and §4 over the interpreter's own log: a cell born in a commit whose governing scope names v1
+    references every cell whose id is its payload or a slot; one born under v2, the payload of a verdict or
+    acceptance and the slots its schema's descriptors declare `cell`."""
+    born_v1: Dict[bytes, bool] = {cid: True for cid in V.STD_SCHEMA_IDS}
+    for rec in it.history:
+        for cid in rec["new"]:
+            born_v1.setdefault(cid, rec["rules"] == V.H_LENS_KERNEL)
+    out: Dict[bytes, Set[bytes]] = {}
+    for u, c in cells.items():
+        if born_v1[u]:
+            out[u] = {x for x in (c.h_payload, *c.slots) if x in cells}
+            continue
+        typed = {c.h_payload} if c.h_schema in (V.H_SCHEMA["verdict"], V.H_SCHEMA["acceptance"]) else set()
+        sc = cells.get(c.h_schema)
+        if c.h_schema != V.H_META_SCHEMA and sc is not None:
+            typed |= {c.slots[i] for i, d in enumerate(sc.slots) if V.parse_utf8(atoms[d]).endswith(":cell")}
+        out[u] = {x for x in typed if x in cells}
+    return out
+
+
+def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], latched_acc: Set[bytes],
+                 value_refs: Dict[bytes, Set[bytes]]) -> Dict[bytes, bool]:
     """Spec §4.2 Pass 2 least fixed point, computed by chaotic iteration with no round cap and no topological order."""
     refs: Dict[bytes, Set[bytes]] = {}
     for u, c in cells.items():
         out = set()
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             out.update(_items(atoms, mh))
-        out.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        out.update(value_refs[u])
         out.discard(u)
         refs[u] = out
     children: Dict[bytes, Set[bytes]] = {u: set() for u in cells}
@@ -997,26 +1135,50 @@ EXEC_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin
 _EXEC: Optional[subprocess.Popen] = None
 
 
-def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
-    """The facts line for `vars1exec` (proofs/Vars1/Exec.lean), read only from the kernel's own input and output:
-    cell structure from the input, `Authorized` and per-edge authorization from the fold's output. Returns the
-    line and the kernel's status bytes."""
+def kernel_input_cells(kernel_input: bytes):
+    """Parse a kernel input of either rules version (§4.3; RULES-V2.md §3) on its own, without vars1.py: header
+    `(C, N, P)`, policies `[(id, thr, keys)]`, cells `[(id, schema, payload, origin, birth, slots, edges, refs)]` with
+    `refs` the payload/slot references as indices (v2: the explicit list; v1: every payload or slot equal to a cell
+    id), and the seal words."""
     words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
-    off = 0
-    C, N, NK, P = words(0, 4); off = 16
+    v2 = words(0)[0] == V.KERNEL2_MAGIC
+    off = 4 if v2 else 0
+    C, N, NK, P = words(off, 4); off += 16
+    pols = []
     for _ in range(P):
-        off += 32
-        _thr, m = words(off, 2); off += 8 + 4 * m
+        pid = kernel_input[off:off + 32]; off += 32
+        thr, m = words(off, 2); off += 8
+        pols.append((pid, thr, list(words(off, m)) if m else [])); off += 4 * m
     cells = []
     for _ in range(N):
         cid, schema, payload, _name, _loss = (kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(5)); off += 160
-        origin, _birth, K = words(off, 3); off += 12
+        origin, birth, K = words(off, 3); off += 12
         slots = [kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(K)]; off += 32 * K
+        off += 8 if v2 else 0
         edges = []
         for _ in range(5):
             (cnt,) = words(off); off += 4
             edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
-        cells.append((cid, schema, payload, origin, slots, edges))
+        refs = None
+        if v2:
+            (cnt,) = words(off); off += 4
+            refs = list(words(off, 2 * cnt))[1::2] if cnt else []; off += 8 * cnt
+        cells.append([cid, schema, payload, origin, birth, slots, edges, refs])
+    index = {c[0]: i for i, c in enumerate(cells)}
+    for c in cells:
+        if c[7] is None:
+            c[7] = [index[h] for h in (c[2], *c[5]) if h in index]
+    (S,) = words(off); off += 4
+    return (C, N, P), pols, cells, [words(off + 16 * j, 4) for j in range(S)]
+
+
+def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
+    """The facts line for `vars1exec` (proofs/Vars1/Exec.lean), read only from the kernel's own input and output:
+    cell structure from the input, `Authorized` and per-edge authorization from the fold's output. Returns the
+    line and the kernel's status bytes."""
+    (_, N, _), _, kcells, _ = kernel_input_cells(kernel_input)
+    cells = [(cid, schema, payload, origin, slots, edges, vrefs)
+             for cid, schema, payload, origin, _b, slots, edges, vrefs in kcells]
     index = {c[0]: i for i, c in enumerate(cells)}
     # `KernelRunner.run` returns the output after its length word: scope index, statuses, Authorized, edge latches
     status = kernel_output[4:4 + N]
@@ -1024,16 +1186,16 @@ def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
     flags = kernel_output[4 + 2 * N:]
     pos = 0
     parts = [str(N)]
-    for i, (cid, schema, payload, origin, slots, edges) in enumerate(cells):
+    for i, (cid, schema, payload, origin, slots, edges, vrefs) in enumerate(cells):
         rel, _att, sup, ret, inv = edges
         latch = {}
         for kind, lst in (("inv", inv), ("ret", ret), ("sup", sup)):
             latch[kind] = [(d, flags[pos + j]) for j, d in enumerate(lst)]
             pos += len(lst)
         is_verdict = schema == V.H_SCHEMA["verdict"]
-        pay = index.get(payload)
-        refs = sorted({*rel, *edges[1], *sup, *ret, *inv, *(x for x in [pay] if x is not None),
-                       *(index[h] for h in slots if h in index)})
+        # `payload` feeds acceptance only: an acceptance's payload is a reference under either rules version
+        pay = index.get(payload) if schema == V.H_SCHEMA["acceptance"] else None
+        refs = sorted({*rel, *edges[1], *sup, *ret, *inv, *vrefs})
         parts += [str(int(origin == 0 or cid in V.STD_SCHEMA_IDS)), str(int(schema == V.H_SCHEMA["acceptance"])),
                   str(int(is_verdict)), str(int(is_verdict and len(slots) > 1 and slots[1] == V.H_VERDICT_INVALID)),
                   str(origin), str(auth[i]), str(0 if pay is None else pay + 1),
@@ -1066,26 +1228,13 @@ _FOLD: Optional[subprocess.Popen] = None
 def fold_facts(kernel_input: bytes) -> str:
     """The input line for `vars1fold` (the model's own fold, `proofs/Vars1/Fold.lean`), read only from the kernel's
     input: policies, cell kinds and policy slots, edges, births, and the verified seals with their first commit."""
-    words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
-    C, N, NK, P = words(0, 4); off = 16
-    pols, pol_ix = [], {}
-    for i in range(P):
-        pid = kernel_input[off:off + 32]; off += 32
-        thr, m = words(off, 2); off += 8
-        keys = list(words(off, m)) if m else []; off += 4 * m
-        pol_ix[pid] = i
-        pols.append((thr, keys))
+    (C, N, P), kpols, kcells, seals = kernel_input_cells(kernel_input)
+    pols = [(thr, keys) for _, thr, keys in kpols]
+    pol_ix = {pid: i for i, (pid, _, _) in enumerate(kpols)}
     codes = {V.H_SCHEMA["scope"]: 1, V.H_SCHEMA["acceptance"]: 2, V.H_SCHEMA["contract"]: 3,
              V.H_SCHEMA["decision"]: 4, V.H_SCHEMA["question"]: 5, V.H_SCHEMA["verdict"]: 6, V.H_META_SCHEMA: 7}
     cells, g = [], None
-    for i in range(N):
-        cid, schema = kernel_input[off:off + 32], kernel_input[off + 32:off + 64]; off += 160
-        origin, birth, K = words(off, 3); off += 12
-        slots = [kernel_input[off + 32 * j: off + 32 * (j + 1)] for j in range(K)]; off += 32 * K
-        edges = []
-        for _ in range(5):
-            (cnt,) = words(off); off += 4
-            edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
+    for i, (cid, schema, _payload, origin, birth, slots, edges, _refs) in enumerate(kcells):
         code = codes.get(schema, 0)
         pol = lambda h: 0 if h == V.H_EMPTY or h not in pol_ix else pol_ix[h] + 1
         owner = code in (3, 4) and slots[0] == V.H_OWNER
@@ -1095,8 +1244,7 @@ def fold_facts(kernel_input: bytes) -> str:
             g = i
         cells.append([code, int(origin == 0), int(cid in V.STD_SCHEMA_IDS), birth, int(owner), custom, p0, p1,
                       edges[2], edges[3], edges[4]])
-    (S,) = words(off); off += 4
-    seals = [words(off + 16 * j, 4) for j in range(S)]
+    S = len(seals)
     parts = [N, P, C, S, g]
     for thr, keys in pols:
         parts += [thr, len(keys), *keys]
@@ -1123,14 +1271,13 @@ def model_fold(line: str) -> List[int]:
     return [int(x) for x in out.split()]
 
 
-_RUNNER: Optional["V.KernelRunner"] = None
+_RUNNERS: Dict[bytes, "V.KernelRunner"] = {}
 
 
-def kernel_runner() -> "V.KernelRunner":
-    global _RUNNER
-    if _RUNNER is None:
-        _RUNNER = V.KernelRunner()
-    return _RUNNER
+def kernel_runner(rules: bytes = V.H_LENS_KERNEL) -> "V.KernelRunner":
+    if rules not in _RUNNERS:
+        _RUNNERS[rules] = V.KernelRunner(rules)
+    return _RUNNERS[rules]
 
 
 def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Random, shuffles: int = 1):
@@ -1145,9 +1292,12 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
         return [("I0", f"lens/fold crashed: {type(e).__name__}: {e}")], prev_latches
     cells, atoms, active = lens["cells"], lens["atoms"], lens["active"]
 
-    # I8: a fresh run of the rules kernel (kernel/lens.wasm) reproduces the lens's Passes 1-2
+    # I8: a fresh run of the rules the tip's epoch names (kernel/lens.wasm or kernel2/lens2.wasm) reproduces the
+    # lens's Passes 1-2; the tip's epoch is the interpreter's own record, not the host's
+    if lens["rules"] != it.history[-1]["rules"]:
+        out.append(("I8", f"lens ran rules {lens['rules'].hex()[:10]}, the tip's epoch is {it.history[-1]['rules'].hex()[:10]}"))
     try:
-        for cid, bits in kernel_runner().statuses(lens).items():
+        for cid, bits in kernel_runner(lens["rules"]).statuses(lens).items():
             bad = [n for n, v in bits.items() if lens[n][cid] != v]
             if bad:
                 out.append(("I8", f"kernel disagrees on {bad} of {cid.hex()[:10]}"))
@@ -1157,7 +1307,7 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
 
     # I9: the proved executable lens (proofs/Vars1/Exec.lean, compiled) computes the kernel's own status bytes
     # from the kernel's input and its fold's authority output
-    raw = kernel_runner().run(lens["kernel_input"])
+    raw = kernel_runner(lens["rules"]).run(lens["kernel_input"])
     line, kstatus = exec_facts(lens["kernel_input"], raw)
     estatus = exec_statuses(line)
     # I10: the model's own fold (proofs/Vars1/Fold.lean, compiled) reproduces the kernel's scope, Authorized bits and
@@ -1198,7 +1348,7 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
             out.append(("I1", f"{len(cids)} Active bindings of {V.parse_utf8(atoms[nm])!r}: {[x.hex()[:10] for x in cids]}"))
 
     # I2
-    st = oracle_stale(atoms, cells, active, set(fold["latched_acc_auth"]))
+    st = oracle_stale(atoms, cells, active, set(fold["latched_acc_auth"]), spec_value_refs(it, atoms, cells))
     diff = sorted(cid.hex()[:10] + ("+" if st[cid] else "-") for cid in cells if st[cid] != lens["stale"][cid])
     if diff:
         out.append(("I2", f"Stale differs from the LFP oracle (+ oracle Stale, - oracle fresh): {diff}"))

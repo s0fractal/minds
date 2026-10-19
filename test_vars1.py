@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -29,15 +30,16 @@ import vars1 as V  # noqa: E402
 
 
 class KernelCheckedRepo(V.GitVarsRepo):
-    """Every lens() is re-run on a separate rules-kernel instance (kernel/lens.wasm): Passes 1-2 must reproduce."""
+    """Every lens() is re-run on a separate instance of the rules it names (kernel/lens.wasm or kernel2/lens2.wasm):
+    Passes 1-2 must reproduce."""
 
-    runner: "V.KernelRunner | None" = None
+    runners: "dict[bytes, V.KernelRunner]" = {}
 
     def lens(self, scope: str):
         out = super().lens(scope)
-        if KernelCheckedRepo.runner is None:
-            KernelCheckedRepo.runner = V.KernelRunner()
-        for cid, bits in KernelCheckedRepo.runner.statuses(out).items():
+        if out["rules"] not in KernelCheckedRepo.runners:
+            KernelCheckedRepo.runners[out["rules"]] = V.KernelRunner(out["rules"])
+        for cid, bits in KernelCheckedRepo.runners[out["rules"]].statuses(out).items():
             for name, val in bits.items():
                 if out[name][cid] != val:
                     raise AssertionError(f"kernel disagrees on {name} of {cid.hex()[:12]}: python={out[name][cid]} wasm={val}")
@@ -2377,6 +2379,203 @@ class TestVars1Conformance(unittest.TestCase):
         merge = self.repo._git("commit-tree", tree, "-p", tip, "-p", old, "-m", "merge").decode().strip()
         with self.assertRaisesRegex(V.VarsError, "single parent"):
             self.repo.admit_and_advance("core", merge, expected_old=tip)
+
+    # -- rules v2 (RULES-V2.md, prototype): typed cell references -------------------------------------------------
+    def _rotate(self, parent: str, base: V.Cell, rules: bytes, label: str = "core#v2") -> tuple[str, V.Cell]:
+        """Rotate `core` to a scope naming `rules`, same roster as `base` (1-of-{pk1,pk2} admission)."""
+        a: dict[bytes, bytes] = {h: raw for h, raw in V.RULES_ATOMS.items() if h == rules}
+        put = lambda raw: self._put_atom(a, raw)
+        s = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8("core/SCOPE")), put(V.atom_utf8(label)),
+                   h_supersedes=self._hv(a, [base.id]), h_loss=put(V.atom_utf8(f"rotate to {label}")),
+                   slots=(base.slots[0], base.slots[1], rules))
+        c = self.repo.build_candidate_commit("core", a, [s], [V.Seal.sign(self.sk1, s.id, base.id)], parent_commit=parent)
+        self.repo.admit_and_advance("core", c, expected_old=parent)
+        return c, s
+
+    def _opaque(self, a: dict[bytes, bytes], schema: V.Cell, name: str, value: bytes) -> V.Cell:
+        return V.Cell(schema.id, self._put_atom(a, V.atom_utf8(name)), self._put_atom(a, V.atom_utf8(name)),
+                      slots=(value,))
+
+    def _commit(self, parent: str, scope: V.Cell, a: dict[bytes, bytes], cells: list) -> str:
+        c = self.repo.build_candidate_commit("core", a, cells, [V.Seal.sign(self.sk1, x.id, scope.id) for x in cells],
+                                             parent_commit=parent)
+        self.repo.admit_and_advance("core", c, expected_old=parent)
+        return c
+
+    def _kernel_refs(self, cid: bytes) -> list[int]:
+        lens = self.repo.lens("core")
+        ki = V.parse_kernel_input(lens["kernel_input"])
+        return next(c["refs"] for c in ki["cells"] if c["id"] == cid)
+
+    def test_36_rules_v2_keep_an_opaque_digest_opaque(self) -> None:
+        """RULES-V2: after rotation to v2, a digest equal to a later cell's id stays opaque and vetoes nothing; the
+        same digest written in a v1 epoch still refuses that cell, before and after the rotation."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        fa: dict[bytes, bytes] = {}
+        planned_v1 = V.Cell(V.H_SCHEMA["axiom"], self._put_atom(fa, V.atom_utf8("core/planned-1")),
+                            self._put_atom(fa, V.atom_utf8("planned in v1")))
+        planned_v2 = V.Cell(V.H_SCHEMA["axiom"], self._put_atom(fa, V.atom_utf8("core/planned-2")),
+                            self._put_atom(fa, V.atom_utf8("planned in v2")))
+        a: dict[bytes, bytes] = {}
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/opaque-schema")), V.H_EMPTY,
+                        slots=(self._put_atom(a, V.atom_utf8("value:digest")),))
+        holder1 = self._opaque(a, schema, "core/holder-1", planned_v1.id)
+        c1 = self._commit(c0, s0, a, [schema, holder1])
+        self.assertEqual(self.repo.lens("core")["rules"], V.H_LENS_KERNEL)
+
+        c2, s1 = self._rotate(c1, s0, V.H_LENS_KERNEL_V2)
+        self.assertEqual(self.repo.lens("core")["rules"], V.H_LENS_KERNEL, "the rotation commit is still a v1 epoch")
+        a3: dict[bytes, bytes] = {}
+        holder2 = self._opaque(a3, schema, "core/holder-2", planned_v2.id)
+        c3 = self._commit(c2, s1, a3, [holder2])
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL_V2)
+        self.assertEqual(struct.unpack_from("<I", lens["kernel_input"])[0], V.KERNEL2_MAGIC)
+
+        # v2-born: the digest is opaque, so the planned cell is admitted and nothing references it
+        c4 = self._commit(c3, s1, dict(fa), [planned_v2])
+        self.assertEqual(self._kernel_refs(holder2.id), [], "a v2 digest is never a reference")
+        self.assertTrue(self.repo.lens("core")["active"][planned_v2.id])
+        # v1-born: the interim rule still holds for that digest, after the rotation too
+        c5 = self.repo.build_candidate_commit("core", dict(fa), [planned_v1],
+                                              [V.Seal.sign(self.sk1, planned_v1.id, s1.id)], parent_commit=c4)
+        with self.assertRaisesRegex(V.VarsError, "later-born cell"):
+            self.repo.admit_and_advance("core", c5, expected_old=c4)
+
+        # and in a chain that never rotates, the v1 rule refuses the same cell (test 34's case)
+        T = TestVars1Conformance()
+        T.setUp()
+        try:
+            d0, t0, _ = T._bootstrap_genesis("core")
+            b: dict[bytes, bytes] = {}
+            sc = V.Cell(V.H_META_SCHEMA, T._put_atom(b, V.atom_utf8("core/opaque-schema")), V.H_EMPTY,
+                        slots=(T._put_atom(b, V.atom_utf8("value:digest")),))
+            d1 = T._commit(d0, t0, b, [sc, T._opaque(b, sc, "core/holder-2", planned_v2.id)])
+            d2 = T.repo.build_candidate_commit("core", dict(fa), [planned_v2],
+                                               [V.Seal.sign(T.sk1, planned_v2.id, t0.id)], parent_commit=d1)
+            with self.assertRaisesRegex(V.VarsError, "later-born cell"):
+                T.repo.admit_and_advance("core", d2, expected_old=d1)
+        finally:
+            T.tearDown()
+
+    def test_37_rules_v2_read_references_by_type(self) -> None:
+        """RULES-V2: a v2-born cell's references are its typed positions (a `cell` field, a verdict's payload);
+        `hash` and `digest` values naming existing cells are not. A v1-born cell keeps v1's reading under v2."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        target = self._axiom(a, "core/target", "target")
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/mixed-schema")), V.H_EMPTY,
+                        slots=tuple(self._put_atom(a, V.atom_utf8(d)) for d in ("link:cell", "d:digest", "h:hash")))
+        old = V.Cell(schema.id, self._put_atom(a, V.atom_utf8("core/old")), target.id,
+                     slots=(target.id, target.id, target.id))
+        c1 = self._commit(c0, s0, a, [target, schema, old])
+        c2, s1 = self._rotate(c1, s0, V.H_LENS_KERNEL_V2)
+        a3: dict[bytes, bytes] = {}
+        new = V.Cell(schema.id, self._put_atom(a3, V.atom_utf8("core/new")), target.id,
+                     slots=(target.id, target.id, target.id))
+        self._commit(c2, s1, a3, [new])
+        lens = self.repo.lens("core")
+        ki = V.parse_kernel_input(lens["kernel_input"])
+        ix = {c["id"]: i for i, c in enumerate(ki["cells"])}
+        self.assertEqual(self._kernel_refs(new.id), [ix[target.id]], "only the `cell` field is a reference")
+        self.assertEqual(self._kernel_refs(old.id), [ix[target.id]] * 4, "v1-born: payload and every slot")
+
+    def test_38_rules_v2_never_rotate_back_to_v1(self) -> None:
+        c0, s0, _ = self._bootstrap_genesis("core")
+        c1, s1 = self._rotate(c0, s0, V.H_LENS_KERNEL_V2)
+        with self.assertRaisesRegex(V.VarsError, "rules kernel E-25:"):
+            self._rotate(c1, s1, V.H_LENS_KERNEL, "core#back")
+        c2, s2 = self._rotate(c1, s1, V.H_LENS_KERNEL_V2, "core#v2-again")  # v2 -> v2 is an ordinary rotation
+        self.assertEqual(self.repo.lens("core")["rules"], V.H_LENS_KERNEL_V2)
+
+    def test_39_rules_v2_projections_name_their_epochs_rules(self) -> None:
+        """A projection names the rules of its tip's epoch, and the gate recomputes with that module: a v1 tip
+        stays a v1 projection after the rotation, a v2 tip is a v2 one, and a bundle of each verifies."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        c1, s1 = self._rotate(c0, s0, V.H_LENS_KERNEL_V2)
+        a: dict[bytes, bytes] = {}
+        ax = self._axiom(a, "core/fact", "a fact")
+        c2 = self._commit(c1, s1, a, [ax])
+
+        def projection(at: dict[bytes, bytes], name: str, tip: str, rules: bytes) -> V.Cell:
+            trees = [self.repo.read_cas_tree(x) for x in self.repo.commit_chain(tip)]
+            ki, _ = V.kernel_facts("core", trees)
+            h_in, h_state = V.sha256(ki), V.sha256(V.kernel_runner(V.chain_rules("core", trees)).run(ki))
+            return V.Cell(V.H_SCHEMA["projection"], self._put_atom(at, V.atom_utf8(name)), V.H_EMPTY,
+                          slots=(self._put_atom(at, V.atom_utf8(tip)), rules, h_in, h_state,
+                                 self._put_atom(at, V.atom_pol1(1, self._hv(at, [self.pk1])))))
+
+        for name, tip, wrong in (("core/p.v1", c1, V.H_LENS_KERNEL_V2), ("core/p.v2", c2, V.H_LENS_KERNEL)):
+            bad_a: dict[bytes, bytes] = {}
+            bad = projection(bad_a, name, tip, wrong)
+            c = self.repo.build_candidate_commit("core", bad_a, [bad], [V.Seal.sign(self.sk1, bad.id, s1.id)],
+                                                 parent_commit=c2)
+            with self.assertRaisesRegex(V.VarsError, "rules than those of its tip"):
+                self.repo.admit_and_advance("core", c, expected_old=c2)
+        a3: dict[bytes, bytes] = {}
+        p1 = projection(a3, "core/p.v1", c1, V.H_LENS_KERNEL)
+        p2 = projection(a3, "core/p.v2", c2, V.H_LENS_KERNEL_V2)
+        self._commit(c2, s1, a3, [p1, p2])
+        for p, rules in ((p1, V.H_LENS_KERNEL), (p2, V.H_LENS_KERNEL_V2)):
+            got = V.verify_projection(V.export_projection(self.repo, "core", p.id))
+            self.assertTrue(got["witnessed"] and got["data_ok"] and got["rules_implemented_here"])
+            self.assertEqual(got["rules"], rules.hex())
+        self.assertTrue(self.repo.lens("core")["settled"][p2.id])
+
+    def test_40_rules_v2_kernel_checks_the_reference_list(self) -> None:
+        """The v2 module recomputes every cell's reference positions and refuses an input whose list differs; it
+        refuses a log whose last commit is in a v1 epoch, and a v1-encoded input."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        target = self._axiom(a, "core/target", "target")
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/link-schema")), V.H_EMPTY,
+                        slots=(self._put_atom(a, V.atom_utf8("link:cell")), self._put_atom(a, V.atom_utf8("d:digest"))))
+        c1 = self._commit(c0, s0, a, [target, schema])
+        c2, s1 = self._rotate(c1, s0, V.H_LENS_KERNEL_V2)
+        a3: dict[bytes, bytes] = {}
+        linker = V.Cell(schema.id, self._put_atom(a3, V.atom_utf8("core/linker")), self._put_atom(a3, V.atom_utf8("x")),
+                        slots=(target.id, target.id))
+        c3 = self._commit(c2, s1, a3, [linker])
+        trees = [self.repo.read_cas_tree(x) for x in self.repo.commit_chain(c3)]
+        run = V.kernel_runner(V.H_LENS_KERNEL_V2).run
+        ki, _ = V.kernel_facts("core", trees)
+        run(ki)  # the honest encoding is accepted
+
+        real = V.cell_refs
+        try:
+            for fake, why in ((lambda c, cells, atoms, v1: [], "dropped"),
+                              (lambda c, cells, atoms, v1: real(c, cells, atoms, True), "untyped added")):
+                V.cell_refs = lambda c, cells, atoms, v1, f=fake: f(c, cells, atoms, v1) if c.id == linker.id \
+                    else real(c, cells, atoms, v1)
+                bad, _ = V.kernel_facts("core", trees)
+                with self.assertRaisesRegex(V.KernelRefusal, "E-6:", msg=why):
+                    run(bad)
+        finally:
+            V.cell_refs = real
+        real_rules = V.commit_rules
+        try:  # a log whose last commit is in a v1 epoch, encoded for v2
+            V.commit_rules = lambda scope, ts: [V.H_LENS_KERNEL_V2] * len(ts)
+            v1_tail, _ = V.kernel_facts("core", trees[:2])
+        finally:
+            V.commit_rules = real_rules
+        with self.assertRaisesRegex(V.KernelRefusal, "E-24:"):
+            run(v1_tail)
+        v1_input, _ = V.kernel_facts("core", trees[:2])
+        with self.assertRaisesRegex(V.KernelRefusal, "E-1:"):
+            run(v1_input)
+
+    def test_41_rules_v2_from_genesis(self) -> None:
+        """A scope may start under v2: its genesis stores the module and names it."""
+        atoms = {**V.STD_SCHEMA_ATOMS, V.H_LENS_KERNEL_V2: V.KERNEL2_ATOM}
+        pol = self._pol(atoms, 1, [self.pk1])
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(atoms, V.atom_utf8("core/SCOPE")),
+                    self._put_atom(atoms, V.atom_utf8("core")), slots=(pol, pol, V.H_LENS_KERNEL_V2))
+        c0 = self.repo.build_candidate_commit("core", atoms, [*V.STD_SCHEMAS.values(), s0],
+                                              [V.Seal.sign(self.sk1, s0.id, s0.id)], parent_commit=None)
+        self.repo.admit_and_advance("core", c0, expected_old=None)
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL_V2)
+        self.assertTrue(lens["active"][s0.id])
 
 
 if __name__ == "__main__":

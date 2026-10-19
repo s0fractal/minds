@@ -281,7 +281,7 @@ Cells are in forward topological order: every edge, and every payload or slot th
 index born no later. These rules read a payload or slot as a reference whenever it equals a cell id, whatever its
 field type, so the gate refuses a new cell whose id an older cell already names in a payload or slot: an opaque
 `digest` never turns into a reference to a later-born cell. (Typed references, which keep a digest opaque when
-its preimage appears, need new rules and so a new rules identity.) `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
+its preimage appears, need new rules and so a new rules identity: `RULES-V2.md` specifies them, prototype only.) `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
 object. The module embeds the standard schema ids, `H_META_SCHEMA`, `H_EMPTY`, `H_OWNER`, `H_PROVISIONAL` and
 `H_VERDICT_INVALID`, and reads kinds, tiers, policy slots and verdict codes from the cell hashes itself.
 
