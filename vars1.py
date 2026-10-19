@@ -2049,13 +2049,86 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
             edges.append([u32(off + 4 + 4 * j) for j in range(m)])
             off += 4 + 4 * m
         cells.append({"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
-                      "relies": edges[0], "attests": edges[1]})
+                      "relies": edges[0], "attests": edges[1], "edges": edges})
     seals = []
     for j in range(u32(off)):
         seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
     if off + 4 + 16 * len(seals) != len(kernel_input):
         raise VarsError("kernel input has trailing bytes")
     return {"pols": pols, "cells": cells, "seals": seals}
+
+
+def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int) -> Tuple[bool, Set[int], int, Set[bytes]]:
+    """§4.2 Pass 3 for the contract or decision at index `di` (without `required_comp`), from a parsed kernel input
+    and the kernel's output alone: whether it is Settled, the key indices that endorse it, the threshold, and the
+    policy hash. Endorsers are counted as the lens counts them: every admitted seal on a local verdict; on a
+    foreign verdict, seals under a scope of its origin that a live acceptance (of it or of a newer cell of its
+    origin that references it) names, by that scope's admission keys. A contradicting INVALID verdict of the same verifier, endorsed by a policy key, blocks."""
+    kc, pols, seals = ki["cells"], ki["pols"], ki["seals"]
+    n = len(kc)
+    if len(output) < 4 + 2 * n:
+        raise VarsError("kernel output is shorter than its cell count")
+    bit = lambda i, name: bool(output[4 + i] >> KERNEL_BITS.index(name) & 1)
+    live = [bit(i, "active") and not bit(i, "stale") for i in range(n)]
+    auth = [bool(output[4 + n + i]) for i in range(n)]
+    pos = {c["id"]: i for i, c in enumerate(kc)}
+    children: List[Set[int]] = [set() for _ in range(n)]
+    for u, c in enumerate(kc):
+        refs = {v for e in c["edges"] for v in e} | {pos[x] for x in (c["payload"], *c["slots"]) if x in pos}
+        for v in refs - {u}:
+            children[v].add(u)
+    # live accepted scopes of foreign cells, newest first (children are newer)
+    lacs: List[Set[int]] = [set() for _ in range(n)]
+    for u in reversed(range(n)):
+        if kc[u]["origin"] == 0 or kc[u]["schema"] == H_META_SCHEMA:
+            continue
+        for ch in children[u]:
+            c = kc[ch]
+            if live[ch] and c["schema"] == H_SCHEMA["acceptance"] and auth[ch] and c["payload"] == kc[u]["id"] \
+                    and len(c["slots"]) > 1 and c["slots"][1] in pos:
+                lacs[u].add(pos[c["slots"][1]])
+            if lacs[ch] and kc[ch]["origin"] == kc[u]["origin"]:
+                lacs[u] |= lacs[ch]
+    signed: Dict[Tuple[int, int], Set[int]] = {}
+    on: Dict[int, Set[int]] = {}
+    for t, ctx, k, _ in seals:
+        signed.setdefault((t, ctx), set()).add(k)
+        on.setdefault(t, set()).add(k)
+
+    def adm(sf: int) -> Optional[Tuple[int, List[int]]]:
+        c = kc[sf]
+        return pols.get(c["slots"][0]) if c["schema"] == H_SCHEMA["scope"] and c["slots"] else None
+
+    def endorsers(w: int) -> Set[int]:
+        if kc[w]["origin"] == 0:
+            return on.get(w, set())
+        out: Set[int] = set()
+        for sf in lacs[w]:
+            pol = adm(sf)  # the gate admits only acceptances that pin a self-sealed scope, and seals stay
+            if pol is None or kc[sf]["origin"] != kc[w]["origin"]:
+                continue
+            out |= signed.get((w, sf), set()) & set(pol[1])
+        return out
+
+    d = kc[di]
+    scope_cell = kc[struct.unpack_from("<I", output, 0)[0]]
+    p = d["slots"][3] if d["slots"][3] != H_EMPTY else scope_cell["slots"][0]
+    if p not in pols:
+        raise VarsError("the kernel input lacks the evaluator policy")
+    thr, pk = pols[p][0], set(pols[p][1])
+    did = d["id"]
+    bad = [b for b in range(n) if live[b] and kc[b]["schema"] == H_SCHEMA["verdict"]
+           and kc[b]["slots"][1] == H_VERDICT_INVALID and kc[b]["payload"] == did and endorsers(b) & pk]
+    blocked = {kc[b]["slots"][2] for b in bad}
+    end: Set[int] = set()
+    for w in children[di]:
+        c = kc[w]
+        if not live[w] or di not in c["attests"] or c["schema"] != H_SCHEMA["verdict"] or c["payload"] != did:
+            continue
+        if c["slots"][2] in blocked or c["slots"][0] != H_EMPTY or c["slots"][1] != H_ATTESTED:
+            continue
+        end |= endorsers(w) & pk
+    return live[di] and len(end) >= thr, end, thr, p
 
 
 def kernel_input_order(kernel_input: bytes) -> List[bytes]:
@@ -2197,10 +2270,11 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
 
     With a projection bundle whose tip holds the cell, the projection's kernel input — every cell and verified seal
     at that tip, committed to by its digest — is the evidence: the bundle must supply every verdict on the cell that
-    the input holds, and `attested_at_tip` is Pass 3 recomputed from the input alone, counting only local verdicts
-    that are Active and not Stale (`evidence: "complete_at_tip"`). `accepted` requires that, `attested`, the cell
-    Active and not Stale at the tip, and the projection witnessed; it says nothing about the chain after the tip. Any
-    inconsistency raises VarsError. Decisions that require a computation need replay, hence the repository."""
+    the input holds, and `attested_at_tip` is Pass 3 recomputed from the input and output alone (`pass3_at_tip`,
+    local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `accepted` requires that,
+    the projection witnessed, and no supplied verdict from after the tip contradicting it by a policy key; it says
+    nothing else about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a
+    computation need replay, hence the repository."""
     if bundle.get("format") != ATTESTATION_FORMAT:
         raise VarsError("unknown attestation bundle format")
     d = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -2227,9 +2301,8 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
     verdicts: Dict[bytes, Cell] = {}
     for vh in bundle["verdicts"]:
         w = Cell.decode(bytes.fromhex(vh))
-        if (w.h_schema != H_SCHEMA["verdict"] or w.h_payload != d.id or w.h_attests not in atoms
-                or d.id not in parse_hvec(atoms[w.h_attests], require_sorted=True)):
-            raise VarsError("a verdict in the bundle does not judge and attest this cell")
+        if w.h_schema != H_SCHEMA["verdict"] or w.h_payload != d.id:
+            raise VarsError("a verdict in the bundle does not judge this cell")
         verdicts[w.id] = w
     signers: Dict[bytes, set] = {d.id: set(), **{wid: set() for wid in verdicts}}
     for sh in bundle["seals"]:
@@ -2239,8 +2312,9 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
         signers[seal.h_target].add(seal.actor_pubkey)
     contradicted = {w.slots[2] for wid, w in verdicts.items()
                     if w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys}
-    counted = [wid for wid, w in verdicts.items()
-               if w.slots[0] == H_EMPTY and w.slots[1] == H_ATTESTED and w.slots[2] not in contradicted]
+    attests = lambda w: w.h_attests in atoms and d.id in parse_hvec(atoms[w.h_attests], require_sorted=True)
+    counted = [wid for wid, w in verdicts.items() if attests(w)
+               and w.slots[0] == H_EMPTY and w.slots[1] == H_ATTESTED and w.slots[2] not in contradicted]
     endorsers = set().union(*(signers[wid] & keys for wid in counted)) if counted else set()
     result: Dict[str, object] = {
         "cell": d.id.hex(),
@@ -2272,32 +2346,22 @@ def verify_attestation(bundle: Dict[str, object]) -> Dict[str, object]:
         return result  # the tip predates the cell
     if bytes.fromhex(pr["scope"]) != sc.id:
         raise VarsError("the bundled scope does not govern the projection's tip")
-    if pol not in ki["pols"] or ki["pols"][pol][0] != thr or len(ki["pols"][pol][1]) != len(keys):
-        raise VarsError("the projection's input disagrees with the bundle on the evaluator policy")
-    key_of = dict(zip(ki["pols"][pol][1], sorted(keys)))  # both orders are the keys' byte order
-    st = pr["statuses"]
-
-    def live(i: int) -> bool:
-        x = st[kc[i]["id"].hex()]
-        return x["active"] and not x["stale"]
-
-    di = pos[d.id]
-    at_tip = [i for i, c in enumerate(kc)
-              if c["schema"] == H_SCHEMA["verdict"] and c["payload"] == d.id and di in c["attests"]]
-    missing = {kc[i]["id"] for i in at_tip} - set(verdicts)
+    at_tip = {c["id"] for c in kc if c["schema"] == H_SCHEMA["verdict"] and c["payload"] == d.id}
+    missing = at_tip - set(verdicts)
     if missing:
         raise VarsError(f"the bundle omits {len(missing)} verdict(s) on this cell that the projection's tip holds")
-    tsign = {i: {key_of[k] for t, _, k, _ in ki["seals"] if t == i and k in key_of} for i in at_tip}
-    t_contra = {kc[i]["slots"][2] for i in at_tip if live(i) and kc[i]["slots"][1] == H_VERDICT_INVALID and tsign[i]}
-    t_counted = [i for i in at_tip if live(i) and kc[i]["origin"] == 0 and kc[i]["slots"][0] == H_EMPTY
-                 and kc[i]["slots"][1] == H_ATTESTED and kc[i]["slots"][2] not in t_contra]
-    t_end = set().union(*(tsign[i] for i in t_counted)) if t_counted else set()
+    settled, end, t_thr, p = pass3_at_tip(ki, bytes.fromhex(bundle["projection"]["output"]), pos[d.id])
+    if p != pol or t_thr != thr or len(ki["pols"][p][1]) != len(keys):
+        raise VarsError("the projection's input disagrees with the bundle on the evaluator policy")
+    key_of = dict(zip(ki["pols"][p][1], sorted(keys)))  # both orders are the keys' byte order
+    later = [w for wid, w in verdicts.items() if wid not in at_tip]
+    st = pr["statuses"][d.id.hex()]
     result["evidence"] = "complete_at_tip"
-    result["endorsers_at_tip"] = sorted(k.hex() for k in t_end)
-    result["attested_at_tip"] = len(t_end) >= thr
-    result["active_at_tip"] = live(di)
-    result["accepted"] = bool(result["attested"] and result["attested_at_tip"] and result["active_at_tip"]
-                              and result["projection_witnessed"])
+    result["endorsers_at_tip"] = sorted(key_of[k].hex() for k in end)
+    result["attested_at_tip"] = settled
+    result["active_at_tip"] = st["active"] and not st["stale"]
+    result["contradicted_after_tip"] = any(w.slots[1] == H_VERDICT_INVALID and signers[w.id] & keys for w in later)
+    result["accepted"] = bool(settled and pr["witnessed"] and not result["contradicted_after_tip"])
     return result
 
 

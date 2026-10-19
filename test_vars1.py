@@ -1812,6 +1812,45 @@ class TestVars1Conformance(unittest.TestCase):
         finally:
             mc.run_checks = real
 
+    def test_21_attestation_counts_what_the_lens_counts(self) -> None:
+        """An INVALID verdict that judges the cell without attesting it still contradicts it in Pass 3, so a bundle
+        must carry it; an INVALID verdict recorded after the projection's tip withdraws acceptance."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        d1 = r1["decision"]
+        self.assertTrue(V.verify_attestation(V.export_attestation(repo, "minds", d1, r2["projection"]))["accepted"])
+
+        atoms: dict[bytes, bytes] = {}
+        bad = V.Cell(
+            h_schema=V.H_SCHEMA["verdict"],
+            h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/release/aaaaaaaaaaaa/withdrawn")),
+            h_payload=d1,
+            slots=(V.H_EMPTY, V.H_VERDICT_INVALID, self._put_atom(atoms, V.atom_utf8("minds-maintainer"))),
+        )
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", atoms, [bad], [V.Seal.sign(sk, bad.id, mc.governing_scope(repo))],
+                                        parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        self.assertFalse(repo.lens("minds")["settled"][d1], "the lens: a non-attesting INVALID still contradicts")
+
+        # After p2's tip: the supplied INVALID withdraws acceptance, though Pass 3 at the tip still settles
+        r = V.verify_attestation(json.loads(json.dumps(V.export_attestation(repo, "minds", d1, r2["projection"]))))
+        self.assertEqual((r["attested_at_tip"], r["contradicted_after_tip"], r["accepted"]), (True, True, False))
+
+        # Within p3's tip: Pass 3 there agrees with the lens, and the bundle cannot leave the verdict out
+        _, r3 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", d1, r3["projection"])))
+        r = V.verify_attestation(b)
+        self.assertEqual((r["evidence"], r["attested_at_tip"], r["accepted"]), ("complete_at_tip", False, False))
+        hidden = dict(b, verdicts=[v for v in b["verdicts"] if v != bad.encode().hex()],
+                      seals=[x for x in b["seals"] if V.Seal.decode(bytes.fromhex(x)).h_target != bad.id])
+        with self.assertRaisesRegex(V.VarsError, "omits 1 verdict"):
+            V.verify_attestation(hidden)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

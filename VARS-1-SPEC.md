@@ -319,10 +319,12 @@ meet its threshold, excluding verdicts contradicted by an INVALID verdict of the
 With a projection whose tip holds the cell, the projection's kernel input is the evidence: it holds every cell and
 every verified seal at `tip`, and its digest is what the witnesses signed. The client parses it (key indices map to
 `EvalPol`'s keys, both in byte order), refuses a bundle that omits any verdict on the cell held at `tip`, and
-recomputes Pass 3 from the input alone, counting local verdicts that are Active and not Stale. The cell is
-*accepted* when that recomputation and the supplied one both attest, the cell is Active and not Stale at `tip`,
-and the projection is witnessed. Acceptance is about `tip`: a verdict after it is outside the witnessed evidence,
-so the release recorded last is accepted only once a later projection covers it. A verdict or seal about another
+recomputes Pass 3 from the input and the kernel's output alone, exactly as the lens does: endorsers of a local
+verdict are its seals; of a foreign verdict, seals under a scope of its origin named by a live acceptance of it or
+of a newer cell of its origin that references it, by that scope's admission keys. The cell is *accepted* when that
+recomputation settles it, the projection is witnessed, and no supplied verdict from after `tip` contradicts it by
+a policy key. Acceptance is about `tip`: the release recorded last is accepted only once a later projection
+covers it. A verdict or seal about another
 cell is a refusal. A decision that requires a computation needs replay, hence the repository.
 `vars1.py verify-attestation BUNDLE.json` exits 0 only on acceptance; `export_attestation` builds a bundle.
 
@@ -349,5 +351,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces
   the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status
   bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,
-  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10).
+  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
+  recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
+  for every contract and decision without `required_comp` (I11).
 - `proofs/`: the theorems listed in `proofs/README.md`.

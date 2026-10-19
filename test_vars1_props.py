@@ -21,6 +21,8 @@ checks:
   I0  admit/lens never raise anything but VarsError (a TwinDivergence between the rules kernel and its Python twin
       is such a crash), and an admitted tip's lens never raises
   I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
+  I11 Pass 3 recomputed from the kernel's input and output alone (`pass3_at_tip`, what a client holding a projection
+      bundle computes) equals the lens's Settled for every contract and decision without required_comp
 
 Failing programs are shrunk greedily (drop commits, ops, signers, edges) and frozen below as named regression
 tests. Run `VARS1_PBT_SEQS=400 python3 test_vars1_props.py` for a longer exploration; the default stays < 2 min.
@@ -645,6 +647,59 @@ class Gen:
                         "signers": self.full(adm) if r.random() < 0.6 else sig()})
         return ops
 
+    def attest_bundle(self, it: Interp) -> List[dict]:
+        """contract without required_comp -> ATTESTED (sometimes INVALID, sometimes sealed by no policy key)
+        verdicts; sometimes a foreign verdict under a peer scope sharing a policy key, accepted directly or through a
+        newer cell of its peer, in the same or a later commit (I11 compares a client's Pass 3 with the lens)."""
+        r = self.r
+        adm, _ = it.roster()
+        pol = None
+        if r.random() < 0.5:
+            keys = self.subset(adm)
+            pol = [r.randint(1, len(keys)), keys]
+        hc = self.h()
+        ops = [{"op": "cell", "h": hc, "origin": SCOPE, "kind": "contract", "tier": r.choice(["provisional", "owner"]),
+                "req": None, "exp": "EMPTY", "pol": pol, "name": f"{SCOPE}/contract.u{hc}", "edges": {},
+                "signers": self.signers(it)}]
+        if r.random() < 0.5:  # a foreign verdict, endorsed under a self-sealed peer scope sharing a policy key
+            peer = r.choice(PEERS)
+            keys = sorted({r.choice([3, 4]), r.choice(pol[1] if pol else adm)})
+            thr = r.randint(1, len(keys))
+            hf, hv, ha = self.h(), self.h(), self.h()
+            foreign = [
+                {"op": "fscope", "h": hf, "peer": peer, "keys": keys, "thr": thr,
+                 "signers": sorted(r.sample(keys, thr if r.random() < 0.9 else thr - 1))},
+                {"op": "cell", "h": hv, "origin": peer, "kind": "verdict", "target": hc, "code": "ATTESTED",
+                 "vid": "sr", "name": f"{peer}/verdict.{hv}", "ctx": hf, "edges": {"attests": [hc]},
+                 "signers": self.subset(keys)},
+            ]
+            target = hv
+            if r.random() < 0.4:  # accept a newer cell of the same peer that relies on the verdict (hereditary)
+                hy = self.h()
+                foreign.append({"op": "cell", "h": hy, "origin": peer, "kind": "axiom", "name": f"{peer}/axiom.{hy}",
+                                "ctx": hf, "edges": {"relies": [hv]}, "signers": self.subset(keys)})
+                target = hy
+            foreign += [
+                {"op": "cell", "h": ha, "origin": SCOPE, "kind": "acceptance", "name": f"{SCOPE}/acceptance.{ha}",
+                 "target": target, "peer": peer, "fscope": hf, "edges": {},
+                 "signers": self.full(sorted(set(it.roster()[1]))) if r.random() < 0.85 else self.signers(it, True)},
+            ]
+            if r.random() < 0.5:
+                ops += foreign
+            else:
+                self.pending.append(lambda it2, f=foreign: f)
+        for _ in range(r.choice([0, 1, 1, 2, 3])):
+            hv = self.h()
+            ops.append({"op": "cell", "h": hv, "origin": SCOPE, "kind": "verdict", "target": hc,
+                        "code": "INVALID" if r.random() < 0.2 else "ATTESTED",
+                        "vid": "sr" if r.random() < 0.85 else "other", "name": f"{SCOPE}/verdict.u{hv}",
+                        "edges": {"attests": [hc]} if r.random() < 0.9 else {},
+                        "signers": self.full(adm) if r.random() < 0.6 else self.signers(it)})
+            outside = [k for k in adm if pol and k not in pol[1]]
+            if ops[-1]["code"] == "INVALID" and outside and r.random() < 0.6:
+                ops[-1]["signers"] = outside  # sealed by no policy key: it must not block
+        return ops
+
     def full(self, keys: List[int]) -> List[int]:
         return sorted(keys)
 
@@ -733,6 +788,8 @@ class Gen:
             return self.acc_chain(it)
         if x < 0.32:
             return self.rebind_chain(it)
+        if x < 0.42:
+            return self.attest_bundle(it)
         ops: List[dict] = []
         for _ in range(r.choice([1, 1, 2, 2, 3])):
             x = r.random()
@@ -1114,6 +1171,21 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
         i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
         out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
 
+    # I11: a client's Pass 3 from the kernel input and output alone equals the lens's Settled
+    try:
+        ki = V.parse_kernel_input(lens["kernel_input"])
+        for i, kcell in enumerate(ki["cells"]):
+            c = cells[kcell["id"]]
+            if c.h_schema not in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]) or c.slots[1] != V.H_EMPTY:
+                continue
+            got = V.pass3_at_tip(ki, raw, i)[0]
+            if got != lens["settled"][kcell["id"]]:
+                out.append(("I11", f"client Pass 3 says {got}, lens Settled {lens['settled'][kcell['id']]} "
+                                   f"for {kcell['id'].hex()[:10]}"))
+                break
+    except V.VarsError as e:
+        out.append(("I11", f"client Pass 3 raised: {e}"))
+
     # I1
     by_name: Dict[bytes, List[bytes]] = {}
     for cid, c in cells.items():
@@ -1467,7 +1539,7 @@ class TestVars1Properties(unittest.TestCase):
     SEED0 = int(os.environ.get("VARS1_PBT_SEED", "1"))
 
     def test_random_admission_sequences(self) -> None:
-        """I0..I10 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
+        """I0..I11 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
         found: Dict[str, List[str]] = {}
         known_hits: Dict[str, int] = {}
         admitted_total = 0

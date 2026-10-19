@@ -23,8 +23,9 @@ verify-projection`; `attest <decision>` gives one for `vars1.py verify-attestati
 projection that covers the release. A client accepts a release only from a witnessed projection's complete
 evidence, so the latest release is accepted once a later projection covers it.
 
-The maintainer key never leaves `.git/vars/`. Today it is the only key, so the chain shows what the maintainer
-claimed and when, not that anyone else checked it. `join PUBKEY NAME` adds a member; from then on every release
+Member keys never leave `.git/vars/`. The roster has two members, Claude (the maintainer) and antigravity, both
+AI agents on the same machine and OS account: their keys separate who signed, not who could have. `join PUBKEY
+NAME` adds a member; from then on every release
 needs a verdict and a projection seal from every member. A member runs
 `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the checks at the commit the
 release names, in its own worktree, records ATTESTED or INVALID under its own key, and witnesses the projections
@@ -42,7 +43,7 @@ git clone https://github.com/s0fractal/primitives
 cd minds
 python3 -m unittest test_vars1          # conformance; every fold and lens runs kernel/lens.wasm and its twin
 (cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
-python3 test_vars1_props.py             # property-based invariants I0–I10 (I9, I10 need the proofs' executables)
+python3 test_vars1_props.py             # property-based invariants I0–I11 (I9, I10 need the proofs' executables)
 python3 vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
 ```
 
