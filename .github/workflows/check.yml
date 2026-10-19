@@ -1,0 +1,68 @@
+# Every check a release runs, on a fresh runner with nothing beside the repository.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # the tests build chain commits with git commit-tree
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@invalid
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@invalid
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch the self-governance chain (refs/vars/*)
+        run: git fetch --no-tags origin '+refs/vars/*:refs/vars/*'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install Book I (sigma-glyph, hash-pinned)
+        run: python -m pip install --require-hashes -r requirements.txt
+
+      - name: Rebuild the rules kernel; it must hash to H_LENS_KERNEL
+        working-directory: kernel
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          built=$(sha256sum target/wasm32-unknown-unknown/release/vars_lens.wasm | cut -d' ' -f1)
+          pinned=$(python -c "import sys; sys.path.insert(0, '..'); import vars1; print(vars1.H_LENS_KERNEL.hex())")
+          echo "built $built pinned $pinned"
+          test "$built" = "$pinned"
+
+      - name: Install elan (Lean toolchain from proofs/lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.elan/toolchains
+            proofs/.lake
+          key: lean-${{ hashFiles('proofs/lean-toolchain') }}-${{ hashFiles('proofs/**/*.lean', 'proofs/lakefile.toml') }}
+          restore-keys: lean-${{ hashFiles('proofs/lean-toolchain') }}-
+      - name: Lean proofs and executables
+        working-directory: proofs
+        run: |
+          lake build
+          lake build vars1exec
+          lake build vars1fold
+          lake build Vars1Sigma
+
+      - name: Conformance
+        run: python -m unittest -v test_vars1
+      - name: Property suite (I0–I11)
+        run: python test_vars1_props.py
