@@ -1552,6 +1552,30 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(json.loads(out.stdout)["witnessed"])
 
 
+    def test_15_minds_governs_itself(self) -> None:
+        """tools/minds_chain.py on a scratch repository: genesis, two releases, each a Settled decision attested by
+        the maintainer plus a witnessed projection of the chain that a client verifies from a bundle."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("minds_chain", ROOT_DIR / "tools" / "minds_chain.py")
+        mc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mc)
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        c1, ids1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        c2, ids2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK", "lake build OK"])
+        rows = {r["name"]: r for r in mc.show(self.repo_path)}
+        self.assertTrue(rows["minds/release/aaaaaaaaaaaa"]["settled"])
+        self.assertIn("main@" + "b" * 40, rows["minds/release/bbbbbbbbbbbb"]["statement"])
+        self.assertTrue(all(r["settled"] for r in rows.values()))
+        bundle = V.export_projection(V.GitVarsRepo(self.repo_path), "minds", ids2["projection"])
+        r = V.verify_projection(json.loads(json.dumps(bundle)))
+        self.assertTrue(r["witnessed"] and r["data_ok"])
+        self.assertEqual(r["tip"], c1)
+        self.assertTrue(r["statuses"][ids1["decision"].hex()]["active"])
+        with self.assertRaises(V.VarsError):
+            mc.init(self.repo_path, sk)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

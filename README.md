@@ -10,6 +10,15 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
   keeps a Python twin of the rules for differential checking.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 - `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
+- `tools/minds_chain.py` — minds governs itself with VARS-1 (below).
+
+## Self-governance
+
+This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub alongside `main`). Each release is a
+`decision` naming `main@<sha>`, the rules kernel and the checks that passed, attested by the maintainer's key, with a
+witnessed projection of the chain. `tools/minds_chain.py release` refuses unless every check passes;
+`tools/minds_chain.py show` lists releases; `tools/minds_chain.py bundle <projection>` gives a bundle for
+`vars1.py verify-projection`. The maintainer key never leaves `.git/vars/`; the roster grows by scope rotation.
 
 ## Running
 
