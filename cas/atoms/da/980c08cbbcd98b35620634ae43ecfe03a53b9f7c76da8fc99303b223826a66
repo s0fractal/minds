@@ -1,0 +1,1 @@
+UTF8minds release main@25f3b4a869011a5dafa40a7975e2540fad313c27 rules@874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb; checks: lake build OK; lake build vars1exec OK; lake build vars1fold OK; lake build Vars1Sigma OK; test_vars1 OK; test_vars1_props OK; kernel rebuild hashes to H_LENS_KERNEL OK
