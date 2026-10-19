@@ -1721,6 +1721,97 @@ class TestVars1Conformance(unittest.TestCase):
         (work / "x").write_text("x")
         self.assertIn("not clean", mc.release_target(work)[1] or "")
 
+    def test_19_a_second_member_verifies_releases(self) -> None:
+        """After `join`, a release is settled, and its projection witnessed, only when every member has attested and
+        sealed: one key alone no longer suffices. A member's verdict follows the checks it ran itself."""
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
+        self.assertEqual(mc.roster(repo), sorted([V.ed25519_pubkey(sk), V.ed25519_pubkey(sk2)]))
+        with self.assertRaisesRegex(V.VarsError, "already a member"):
+            mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][r1["decision"]], "a release before the join stays settled")
+        self.assertFalse(lens["settled"][r2["decision"]], "the maintainer alone no longer settles a release")
+        self.assertFalse(lens["settled"][r2["projection"]], "nor witnesses a projection")
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertFalse(V.verify_attestation(b)["accepted"])
+
+        seen = []
+        def fake(repo_dir, sha, rules, ok=True):
+            seen.append((sha, rules))
+            return ["test_vars1 OK" if ok else "test_vars1 FAILED"], ok
+        with self.assertRaisesRegex(V.VarsError, "not on the roster"):
+            mc.verify_release(self.repo_path, b"\x09" * 32, r2["decision"], "stranger", checks=fake)
+        _, ok, _ = mc.verify_release(self.repo_path, sk2, r2["decision"], "second", checks=fake)
+        self.assertTrue(ok)
+        self.assertEqual(seen, [("b" * 40, V.H_LENS_KERNEL)], "the checks ran on the commit the release names")
+        with self.assertRaisesRegex(V.VarsError, "already recorded"):
+            mc.verify_release(self.repo_path, sk2, r2["decision"], "second", checks=fake)
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][r2["decision"]])
+        self.assertTrue(lens["settled"][r2["projection"]])
+        self.assertEqual(mc.covering_projection(repo, r1["decision"]), r2["projection"])
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertTrue(V.verify_attestation(b)["accepted"])
+
+        # The second member's failed checks leave the next release unsettled, however the maintainer votes
+        _, r3 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        self.assertEqual(mc.covering_projection(repo, r1["decision"]), r2["projection"],
+                         "a witnessed projection is preferred over a later unwitnessed one")
+        _, ok, _ = mc.verify_release(self.repo_path, sk2, r3["decision"], "second",
+                                     checks=lambda *a: fake(*a, ok=False))
+        self.assertFalse(ok)
+        lens = repo.lens("minds")
+        self.assertFalse(lens["settled"][r3["decision"]])
+        self.assertTrue(lens["settled"][r3["projection"]], "witnessing the chain does not depend on the checks")
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r3["projection"])))
+        r = V.verify_attestation(b)
+        self.assertTrue(r["accepted"])
+        self.assertEqual(len(r["endorsers_at_tip"]), 2)
+
+    def test_20_checks_at_runs_in_a_worktree_at_the_released_commit(self) -> None:
+        mc = self._minds_chain()
+        work = Path(self.tmp.name) / "proj" / "minds"
+        work.mkdir(parents=True)
+        g = lambda *a: subprocess.run(["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+        g("init", "-q", "-b", "main")
+        (work / "f").write_text("one")
+        g("add", "f")
+        g("commit", "-q", "-m", "one")
+        first = g("rev-parse", "HEAD")
+        (work / "f").write_text("two")
+        g("commit", "-q", "-am", "two")
+        got = {}
+        def spy(root, rules):
+            got.update(head=subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True,
+                                           text=True).stdout.strip(), f=(root / "f").read_text(), rules=rules,
+                       sibling=(root.parent / "sigma-glyph").resolve() == (work.parent / "sigma-glyph").resolve())
+            return ["spy OK"], True
+        real, mc.run_checks = mc.run_checks, spy
+        try:
+            self.assertEqual(mc.checks_at(work, first, b"\x01" * 32), (["spy OK"], True))
+        finally:
+            mc.run_checks = real
+        self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": True})
+        self.assertEqual(g("worktree", "list", "--porcelain").count("worktree "), 1, "the worktree is removed")
+        self.assertEqual((work / "f").read_text(), "two", "the checkout itself is untouched")
+        g("checkout", "-q", "-b", "side")
+        g("commit", "-q", "--allow-empty", "-m", "side")
+        side = g("rev-parse", "HEAD")
+        g("checkout", "-q", "main")
+        real, mc.run_checks = mc.run_checks, spy
+        try:
+            with self.assertRaises(subprocess.CalledProcessError, msg="a commit not on main is not a release"):
+                mc.checks_at(work, side, V.H_LENS_KERNEL)
+        finally:
+            mc.run_checks = real
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
