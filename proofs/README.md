@@ -22,6 +22,7 @@ and, for some theorems, `Classical.choice`.
 | | `step_epoch_binding` | a commit's latches depend only on seals under its own scope `S_i` |
 | | `endorser_signed` | under unforgeability, every counted endorser signed `(id(u), id(S_i))` |
 | `Pass1.lean` | `unique_active_binding` | under §1.2 Rule 6, two local non-scope cells with one name are never both Active |
+| `Scope.lean` | `governed_superseded`, `unique_active_scope` | under the gate's rotation rule, a scope that no longer governs is superseded by a later scope; an Active local scope is the governing one |
 | `Pass2.lean`, `Lfp.lean` | `Φ_mono`, `stale_fixed`, `stale_least` | the Pass 2 operator is monotone; `Stale` is its least fixed point |
 | | `sweep_reaches_stale` | the spec's round (live acceptance first, then an in-place sweep) reaches `Stale` within `|cells|+1` rounds, in any cell order |
 | `Replay.lean` | `adv_seg` | segmentation invariance of budgeted advance |
@@ -47,6 +48,8 @@ unproved implementation. Reverting `Superseded`'s transitivity in `Exec.lean` br
 - SHA-256 is injective on admitted bytes, so a cell is a function of its id.
 - A valid seal was signed by its key holder over `(target, ctx)`.
 - §1.2 Rule 6 holds at every admitted commit (the gate enforces it).
+- Rotations are admitted as §3 check 1 requires (`RotationAdmitted`), every local scope cell present has governed at
+  some commit, and scope cells are Effective and Accepted (no edge may invalidate or retire a scope cell).
 - `HostSound`: host resource fences only stop a replay; they never alter a reported result.
 - `QuorumMet(∅, p)` is false (`POL1` threshold ≥ 1).
 - `verify_cycle` is an oracle.
@@ -57,7 +60,6 @@ unproved implementation. Reverting `Superseded`'s transitivity in `Exec.lean` br
 - `sigma_resume._run` to `run`: the loop is transcribed by hand.
 - SGS1 bytes to `(Store, Term)`; `term_hash`; `ComputationRoot` to the start state.
 - The rich runtime profile (`ski+Y+M+W`); `verify_cycle`.
-- Uniqueness among scope cells (one Active local scope) is checked by property I7, not proved.
 - `kernel/lens.wasm`'s Passes 1–2 are tied to the proved executable lens by differential testing (I9), not by a
   proof about the Rust or wasm code.
 - The kernel's fold is tied to `Fold.lean` by differential testing: `vars1fold` compiles the model's own `run`

@@ -10,3 +10,4 @@ import Vars1.ReplayAttack
 import Vars1.Pass3Replay
 import Vars1.Exec
 import Vars1.ExecProof
+import Vars1.Scope
