@@ -146,3 +146,25 @@ Lost or changed:
 Adopting v2 for `refs/vars/heads/minds` needs: the owner's explicit go-ahead; `kernel2/lens2.wasm` stored as an
 atom; a rotation whose new scope names `H_LENS_KERNEL_V2`, sealed by the admission quorum; and every member's
 verifier updated to a host that implements v2 first.
+
+## 8. Known gaps (Monday's review of 9f69bfd, 2026-10-20)
+
+Recorded here because the owner kept this branch as a prototype: not merged, the live chain stays on v1. Any
+adoption must close these first.
+
+- **F40, self-governance breaks after a rotation to v2 (confirmed statically).** `tools/minds_chain.py` writes
+  `H_LENS_KERNEL` (v1) into `join`'s new scope and into every release projection. After a rotation to v2 the gate
+  requires a projection to name its tip's rules, so `release` would be refused, and `join` would be a refused
+  downgrade. Both must use the rules of the governing scope, and changing rules must be its own explicit operation,
+  not a side effect of a membership rotation. Regressions needed: `release_after_v2_rotation`,
+  `join_after_v2_rotation`.
+- **F41, `kernel2/lens2.wasm` is not in the release checks.** `run_checks` rebuilds and hashes `kernel/` only; a
+  release does not attest that `lens2.wasm` rebuilds to `H_LENS_KERNEL_V2` (it does today, by hand).
+- **F42, custom schema masks are host-parsed.** For standard schemas the v2 module checks masks against embedded
+  constants; for a custom schema it trusts the mask the host derived from the UTF8 descriptors, so the descriptor
+  parser is in the trusted base, and `Refs.lean` assumes correct typed positions. Needed: an independent oracle for
+  descriptor → mask → references that does not call `schema_cell_mask()`.
+- **Drift.** The branch forked at 5573691; main has since gained the offline verifier, PyPI dependencies, CI, the
+  incremental fold and reader-pinned `verify-*`. A trial merge conflicts in `vars1.py` (7 blocks) and
+  `test_vars1.py`; the v2 input parsing would also have to move into `verify/minds_verify.py`. Re-deriving v2 on
+  top of main from this note is likely cheaper than merging.
