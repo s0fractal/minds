@@ -7,7 +7,7 @@ Lean 4 (`v4.31.0`, core only, no Mathlib). Models the fold (§4.1) and the lens 
 lake build              # library Vars1
 lake build vars1exec    # the executable lens, compiled (used by test_vars1_props.py, invariant I9)
 lake build vars1fold    # the model's own fold, compiled (invariant I10)
-lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (../../sigma-glyph/proofs)
+lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (three files copied in SigmaEval/)
 ```
 
 Zero `sorry`, no `axiom` declarations. `#print axioms` shows only `propext`, `Quot.sound`

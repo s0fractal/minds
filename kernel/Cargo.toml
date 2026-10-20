@@ -15,3 +15,6 @@ panic = "abort"
 debug = false
 strip = true
 incremental = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

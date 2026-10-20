@@ -1,0 +1,43 @@
+# Bounded model checking of the rules kernel (kernel/src/lib.rs, `proofs` module). Each harness is its own job.
+name: kani
+
+on:
+  push:
+    branches: [main]
+    paths: ["kernel/**", ".github/workflows/kani.yml"]
+  pull_request:
+    paths: ["kernel/**", ".github/workflows/kani.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - two_cells_axiom_relies
+          - two_cells_axiom_supersedes
+          - two_cells_axiom_retires
+          - two_cells_axiom_invalidates
+          - two_cells_invalid_verdict
+          - two_cells_acceptance
+          - two_cells_foreign_scope
+          - two_cells_scope_rotation
+          - two_cells_contract
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Kani 0.68.0
+        run: |
+          cargo install --locked kani-verifier --version 0.68.0
+          cargo kani setup
+      - name: Verify ${{ matrix.harness }}
+        working-directory: kernel
+        # Field sensitivity on the harness's input buffer lets CBMC keep its concrete layout concrete.
+        run: >
+          cargo kani --harness ${{ matrix.harness }}
+          -Z unstable-options --cbmc-args --max-field-sensitivity-array-size 2048

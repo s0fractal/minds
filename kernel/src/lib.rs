@@ -21,22 +21,22 @@
 //! (bit 0: an Authorized scope, acceptance or schema cell), and one byte per invalidates, retires and supersedes edge,
 //! cell by cell in that order (1 = authorized). A negative return is a malformed input (-1..-5) or a refusal of the
 //! commit log by the fold (-10 and below).
-#![no_std]
+#![cfg_attr(not(kani), no_std)]
 
-use core::arch::wasm32;
+#[cfg(not(kani))] use core::arch::wasm32;
 
-#[panic_handler]
+#[cfg(not(kani))] #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     wasm32::unreachable()
 }
 
-extern "C" {
+#[cfg(not(kani))] extern "C" {
     static __heap_base: u8;
 }
 
 static mut TOP: usize = 0;
 
-unsafe fn bump(bytes: usize) -> *mut u8 {
+#[cfg(not(kani))] unsafe fn bump(bytes: usize) -> *mut u8 {
     if TOP == 0 {
         TOP = core::ptr::addr_of!(__heap_base) as usize;
     }
@@ -932,4 +932,229 @@ unsafe fn lens(g: &Graph, scope: usize, latched: &[u8], auth: &[u8]) -> Result<i
         }
     }
     Err(NO_FIXED_POINT)
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// Kani proof harnesses (`cargo kani`). Everything below is `cfg(kani)`, and the only other changes are same-line
+// `cfg(not(kani))` attributes, so the wasm build is byte-identical: CI rebuilds it and checks H_LENS_KERNEL.
+// Kani runs on the host (64-bit usize), so it does not see wasm32-only overflows; the arena below stands in for
+// linear memory and logs every allocation, so a harness can find the output `lens` returned.
+// ---------------------------------------------------------------------------------------------------------------
+#[cfg(kani)]
+extern crate std;
+#[cfg(kani)]
+static mut ALLOCS: [(*const u8, usize); 96] = [(core::ptr::null(), 0); 96];
+#[cfg(kani)]
+static mut NALLOC: usize = 0;
+
+/// Under Kani each allocation is its own heap object (the model checker tracks separate objects far more cheaply
+/// than offsets into one arena), logged so a harness can find the output `lens` returned.
+#[cfg(kani)]
+unsafe fn bump(bytes: usize) -> *mut u8 {
+    if TOP == 0 {
+        TOP = 1;
+        NALLOC = 0;
+    }
+    if bytes > 1 << 16 || NALLOC >= 96 {
+        return core::ptr::null_mut();
+    }
+    let layout = std::alloc::Layout::from_size_align(bytes.max(1), 8).unwrap();
+    let p = std::alloc::alloc_zeroed(layout);
+    ALLOCS[NALLOC] = (p, bytes);
+    NALLOC += 1;
+    p
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// Codes `evaluate` may return besides a successful output.
+    fn known_refusal(e: i32) -> bool {
+        (-5..=-1).contains(&e) || (-23..=-10).contains(&e)
+    }
+
+    /// The output `lens` returned: the allocation made just before the last one (`live`).
+    unsafe fn output() -> &'static [u8] {
+        let (p, len) = ALLOCS[NALLOC - 2];
+        core::slice::from_raw_parts(p, len)
+    }
+
+    struct Buf {
+        b: [u8; 1400],
+        n: usize,
+    }
+    impl Buf {
+        fn u32(&mut self, v: u32) {
+            self.b[self.n..self.n + 4].copy_from_slice(&v.to_le_bytes());
+            self.n += 4;
+        }
+        fn h(&mut self, x: &H) {
+            self.b[self.n..self.n + 32].copy_from_slice(x);
+            self.n += 32;
+        }
+    }
+    fn small(below: u32) -> u32 {
+        let v: u32 = kani::any();
+        kani::assume(v < below);
+        v
+    }
+
+    const POL: H = [3u8; 32];
+    const ID0: H = [1u8; 32];
+    const ID1: H = [2u8; 32];
+
+    /// A log of two cells: a well-formed genesis scope (cell 0, sealed by key 0 under itself, policy 1- or 2-of
+    /// {key 0, key 1}) and cell 1 with the given schema, payload, loss and slots (concrete hashes, so the check spends
+    /// its effort on the rules, not on comparing symbolic bytes), over two commits. Symbolic: the threshold, cell 1's
+    /// origin and birth (genesis or the second commit), and one further seal with any target, context, key and commit. Which of cell 1's
+    /// five edge lists (relies, attests, supersedes, retires, invalidates) name cell 0 is fixed per harness. For every such log the kernel refuses with a known code, or answers
+    /// with an output whose shape and status bits obey §4.2: effective = not invalidated; active implies effective,
+    /// accepted, not retired, not superseded; stale implies active; local cells are accepted; authority and edge
+    /// flags are 0 or 1; the governing scope is a local scope cell.
+    unsafe fn two_cells(schema1: &H, payload1: &H, loss1: &H, slots1: &[H], edges1: [bool; 5]) {
+        let commits = 2;
+        let mut b = Buf { b: [0; 1400], n: 0 };
+        b.u32(commits);
+        b.u32(2);
+        b.u32(2);
+        b.u32(1);
+        b.h(&POL);
+        b.u32(1 + small(2));
+        b.u32(2);
+        b.u32(0);
+        b.u32(1);
+        // cell 0: the genesis scope
+        b.h(&ID0);
+        b.h(&S_SCOPE);
+        b.h(&H_EMPTY);
+        b.h(&[4u8; 32]);
+        b.h(&H_EMPTY);
+        b.u32(0);
+        b.u32(0);
+        b.u32(3);
+        b.h(&POL);
+        b.h(&POL);
+        b.h(&H_EMPTY);
+        for _ in 0..5 {
+            b.u32(0);
+        }
+        // cell 1
+        let origin1 = small(2);
+        b.h(&ID1);
+        b.h(schema1);
+        b.h(payload1);
+        b.h(&[5u8; 32]);
+        b.h(loss1);
+        b.u32(origin1);
+        b.u32(small(commits));
+        b.u32(slots1.len() as u32);
+        for x in slots1 {
+            b.h(x);
+        }
+        for e in edges1 {
+            b.u32(e as u32);
+            if e {
+                b.u32(0);
+            }
+        }
+        // seals: the genesis self-seal, then one more with any target, context, key and commit (the layout stays
+        // concrete, so the model checker never reads the input through a symbolic offset)
+        b.u32(2);
+        b.u32(0);
+        b.u32(0);
+        b.u32(0);
+        b.u32(0);
+        for _ in 0..1 {
+            b.u32(small(2));
+            b.u32(small(2));
+            b.u32(small(2));
+            b.u32(small(commits));
+        }
+        reset();
+        let r = evaluate(&b.b[..b.n]);
+        kani::cover!(r.is_ok(), "the log is answered");
+        match r {
+            Err(e) => assert!(known_refusal(e)),
+            Ok(_) => {
+                let out = output();
+                let total = u32::from_le_bytes([out[0], out[1], out[2], out[3]]) as usize;
+                assert_eq!(total + 4, out.len());
+                let scope = u32::from_le_bytes([out[4], out[5], out[6], out[7]]) as usize;
+                assert!(scope == 0 || (scope == 1 && *schema1 == S_SCOPE && origin1 == 0));
+                let origin = [0, origin1];
+                for v in 0..2 {
+                    let s = out[8 + v];
+                    let (acc, inv, eff, ret, sup, act, stale) =
+                        (s & 1 != 0, s & 2 != 0, s & 4 != 0, s & 8 != 0, s & 16 != 0, s & 32 != 0, s & 64 != 0);
+                    assert!(s & 128 == 0);
+                    assert!(eff == !inv);
+                    assert!(!act || (eff && acc && !ret && !sup));
+                    assert!(!stale || act);
+                    assert!(origin[v] != 0 || acc);
+                    assert!(out[10 + v] <= 1);
+                }
+                for f in &out[12..] {
+                    assert!(*f <= 1);
+                }
+            }
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_axiom_relies() {
+        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &H_EMPTY, &[], [true, false, false, false, false]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_axiom_supersedes() {
+        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &[6u8; 32], &[], [false, false, true, false, false]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_axiom_retires() {
+        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &[6u8; 32], &[], [false, false, false, true, false]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_axiom_invalidates() {
+        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &H_EMPTY, &[], [false, false, false, false, true]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_invalid_verdict() {
+        unsafe { two_cells(&S_VERDICT, &ID0, &H_EMPTY, &[H_EMPTY, H_VERDICT_INVALID, [8u8; 32]], [false, true, false, false, true]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_acceptance() {
+        unsafe { two_cells(&S_ACCEPTANCE, &ID0, &H_EMPTY, &[[9u8; 32], ID0], [false, false, false, false, false]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_scope_rotation() {
+        unsafe { two_cells(&S_SCOPE, &[7u8; 32], &[6u8; 32], &[POL, POL, H_EMPTY], [false, false, true, false, false]) }
+    }
+
+    /// Cell 1 as a scope cell: with origin 1 and a self-seal it is a foreign scope that no acceptance admits, so the
+    /// invariants about unaccepted cells are reached (the other cases' foreign cells are refused for want of one).
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_foreign_scope() {
+        unsafe { two_cells(&S_SCOPE, &[7u8; 32], &H_EMPTY, &[POL, POL, H_EMPTY], [false, false, false, false, false]) }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(34)]
+    fn two_cells_contract() {
+        unsafe { two_cells(&S_CONTRACT, &[7u8; 32], &H_EMPTY, &[H_PROVISIONAL, H_EMPTY, H_EMPTY, POL], [true, false, false, false, false]) }
+    }
 }
