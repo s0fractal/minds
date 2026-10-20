@@ -55,7 +55,7 @@ python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.
 (cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
 .venv/bin/python -m unittest test_vars1     # conformance; every fold and lens runs kernel/lens.wasm and its twin
 .venv/bin/python test_vars1_props.py        # property-based invariants I0–I11 (I9, I10 need the proofs' executables)
-.venv/bin/python vars1.py verify-projection BUNDLE.json   # check a projection with no repository (spec §4.4)
+.venv/bin/python vars1.py verify-projection BUNDLE.json --require PUBKEY   # with no repository (spec §4.4)
 ```
 
 A client that only checks bundles needs none of this: `verify/minds_verify.py` is one standard-library file with no
@@ -63,7 +63,15 @@ dependencies, no git and no network. Copy it anywhere and run
 
 ```
 python3 -I minds_verify.py verify-attestation BUNDLE.json --require PUBKEY   # exit 0 only on acceptance
-python3 -I minds_verify.py verify-projection BUNDLE.json
+python3 -I minds_verify.py verify-projection BUNDLE.json --require PUBKEY    # pinned witness, data matches
+python3 -I minds_verify.py inspect-attestation BUNDLE.json                   # consistency only, no trust
+```
+
+`verify-*` needs at least one `--require`: a bundle carries its own witness and scope policies, chosen by whoever
+made it, so they say nothing about whom you trust. Pin the member keys listed above. `inspect-*` checks a bundle
+against its own policies and claims no trust.
+
+```
 ```
 
 Each result has an `explain` trace (counted witnesses and keys, blocked verifiers at and after the tip, the scope

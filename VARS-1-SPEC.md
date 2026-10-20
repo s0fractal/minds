@@ -322,7 +322,11 @@ vector), every seal on it, and optionally the kernel's input and output at `tip`
 every seal is a valid Ed25519 seal on this cell; distinct keys of `witness_policy` meet its threshold; and, given
 `input` and `output`, both hash to the projection's digests, after which the status bits are read by cell id (the
 output indexes cells in the input's order). Any inconsistency is a refusal; too few witnesses is a negative answer,
-not an error. `vars1.py verify-projection BUNDLE.json` does this; `export_projection` builds a bundle from a chain.
+not an error. A projection's `witness_policy` is its own, chosen by whoever made it, so it is no trust anchor:
+a reader trusts a projection only if keys it pinned beforehand are among its witnesses.
+`vars1.py verify-projection BUNDLE.json --require PUBKEY...` exits 0 only then, with `input` and `output` present
+and matching, and known rules; `inspect-projection` checks the bundle against its own policy and claims no trust.
+`export_projection` builds a bundle from a chain.
 
 **Attestation bundle.** For a contract or decision without `required_comp`, a client recomputes Pass 3 from
 `{"format": "vars-1.attestation-bundle@1", "cell", "scope", "atoms", "verdicts", "seals", "projection"?}`: the cell,
@@ -344,12 +348,15 @@ covers it. Because the admission quorum may rotate a key out (§3), and releases
 reader who wants certain keys to have a veto pins them: each pinned key must also endorse the cell at `tip` and
 witness the projection. A verdict or seal about another
 cell is a refusal. A decision that requires a computation needs replay, hence the repository.
-`vars1.py verify-attestation BUNDLE.json [--require PUBKEY]...` exits 0 only on acceptance; `export_attestation` builds a bundle.
+The bundled scope's policy is likewise self-declared: `vars1.py verify-attestation BUNDLE.json --require PUBKEY...`
+needs at least one pinned key and exits 0 only on acceptance with every pinned key endorsing and witnessing;
+`inspect-attestation` reports acceptance under the bundle's own policies and claims no trust. `export_attestation`
+builds a bundle.
 
 **Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
-that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json` (same
-arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;
+that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
+PUBKEY...` or `inspect-projection|inspect-attestation BUNDLE.json` (same arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;
 no bundle check reads one. Only `rules = H_LENS_KERNEL` is interpreted: a projection naming other rules is reported
 `rules_status: "unsupported"` — its seals and digests are checked, but its input and output are not read as
 statuses, scope or Pass 3, and nothing is accepted on it (`verify-projection` exits 1).

@@ -4,8 +4,12 @@
 Checks a projection bundle or an attestation bundle with no repository, no git, no network and no sibling checkout:
 copy this file anywhere and run
 
-    python3 -I minds_verify.py verify-projection BUNDLE.json
-    python3 -I minds_verify.py verify-attestation BUNDLE.json [--require PUBKEY]...
+    python3 -I minds_verify.py verify-attestation BUNDLE.json --require PUBKEY [--require PUBKEY]...
+    python3 -I minds_verify.py verify-projection BUNDLE.json --require PUBKEY [--require PUBKEY]...
+    python3 -I minds_verify.py inspect-attestation|inspect-projection BUNDLE.json
+
+`verify-*` trusts only keys the reader names; `inspect-*` checks a bundle against its own policies and claims no
+trust.
 
 `vars1.py` delegates its bundle checks here, so there is one implementation. Every result carries `explain`: which
 witnesses and keys were counted, which verifiers were blocked, the scope epoch, the policy, why a pinned key is
@@ -635,7 +639,7 @@ def _bundle_atoms(bundle: Dict[str, object]) -> Dict[bytes, bytes]:
     return atoms
 
 
-def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
+def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] = None) -> Dict[str, object]:
     """Check a projection bundle with no repository (§4.4).
 
     Every seal must be a valid Ed25519 seal on this projection; `witnessed` says whether distinct keys of its
@@ -643,7 +647,10 @@ def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
     projection names H_LENS_KERNEL, the statuses are read by cell id and `scope` is the scope cell at the tip (the scope
     epoch). A projection naming other rules has `rules_status: "unsupported"` and no statuses or scope: its data is not
     interpreted as known. Any inconsistency raises VarsError; too few witnesses is `witnessed: false`.
-    This establishes what the named witnesses vouch for at `tip` — not freshness after it, and not Pass 3."""
+    This establishes what the named witnesses vouch for at `tip` — not freshness after it, and not Pass 3.
+
+    The witness policy is the projection's own: whoever made it chose it. A reader trusts a projection only for keys
+    it chose beforehand; `require` names them, and `required_missing` lists those that did not witness it."""
     if bundle.get("format") != BUNDLE_FORMAT:
         raise VarsError("unknown projection bundle format")
     cell = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -684,6 +691,7 @@ def verify_projection(bundle: Dict[str, object]) -> Dict[str, object]:
         "data_ok": None,
         "scope": None,
         "statuses": None,
+        "required_missing": [k.hex() for k in require or [] if k not in witnesses],
     }
     result["explain"] = {
         "rules": rules,
@@ -896,28 +904,43 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     return result
 
 
+USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]...
+  verify-projection   exit 0 iff every pinned key witnessed it, its data matches, and its rules are known
+  verify-attestation  exit 0 iff it is accepted at a witnessed tip and every pinned key endorsed and witnessed it
+  inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
+  inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed)
+verify-* needs at least one --require: a bundle's own policy was chosen by whoever made it, not by the reader."""
+
+
 def main(argv: List[str]) -> int:
-    if len(argv) == 2 and argv[0] == "verify-projection":
-        try:
-            result = verify_projection(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
-        except (VarsError, ValueError, KeyError, TypeError) as e:
-            print(f"refused: {e}", file=sys.stderr)
-            return 2
-        print(json.dumps(result, indent=2, sort_keys=True))
-        return 0 if result["witnessed"] and result["data_ok"] in (True, None) and result["rules_status"] == "known" else 1
-    if len(argv) >= 2 and argv[0] == "verify-attestation" and len(argv) % 2 == 0 \
-            and all(a == "--require" for a in argv[2::2]):
-        try:
-            result = verify_attestation(json.loads(Path(argv[1]).read_text(encoding="utf-8")),
-                                        require=[bytes.fromhex(k) for k in argv[3::2]])
-        except (VarsError, ValueError, KeyError, TypeError) as e:
-            print(f"refused: {e}", file=sys.stderr)
-            return 2
-        print(json.dumps(result, indent=2, sort_keys=True))
-        return 0 if result["accepted"] else 1
-    print("usage: minds_verify.py verify-projection BUNDLE.json | verify-attestation BUNDLE.json [--require PUBKEY]...",
-          file=sys.stderr)
-    return 2
+    cmds = ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation")
+    if len(argv) < 2 or argv[0] not in cmds or len(argv) % 2 or not all(a == "--require" for a in argv[2::2]):
+        print(USAGE, file=sys.stderr)
+        return 2
+    cmd, pins = argv[0], argv[3::2]
+    if cmd.startswith("verify-") and not pins:
+        print("refused: verify needs --require PUBKEY, keys you trust; inspect-* checks consistency only",
+              file=sys.stderr)
+        return 2
+    try:
+        bundle = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        keys = [bytes.fromhex(k) for k in pins]
+        if cmd.endswith("-projection"):
+            result = verify_projection(bundle, require=keys)
+        else:
+            result = verify_attestation(bundle, require=keys)
+    except (VarsError, ValueError, KeyError, TypeError) as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, indent=2, sort_keys=True))
+    if cmd == "inspect-projection":
+        ok = result["witnessed"] and result["data_ok"] in (True, None) and result["rules_status"] == "known"
+    elif cmd == "verify-projection":
+        ok = (result["witnessed"] and result["data_ok"] is True and result["rules_status"] == "known"
+              and not result["required_missing"])
+    else:
+        ok = result["accepted"]
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -1546,7 +1546,7 @@ class TestVars1Conformance(unittest.TestCase):
         # The same check from the command line, with no repository
         path = Path(self.tmp.name) / "bundle.json"
         path.write_text(json.dumps(bundle))
-        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-projection", str(path)],
+        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "inspect-projection", str(path)],
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertTrue(json.loads(out.stdout)["witnessed"])
@@ -1634,7 +1634,7 @@ class TestVars1Conformance(unittest.TestCase):
 
         path = Path(self.tmp.name) / "attestation.json"
         path.write_text(json.dumps(bundle))
-        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path)],
+        out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "inspect-attestation", str(path)],
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
 
@@ -1698,7 +1698,7 @@ class TestVars1Conformance(unittest.TestCase):
         for b, code in ((good, 0), (unwitnessed, 1), ({k: v for k, v in good.items() if k != "projection"}, 1)):
             path = Path(self.tmp.name) / "attestation.json"
             path.write_text(json.dumps(b))
-            out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path)],
+            out = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "inspect-attestation", str(path)],
                                  capture_output=True, text=True)
             self.assertEqual(out.returncode, code, out.stdout + out.stderr)
 
@@ -1898,10 +1898,11 @@ class TestVars1Conformance(unittest.TestCase):
 
         path = Path(self.tmp.name) / "attestation.json"
         path.write_text(json.dumps(b))
-        cli = lambda *a: subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), "verify-attestation", str(path), *a],
-                                        capture_output=True, text=True).returncode
-        self.assertEqual((cli(), cli("--require", pka.hex()), cli("--require", pka.hex(), "--require", pkb.hex())),
-                         (0, 0, 1))
+        cli = lambda cmd, *a: subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), cmd, str(path), *a],
+                                             capture_output=True, text=True).returncode
+        self.assertEqual((cli("inspect-attestation"), cli("verify-attestation"),
+                          cli("verify-attestation", "--require", pka.hex()),
+                          cli("verify-attestation", "--require", pka.hex(), "--require", pkb.hex())), (0, 2, 0, 1))
 
     def test_23_a_member_revokes_its_own_attestation(self) -> None:
         """Monday F37: a member who attested a release and later finds a failure records INVALID under the same
@@ -2412,7 +2413,7 @@ class TestVars1Conformance(unittest.TestCase):
 
         # A real bundle verifies offline, and the trace names what was counted
         b1 = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
-        code, r = offline("verify-attestation", b1)
+        code, r = offline("inspect-attestation", b1)
         self.assertEqual((code, r["accepted"], r["rules_status"]), (0, True, "known"))
         ex = r["explain"]
         self.assertEqual(ex["at_tip"]["counted"], [{"verdict": r1["verdict"].hex(), "verifier": "minds-maintainer",
@@ -2424,32 +2425,32 @@ class TestVars1Conformance(unittest.TestCase):
                          ("evaluator_policy", 1, [pka.hex()]))
         self.assertEqual(ex["rules"]["status"], "known")
         self.assertEqual(r, V.verify_attestation(b1), "vars1.py and the standalone file are one implementation")
-        code, p = offline("verify-projection", b1["projection"])
+        code, p = offline("inspect-projection", b1["projection"])
         self.assertEqual((code, p["explain"]["scope_epoch"], p["explain"]["witnesses_missing"]), (0, scope1.hex(), []))
         self.assertEqual([(s["key"], s["counted"]) for s in p["explain"]["witness_seals"]], [(pka.hex(), True)])
         pcell = V.Cell.decode(bytes.fromhex(b1["projection"]["cell"]))
         ctx = V.Seal.decode(bytes.fromhex(b1["projection"]["seals"][0])).h_scope_ctx
         stranger = V.ed25519_pubkey(b"\x09" * 32)
         alien = V.Seal.sign(b"\x09" * 32, pcell.id, ctx).encode().hex()
-        code, p = offline("verify-projection", dict(b1["projection"], seals=[alien]))
+        code, p = offline("inspect-projection", dict(b1["projection"], seals=[alien]))
         self.assertEqual((code, p["witnessed"], p["explain"]["witnesses_missing"]), (1, False, [pka.hex()]))
         self.assertEqual([(s["key"], s["counted"]) for s in p["explain"]["witness_seals"]], [(stranger.hex(), False)])
 
         # Mutated output bytes: refused
         out = b1["projection"]["output"]
         flipped = dict(b1, projection=dict(b1["projection"], output=out[:-2] + ("00" if out[-2:] != "00" else "01")))
-        code, err = offline("verify-attestation", flipped)
+        code, err = offline("inspect-attestation", flipped)
         self.assertEqual(code, 2)
         self.assertIn("state digest", err)
 
         # An unknown rules identity: witnessed and digest-consistent, yet never read as known
         other = dataclasses.replace(pcell, slots=(pcell.slots[0], V.sha256(b"other rules"), *pcell.slots[2:]))
         foreign = dict(b1["projection"], cell=other.encode().hex(), seals=[V.Seal.sign(ska, other.id, ctx).encode().hex()])
-        code, p = offline("verify-projection", foreign)
+        code, p = offline("inspect-projection", foreign)
         self.assertEqual((code, p["witnessed"], p["data_ok"], p["rules_status"], p["statuses"], p["scope"]),
                          (1, True, True, "unsupported", None, None))
         self.assertIn("only H_LENS_KERNEL", p["explain"]["rules"]["reason"])
-        code, r = offline("verify-attestation", dict(b1, projection=foreign))
+        code, r = offline("inspect-attestation", dict(b1, projection=foreign))
         self.assertEqual(code, 1, r)
         self.assertEqual((code, r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted"]),
                          (1, "unsupported", "supplied", None, False))
@@ -2463,7 +2464,7 @@ class TestVars1Conformance(unittest.TestCase):
         _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["x OK"])
         mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["x OK"], True))
         b1 = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
-        code, r = offline("verify-attestation", b1)
+        code, r = offline("inspect-attestation", b1)
         self.assertEqual((code, r["explain"]["scope_epoch"]), (0, scope1.hex()))
         b3 = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r4["projection"])))
         code, r = offline("verify-attestation", b3, "--require", pka.hex(), "--require", pkb.hex())
@@ -2476,7 +2477,7 @@ class TestVars1Conformance(unittest.TestCase):
                          (2, [{"key": pka.hex(), "reasons": []}, {"key": pkb.hex(), "reasons": []}]))
         # Substituting the rotated scope (with its atoms) into the earlier bundle: refused
         rotated = dict(b1, scope=b3["scope"], atoms=sorted(set(b1["atoms"]) | set(b3["atoms"])))
-        code, err = offline("verify-attestation", rotated)
+        code, err = offline("inspect-attestation", rotated)
         self.assertEqual(code, 2)
         self.assertIn("does not govern", err)
 
@@ -2502,7 +2503,7 @@ class TestVars1Conformance(unittest.TestCase):
         _, r5 = mc.release(self.repo_path, ska, "e" * 40, ["x OK"])
         mc.verify_release(self.repo_path, skb, r5["decision"], "bob", checks=lambda *a, **kw: (["x OK"], True))
         b5 = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r5["projection"])))
-        code, r = offline("verify-attestation", b5)
+        code, r = offline("inspect-attestation", b5)
         self.assertEqual((code, r["attested_at_tip"], r["explain"]["at_tip"]["blocked_verifiers"]), (1, False, ["bob"]))
         self.assertEqual((r["explain"]["supplied"]["blocked_verifiers"],
                           [c["verifier"] for c in r["explain"]["at_tip"]["counted"]]), (["bob"], ["minds-maintainer"]))
@@ -2511,7 +2512,7 @@ class TestVars1Conformance(unittest.TestCase):
         bad_id = V.Cell.decode(bytes.fromhex(invalid[0])).id
         hidden = dict(b5, verdicts=[v for v in b5["verdicts"] if v not in invalid],
                       seals=[x for x in b5["seals"] if V.Seal.decode(bytes.fromhex(x)).h_target != bad_id])
-        code, err = offline("verify-attestation", hidden)
+        code, err = offline("inspect-attestation", hidden)
         self.assertEqual(code, 2)
         self.assertIn("omits 1 verdict", err)
 
@@ -2610,6 +2611,65 @@ class TestVars1Conformance(unittest.TestCase):
         (self.repo_path / ".git" / "objects" / oid[:2] / oid[2:]).unlink()
         with self.assertRaisesRegex(V.VarsError, "missing"):
             V.GitVarsRepo(self.repo_path).lens("core")
+
+    def test_38_verify_needs_a_trust_anchor_the_reader_chose(self) -> None:
+        """Monday F39: a bundle's own witness policy is self-declared. `verify-*` exits 0 only against keys the
+        reader pins with --require (and, for a projection, with its data); `inspect-*` checks internal consistency
+        and claims no trust."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        honest = json.loads(json.dumps(V.export_projection(repo, "minds", r2["projection"])))
+        pk = V.ed25519_pubkey(sk).hex()
+
+        # An attacker's projection: its own key as the whole witness policy, signed, no data
+        ska = b"\x0b" * 32
+        atoms: dict[bytes, bytes] = {}
+        tip_atom = self._put_atom(atoms, V.atom_utf8("c" * 40))
+        pol = self._pol(atoms, 1, [V.ed25519_pubkey(ska)])
+        forged = V.Cell(V.H_SCHEMA["projection"], self._put_atom(atoms, V.atom_utf8("minds/projection/forged")),
+                        V.H_EMPTY, slots=(tip_atom, V.H_LENS_KERNEL, V.sha256(b"in"), V.sha256(b"out"), pol))
+        hv = V.parse_pol1(atoms[pol])[1]
+        attack = {"format": honest["format"], "cell": forged.encode().hex(),
+                  "atoms": [atoms[h].hex() for h in (tip_atom, pol, hv)],
+                  "seals": [V.Seal.sign(ska, forged.id, forged.id).encode().hex()]}
+
+        def cli(cmd, bundle, *pins):
+            path = Path(self.tmp.name) / "bundle.json"
+            path.write_text(json.dumps(bundle))
+            args = [x for k in pins for x in ("--require", k)]
+            return subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), cmd, str(path), *args],
+                                  capture_output=True, text=True).returncode
+
+        self.assertEqual(cli("inspect-projection", attack), 0, "internally consistent, and inspect claims no more")
+        self.assertNotEqual(cli("verify-projection", attack), 0, "no trust anchor chosen by the reader")
+        self.assertNotEqual(cli("verify-projection", attack, pk), 0, "the pinned key did not witness it")
+        self.assertNotEqual(cli("verify-projection", attack, V.ed25519_pubkey(ska).hex()), 0, "no data to verify")
+        self.assertEqual(cli("verify-projection", honest, pk), 0)
+        self.assertNotEqual(cli("verify-projection", honest, V.ed25519_pubkey(ska).hex()), 0,
+                            "data present, but the pinned key is not a witness")
+        # A policy naming a pinned key that never sealed: in the policy is not the same as having witnessed
+        hc = V.Cell.decode(bytes.fromhex(honest["cell"]))
+        a2: dict[bytes, bytes] = {V.sha256(bytes.fromhex(x)): bytes.fromhex(x) for x in honest["atoms"]}
+        pol2 = self._pol(a2, 1, [V.ed25519_pubkey(sk), V.ed25519_pubkey(ska)])
+        two = dataclasses.replace(hc, slots=(*hc.slots[:4], pol2))
+        both = dict(honest, cell=two.encode().hex(),
+                    atoms=[a2[h].hex() for h in (hc.slots[0], pol2, V.parse_pol1(a2[pol2])[1])],
+                    seals=[V.Seal.sign(sk, two.id, two.id).encode().hex()])
+        self.assertEqual(cli("verify-projection", both, pk), 0)
+        self.assertNotEqual(cli("verify-projection", both, V.ed25519_pubkey(ska).hex()), 0,
+                            "named in the policy, but never sealed it")
+        self.assertNotEqual(cli("verify-projection", {k: v for k, v in honest.items() if k not in ("input", "output")},
+                                pk), 0, "a verified projection carries its data")
+
+        att = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertEqual(cli("inspect-attestation", att), 0)
+        self.assertNotEqual(cli("verify-attestation", att), 0, "the bundle's own scope policy is not a trust anchor")
+        self.assertEqual(cli("verify-attestation", att, pk), 0)
+        self.assertNotEqual(cli("verify-attestation", att, V.ed25519_pubkey(ska).hex()), 0)
 
 
 if __name__ == "__main__":
