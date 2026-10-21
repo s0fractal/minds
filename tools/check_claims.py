@@ -2,14 +2,17 @@
 """The specification as a projection of what holds it (claims.json).
 
 Every block of VARS-1-SPEC.md §0–§5 (a paragraph, a list item, a table, a code block) must contain the exact quote
-of a claim or of an informative passage; every quote must still be in the spec; every witness must exist; a claim
+of a claim or of an informative passage; every quote must still be in the spec, or, for a claim with
+`"source": "ASSURANCE.md"` (what this repository's tools establish beyond the spec, such as the release checks), in
+ASSURANCE.md; every witness must exist; a claim
 that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
 exists. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
 mutant has shown that it bites). Exit 1 on any violation.
 
     python3 tools/check_claims.py            # check
     python3 tools/check_claims.py --table    # print claim -> status -> witnesses -> mutants
-    python3 tools/check_claims.py --spec FILE --claims FILE   # check other files (tests burn the checker so)
+    python3 tools/check_claims.py --spec FILE --claims FILE [--assurance FILE]
+                                             # check other files (tests burn the checker so)
 """
 from __future__ import annotations
 
@@ -101,15 +104,19 @@ def main(argv: list[str]) -> int:
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     flat = norm(spec)
+    sources = {"ASSURANCE.md": norm(arg("--assurance", ROOT / "ASSURANCE.md").read_text())}
 
     ids = [c["id"] for c in claims]
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         errors.append(f"claim id used twice: {dup}")
-    quotes = [norm(c["quote"]) for c in claims] + [norm(q) for q in informative]
+    quotes = [norm(c["quote"]) for c in claims if "source" not in c] + [norm(q) for q in informative]
     for c in claims:
         q = norm(c["quote"])
-        if q not in flat:
-            errors.append(f"{c['id']}: quote not in the spec: {q[:80]!r}")
+        source = c.get("source")
+        if source is not None and source not in sources:
+            errors.append(f"{c['id']}: unknown source {source!r}")
+        elif q not in (flat if source is None else sources[source]):
+            errors.append(f"{c['id']}: quote not in {'the spec' if source is None else source}: {q[:80]!r}")
         if c["status"] not in STATUSES:
             errors.append(f"{c['id']}: unknown status {c['status']!r}")
         if c["status"] != "assumed" and not c.get("witnesses"):

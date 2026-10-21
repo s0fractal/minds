@@ -3,21 +3,27 @@
   {
    "id": "id.sha256",
    "quote": "`id(x) = SHA-256(bytes(x))`. Every object is addressed by its id.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_01_golden_test_vectors"
    ],
-   "mutants": []
+   "mutants": [
+    "m-cell-id"
+   ]
   },
   {
    "id": "atoms.canonical",
    "quote": "Non-canonical bytes are refused, never normalized.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_32_gate_validates_whole_objects",
-    "test:test_03_gate_rejects_malformed_commits"
+    "test:test_03_gate_rejects_malformed_commits",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-cell-magic",
+    "m-seal-magic"
+   ]
   },
   {
    "id": "atoms.node",
@@ -121,20 +127,27 @@
   {
    "id": "cells.layout",
    "quote": "0..4 \"VAR1\"",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_01_golden_test_vectors"
+    "test:test_01_golden_test_vectors",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-cell-magic",
+    "m-cell-header"
+   ]
   },
   {
    "id": "cells.loss",
    "quote": "1. **Loss.** `H_supersedes ≠ H_EMPTY` or `H_retires ≠ H_EMPTY` requires `H_loss ≠ H_EMPTY`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_03_gate_rejects_malformed_commits"
+    "test:test_03_gate_rejects_malformed_commits",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-cell-loss"
+   ]
   },
   {
    "id": "cells.edges.projection",
@@ -172,11 +185,14 @@
   {
    "id": "cells.schemas",
    "quote": "4. **Schemas.** A schema cell has `H_payload = H_EMPTY`, all edges and loss `H_EMPTY`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_29_gate_enforces_payloads_and_enumerations"
+    "test:test_29_gate_enforces_payloads_and_enumerations",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-schema-cell-empty"
+   ]
   },
   {
    "id": "cells.dependencies",
@@ -203,11 +219,14 @@
   {
    "id": "seals.layout",
    "quote": "164 bytes: `\"SEAL\" ‖ H_target ‖ H_scope_ctx ‖ actor_pubkey ‖ signature`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_05_signatures_names_dependencies_verdicts_acceptance"
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-seal-magic"
+   ]
   },
   {
    "id": "seals.strict",
@@ -455,12 +474,15 @@
   {
    "id": "gate.references",
    "quote": "4. **References and replay.** Every referenced hash is present",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_05_signatures_names_dependencies_verdicts_acceptance",
-    "test:test_09_unassessed_parent_cannot_root_a_replayed_child"
+    "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-seal-refs"
+   ]
   },
   {
    "id": "gate.cycle-witness",
@@ -481,11 +503,14 @@
   {
    "id": "gate.foreign",
    "quote": "5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope cell of its origin.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes"
+    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-foreign-scope"
+   ]
   },
   {
    "id": "gate.projections",
@@ -915,11 +940,13 @@
   {
    "id": "proj.history",
    "quote": "That the witness quorum named by `witness_policy` vouches for the result at `tip`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_14_light_client_verifies_a_projection_bundle_without_the_repository"
    ],
-   "mutants": []
+   "mutants": [
+    "m-proj-witnessed"
+   ]
   },
   {
    "id": "proj.not-fresh",
@@ -968,11 +995,13 @@
   {
    "id": "att.supplied",
    "quote": "A supplier can omit verdicts and seals, so alone this is evidence as supplied, never acceptance.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_17_attestation_evidence_is_complete_at_the_projection_tip"
    ],
-   "mutants": []
+   "mutants": [
+    "m-att-supplied"
+   ]
   },
   {
    "id": "att.later",
@@ -1397,11 +1426,13 @@
   {
    "id": "offline.explain",
    "quote": "Every result carries `explain`, derived from the bundle by the same computation as the verdict fields;",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_36_offline_verifier_in_a_fresh_folder"
    ],
-   "mutants": []
+   "mutants": [
+    "m-explain-missing"
+   ]
   },
   {
    "id": "replay.ids",
@@ -1430,6 +1461,48 @@
    "status": "assumed",
    "witnesses": [],
    "mutants": []
+  },
+  {
+   "id": "assurance.release-profile",
+   "source": "ASSURANCE.md",
+   "quote": "A release names its release profile: the SHA-256 of every file an admission or a reading depends on at the released commit",
+   "status": "tested",
+   "witnesses": [
+    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+   ],
+   "mutants": [
+    "m-profile-gate",
+    "m-profile-absent",
+    "m-profile-offline",
+    "m-profile-commit-id"
+   ]
+  },
+  {
+   "id": "assurance.verify-profile",
+   "source": "ASSURANCE.md",
+   "quote": "`verify-release` recomputes the profile a release names at its commit and records INVALID when the commit's files are not the ones named, even when every check passes",
+   "status": "tested",
+   "witnesses": [
+    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+   ],
+   "mutants": [
+    "m-verify-profile"
+   ]
+  },
+  {
+   "id": "assurance.status",
+   "source": "ASSURANCE.md",
+   "quote": "`status` tells merged from Settled",
+   "status": "tested",
+   "witnesses": [
+    "test:test_77_status_tells_merged_from_settled"
+   ],
+   "mutants": [
+    "m-status-evaluators",
+    "m-status-invalid-answer",
+    "m-status-behind",
+    "m-status-main-released"
+   ]
   }
  ],
  "informative": [

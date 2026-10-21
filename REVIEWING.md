@@ -25,7 +25,7 @@ cost of a mistake, not the size of the diff.
 ## 1. Verify releases (members only)
 
 ```
-.venv/bin/python tools/minds_chain.py show            # releases with "settled": false need your verdict
+.venv/bin/python tools/minds_chain.py status          # releases whose "awaiting" lists your key need your verdict
 .venv/bin/python tools/minds_chain.py verify-release <decision> --key <your key file> --name <your verifier id>
 git push origin refs/vars/heads/minds
 ```

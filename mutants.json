@@ -1020,5 +1020,165 @@
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
+ },
+ "m-profile-gate": {
+  "file": "tools/minds_chain.py",
+  "find": "PROFILE_FILES = (\"VARS-1-SPEC.md\", \"vars1.py\", ",
+  "replace": "PROFILE_FILES = (\"VARS-1-SPEC.md\", ",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-absent": {
+  "file": "tools/minds_chain.py",
+  "find": "        return out.stdout if out.returncode == 0 else None",
+  "replace": "        return out.stdout",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-offline": {
+  "file": "tools/minds_chain.py",
+  "find": "if m and h == m.group(1).decode()}",
+  "replace": "if m}",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-verify-profile": {
+  "file": "tools/minds_chain.py",
+  "find": "        ok = ok and same\n",
+  "replace": "        ok = ok\n",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-status-evaluators": {
+  "file": "tools/minds_chain.py",
+  "find": "awaiting=sorted(k.hex() for k in evaluators if",
+  "replace": "awaiting=sorted(k.hex() for k in keys if",
+  "kills": [
+   "test_77_status_tells_merged_from_settled"
+  ]
+ },
+ "m-status-invalid-answer": {
+  "file": "tools/minds_chain.py",
+  "find": "for k in evaluators if k not in attested | invalid)",
+  "replace": "for k in evaluators if k not in attested)",
+  "kills": [
+   "test_77_status_tells_merged_from_settled"
+  ]
+ },
+ "m-status-behind": {
+  "file": "tools/minds_chain.py",
+  "find": "f\"{last}..{main_sha}\"",
+  "replace": "f\"{main_sha}..{last}\"",
+  "kills": [
+   "test_77_status_tells_merged_from_settled"
+  ]
+ },
+ "m-status-main-released": {
+  "file": "tools/minds_chain.py",
+  "find": "\"main_released\": main_sha in released,",
+  "replace": "\"main_released\": True,",
+  "kills": [
+   "test_77_status_tells_merged_from_settled"
+  ]
+ },
+ "m-schema-cell-empty": {
+  "file": "vars1.py",
+  "find": "                if c.h_payload != H_EMPTY or any(",
+  "replace": "                if False and any(",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-cell-magic": {
+  "file": "verify/minds_verify.py",
+  "find": "        if len(raw) < 296 or raw[:4] != b\"VAR1\":",
+  "replace": "        if len(raw) < 296:",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-seal-magic": {
+  "file": "verify/minds_verify.py",
+  "find": "        if len(raw) != 164 or raw[:4] != b\"SEAL\":",
+  "replace": "        if len(raw) != 164:",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-cell-id": {
+  "file": "verify/minds_verify.py",
+  "find": "    def id(self) -> bytes:\n        return sha256(self.encode())\n\n    @staticmethod\n    def decode(raw: bytes) -> \"Cell\":",
+  "replace": "    def id(self) -> bytes:\n        return sha256(self.encode()[8:])\n\n    @staticmethod\n    def decode(raw: bytes) -> \"Cell\":",
+  "kills": [
+   "test_01_golden_test_vectors"
+  ]
+ },
+ "m-foreign-scope": {
+  "file": "vars1.py",
+  "find": "                    if not f_scopes:\n                        raise",
+  "replace": "                    if False:\n                        raise",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-seal-refs": {
+  "file": "vars1.py",
+  "find": "            if s.h_target not in cells or s.h_scope_ctx not in cells:",
+  "replace": "            if False:",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-att-supplied": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"accepted\": False,\n        \"rules_status\": None,",
+  "replace": "        \"accepted\": len(endorsers) >= thr,\n        \"rules_status\": None,",
+  "kills": [
+   "test_17_attestation_evidence_is_complete_at_the_projection_tip"
+  ]
+ },
+ "m-explain-missing": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"witnesses_missing\": sorted(k.hex() for k in set(keys) - witnesses),",
+  "replace": "        \"witnesses_missing\": sorted(k.hex() for k in set(keys)),",
+  "kills": [
+   "test_36_offline_verifier_in_a_fresh_folder"
+  ]
+ },
+ "m-proj-witnessed": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"witnessed\": len(witnesses) >= thr,",
+  "replace": "        \"witnessed\": len(witnesses) >= 0,",
+  "kills": [
+   "test_14_light_client_verifies_a_projection_bundle_without_the_repository"
+  ]
+ },
+ "m-cell-header": {
+  "file": "verify/minds_verify.py",
+  "find": "        header = b\"VAR1\\x00\\x00\\x00\" + bytes([k])",
+  "replace": "        header = b\"VAR1\\x00\\x00\\x01\" + bytes([k])",
+  "kills": [
+   "test_01_golden_test_vectors"
+  ]
+ },
+ "m-cell-loss": {
+  "file": "verify/minds_verify.py",
+  "find": "        if (cell.h_supersedes != H_EMPTY or cell.h_retires != H_EMPTY) and cell.h_loss == H_EMPTY:\n            raise VarsError(\"eviction cell missing H_loss\")",
+  "replace": "        if False:\n            raise VarsError(\"eviction cell missing H_loss\")",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-profile-commit-id": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not V.canonical_commit_id(Path(repo_dir), sha):  # a ref",
+  "replace": "    if False:  # a ref",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
  }
 }
