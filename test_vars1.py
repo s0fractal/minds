@@ -2766,7 +2766,8 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
         code, out = check(spec, claims, hidden.replace("<!--\n", "```\n").replace("\n-->", "\n```"))
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in a fenced example (Codex r2 F4)")
-        for opening, inner in (("````", "```"), ("~~~", "```"), ("```", "```\u00a0"), ("~~~", "~~~\u2003")):
+        for opening, inner in (("````", "```"), ("~~~", "```"), ("```", "```\u00a0"), ("~~~", "~~~\u2003"),
+                               ("```", "```\u2028"), ("```", "```\x85")):  # Markdown breaks lines at \n, \r only (r5 F2)
             # a fence closes only on its own kind and length (Codex r3 F2), followed by spaces or tabs only (r4 F3)
             fenced = hidden.replace("<!--\n", f"{opening}\n{inner}\n").replace("\n-->", f"\n{opening}")
             code, out = check(spec, claims, fenced)
@@ -4186,7 +4187,7 @@ class TestVars1Conformance(unittest.TestCase):
         (self.repo_path / "kernel").symlink_to("actual-kernel")
         g("add", "kernel", "actual-kernel")
         g("commit", "-q", "-m", "linked directory")
-        with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a regular file .* where Python imports from"):
+        with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a regular file"):
             mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
 
         # Python loads what its path reaches (Codex PR #4 r3 F1): a module beside the gate that shadows the standard
@@ -4203,20 +4204,29 @@ class TestVars1Conformance(unittest.TestCase):
             mc.profile_at(self.repo_path, cached)
         g("rm", "-q", "-r", "verify/__pycache__")
         g("commit", "-q", "-m", "no bytecode")
-        # Codex PR #4 r4 F1, F2: a symlinked module and a regular package where Python imports from, and a native one
+        # Codex PR #4 r4 F1, r5 F1: a symlink anywhere, and a native module; a package or a namespace module at any
+        # depth is profiled, so changing it changes the profile
         (self.repo_path / "payload").mkdir()
         (self.repo_path / "payload" / "shadow.txt").write_bytes(b"raise SystemExit\n")
         (self.repo_path / "json.py").unlink()
         (self.repo_path / "json.py").symlink_to("payload/shadow.txt")
         g("add", "-A")
         g("commit", "-q", "-m", "a linked module")
-        with self.assertRaisesRegex(V.VarsError, "json.py at .* is not a regular file .* where Python imports from"):
+        with self.assertRaisesRegex(V.VarsError, "json.py at .* is not a regular file"):
             mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
         g("rm", "-q", "json.py")
-        package = self._commit_files({"tools/json/__init__.py": b"raise SystemExit\n"}, "a package")
-        with self.assertRaisesRegex(V.VarsError, "tools/json/__init__.py at .* is a regular package"):
-            mc.profile_at(self.repo_path, package)
-        g("rm", "-q", "-r", "tools/json")
+        g("rm", "-q", "-r", "payload")
+        g("commit", "-q", "-m", "no link")
+        bare = mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
+        for files in ({"tools/json/__init__.py": b"x = 1\n"}, {"payload/hook.py": b"x = 1\n"}):
+            one = self._commit_files(files, "a package or a namespace module")
+            p1 = mc.profile_at(self.repo_path, one)
+            self.assertIn(next(iter(files)), p1["files"])
+            two = self._commit_files({k: b"x = 2\n" for k in files}, "changed")
+            self.assertNotEqual(mc.profile_at(self.repo_path, two)["id"], p1["id"], next(iter(files)))
+            self.assertNotEqual(p1["id"], bare["id"])
+            g("rm", "-q", "-r", str(Path(next(iter(files))).parent))
+            g("commit", "-q", "-m", "removed")
         native = self._commit_files({"verify/_fast.so": b"\x7fELF"}, "a native module")
         with self.assertRaisesRegex(V.VarsError, "_fast.so at .* is bytecode or a native module"):
             mc.profile_at(self.repo_path, native)

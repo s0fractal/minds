@@ -27,6 +27,9 @@ STATUSES = {"proved", "bounded", "differential", "tested", "unburned", "assumed"
 DEBT = {"unburned", "assumed"}
 
 
+LINES = re.compile(r"\r\n|\r|\n")  # Markdown's line endings only: str.splitlines also breaks at U+2028, U+0085, ...
+
+
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -45,7 +48,7 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
             blocks.append((start, norm(" ".join(cur))))
         cur = []
 
-    for n, line in enumerate(spec.splitlines(), 1):
+    for n, line in enumerate(LINES.split(spec), 1):
         if line.startswith("```"):
             if not fenced:
                 flush()
@@ -88,7 +91,7 @@ def assurance_rows(text: str) -> list[tuple[str, str]]:
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     rows = []
     fence = ""  # the open fence: its character repeated as often as it opened (CommonMark)
-    for line in text.splitlines():
+    for line in LINES.split(text):
         m = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
         if m and not fence and not (m.group(1)[0] == "`" and "`" in m.group(2)):
             fence = m.group(1)  # a fenced block is an example, never a live row

@@ -1183,8 +1183,8 @@
  },
  "m-profile-regular": {
   "file": "tools/minds_chain.py",
-  "find": "        if f in modes and modes[f] not in (\"100644\", \"100755\"):",
-  "replace": "        if False:",
+  "find": "        if mode not in (\"100644\", \"100755\"):\n            raise refuse(path, f\"is not a regular file (mode {mode})\")",
+  "replace": "        if False:\n            raise refuse(path, f\"is not a regular file (mode {mode})\")",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
@@ -1263,8 +1263,8 @@
  },
  "m-profile-loader": {
   "file": "tools/minds_chain.py",
-  "find": "                    reachable.append(path)",
-  "replace": "                    pass",
+  "find": "    reachable = [path for path in sorted(modes) if path.endswith((\".py\", \".pyw\")) and path not in PROFILE_FILES]",
+  "replace": "    reachable = []",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
@@ -1285,26 +1285,18 @@
    "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
- "m-profile-loader-link": {
-  "file": "tools/minds_chain.py",
-  "find": "                if mode not in (\"100644\", \"100755\"):\n                    raise refuse(path, f\"is not a regular file (mode {mode}) where Python imports from\")",
-  "replace": "                if False:\n                    raise refuse(path, f\"is not a regular file (mode {mode}) where Python imports from\")",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
- "m-profile-package": {
-  "file": "tools/minds_chain.py",
-  "find": "            elif rest.count(\"/\") == 1 and rest.endswith(\"/__init__.py\"):",
-  "replace": "            elif False:",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
  "m-claims-fence-space": {
   "file": "tools/check_claims.py",
   "find": "re.fullmatch(r\"[ \\t]*\", m.group(2)):",
   "replace": "not m.group(2).strip():",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-claims-lines": {
+  "file": "tools/check_claims.py",
+  "find": "    for line in LINES.split(text):",
+  "replace": "    for line in text.splitlines():",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]

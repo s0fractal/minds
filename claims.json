@@ -1522,9 +1522,7 @@
     "m-profile-regular",
     "m-profile-meter",
     "m-profile-bytecode",
-    "m-profile-loader",
-    "m-profile-loader-link",
-    "m-profile-package"
+    "m-profile-loader"
    ]
   },
   {
@@ -1542,7 +1540,7 @@
   {
    "id": "assurance.claim-rows",
    "source": "ASSURANCE.md",
-   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments and fenced blocks removed, whose evidence column begins with the claim's status",
+   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments and fenced blocks removed (lines broken only where Markdown breaks them), whose evidence column begins with the claim's status",
    "status": "tested",
    "witnesses": [
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
@@ -1552,7 +1550,8 @@
     "m-claims-status-word",
     "m-claims-fence",
     "m-claims-fence-kind",
-    "m-claims-fence-space"
+    "m-claims-fence-space",
+    "m-claims-lines"
    ]
   }
  ],
