@@ -1408,6 +1408,12 @@ class GitVarsRepo:
         old, new_rules = base.slots[2], rotation[0].slots[2]
         if RULES[old].encoding == "v2" and RULES[new_rules].encoding == "v1":
             raise VarsError("rules that read references as v1 does cannot read a v2 epoch: no rotation goes there")
+        if RULES[new_rules].encoding == "v2" and any(
+                RULES[r].encoding == "v1" and r != H_LENS_KERNEL
+                for r in {old, *commit_rules(scope, self.chain_deltas(prior_chain))}):
+            # Codex review r1 F1: v2 reads a cell as v1 does only if it was born under H_LENS_KERNEL itself
+            raise VarsError("v2 reads as v1 only the cells born under H_LENS_KERNEL: a chain with an epoch of other "
+                            "rules that read as v1 does cannot rotate to v2")
         f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_CLASSES[kind][1]), d.slots))
         if (f["old_rules"], f["new_rules"]) != (old, new_rules):
             raise VarsError("the rules-change decision names other rules than those the rotation changes")
@@ -1472,7 +1478,29 @@ class GitVarsRepo:
             if any(v and not n["auth"][k] for k, v in o["auth"].items()) or \
                     any(v and not n["edges"][k] for k, v in o["edges"].items()):
                 raise VarsError("rules change (c): a latch the old rules set is lost under the new rules")
-        return [(f"refs/vars/evidence/{scope}/{decision.hex()}", cx_tip)]
+        need = [(cx_scope, cx_tip)] + self.evidence_closure(cx_scope, cx_tip)
+        return [(f"refs/vars/evidence/{scope}/{decision.hex()}/{c}", c) for _, c in need]
+
+    def evidence_closure(self, scope: str, tip: str) -> List[Tuple[str, str]]:
+        """Every counterexample `(scope, commit)` that replaying the chain up to `tip` needs, transitively: each
+        correction on it names one, whose own chain may carry corrections in turn (Codex review r1 F2)."""
+        out: List[Tuple[str, str]] = []
+        todo = [(scope, tip)]
+        while todo:
+            sc, t = todo.pop()
+            atoms: Dict[bytes, bytes] = {}
+            for d_atoms, d_cells, _ in self.chain_deltas(self.commit_chain(t)):
+                atoms.update(d_atoms)
+                for cid in sorted(d_cells):
+                    if rules_change_class(sc, d_cells[cid].h_schema) != "correction":
+                        continue
+                    f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_FIELDS), d_cells[cid].slots))
+                    item = (parse_utf8(atoms[f["counterexample_scope"]]), parse_utf8(atoms[f["counterexample"]]))
+                    if item not in out:
+                        self.require_evidence_commit(item[1], "a counterexample the counterexample's chain names")
+                        out.append(item)
+                        todo.append(item)
+        return out
 
     def _check_refusal(self, kind: str, old: bytes, new_rules: bytes, f: Dict[str, bytes],
                        atoms: Dict[bytes, bytes]) -> None:

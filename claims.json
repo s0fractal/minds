@@ -1151,12 +1151,14 @@
    "status": "tested",
    "witnesses": [
     "test:test_62_a_resource_hardening_bounds_the_commit_count",
-    "test:test_64_a_resource_hardening_needs_each_piece"
+    "test:test_64_a_resource_hardening_needs_each_piece",
+    "test:test_71_a_trap_is_a_fault_not_exhaustion"
    ],
    "mutants": [
     "m-amend-exhausted-flag",
     "m-amend-exhausted-read",
-    "m-amend-budget-passed"
+    "m-amend-budget-passed",
+    "m-amend-fault-read"
    ]
   },
   {
@@ -1254,24 +1256,27 @@
   },
   {
    "id": "rules.change.v2-to-v1-reading",
-   "quote": "A rotation from v2 to rules that read references as v1 does is refused.",
+   "quote": "A rotation from v2 to rules that read references as v1 does is refused, and so is a rotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does",
    "status": "tested",
    "witnesses": [
     "test:test_68_no_rotation_from_v2_to_rules_that_read_as_v1"
    ],
    "mutants": [
-    "m-amend-v2-to-v1-encoding"
+    "m-amend-v2-to-v1-encoding",
+    "m-amend-v1b-to-v2"
    ]
   },
   {
    "id": "rules.change.evidence",
-   "quote": "the gate writes `refs/vars/evidence/<scope>/<decision>` naming a correction's counterexample commit, so its history is reachable from `refs/vars/*` wherever the chain goes",
+   "quote": "for a correction's counterexample commit and for every counterexample the corrections on its chain name, transitively",
    "status": "tested",
    "witnesses": [
-    "test:test_69_a_fresh_clone_replays_a_past_rules_change"
+    "test:test_69_a_fresh_clone_replays_a_past_rules_change",
+    "test:test_72_nested_evidence_travels"
    ],
    "mutants": [
-    "m-amend-evidence-ref"
+    "m-amend-evidence-ref",
+    "m-amend-evidence-closure"
    ]
   },
   {

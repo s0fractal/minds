@@ -249,8 +249,9 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
 
 def evidence(repo_dir: Path, scope: str = SCOPE) -> Dict[str, object]:
     """The evidence manifest of every rules change on the chain (§4.3): for each decision, its rotation commit, class,
-    rules, basis, and what its replay needs beyond the chain: a counterexample chain, reachable from
-    `refs/vars/evidence/<scope>/<decision>`, or an input carried in the chain as a KIN1 atom. Every rules module it
+    rules, basis, and what its replay needs beyond the chain: a counterexample chain and every counterexample its own
+    corrections name, transitively, each reachable from `refs/vars/evidence/<scope>/<decision>/<commit>`, or an input
+    carried in the chain as a KIN1 atom. Every rules module it
     names is carried in the chain as an atom too (`in_chain`). `package` is SHA-256 over the canonical JSON of the
     items: what a fresh clone needs, by name, to replay each change (`replay_changes`)."""
     repo = V.GitVarsRepo(repo_dir)
@@ -269,9 +270,14 @@ def evidence(repo_dir: Path, scope: str = SCOPE) -> Dict[str, object]:
                                        "in_chain": sorted(h.hex() for h in (f["old_rules"], f["new_rules"]) if h in atoms),
                                        "basis": V.parse_utf8(atoms[f["basis"]])}
             if kind == "correction":
-                item["counterexample"] = {"scope": V.parse_utf8(atoms[f["counterexample_scope"]]),
-                                          "commit": V.parse_utf8(atoms[f["counterexample"]]),
-                                          "ref": f"refs/vars/evidence/{scope}/{cid.hex()}"}
+                cx = (V.parse_utf8(atoms[f["counterexample_scope"]]), V.parse_utf8(atoms[f["counterexample"]]))
+                item["counterexample"] = {"scope": cx[0], "commit": cx[1]}
+                try:
+                    need = [cx] + repo.evidence_closure(*cx)
+                except V.VarsError:
+                    need = [cx]  # what this node lacks is reported by the replay; the manifest names what is known
+                item["needs"] = [{"scope": sc, "commit": c, "ref": f"refs/vars/evidence/{scope}/{cid.hex()}/{c}"}
+                                 for sc, c in need]
             elif kind != "equivalent":
                 item["input"] = {"atom": f["input"].hex(), "bytes": len(atoms[f["input"]]) - 4}
             items.append(item)

@@ -373,10 +373,13 @@ is refused.
 (d) Every rules change keeps the earlier ones: on every rules-change decision earlier in the chain, the new rules
 give the result it established. A correction's status bit `status` of its cell, found by id, is still `right` on its
 counterexample; a hardening's or a tightening's input is still refused with its code within its budget, which needs
-rules that read its encoding. A rotation from v2 to rules that read references as v1 does is refused.
+rules that read its encoding. A rotation from v2 to rules that read references as v1 does is refused, and so is a
+rotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only
+the cells born under `H_LENS_KERNEL`.
 
-**Evidence.** In the transaction that moves the scope's ref, the gate writes `refs/vars/evidence/<scope>/<decision>`
-naming a correction's counterexample commit, so its history is reachable from `refs/vars/*` wherever the chain goes; a
+**Evidence.** In the transaction that moves the scope's ref, the gate writes `refs/vars/evidence/<scope>/<decision>/<commit>`
+for a correction's counterexample commit and for every counterexample the corrections on its chain name, transitively,
+so that history is reachable from `refs/vars/*` wherever the chain goes; a
 hardening's or a tightening's input is an atom of the rotation commit, and the rules modules are atoms of the chain. A
 replay that lacks a commit a decision names, or part of its history (an absent object, a shallow boundary), reports
 the evidence missing, which is not a refusal of the decision.
@@ -503,7 +506,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   unsupported rules identity, with the `explain` trace checked in each case.
 - `test_vars1.py` tests 47–58: rules changes (§4.3), each computation of a rules-change decision missing or wrong,
   no rotation back to v1, v1 bundles after a change, and the v2 rules (RULES-V2.md).
-- `test_vars1.py` tests 62–70: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
+- `test_vars1.py` tests 62–72: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
   bound as a resource hardening on the fuzzer's input, (d), a past change replayed in a fresh clone and its evidence
-  missing, and the shadow replay before a rotation (AMENDMENTS.md).
+  missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md).
 - `proofs/`: the theorems listed in `proofs/README.md`.

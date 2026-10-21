@@ -89,19 +89,25 @@ that decision established for the rules it introduced.
 The chain's past rules changes become its regression corpus: the protocol changes under evidence, and evidence once
 admitted constrains every later change. Consequences, stated rather than hidden:
 
-- After v1 → v1b, a later v1b → v2 is refused: v2 cannot read the hardening's v1-encoded input. Activating v1b first
-  closes the road to v2 until a v2 with the commit bound (and a way to carry the input into v2's encoding) exists. The
-  order matters, and it is the members' choice.
+- After v1 → v1b, a later v1b → v2 is refused twice over: v2 cannot read the hardening's v1-encoded input, and v2
+  reads v1b-born cells by type (below). Activating v1b first closes the road to v2 until a v2 that knows v1b, with the
+  commit bound and a way to carry the input into v2's encoding, exists. The order matters, and it is the members'
+  choice.
 - (d) re-runs every earlier counterexample at every rules change; the cost grows with the number of changes, not with
   the chain.
 
 A rotation from v2 to rules that read references as v1 does is refused by the host: v2's kernel refuses only v1 itself
-(E-25), and v1b reads every value as a reference, which cannot read a v2 epoch.
+(E-25), and v1b reads every value as a reference, which cannot read a v2 epoch. The other way is refused too: the v2
+kernel reads a cell as v1 does only if it was born under `H_LENS_KERNEL` itself, so a v1b-born cell would lose its
+v1 references after a rotation to v2 (Codex review r1 F1: an accepted cell's digest stopped carrying acceptance, with
+host and kernel agreeing, so the differential check could not see it). A v2 that knows v1b would need a new v2 build.
 
 ## Evidence that travels
 
-- **Counterexample chains.** The gate writes `refs/vars/evidence/<scope>/<decision id>` naming the counterexample
-  commit, in the same `update-ref --stdin` transaction that moves the scope's ref. Every node that admits the rotation
+- **Counterexample chains.** The gate writes `refs/vars/evidence/<scope>/<decision id>/<commit>` for the
+  counterexample commit and, transitively, for every counterexample the corrections on its chain name (replaying the
+  counterexample replays those corrections; Codex review r1 found the one-level version let a nested one be gc'd), in
+  the same `update-ref --stdin` transaction that moves the scope's ref. Every node that admits the rotation
   holds the evidence reachably; `git fetch origin '+refs/vars/*:refs/vars/*'` (CI's fetch) carries it.
 - **Inputs** are KIN1 atoms of the rotation commit, and every rules module is an atom of the chain: a clone of the
   scope's ref alone replays a hardening.

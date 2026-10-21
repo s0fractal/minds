@@ -2836,7 +2836,7 @@ class TestVars1Conformance(unittest.TestCase):
                       cx: tuple[str, int], *, label: str = "v2", fields: "list[str] | None" = None,
                       override: "dict | None" = None, decision_sks: "list[bytes] | None" = None,
                       rotate: bool = True, decide: bool = True, twice: bool = False,
-                      schema: bool = True) -> tuple[str, V.Cell, "V.Cell | None"]:
+                      schema: bool = True, cx_scope: str = "cx") -> tuple[str, V.Cell, "V.Cell | None"]:
         """A candidate commit (not admitted) rotating `scope` from `base` to a scope naming `new_rules`, with a
         rules-change decision whose digests are the gate's own replay; `override` then replaces fields by name
         (a value, or a function of `put`), and `fields` builds it on a schema with only those fields."""
@@ -2847,9 +2847,9 @@ class TestVars1Conformance(unittest.TestCase):
         a.update(sch_atoms)
         if fields is not None:
             sch = V.Cell(V.H_META_SCHEMA, sch.h_slot_name, V.H_EMPTY, slots=tuple(put(V.atom_utf8(f)) for f in fields))
-        ev = self.repo.rules_change_evidence(scope, parent, base.slots[2], new_rules, "cx", cx_tip)
+        ev = self.repo.rules_change_evidence(scope, parent, base.slots[2], new_rules, cx_scope, cx_tip)
         vals = {"old_rules": base.slots[2], "new_rules": new_rules, "basis": put(V.atom_utf8(parent)),
-                "reproduce": ev["reproduce"], "counterexample_scope": put(V.atom_utf8("cx")),
+                "reproduce": ev["reproduce"], "counterexample_scope": put(V.atom_utf8(cx_scope)),
                 "counterexample": put(V.atom_utf8(cx_tip)), "cell": put(V.atom_u64(cx_cell)),
                 "status": put(V.atom_u64(0)), "right": put(V.atom_u64(0)),  # X is not Accepted
                 "refutes": ev["refutes"], "latches": ev["latches"]}
@@ -3568,7 +3568,7 @@ class TestVars1Conformance(unittest.TestCase):
     def test_67_earlier_counterexamples_stay_decided(self) -> None:
         """(d): a later rules change must keep every earlier one. After the hardening v1 -> v1b, an "equivalent"
         change back to v1 (the same output over the chain) is refused: v1 exhausts the budget on the hardening's input
-        again; so is v1b -> v2, whose encoding cannot read that input. After the correction v1 -> v2, an equivalent
+        again; v1b -> v2 is refused before (d) (test 68), and (d) alone refuses it too: v2 cannot read that input. After the correction v1 -> v2, an equivalent
         v2' is admitted only while it still gives the correction's counterexample its verdict."""
         inp = self._fuzz_counterexample()
         cx, c1b, t0 = self._rules_change_fixture_on("q")
@@ -3578,8 +3578,13 @@ class TestVars1Conformance(unittest.TestCase):
         self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer refuse its "
                            "input with E-7", "core",
                            self._change("equivalent", "core", cand, s1, V.H_LENS_KERNEL, label="back")[0], cand)
-        self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12}: its input is encoded for other rules", "core",
+        # v1b -> v2 is refused before (d) (test 68: v2 reads v1b-born cells by type); (d) would refuse it too, since v2
+        # cannot read the hardening's v1-encoded input
+        self._gate_refuses("v2 reads as v1 only the cells born under H_LENS_KERNEL", "core",
                            self._change_rules("core", cand, s1, V.H_LENS_KERNEL_V2, [self.sk1], cx)[0], cand)
+        with self.assertRaisesRegex(V.VarsError, r"\(d\): the earlier rules change [0-9a-f]{12}: its input is encoded for "
+                                                 "other rules"):
+            self.repo._check_earlier_changes("core", self.repo.commit_chain(cand), V.H_LENS_KERNEL_V2, b"")
 
         cand2, t1, _ = self._change_rules("q", c1b, t0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
         self.repo.admit_and_advance("q", cand2, expected_old=c1b)
@@ -3614,13 +3619,25 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_68_no_rotation_from_v2_to_rules_that_read_as_v1(self) -> None:
         """v1b reads references as v1 does, so it cannot read a v2 epoch: v2 -> v1b is refused, whatever the class
-        (the v2 kernel's E-25 covers only v1 itself)."""
+        (the v2 kernel's E-25 covers only v1 itself); and v1b -> v2 is refused, since v2 reads as v1 only the cells
+        born under H_LENS_KERNEL."""
         cx, c1, s0 = self._rules_change_fixture()
         cand, s1, _ = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
         self.repo.admit_and_advance("core", cand, expected_old=c1)
         self._gate_refuses("cannot read a v2 epoch", "core",
                            self._change("hardening", "core", cand, s1, V.H_LENS_KERNEL_V1B, label="v1b",
                                         inp=self._fuzz_counterexample())[0], cand)
+        # Codex review r1 F1: nor the other way. v2 reads as v1 only cells born under H_LENS_KERNEL, so a v1b-born
+        # digest would stop carrying acceptance; a chain with a v1b epoch (here its genesis) does not rotate to v2
+        a = {**V.STD_SCHEMA_ATOMS, V.H_LENS_KERNEL_V1B: V.KERNEL1B_ATOM}
+        pol = self._pol(a, 1, [self.pk1])
+        b0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(a, V.atom_utf8("b/SCOPE")), self._put_atom(a, V.atom_utf8("b")),
+                    slots=(pol, pol, V.H_LENS_KERNEL_V1B))
+        g = self.repo.build_candidate_commit("b", a, [*V.STD_SCHEMAS.values(), b0], [V.Seal.sign(self.sk1, b0.id, b0.id)],
+                                             parent_commit=None)
+        self.repo.admit_and_advance("b", g, expected_old=None)
+        self._gate_refuses("v2 reads as v1 only the cells born under H_LENS_KERNEL", "b",
+                           self._change_rules("b", g, b0, V.H_LENS_KERNEL_V2, [self.sk1], cx)[0], g)
 
 
     def test_69_a_fresh_clone_replays_a_past_rules_change(self) -> None:
@@ -3633,15 +3650,16 @@ class TestVars1Conformance(unittest.TestCase):
         cx, c1, s0 = self._rules_change_fixture()
         cand, s1, d = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
         self.repo.admit_and_advance("core", cand, expected_old=c1)
-        ref = f"refs/vars/evidence/core/{d.id.hex()}"
+        ref = f"refs/vars/evidence/core/{d.id.hex()}/{cx[0]}"
         git = lambda repo, *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True,  # noqa: E731
                                               check=True).stdout.strip()
         got = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", "--verify", "--quiet", ref], capture_output=True,
                              text=True).stdout.strip()
         self.assertEqual(got, cx[0], "the rotation wrote the evidence ref")
         man = mc.evidence(self.repo_path, "core")
-        self.assertEqual([(c["decision"], c["class"], c["counterexample"]) for c in man["changes"]],
-                         [(d.id.hex(), "correction", {"scope": "cx", "commit": cx[0], "ref": ref})])
+        self.assertEqual([(c["decision"], c["class"], c["counterexample"], c["needs"]) for c in man["changes"]],
+                         [(d.id.hex(), "correction", {"scope": "cx", "commit": cx[0]},
+                           [{"scope": "cx", "commit": cx[0], "ref": ref}])])
         self.assertEqual(man["changes"][0]["in_chain"], sorted([V.H_LENS_KERNEL.hex(), V.H_LENS_KERNEL_V2.hex()]))
         git(self.repo_path, "update-ref", "-d", "refs/vars/heads/cx")  # the author's helper ref
         git(self.repo_path, "reflog", "expire", "--expire=now", "--all")
@@ -3748,6 +3766,86 @@ class TestVars1Conformance(unittest.TestCase):
         _, r3 = mc.release(self.repo_path, sk, "c" * 40, ["x OK"])
         self.assertEqual(mc.replay_changes(self.repo_path), [(mc.evidence(self.repo_path)["changes"][0]["decision"],
                                                               "REPLAYED")])
+
+
+    def test_71_a_trap_is_a_fault_not_exhaustion(self) -> None:
+        """Codex review r1 F3: a module that traps gives a fault while steps are left and exhaustion when none are;
+        neither is read as the other. A hardening whose old rules trap on the input is admitted (a crash made a
+        controlled refusal)."""
+        def sec(sid: int, body: bytes) -> bytes:
+            return bytes([sid, len(body)]) + body
+        # types: ()->(), (i32)->i32, (i32,i32)->i32; reset, alloc (1024), run (unreachable); one mutable global
+        trap = (b"\x00asm\x01\x00\x00\x00"
+                + sec(1, b"\x03\x60\x00\x00\x60\x01\x7f\x01\x7f\x60\x02\x7f\x7f\x01\x7f")
+                + sec(3, b"\x03\x00\x01\x02") + sec(5, b"\x01\x00\x01") + sec(6, b"\x01\x7f\x01\x41\x00\x0b")
+                + sec(7, b"\x04\x06memory\x02\x00\x05reset\x00\x00\x05alloc\x00\x01\x03run\x00\x02")
+                + sec(10, b"\x03\x02\x00\x0b\x05\x00\x41\x80\x08\x0b\x03\x00\x00\x0b"))
+        path = Path(self.tmp.name) / "trap.wasm"
+        path.write_bytes(trap)
+        h = V.sha256(trap)
+        self._register_rules(h, V.Rules(path, "v1"), trap)
+        self.assertEqual(V.metered_runner(h).run(b"any input", self.BUDGET), V.RulesResult("fault"))
+        self.assertEqual(V.metered_runner(h).run(b"any input", 0), V.RulesResult("exhausted"))
+        self.assertEqual(V.metered_runner(h).run(b"any input", self.BUDGET), V.RulesResult("fault"), "and again")
+        inp = self._fuzz_counterexample()
+        ev = self.repo.rules_change_refusal(h, V.H_LENS_KERNEL_V1B, inp, self.BUDGET)
+        self.assertEqual((ev["old"], ev["new"]), (V.RulesResult("fault"), V.RulesResult("refusal", code=-7)))
+
+    def _r2_03_on(self, scope: str, parent: str, base: V.Cell) -> tuple[str, V.Cell]:
+        """Codex R2-03 appended to `scope`'s chain in a v2 epoch: an accepted foreign cell Y holds as a `digest` the id
+        of a cell X born after it. Returns the tip and X."""
+        b: dict[bytes, bytes] = {}
+        put = lambda raw: self._put_atom(b, raw)  # noqa: E731
+        ppol = self._pol(b, 1, [self.pk_peer])
+        sp = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8("peerB/SCOPE")), put(V.atom_utf8("peerB")),
+                    slots=(ppol, ppol, V.H_LENS_KERNEL))
+        opaque = V.Cell(V.H_META_SCHEMA, put(V.atom_utf8(f"{scope}/opaque")), V.H_EMPTY,
+                        slots=(put(V.atom_utf8("value:digest")),))
+        xa: dict[bytes, bytes] = {}
+        x = self._axiom(xa, "peerB/x", "born after the digest that names it")
+        y = V.Cell(opaque.id, put(V.atom_utf8("peerB/y")), put(V.atom_utf8("y")), slots=(x.id,))
+        acc = V.Cell(V.H_SCHEMA["acceptance"], put(V.atom_utf8(f"{scope}/accept.y")), y.id,
+                     slots=(put(V.atom_utf8("peerB")), sp.id))
+        c1 = self.repo.build_candidate_commit(scope, b, [sp, opaque, y, acc], [
+            V.Seal.sign(self.sk_peer, sp.id, sp.id), V.Seal.sign(self.sk1, opaque.id, base.id),
+            V.Seal.sign(self.sk_peer, y.id, sp.id), V.Seal.sign(self.sk1, acc.id, base.id)], parent_commit=parent)
+        self.repo.admit_and_advance(scope, c1, expected_old=parent)
+        c2 = self.repo.build_candidate_commit(scope, xa, [x], [V.Seal.sign(self.sk_peer, x.id, sp.id)], parent_commit=c1)
+        self.repo.admit_and_advance(scope, c2, expected_old=c1)
+        return c2, x
+
+    def test_72_nested_evidence_travels(self) -> None:
+        """Codex review r1 F2: a counterexample chain may carry its own correction, whose counterexample its replay
+        needs. The gate writes evidence refs for the whole closure, so a fresh clone that fetched only the scope's
+        ref and refs/vars/evidence/* replays the change after every helper ref is deleted and gc'd."""
+        mc = self._minds_chain()
+        leaf, _, _ = self._r2_03()
+        q0, t0, _ = self._bootstrap_genesis("q", acc_threshold=1)
+        qr, t1, _ = self._change_rules("q", q0, t0, V.H_LENS_KERNEL_V2, [self.sk1], leaf)
+        self.repo.admit_and_advance("q", qr, expected_old=q0)
+        qt, x = self._r2_03_on("q", qr, t1)
+        order = self.repo.rules_output("q", qt, V.H_LENS_KERNEL_V2)[1]["order"]
+        c1, s0 = self._core()
+        cand, _, d = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], (qt, order.index(x.id)),
+                                        cx_scope="q")
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        git = lambda repo, *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True,  # noqa: E731
+                                              check=True).stdout.strip()
+        refs = sorted(git(self.repo_path, "for-each-ref", "--format=%(refname)", f"refs/vars/evidence/core/{d.id.hex()}").split())
+        self.assertEqual(refs, sorted(f"refs/vars/evidence/core/{d.id.hex()}/{c}" for c in (qt, leaf[0])),
+                         "the counterexample and the one its own correction names")
+        item, = mc.evidence(self.repo_path, "core")["changes"]
+        self.assertEqual([(n["scope"], n["commit"]) for n in item["needs"]], [("q", qt), ("cx", leaf[0])])
+        for ref in git(self.repo_path, "for-each-ref", "--format=%(refname)").split():
+            if ref != "refs/vars/heads/core" and not ref.startswith("refs/vars/evidence/core/"):
+                git(self.repo_path, "update-ref", "-d", ref)  # every helper: other heads, q's own evidence refs
+        git(self.repo_path, "reflog", "expire", "--expire=now", "--all")
+        git(self.repo_path, "gc", "--quiet", "--prune=now")
+        fresh = Path(self.tmp.name) / "fresh-nested"
+        git(Path(self.tmp.name), "init", "-q", str(fresh))
+        git(fresh, "fetch", "-q", "--no-tags", str(self.repo_path),
+            "refs/vars/heads/core:refs/vars/heads/core", "+refs/vars/evidence/*:refs/vars/evidence/*")
+        self.assertEqual(mc.replay_changes(fresh, "core"), [(d.id.hex(), "REPLAYED")])
 
 
 if __name__ == "__main__":

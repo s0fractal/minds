@@ -884,5 +884,29 @@
   "kills": [
    "test_58_release_checks_rebuild_every_rules_module"
   ]
+ },
+ "m-amend-evidence-closure": {
+  "file": "vars1.py",
+  "find": "        need = [(cx_scope, cx_tip)] + self.evidence_closure(cx_scope, cx_tip)",
+  "replace": "        need = [(cx_scope, cx_tip)]",
+  "kills": [
+   "test_72_nested_evidence_travels"
+  ]
+ },
+ "m-amend-v1b-to-v2": {
+  "file": "vars1.py",
+  "find": "        if RULES[new_rules].encoding == \"v2\" and any(",
+  "replace": "        if False and any(",
+  "kills": [
+   "test_68_no_rotation_from_v2_to_rules_that_read_as_v1"
+  ]
+ },
+ "m-amend-fault-read": {
+  "file": "kernel/run_metered.mjs",
+  "find": "minds_exhausted.value === 1 ? \"X\\n\" : \"T\\n\"",
+  "replace": "\"X\\n\"",
+  "kills": [
+   "test_71_a_trap_is_a_fault_not_exhaustion"
+  ]
  }
 }
