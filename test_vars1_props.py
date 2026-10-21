@@ -23,6 +23,9 @@ checks:
   I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
   I11 Pass 3 recomputed from the kernel's input and output alone (`pass3_at_tip`, what a client holding a projection
       bundle computes) equals the lens's Settled for every contract and decision without required_comp
+  I12 on generated finite transition tables and cycle witnesses, true and false, `sigma_resume.verify_cycle` (with the
+      table as its transition) and `vars1.verify_cycle_witness_replay` (gate and Pass 3 modes) give the verdict of
+      the model's own checker, `checkCycle` of proofs/Vars1/Cycle.lean compiled as `vars1cycle`
 
 Failing programs are shrunk greedily (drop commits, ops, signers, edges) and frozen below as named regression
 tests. Run `VARS1_PBT_SEQS=400 python3 test_vars1_props.py` for a longer exploration; the default stays < 2 min.
@@ -1131,6 +1134,153 @@ def model_fold(line: str) -> List[int]:
 _RUNNER: Optional["V.KernelRunner"] = None
 
 
+# ---------------------------------------------------------------------------
+# I12: cycle witnesses against the model's checker
+# ---------------------------------------------------------------------------
+CYCLE_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin" / "vars1cycle"
+_TOY_TAG = b"vars1-toy-state"
+
+
+def toy_term(i: int) -> tuple:
+    """State `i` of a toy table as a Sigma state: a thunk whose hash names it (no Book I term has a state cycle, so
+    the transition is substituted, as sigma_resume.STEP allows)."""
+    return ("thunk", V.sha256(_TOY_TAG + i.to_bytes(4, "big")))
+
+
+def toy_step(table: List[tuple]):
+    """`sigma_resume.STEP`'s contract over a table: ("nf",), ("blocked",) or ("fire", j, c)."""
+    index = {toy_term(i): i for i in range(len(table))}
+
+    def step(term, remaining, env, stats, limits):
+        i = index.get(term)
+        if i is None or table[i][0] == "nf":
+            return None
+        if table[i][0] == "blocked":
+            raise SG.Unresolved()
+        _, j, c = table[i]
+        if c > remaining:
+            raise SG.BudgetExhausted()
+        return toy_term(j), c
+    return step
+
+
+def gen_cycle_cases(rng: random.Random, n_tables: int) -> List[tuple]:
+    """(table, start, entry, entry_spent, actions, cost, max_atp): true witnesses read off a simulated orbit, their
+    neighbours (one field off by one, another entry, a doubled period, the ceiling below the period or the prefix),
+    and random ones."""
+    cases = []
+    for _ in range(n_tables):
+        n = rng.randint(1, 6)
+        table = []
+        for _ in range(n):
+            x = rng.random()
+            table.append(("nf",) if x < 0.12 else ("blocked",) if x < 0.2 else
+                         ("fire", rng.randrange(n), rng.randint(1, 3)))
+        start = rng.randrange(n)
+        orbit, spent, s = [], [0], start
+        for _ in range(3 * n + 2):
+            orbit.append(s)
+            if table[s][0] != "fire":
+                break
+            s, c = table[s][1], table[s][2]
+            spent.append(spent[-1] + c)
+        truths = []
+        seen = {}
+        for p, st in enumerate(orbit):
+            if st in seen:
+                a = seen[st]
+                period = p - a
+                for q in range(a, len(orbit) - period):
+                    truths.append((orbit[q], spent[q], period, spent[q + period] - spent[q]))
+                break
+            seen[st] = p
+        for entry, k, acts, cost in truths[:3]:
+            ceil = 10_000_000
+            cases.append((table, start, entry, k, acts, cost, ceil))
+            cases.append((table, start, entry, k, 2 * acts, 2 * cost, ceil))
+            for dk, da, dc in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                if k + dk >= 0 and acts + da >= 0 and cost + dc >= 0:
+                    cases.append((table, start, entry, k + dk, acts + da, cost + dc, ceil))
+            cases.append((table, start, (entry + 1) % n, k, acts, cost, ceil))
+            cases.append((table, start, entry, k, acts, cost, cost - 1))
+            cases.append((table, start, entry, k, acts, cost, max(cost, k - 1)))
+            cases.append((table, start, entry, k, acts, cost, max(cost, k)))
+            cases.append((table, start, entry, k, acts, ceil + 1, ceil))
+            cases.append((table, start, entry, ceil + 1, acts, cost, ceil))
+        for _ in range(3):
+            cases.append((table, start, rng.randrange(n + 1), rng.randint(0, 8), rng.randint(0, 4), rng.randint(0, 9),
+                          rng.choice([10_000_000, rng.randint(0, 9)])))
+    return cases
+
+
+def model_cycle(cases: List[tuple]) -> List[str]:
+    """`vars1cycle`'s answers (P, N, R), one per case."""
+    if not CYCLE_BIN.exists():
+        raise RuntimeError("build the model's cycle checker first: cd proofs && lake build vars1cycle")
+    lines = []
+    for table, start, entry, k, acts, cost, ceil in cases:
+        enc = []
+        for t in table:
+            enc += [0] if t[0] == "nf" else [1] if t[0] == "blocked" else [2, t[1], t[2]]
+        lines.append(" ".join(map(str, [len(table), *enc, start, entry, k, acts, cost, ceil])))
+    out = subprocess.run([str(CYCLE_BIN)], input="\n".join(lines) + "\n", capture_output=True, text=True,
+                         check=True).stdout.split()
+    if len(out) != len(cases) or set(out) - {"P", "N", "R"}:
+        raise RuntimeError(f"vars1cycle answered {out[:5]}… for {len(cases)} cases")
+    return out
+
+
+def python_cycle(case: tuple) -> Tuple[str, Optional[str], Optional[str]]:
+    """(verify_cycle, vars1 gate mode, vars1 Pass 3 mode) as P/N/R; the vars1 glue runs only at its own ceiling
+    (10^7), else None."""
+    table, start, entry, k, acts, cost, ceil = case
+    env = SR.Environment([], {})
+    root_doc, cid = SR.root(toy_term(start)[1], env)
+    witness = {"schema": SR.SCHEMA_CYCLE, "computation_id": cid,
+               "entry_spent_total": k, "entry_state_id": SR.state_id(SR.encode_state(cid, toy_term(entry))),
+               "cycle_action_count": acts, "cycle_cost": cost}
+    saved = SR.STEP
+    SR.STEP = toy_step(table)
+    try:
+        v = SR.verify_cycle((root_doc, cid), env, witness, dict(SG.VERIFIER_LIMITS, max_atp=ceil))
+        sr = "P" if v == "CYCLE_PROVEN" else "N" if v.startswith("NOT_ASSESSED") else "R"
+        if ceil != SG.VERIFIER_LIMITS["max_atp"]:
+            return sr, None, None
+        atoms: Dict[bytes, bytes] = {}
+        env_h = _put(atoms, V.atom_environment([]))
+        comp_id = _put(atoms, V.atom_computation_root(toy_term(start)[1], env_h))
+        assert comp_id.hex() == cid
+        u = lambda x: _put(atoms, V.atom_u64(x))
+        cell = V.Cell(h_schema=V.H_SCHEMA["cycle_witness"], h_slot_name=_put(atoms, V.atom_utf8("core/cw")),
+                      h_payload=bytes.fromhex(witness["entry_state_id"]), slots=(comp_id, u(k), u(acts), u(cost)))
+        glue = []
+        for gate_mode in (True, False):
+            try:
+                r = V.verify_cycle_witness_replay(cell, atoms, gate_mode=gate_mode)
+                glue.append("P" if r == "CYCLE_PROVEN" else "N" if r == "NOT_ASSESSED" else "?" + r)
+            except V.VarsError:
+                glue.append("R")
+        return sr, glue[0], glue[1]
+    finally:
+        SR.STEP = saved
+
+
+def check_cycles(seed: int, n_tables: int) -> Tuple[List[str], Dict[str, int]]:
+    """I12 violations and the count of each model verdict (so a run that only ever refuses is visible)."""
+    cases = gen_cycle_cases(random.Random(seed), n_tables)
+    model = model_cycle(cases)
+    out, counts = [], {}
+    for case, m in zip(cases, model):
+        sr, gate, pass3 = python_cycle(case)
+        counts[m] = counts.get(m, 0) + 1
+        if gate is not None:
+            counts["gate " + m] = counts.get("gate " + m, 0) + 1
+        want = (m, m, "P" if m == "P" else "R") if gate is not None else (m, None, None)
+        if (sr, gate, pass3) != want:
+            out.append(f"I12: model {m}, verify_cycle {sr}, gate {gate}, Pass 3 {pass3} on {case}")
+    return out, counts
+
+
 def kernel_runner() -> "V.KernelRunner":
     global _RUNNER
     if _RUNNER is None:
@@ -1572,6 +1722,13 @@ class TestVars1Properties(unittest.TestCase):
             print(f"\n  known (frozen) violation classes hit: {known_hits}", file=sys.stderr)
         self.assertGreater(admitted_total, self.N_SEQS * 3, "generator admits too few commits to be meaningful")
         self.assertEqual(found, {}, "new invariant violations (shrink with VARS1_PBT_SHRINK=1)")
+
+    def test_cycle_witnesses_agree_with_the_model(self) -> None:
+        """I12: verify_cycle and the vars1 glue give the compiled model checker's verdict on every generated case."""
+        violations, counts = check_cycles(self.SEED0, int(os.environ.get("VARS1_PBT_CYCLE_TABLES", "300")))
+        self.assertEqual(violations[:10], [])
+        for verdict in ("P", "N", "R", "gate P", "gate N", "gate R"):
+            self.assertGreater(counts.get(verdict, 0), 20, f"too few {verdict} cases to be meaningful: {counts}")
 
 
 def _make_regression(name: str, inv: str, program):

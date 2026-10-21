@@ -964,5 +964,69 @@
   "kills": [
    "test_74_a_metered_run_does_not_depend_on_earlier_runs"
   ]
+ },
+ "m-cycle-fields": {
+  "file": "vars1.py",
+  "find": "        \"cycle_action_count\": u64_of(c.slots[2], atoms),\n        \"cycle_cost\": u64_of(c.slots[3], atoms),",
+  "replace": "        \"cycle_action_count\": u64_of(c.slots[3], atoms),\n        \"cycle_cost\": u64_of(c.slots[2], atoms),",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-entry-spent": {
+  "file": "vars1.py",
+  "find": "        \"entry_spent_total\": u64_of(c.slots[1], atoms),",
+  "replace": "        \"entry_spent_total\": 0,",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-verdict": {
+  "file": "vars1.py",
+  "find": "    if verdict != \"CYCLE_PROVEN\":\n        raise VarsError(f\"cycle_witness replay failed: {verdict}\")",
+  "replace": "    if False:\n        raise VarsError(f\"cycle_witness replay failed: {verdict}\")",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-not-assessed": {
+  "file": "vars1.py",
+  "find": "    if verdict.startswith(\"NOT_ASSESSED\") and gate_mode:",
+  "replace": "    if False:",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-bounds": {
+  "file": "vars1.py",
+  "find": "                if actions < 1 or cost < actions:",
+  "replace": "                if False:",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-pass3-comp": {
+  "file": "vars1.py",
+  "find": "                            if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:",
+  "replace": "                            if exp_out != H_CYCLE_PROVEN:",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-pass3-expected": {
+  "file": "vars1.py",
+  "find": "                            if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:",
+  "replace": "                            if cw.slots[0] != req_comp:",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
+ },
+ "m-cycle-pass3-not-assessed": {
+  "file": "vars1.py",
+  "find": "                                if verify_cycle_witness_replay(cw, atoms, gate_mode=False) != \"CYCLE_PROVEN\":",
+  "replace": "                                if verify_cycle_witness_replay(cw, atoms, gate_mode=True) not in (\"CYCLE_PROVEN\", \"NOT_ASSESSED\"):",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
  }
 }

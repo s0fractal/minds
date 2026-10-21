@@ -58,7 +58,10 @@ mutation tests. **Assumed** means nothing here checks it.
 | Same for Book I's evaluator | Proved | `Vars1Sigma/Link.lean` |
 | A Settled contract with `required_comp` has a full replay to the expected normal form | Proved; checked on implementation (I4) | `Pass3Replay.lean`, property suite |
 | Python replay (`sigma_resume`) matches the abstract machine | Assumed (transcribed by hand) | — |
-| `verify_cycle` is sound | Assumed (an oracle) | — |
+| A cycle witness `checkCycle` accepts means: from the start, every number of actions fires and no budget reaches a normal form or a blocked reference; a normal form and an accepted cycle exclude each other | Proved (abstract machine; for Book I's evaluator too) | `Cycle.lean`, `Vars1Sigma/Link.lean` |
+| A Settled contract expecting `H_CYCLE_PROVEN` has a cycle witness of its own computation, which never reaches a normal form | Proved (hypothesis: no term hash equals `H_CYCLE_PROVEN`) | `Pass3Replay.lean` `settled_cycle_no_normal_form` |
+| `sigma_resume.verify_cycle`, and `vars1.py`'s use of it at the gate and in Pass 3, give `checkCycle`'s verdict | Differential (I12: compiled `checkCycle` over generated tables, true and false witnesses, the host ceiling varied) and tested with mutants (`m-cycle-*`, real `M M` cycle) | property suite, `test_vars1.py` 75 |
+| `verify_cycle` matches `checkCycle` on Sigma terms and the rich profile | **Not established**: I12 substitutes a table for `STEP`; the rich profile is not mechanized, and its `M M` cycle is tested only | — |
 
 ## Bytes, signatures, hashes
 

@@ -1,5 +1,6 @@
 import EvalMachine
 import Vars1.Replay
+import Vars1.Cycle
 
 /-!
 # Stage 2 link: the abstract `Machine` instantiated with Book I's `EvalMachine.step`
@@ -20,7 +21,10 @@ affordable"), proved here for the Lean model:
 So `bookStep (st, t) := step t (size t + 2) st` is the budget-free transition, and
 `run_eq_adv` shows that `sigma_resume._run` (without host fences), written over
 `EvalMachine.step` exactly as Python writes it, equals `Replay.adv bookMachine`.
-`book_verify_sound` is replay soundness for the real Book I transition.
+`book_verify_sound` is replay soundness for the real Book I transition, and `book_cycle_no_normal_form` what an
+accepted cycle witness means for it: from the start, `_run` over `EvalMachine.step` at any budget stops at a term
+that is not a normal form at any budget. (No Book I term with a state cycle is known, so for Book I this says what
+an accepted witness would mean; the richer profile `ski+Y+M+W` is not mechanized.)
 
 A state is `(store, term)`: the store is the `Environment` that
 `ComputationRoot` fixes (an SGS1 state names its `computation_id`).
@@ -192,5 +196,26 @@ theorem book_verify_sound (L : Ckpts C R bookMachine) (maxAtp : Nat)
   rw [this, ← hst]
   have e : ((L.start (L.comp c)).1, (L.start (L.comp c)).2) = L.start (L.comp c) := rfl
   rw [e, hv]; simp
+
+/-- **An accepted cycle witness for Book I.** If `checkCycle` over `bookMachine` returns `CYCLE_PROVEN`, then for
+every budget `b`, the Python-shaped `_run` of `EvalMachine.step` from the start with `b` available stops at a term
+that `step` does not call a normal form, at whatever budget it is asked. -/
+theorem book_cycle_no_normal_form {maxAtp : Nat} {start entry : bookMachine.S} {k n cost : Nat}
+    (h : checkCycle bookMachine maxAtp start entry k n cost = .proven) (b r : Nat) :
+    step (run start.1 (b + 1) start.2 b 0).1 r start.1 ≠ .nf := by
+  have hrun := run_eq_adv start.1 b (b + 1) start.2 0 (by omega)
+  rw [Nat.zero_add] at hrun
+  have hfire := (cycle_proven_no_normal_form bookMachine h).2 b
+  have hst := adv_store start b
+  have e : (adv bookMachine (start.1, start.2) b).1 =
+      (start.1, (adv bookMachine (start.1, start.2) b).1.2) := Prod.ext hst rfl
+  rw [hrun]
+  simp only
+  intro hnf
+  have := (bookStep_isNF_iff start.1 _ r).2 hnf
+  have hfire' : (bookStep (adv bookMachine (start.1, start.2) b).1).isFire = true := hfire
+  rw [e] at hfire'
+  rw [isFire_not_isNF hfire'] at this
+  cases this
 
 end Vars1.Sigma
