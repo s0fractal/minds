@@ -2766,6 +2766,10 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
         code, out = check(spec, claims, hidden.replace("<!--\n", "```\n").replace("\n-->", "\n```"))
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in a fenced example (Codex r2 F4)")
+        for opening, inner in (("````", "```"), ("~~~", "```")):  # a fence closes only on its own kind (Codex r3 F2)
+            fenced = hidden.replace("<!--\n", f"{opening}\n{inner}\n").replace("\n-->", f"\n{opening}")
+            code, out = check(spec, claims, fenced)
+            self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, opening)
         # a live row whose evidence column no longer states the claim's status
         code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
         self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
@@ -4183,6 +4187,19 @@ class TestVars1Conformance(unittest.TestCase):
         g("commit", "-q", "-m", "linked directory")
         with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a directory"):
             mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
+
+        # Python loads what its path reaches (Codex PR #4 r3 F1): a module beside the gate that shadows the standard
+        # library's changes the profile, and tracked bytecode, which can run in place of its source, has none
+        g("rm", "-q", "--cached", "kernel")
+        (self.repo_path / "kernel").unlink()
+        g("commit", "-q", "-m", "no link")
+        base = g("rev-parse", "HEAD").decode().strip()
+        shadow = self._commit_files({"json.py": b"raise SystemExit\n"}, "a module named like the stdlib's")
+        self.assertIn("json.py", mc.profile_at(self.repo_path, shadow)["files"])
+        self.assertNotEqual(mc.profile_at(self.repo_path, shadow)["id"], mc.profile_at(self.repo_path, base)["id"])
+        cached = self._commit_files({"verify/__pycache__/minds_verify.cpython-315.pyc": b"\0" * 16}, "bytecode")
+        with self.assertRaisesRegex(V.VarsError, "tracked bytecode"):
+            mc.profile_at(self.repo_path, cached)
         _, linked = mc.release(self.repo_path, sk, link, ["test_vars1 OK"], profile=pb["id"])
         _, ok, lines = mc.verify_release(self.repo_path, sk2, linked["decision"], "second", checks=fake)
         self.assertFalse(ok)
@@ -4193,8 +4210,10 @@ class TestVars1Conformance(unittest.TestCase):
         import, the files `vars1.py` opens under kernel/ and kernel2/, and the relative imports of the wasm runners
         (node built-ins and the Python standard library come from the host, ASSURANCE.md)."""
         mc = self._minds_chain()
-        profiled = set(mc.PROFILE_FILES)
-        for path in profiled:
+        head = subprocess.run(["git", "-C", str(ROOT_DIR), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+        profiled = {f for f, h in mc.profile_at(ROOT_DIR, head)["files"].items() if h is not None}
+        for path in sorted(profiled):
             text = (ROOT_DIR / path).read_text(errors="replace") if not path.endswith(".wasm") else ""
             if path.endswith(".py"):
                 for mod in re.findall(r"^\s*(?:from|import)\s+([A-Za-z_]\w*)", text, re.M):

@@ -1021,14 +1021,6 @@
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
- "m-profile-gate": {
-  "file": "tools/minds_chain.py",
-  "find": "PROFILE_FILES = (\"VARS-1-SPEC.md\", \"vars1.py\", ",
-  "replace": "PROFILE_FILES = (\"VARS-1-SPEC.md\", ",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
  "m-profile-absent": {
   "file": "tools/minds_chain.py",
   "find": "        return out.stdout if out.returncode == 0 else None",
@@ -1199,8 +1191,8 @@
  },
  "m-profile-meter": {
   "file": "tools/minds_chain.py",
-  "find": "\"verify/minds_verify.py\", \"meter.py\", ",
-  "replace": "\"verify/minds_verify.py\", ",
+  "find": "                 \"kernel/run_metered.mjs\", ",
+  "replace": "                 ",
   "kills": [
    "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
@@ -1263,10 +1255,42 @@
  },
  "m-claims-fence": {
   "file": "tools/check_claims.py",
-  "find": "        if line.lstrip().startswith((\"```\", \"~~~\")):  # a fenced block is an example, never a live row\n            fenced = not fenced\n            continue\n",
-  "replace": "",
+  "find": "            fence = m.group(1)  # a fenced block is an example, never a live row",
+  "replace": "            pass",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-profile-bytecode": {
+  "file": "tools/minds_chain.py",
+  "find": "        if \"__pycache__\" in path.split(\"/\") or path.endswith((\".pyc\", \".pyo\")):",
+  "replace": "        if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-loader": {
+  "file": "tools/minds_chain.py",
+  "find": "    reachable = sorted(t for t in tracked if re.fullmatch(LOADER_PY, t) and t not in PROFILE_FILES)",
+  "replace": "    reachable = []",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-claims-fence-kind": {
+  "file": "tools/check_claims.py",
+  "find": "            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():",
+  "replace": "            if m:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-profile-runner": {
+  "file": "tools/minds_chain.py",
+  "find": "\"meter.py\", \"kernel/run.mjs\",\n",
+  "replace": "\"meter.py\",\n",
+  "kills": [
+   "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  }
 }

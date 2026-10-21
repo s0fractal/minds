@@ -87,12 +87,15 @@ def assurance_rows(text: str) -> list[tuple[str, str]]:
     a quote is held by the row that states it, never by retired, hidden or example text."""
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     rows = []
-    fenced = False
+    fence = ""  # the open fence: its character repeated as often as it opened (CommonMark)
     for line in text.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):  # a fenced block is an example, never a live row
-            fenced = not fenced
+        m = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if m and not fence and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+            fence = m.group(1)  # a fenced block is an example, never a live row
             continue
-        if fenced:
+        if fence:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():
+                fence = ""
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else []
         if len(cells) >= 2 and not set(cells[0]) <= set("-: "):

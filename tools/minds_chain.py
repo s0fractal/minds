@@ -316,6 +316,7 @@ PROFILE_FORMAT = "minds-profile/1"
 PROFILE_FILES = ("VARS-1-SPEC.md", "vars1.py", "verify/minds_verify.py", "meter.py", "kernel/run.mjs",
                  "kernel/run_metered.mjs", "kernel/lens.wasm", "kernel/lens1b.wasm", "kernel2/lens2.wasm",
                  "requirements.txt", "proofs/lean-toolchain", "proofs/lake-manifest.json")
+LOADER_PY = r"(?:tools/|verify/)?[^/]+\.py"  # where Python's loader finds modules when the gate or a tool runs
 # The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
 # bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
 # gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
@@ -350,8 +351,18 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
         if meta.split(b" ")[0] != b"040000":
             raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a directory (mode {meta.split(b' ')[0].decode()}):"
                               f" a profile names bytes")
+    # Python loads more than the files named: a module on the path shadows the standard library's (a tracked
+    # `json.py` beside vars1.py would run in its place), and a tracked cache can stand in for its source. So every
+    # Python file the loader can reach (directly in the root, tools/ or verify/) is profiled, and a commit that
+    # tracks bytecode has no profile.
+    tracked = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-r", "-z", "--name-only", sha],
+                             capture_output=True, check=True).stdout.decode().split("\0")
+    for path in tracked:
+        if "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo")):
+            raise V.VarsError(f"{path} at {sha[:12]} is tracked bytecode: it may run in place of its source")
+    reachable = sorted(t for t in tracked if re.fullmatch(LOADER_PY, t) and t not in PROFILE_FILES)
     files: Dict[str, Optional[str]] = {}
-    for path in PROFILE_FILES:
+    for path in (*PROFILE_FILES, *reachable):
         raw = blob(path)
         files[path] = None if raw is None else V.sha256(raw).hex()
     carried = {name: files[path] for path, name in RULES_FILES if files[path] is not None}

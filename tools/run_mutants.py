@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,8 +25,11 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
     try:
         path.write_text(original.replace(m["find"], m["replace"]))
         for t in m["kills"]:
-            out = subprocess.run([sys.executable, "-m", "unittest", f"test_vars1.TestVars1Conformance.{t}"],
-                                 cwd=ROOT, capture_output=True, text=True)
+            # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same
+            # second would otherwise be loaded in place of this one's source
+            with tempfile.TemporaryDirectory() as cache:
+                out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", "-m", "unittest",
+                                      f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True)
             text = out.stdout + out.stderr
             if out.returncode != 0 and "AssertionError" in text:
                 return True, f"killed by {t}"
