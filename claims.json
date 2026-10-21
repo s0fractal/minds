@@ -1521,9 +1521,10 @@
    "mutants": [
     "m-profile-regular",
     "m-profile-meter",
-    "m-profile-parent-dir",
     "m-profile-bytecode",
-    "m-profile-loader"
+    "m-profile-loader",
+    "m-profile-loader-link",
+    "m-profile-package"
    ]
   },
   {
@@ -1550,7 +1551,8 @@
     "m-claims-comments",
     "m-claims-status-word",
     "m-claims-fence",
-    "m-claims-fence-kind"
+    "m-claims-fence-kind",
+    "m-claims-fence-space"
    ]
   }
  ],

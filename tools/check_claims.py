@@ -94,7 +94,7 @@ def assurance_rows(text: str) -> list[tuple[str, str]]:
             fence = m.group(1)  # a fenced block is an example, never a live row
             continue
         if fence:
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and re.fullmatch(r"[ \t]*", m.group(2)):
                 fence = ""
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else []

@@ -316,7 +316,7 @@ PROFILE_FORMAT = "minds-profile/1"
 PROFILE_FILES = ("VARS-1-SPEC.md", "vars1.py", "verify/minds_verify.py", "meter.py", "kernel/run.mjs",
                  "kernel/run_metered.mjs", "kernel/lens.wasm", "kernel/lens1b.wasm", "kernel2/lens2.wasm",
                  "requirements.txt", "proofs/lean-toolchain", "proofs/lake-manifest.json")
-LOADER_PY = r"(?:tools/|verify/)?[^/]+\.py"  # where Python's loader finds modules when the gate or a tool runs
+LOADER_DIRS = ("", "tools/", "verify/")  # where Python's loader finds modules when the gate or a tool runs
 # The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
 # bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
 # gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
@@ -334,33 +334,40 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
         out = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "blob", f"{sha}:{path}"], capture_output=True)
         return out.stdout if out.returncode == 0 else None
 
-    # A profile names bytes. A symlink's blob is its target's name, a submodule names another repository: either
-    # would let a commit change what runs without changing the profile, so neither is accepted in a profile path.
-    tree = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-z", sha, "--", *PROFILE_FILES],
-                          capture_output=True, check=True).stdout
-    for entry in filter(None, tree.split(b"\0")):
-        meta, _, path_b = entry.partition(b"\t")
-        mode = meta.split(b" ")[0].decode()
-        if mode not in ("100644", "100755"):
-            raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a regular file (mode {mode}): a profile names bytes")
-    # nor may a directory on the way be a symlink: `kernel -> elsewhere` hides every file under it from the paths above
-    dirs = sorted({str(Path(f).parents[i]) for f in PROFILE_FILES for i in range(len(Path(f).parents) - 1)})
-    for entry in filter(None, subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-z", sha, "--", *dirs],
-                                             capture_output=True, check=True).stdout.split(b"\0")):
-        meta, _, path_b = entry.partition(b"\t")
-        if meta.split(b" ")[0] != b"040000":
-            raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a directory (mode {meta.split(b' ')[0].decode()}):"
-                              f" a profile names bytes")
-    # Python loads more than the files named: a module on the path shadows the standard library's (a tracked
-    # `json.py` beside vars1.py would run in its place), and a tracked cache can stand in for its source. So every
-    # Python file the loader can reach (directly in the root, tools/ or verify/) is profiled, and a commit that
-    # tracks bytecode has no profile.
-    tracked = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-r", "-z", "--name-only", sha],
-                             capture_output=True, check=True).stdout.decode().split("\0")
-    for path in tracked:
-        if "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo")):
-            raise V.VarsError(f"{path} at {sha[:12]} is tracked bytecode: it may run in place of its source")
-    reachable = sorted(t for t in tracked if re.fullmatch(LOADER_PY, t) and t not in PROFILE_FILES)
+    # One listing of the commit's tree, every entry with its mode (a symlink and a submodule appear as entries too)
+    listing = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-r", "-z", "--full-tree", sha],
+                             capture_output=True, check=True).stdout.decode()
+    modes = {}
+    for entry in filter(None, listing.split("\0")):
+        meta, _, path = entry.partition("\t")
+        modes[path] = meta.split(" ")[0]
+    refuse = lambda path, why: V.VarsError(f"{path} at {sha[:12]} {why}: a profile names the bytes that run")
+    # Every profile path is a regular file (its directories are entries of the root, refused below unless directories)
+    for f in PROFILE_FILES:
+        if f in modes and modes[f] not in ("100644", "100755"):
+            raise refuse(f, f"is not a regular file (mode {modes[f]})")
+    assert all(len(Path(f).parts) <= 2 for f in PROFILE_FILES)
+    # Bytes that run without being source: bytecode can stand in for its source, a native module is opaque
+    for path in modes:
+        if "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo", ".so", ".pyd", ".dylib")):
+            raise refuse(path, "is bytecode or a native module")
+    # Python imports from the root, tools/ and verify/ (where the gate and the tools run) before the standard
+    # library: there, a module or a regular package named like a library one runs in its place. So in those
+    # directories a symlink or submodule (its blob names a target, not bytes), and a regular package, are refused,
+    # and every module file is profiled. A namespace directory loses to any regular module of its name.
+    reachable = []
+    for path, mode in sorted(modes.items()):
+        for d in LOADER_DIRS:
+            rest = path[len(d):] if path.startswith(d) else None
+            if rest is None:
+                continue
+            if "/" not in rest:
+                if mode not in ("100644", "100755"):
+                    raise refuse(path, f"is not a regular file (mode {mode}) where Python imports from")
+                if rest.endswith(".py") and path not in PROFILE_FILES:
+                    reachable.append(path)
+            elif rest.count("/") == 1 and rest.endswith("/__init__.py"):
+                raise refuse(path, "is a regular package where Python imports from")
     files: Dict[str, Optional[str]] = {}
     for path in (*PROFILE_FILES, *reachable):
         raw = blob(path)

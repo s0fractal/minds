@@ -1183,7 +1183,7 @@
  },
  "m-profile-regular": {
   "file": "tools/minds_chain.py",
-  "find": "        if mode not in (\"100644\", \"100755\"):",
+  "find": "        if f in modes and modes[f] not in (\"100644\", \"100755\"):",
   "replace": "        if False:",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
@@ -1221,14 +1221,6 @@
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-profile-parent-dir": {
-  "file": "tools/minds_chain.py",
-  "find": "        if meta.split(b\" \")[0] != b\"040000\":",
-  "replace": "        if False:",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
  "m-profile-format": {
   "file": "tools/minds_chain.py",
   "find": "    if profile is not None and not re.fullmatch(r\"[0-9a-f]{64}\", profile):",
@@ -1263,7 +1255,7 @@
  },
  "m-profile-bytecode": {
   "file": "tools/minds_chain.py",
-  "find": "        if \"__pycache__\" in path.split(\"/\") or path.endswith((\".pyc\", \".pyo\")):",
+  "find": "        if \"__pycache__\" in path.split(\"/\") or path.endswith((\".pyc\", \".pyo\", \".so\", \".pyd\", \".dylib\")):",
   "replace": "        if False:",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
@@ -1271,15 +1263,15 @@
  },
  "m-profile-loader": {
   "file": "tools/minds_chain.py",
-  "find": "    reachable = sorted(t for t in tracked if re.fullmatch(LOADER_PY, t) and t not in PROFILE_FILES)",
-  "replace": "    reachable = []",
+  "find": "                    reachable.append(path)",
+  "replace": "                    pass",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
  },
  "m-claims-fence-kind": {
   "file": "tools/check_claims.py",
-  "find": "            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():",
+  "find": "            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and re.fullmatch(r\"[ \\t]*\", m.group(2)):",
   "replace": "            if m:",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
@@ -1291,6 +1283,30 @@
   "replace": "\"meter.py\",\n",
   "kills": [
    "test_80_the_profile_closes_over_what_the_gate_loads"
+  ]
+ },
+ "m-profile-loader-link": {
+  "file": "tools/minds_chain.py",
+  "find": "                if mode not in (\"100644\", \"100755\"):\n                    raise refuse(path, f\"is not a regular file (mode {mode}) where Python imports from\")",
+  "replace": "                if False:\n                    raise refuse(path, f\"is not a regular file (mode {mode}) where Python imports from\")",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-package": {
+  "file": "tools/minds_chain.py",
+  "find": "            elif rest.count(\"/\") == 1 and rest.endswith(\"/__init__.py\"):",
+  "replace": "            elif False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-claims-fence-space": {
+  "file": "tools/check_claims.py",
+  "find": "re.fullmatch(r\"[ \\t]*\", m.group(2)):",
+  "replace": "not m.group(2).strip():",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  }
 }
