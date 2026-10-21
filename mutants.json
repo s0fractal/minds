@@ -426,8 +426,8 @@
  },
  "m-rc-a-digest": {
   "file": "vars1.py",
-  "find": "        if f[\"reproduce\"] != ev[\"reproduce\"]:",
-  "replace": "        if False:",
+  "find": "        if f[\"reproduce\"] != ev[\"reproduce\"]:\n            raise VarsError(\"rules change (a)",
+  "replace": "        if False:\n            raise VarsError(\"rules change (a)",
   "kills": [
    "test_49_rules_change_a_reproduces_the_history"
   ]
@@ -442,8 +442,8 @@
  },
  "m-rc-b-digest": {
   "file": "vars1.py",
-  "find": "        if f[\"refutes\"] != ev[\"refutes\"]:",
-  "replace": "        if False:",
+  "find": "        if f[\"refutes\"] != ev[\"refutes\"]:\n            raise VarsError(\"rules change (b)",
+  "replace": "        if False:\n            raise VarsError(\"rules change (b)",
   "kills": [
    "test_50_rules_change_b_refutes_the_old_rules"
   ]
@@ -547,8 +547,8 @@
  },
  "m-f41-kernel2": {
   "file": "tools/minds_chain.py",
-  "find": "           (\"kernel2\", \"vars_lens2.wasm\", V.H_LENS_KERNEL_V2, \"H_LENS_KERNEL_V2\"))",
-  "replace": "           )",
+  "find": "           (\"kernel2\", \"kernel2\", (), \"vars_lens2.wasm\", V.H_LENS_KERNEL_V2, \"H_LENS_KERNEL_V2\"),\n",
+  "replace": "",
   "kills": [
    "test_58_release_checks_rebuild_every_rules_module"
   ]
@@ -587,8 +587,8 @@
  },
  "m-rc-commit-id": {
   "file": "vars1.py",
-  "find": "        if not self.is_commit_id(cx_tip):",
-  "replace": "        if False:",
+  "find": "        self.require_evidence_commit(cx_tip, \"the rules-change decision's counterexample\")",
+  "replace": "        pass",
   "kills": [
    "test_59_a_counterexample_is_named_by_its_full_commit_id"
   ]
