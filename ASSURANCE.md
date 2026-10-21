@@ -34,6 +34,9 @@ mutation tests. **Assumed** means nothing here checks it.
 | The gate, the chain reader and the release checks take commits only by canonical id in the repository's object format | Tested, with mutants | `test_vars1.py` 60, 61 |
 | The verdict a decision names right is right | **Not established**: the gate checks only that the old rules disagree with it and the new agree; rightness is the claim of the quorum that seals the decision | spec §4.3 |
 | The new rules agree with the old on inputs other than the chain so far, or refute them on inputs other than the counterexample | **Not established**: (a)–(c) compare two logs, not all inputs | — |
+| A rules change whose point is a controlled refusal (a resource bound, a crash or hang made a refusal, a validation tightened) can be admitted | **Not established**: (b) needs the new rules to give a status bit the old do not, and either rules refusing either log refuses the decision; the commit-count bound below cannot be carried this way yet | `vars1.py` `rules_change_evidence` |
+| A node holding the chain can replay a past rules change | **Not established**: the counterexample is a commit id, possibly of another chain; nothing makes that history reachable or ships it with the decision | — |
+| `H_LENS_KERNEL` identifies everything the gate decides | **Not established, and false**: the host decides canonical bytes, types, replay, rule-6 parsing and rules-change admission; the canonical-id fix of PR #1 changed the gate without changing `H_LENS_KERNEL`. A release names the host by its `main` commit | `tools/minds_chain.py` |
 | A rotation from v2 back to v1 is refused, with or without a decision | Differential (kernel E-25 and twin) and tested | `test_vars1.py` 52, 53 |
 | `kernel2/lens2.wasm` rebuilds to `H_LENS_KERNEL_V2` | Tested: in CI; in every release's checks when the released commit carries `kernel2/` | `tools/minds_chain.py` `kernel_checks`, `test_vars1.py` 58 |
 | v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
@@ -81,7 +84,8 @@ foreign-scope family was added for that reason. An invariant is only as checked 
 input's length except the commit count `C`, and the fold visits every commit: an 8 KB input claiming 84 million
 commits runs for minutes. The host supplies `C` from its own chain and bundles never run the kernel, so the live
 chains are not exposed; as a standalone component the kernel's time is `O(C·(N+S))`. Bounding `C` (or skipping
-commits with no births or seals) changes `lens.wasm`, hence `H_LENS_KERNEL`: it waits for the next rules identity.
+commits with no births or seals) changes `lens.wasm`, hence `H_LENS_KERNEL`: it waits for a rules change the
+mechanism of §4.3 can carry (see the controlled-refusal row above).
 The fuzzer skips inputs with `C > 4096` so it keeps looking for correctness defects.
 
 Kani runs the kernel on the host, where `usize` is 64 bits; wasm32 has 32. An overflow possible only at 32 bits is
