@@ -148,6 +148,13 @@ contract, decision or question it judges, or, for an `H_VERDICT_INVALID` verdict
 and `H_VERDICT_INVALID` and `H_NOT_ASSESSED` may do either; a nonempty `ckpt_or_witness` is always a checkpoint or
 cycle witness. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).
 
+**Personal data.** No atom carries data about a person in the clear, nor a bare hash of it (low-entropy data is
+recovered from its hash by enumeration). A cell that refers to such data names a salted commitment,
+`SHA-256(salt ‖ data)`, with a salt of at least 32 random bytes held by the person or their custodian and never
+stored in any chain. Deleting the salt is how such data is forgotten: the chain stays append-only, and the commitment
+no longer binds to anything anyone can show. Organizations hold scopes and refer to data by commitment; the person
+holds the salt. This host does not yet check this.
+
 ## 3. Store and gate
 
 `refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. A commit is
