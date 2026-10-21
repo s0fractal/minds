@@ -1000,6 +1000,17 @@ class GitVarsRepo:
             cmd.append("0" * 40)
         self._git(*cmd)
 
+    _COMMIT_ID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+    def is_commit_id(self, name: str) -> bool:
+        """`name` is a full lowercase hex object id, as Git prints it, of a commit present in this repository."""
+        if not self._COMMIT_ID.match(name):
+            return False
+        try:
+            return self._git("cat-file", "-t", name).strip() == b"commit"
+        except VarsError:
+            return False
+
     def check_chain(self, scope: str, tip: str) -> None:
         """Every commit from genesis to `tip` passes the gate's checks for `scope`, as at its admission; no ref moves.
         A rules-change decision's counterexample must be such a chain (§4.3)."""
@@ -1275,6 +1286,10 @@ class GitVarsRepo:
         if len(endorsers) < thr:
             raise VarsError("the rules-change decision lacks the governing scope's admission quorum")
         cx_scope, cx_tip = parse_utf8(atoms[f["counterexample_scope"]]), parse_utf8(atoms[f["counterexample"]])
+        # the signed field pins the counterexample: a ref, an abbreviation or a revision expression would let its
+        # meaning move after admission, so a later replay could disagree with the gate that admitted it
+        if not self.is_commit_id(cx_tip):
+            raise VarsError("the rules-change decision's counterexample is not a full commit id")
         self.check_chain(cx_scope, cx_tip)
         ev = self.rules_change_evidence(scope, expected_old, old, new_rules, cx_scope, cx_tip)
 

@@ -3214,6 +3214,33 @@ class TestVars1Conformance(unittest.TestCase):
                          [("kernel rebuild hashes to H_LENS_KERNEL", True),
                           ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", False), ("the released rules are rebuilt here", True)])
 
+    def test_59_a_counterexample_is_named_by_its_full_commit_id(self) -> None:
+        """Review AMEND P1 on 2b82da8: the counterexample field must hold a full commit id, never a ref, an
+        abbreviation, a revision expression or another object; a decision so pinned replays, fresh and warm, after
+        the counterexample's ref moves on or is deleted."""
+        cx, c1, s0 = self._rules_change_fixture()
+        V2 = V.H_LENS_KERNEL_V2
+        tree = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{cx[0]}^{{tree}}"],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        for name in ("refs/vars/heads/cx", cx[0][:12], f"{cx[0]}^{{commit}}", cx[0].upper(), "--all", tree):
+            attempt = self._change_rules("core", c1, s0, V2, [self.sk1], cx,
+                                         override={"counterexample": lambda put, n=name: put(V.atom_utf8(n))})[0]
+            self._gate_refuses("counterexample is not a full commit id", "core", attempt, c1)
+        cand, _, _ = self._change_rules("core", c1, s0, V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        # the counterexample's scope moves on, then its ref is deleted: the objects stay, the decision still replays
+        a: dict[bytes, bytes] = {}
+        later = self.repo.build_candidate_commit("cx", a, [], [], parent_commit=cx[0])
+        self.repo.admit_and_advance("cx", later, expected_old=cx[0])
+        for moved in ("advanced", "deleted"):
+            for gate in (self.repo, V.GitVarsRepo(self.repo_path)):
+                try:
+                    gate.check_chain("core", cand)
+                except V.VarsError as e:
+                    self.fail(f"after the counterexample's ref was {moved}, a {'warm' if gate is self.repo else 'fresh'} "
+                              f"gate refuses the admitted rotation: {e}")
+            subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "-d", "refs/vars/heads/cx"], check=True)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

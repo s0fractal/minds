@@ -324,7 +324,9 @@ recognises it by that schema's id. It names the governing scope's rules and the 
 id of the rotation's parent, and the governing scope's admission quorum seals it.
 
 The gate runs the old and the new rules over the chain up to `basis` and over the counterexample, the chain of
-scope `counterexample_scope` up to commit `counterexample`, which must pass every check of this gate; each log is
+scope `counterexample_scope` up to commit `counterexample`, which must pass every check of this gate;
+`counterexample` is that commit's full id (40 or 64 lowercase hex digits), never a ref, an abbreviation or a
+revision expression, so what the decision names cannot move after admission; each log is
 encoded for the rules that read it, and either rules refusing either log refuses the rotation. Then (a) `reproduce`
 is SHA-256 over the SHA-256 of the old and of the new output over the chain so far, and the two give the same
 governing scope and the same status byte for every cell; (b) `refutes` is that digest over the counterexample, and

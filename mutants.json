@@ -584,5 +584,29 @@
   "kills": [
    "test_47_rules_change_admits_a_rotation_whose_decision_replays"
   ]
+ },
+ "m-rc-commit-id": {
+  "file": "vars1.py",
+  "find": "        if not self.is_commit_id(cx_tip):",
+  "replace": "        if False:",
+  "kills": [
+   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+  ]
+ },
+ "m-rc-commit-id-form": {
+  "file": "vars1.py",
+  "find": "        if not self._COMMIT_ID.match(name):\n            return False\n",
+  "replace": "",
+  "kills": [
+   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+  ]
+ },
+ "m-rc-commit-id-type": {
+  "file": "vars1.py",
+  "find": "            return self._git(\"cat-file\", \"-t\", name).strip() == b\"commit\"",
+  "replace": "            return True",
+  "kills": [
+   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+  ]
  }
 }

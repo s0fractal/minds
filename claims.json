@@ -982,6 +982,19 @@
    ]
   },
   {
+   "id": "rules.change.counterexample-id",
+   "quote": "`counterexample` is that commit's full id (40 or 64 lowercase hex digits), never a ref, an abbreviation or a revision expression",
+   "status": "tested",
+   "witnesses": [
+    "test:test_59_a_counterexample_is_named_by_its_full_commit_id"
+   ],
+   "mutants": [
+    "m-rc-commit-id",
+    "m-rc-commit-id-form",
+    "m-rc-commit-id-type"
+   ]
+  },
+  {
    "id": "rules.change.refusal",
    "quote": "either rules refusing either log refuses the rotation",
    "status": "tested",
