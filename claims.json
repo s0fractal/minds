@@ -1102,7 +1102,8 @@
     "test:test_64_a_resource_hardening_needs_each_piece"
    ],
    "mutants": [
-    "m-amend-kin1-type"
+    "m-amend-kin1-type",
+    "m-amend-kin1-size"
    ]
   },
   {
@@ -1231,13 +1232,15 @@
    "status": "tested",
    "witnesses": [
     "test:test_64_a_resource_hardening_needs_each_piece",
-    "test:test_65_a_validation_tightening"
+    "test:test_65_a_validation_tightening",
+    "test:test_71_a_trap_is_a_fault_not_exhaustion"
    ],
    "mutants": [
     "m-amend-resource",
     "m-amend-old-unbounded",
     "m-amend-tight-resource",
-    "m-amend-tight-output"
+    "m-amend-tight-output",
+    "m-amend-fault-gate"
    ]
   },
   {
@@ -1299,12 +1302,17 @@
    "quote": "Before a rotation is recorded, `tools/minds_chain.py shadow` replays every historical tip under the rules of its epoch and under the new rules and lists every difference (commit, cell, bit, old, new)",
    "status": "tested",
    "witnesses": [
-    "test:test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+    "test:test_70_a_rotation_is_recorded_only_after_its_shadow_replay",
+    "test:test_73_change_rules_returns_to_earlier_rules"
    ],
    "mutants": [
     "m-amend-shadow-bits",
     "m-amend-shadow-check",
-    "m-amend-shadow-history"
+    "m-amend-shadow-history",
+    "m-amend-shadow-accept",
+    "m-amend-shadow-equivalent",
+    "m-amend-shadow-pin",
+    "m-amend-decision-name"
    ]
   },
   {

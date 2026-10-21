@@ -129,7 +129,8 @@ The gate compares the rules at one tip. Statuses at earlier tips can differ even
 what a reader of an old projection relies on. `tools/minds_chain.py shadow RULES` runs, at every historical tip of the
 chain, the rules of that tip's epoch and the new rules, and lists every difference as `{commit, cell, bit, old, new}`:
 a status bit, `authorized` (a cell's latch or an edge's, `cell` = `<w>><v>:<kind>`), `governing`, or `result` (output
-versus a refusal). `change-rules` records a rotation only with a manifest equal to that replay now; a hardening or an
+versus a refusal). `change-rules` records a rotation only with a manifest equal to that replay now, on the tip it
+replayed (a writer in between makes the rotation refused, Codex review r2), with a decision named by that tip; a hardening or an
 equivalent change must have none, a correction or a tightening is recorded with differences only when the operator
 passes the manifest's digest (`--accept`). The decision's text names the manifest's digest.
 
@@ -193,4 +194,7 @@ budget here is evidence about one input, not a bound on the rules.
 - The kernel fuzzer builds without `commit-bound` and still skips C > 4096; a v1b fuzz target is not set up.
 - A hardening's input cannot yet move between encodings (v1 → v2), which blocks v1b → v2 under (d).
 - Radicle does not replicate `refs/vars/evidence/*`.
+- `evidence_closure` re-walks nested counterexample chains at every level that checks them: the work across a nesting
+  of depth d grows about as d² (Codex review r2 measured 1, 6 and 28 entries at depths 2, 4 and 8). Real chains nest
+  rarely; a memo per (scope, commit) would make it linear.
 - The live chain is untouched.

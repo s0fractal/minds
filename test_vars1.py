@@ -3500,6 +3500,9 @@ class TestVars1Conformance(unittest.TestCase):
         over = self._fuzz_counterexample(commits=len(inp) + 1)  # just over the bound: v1 finishes at once
         self._gate_refuses(r"\(hardening\): the old rules give output within the budget, so there is nothing to harden",
                            "core", self._change("hardening", "core", c1, s0, V1B, label="v1b", inp=over)[0], c1)
+        V.validate_atom(V.atom_kin1(bytes(V.MAX_KIN1_BYTES)))  # at most 1 MiB: the bound itself is admitted
+        with self.assertRaisesRegex(V.VarsError, "KIN1 rules input over 1 MiB"):
+            V.validate_atom(V.atom_kin1(bytes(V.MAX_KIN1_BYTES + 1)))
         self._gate_refuses("is not a kin1 atom", "core",
                            attempt(override={"input": lambda put: put(V.atom_utf8("not an input"))}), c1)
         self._gate_refuses("a hardening change keeps the input encoding", "core",
@@ -3749,11 +3752,69 @@ class TestVars1Conformance(unittest.TestCase):
             bad = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V1B)
             self.assertEqual(bad["differences"], [{"commit": flip_at, "cell": fake["cell"].hex(), "bit": "retired",
                                                    "old": 0, "new": 1}])
-            with self.assertRaisesRegex(V.VarsError, "must leave every historical tip as it was"):
+            with self.assertRaisesRegex(V.VarsError, "a hardening change must leave every historical tip"):
                 mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, bad, **kw)
             fake["rules"] = None
         finally:
             V.GitVarsRepo.rules_output = real
+        # a change of history: a correction (or a tightening) is recorded only with the manifest's digest named;
+        # an equivalent change never
+        cx, _, _ = self._r2_03()
+        eq = self._equivalent_v1()
+        cxkw = {"counterexample_scope": "cx", "counterexample": cx[0], "cell": cx[1], "status": 0, "right": 0}
+        V.GitVarsRepo.rules_output = flips
+        try:
+            fake["rules"] = eq
+            with self.assertRaisesRegex(V.VarsError, "an equivalent change must leave every historical tip"):
+                mc.change_rules(self.repo_path, sk, "equivalent", eq, mc.shadow(self.repo_path, eq))
+            fake["rules"] = V.H_LENS_KERNEL_V2
+            diff = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V2)
+            self.assertEqual(len(diff["differences"]), 1)
+            for accept in (None, "0" * 64):
+                with self.assertRaisesRegex(V.VarsError, "record the change only with --accept <its digest>"):
+                    mc.change_rules(self.repo_path, sk, "correction", V.H_LENS_KERNEL_V2, diff, accept, **cxkw)
+            self.assertEqual(repo.ref_commit("minds"), tips[-1], "nothing was recorded")
+            accepted = Path(self.tmp.name) / "accepted"
+            subprocess.run(["git", "clone", "-q", "--mirror", str(self.repo_path), str(accepted)], check=True)
+            subprocess.run(["git", "-C", str(accepted), "fetch", "-q", str(self.repo_path), "+refs/vars/*:refs/vars/*"],
+                           check=True)
+            try:
+                mc.change_rules(accepted, sk, "correction", V.H_LENS_KERNEL_V2, mc.shadow(accepted, V.H_LENS_KERNEL_V2),
+                                diff["digest"], **cxkw)
+            except V.VarsError as e:
+                self.fail(f"a correction with its shadow digest accepted was refused: {e}")
+            fake["rules"] = None
+        finally:
+            V.GitVarsRepo.rules_output = real
+        # Codex review r2 F2: a writer between the shadow replay and the rotation; the rotation is pinned to the
+        # manifest's tip and refused
+        shadow_now = mc.shadow
+
+        def then_a_writer(repo_dir, new_rules, scope="minds"):
+            got = shadow_now(repo_dir, new_rules, scope)
+            w = V.GitVarsRepo(repo_dir)
+            tip = w.ref_commit("minds")
+            a: dict[bytes, bytes] = {}
+            ax = self._axiom(a, "minds/interloper", "written after the shadow replay")
+            c = w.build_candidate_commit("minds", a, [ax], [V.Seal.sign(sk, ax.id, mc.governing_scope(w))], parent_commit=tip)
+            w.admit_and_advance("minds", c, expected_old=tip)
+            return got
+
+        mc.shadow = then_a_writer
+        try:
+            raced = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V1B)
+        finally:
+            mc.shadow = shadow_now
+        with self.assertRaisesRegex(V.VarsError, "the chain moved after its shadow replay|is not this chain's replay"):
+            mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, raced, **kw)
+        real_shadow, mc.shadow = mc.shadow, lambda repo_dir, new_rules, scope="minds": raced  # validation passes ...
+        try:
+            with self.assertRaisesRegex(V.VarsError, "the chain moved after its shadow replay"):  # ... the pin does not
+                mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, raced, **kw)
+        finally:
+            mc.shadow = real_shadow
+        tips = repo.commit_chain(repo.ref_commit("minds"))
+        man = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V1B)
         tampered = {**man, "tips": man["tips"] - 1}
         with self.assertRaisesRegex(V.VarsError, "is not this chain's replay"):
             mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, tampered, **kw)
@@ -3771,7 +3832,7 @@ class TestVars1Conformance(unittest.TestCase):
     def test_71_a_trap_is_a_fault_not_exhaustion(self) -> None:
         """Codex review r1 F3: a module that traps gives a fault while steps are left and exhaustion when none are;
         neither is read as the other. A hardening whose old rules trap on the input is admitted (a crash made a
-        controlled refusal)."""
+        controlled refusal; the trap at the gate is a stand-in, r2 F5)."""
         def sec(sid: int, body: bytes) -> bytes:
             return bytes([sid, len(body)]) + body
         # types: ()->(), (i32)->i32, (i32,i32)->i32; reset, alloc (1024), run (unreachable); one mutable global
@@ -3790,6 +3851,25 @@ class TestVars1Conformance(unittest.TestCase):
         inp = self._fuzz_counterexample()
         ev = self.repo.rules_change_refusal(h, V.H_LENS_KERNEL_V1B, inp, self.BUDGET)
         self.assertEqual((ev["old"], ev["new"]), (V.RulesResult("fault"), V.RulesResult("refusal", code=-7)))
+        # the gate: a module that traps on everything cannot reproduce a chain, so a stand-in gives v1's old result on
+        # the fuzzer's input as a fault (the old rules crash there), real v1b's new one: the hardening is admitted
+        real = self.repo.rules_change_refusal
+
+        def old_traps(old, new, kernel_input, budget):
+            got = real(old, new, kernel_input, budget)
+            o = V.RulesResult("fault")
+            return {**got, "old": o, "refutes": V.sha256(V.sha256(o.encode()) + V.sha256(got["new"].encode()))}
+
+        self.repo.rules_change_refusal = old_traps
+        try:
+            c1, s0 = self._core()
+            cand = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)[0]
+            try:
+                self.repo.admit_and_advance("core", cand, expected_old=c1)
+            except V.VarsError as e:
+                self.fail(f"a hardening whose old rules trap was refused: {e}")
+        finally:
+            del self.repo.rules_change_refusal
 
     def _r2_03_on(self, scope: str, parent: str, base: V.Cell) -> tuple[str, V.Cell]:
         """Codex R2-03 appended to `scope`'s chain in a v2 epoch: an accepted foreign cell Y holds as a `digest` the id
@@ -3846,6 +3926,24 @@ class TestVars1Conformance(unittest.TestCase):
         git(fresh, "fetch", "-q", "--no-tags", str(self.repo_path),
             "refs/vars/heads/core:refs/vars/heads/core", "+refs/vars/evidence/*:refs/vars/evidence/*")
         self.assertEqual(mc.replay_changes(fresh, "core"), [(d.id.hex(), "REPLAYED")])
+
+
+    def test_73_change_rules_returns_to_earlier_rules(self) -> None:
+        """Codex review r2 F1: each rotation's decision is named by its basis, so `change-rules` can return to rules
+        the chain used before (v1 -> v1' -> v1 -> v1', all equivalent), and a fresh gate replays the chain."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        eq = self._equivalent_v1()
+        for rules in (eq, V.H_LENS_KERNEL, eq):
+            try:
+                mc.change_rules(self.repo_path, sk, "equivalent", rules, mc.shadow(self.repo_path, rules))
+            except V.VarsError as e:
+                self.fail(f"the equivalent rotation to {rules.hex()[:12]} was refused: {e}")
+            self.assertEqual(mc.governing_rules(V.GitVarsRepo(self.repo_path)), rules)
+        V.GitVarsRepo(self.repo_path).check_chain("minds", V.GitVarsRepo(self.repo_path).ref_commit("minds"))
+        self.assertEqual([r for _, r in mc.replay_changes(self.repo_path)], ["REPLAYED"] * 3)
 
 
 if __name__ == "__main__":

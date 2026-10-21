@@ -908,5 +908,53 @@
   "kills": [
    "test_71_a_trap_is_a_fault_not_exhaustion"
   ]
+ },
+ "m-amend-shadow-accept": {
+  "file": "tools/minds_chain.py",
+  "find": "        if accept != manifest[\"digest\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-shadow-equivalent": {
+  "file": "tools/minds_chain.py",
+  "find": "        if kind in (\"hardening\", \"equivalent\"):",
+  "replace": "        if kind in (\"hardening\",):",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-shadow-pin": {
+  "file": "tools/minds_chain.py",
+  "find": "    if repo.ref_commit(SCOPE) != tip:",
+  "replace": "    if False:",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-decision-name": {
+  "file": "tools/minds_chain.py",
+  "find": "put(V.atom_utf8(f\"{SCOPE}/rules-change/{tip}\"))",
+  "replace": "put(V.atom_utf8(f\"{SCOPE}/rules-change/{new_rules.hex()[:12]}\"))",
+  "kills": [
+   "test_73_change_rules_returns_to_earlier_rules"
+  ]
+ },
+ "m-amend-kin1-size": {
+  "file": "verify/minds_verify.py",
+  "find": "        if len(raw) - 4 > MAX_KIN1_BYTES:",
+  "replace": "        if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-fault-gate": {
+  "file": "vars1.py",
+  "find": "            if o.kind not in (\"exhausted\", \"fault\"):",
+  "replace": "            if o.kind != \"exhausted\":",
+  "kills": [
+   "test_71_a_trap_is_a_fault_not_exhaustion"
+  ]
  }
 }

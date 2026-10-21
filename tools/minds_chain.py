@@ -206,13 +206,16 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
         raise V.VarsError("the shadow manifest is not this chain's replay under those rules now: run `shadow` again")
     if manifest["differences"]:
         if kind in ("hardening", "equivalent"):
-            raise V.VarsError(f"a {kind} change must leave every historical tip as it was: the shadow manifest lists "
+            raise V.VarsError(f"{'an' if kind == 'equivalent' else 'a'} {kind} change must leave every historical tip "
+                              f"as it was: the shadow manifest lists "
                               f"{len(manifest['differences'])} differences")
         if accept != manifest["digest"]:
             raise V.VarsError("the shadow manifest lists differences: record the change only with --accept <its digest>")
     repo = V.GitVarsRepo(repo_dir)
-    tip = repo.ref_commit(SCOPE)
-    base_id = governing_scope(repo)
+    tip = str(manifest["tip"])  # the chain the manifest replayed; the CAS below refuses if the ref has moved since
+    if repo.ref_commit(SCOPE) != tip:
+        raise V.VarsError("the chain moved after its shadow replay: run `shadow` again")
+    base_id = repo._evaluate_commit_chain(SCOPE, repo.commit_chain(tip))["active_scope_id"]
     base = repo.read_cas_tree(tip)[1][base_id]
     atoms: Dict[bytes, bytes] = {new_rules: V.RULES_ATOMS[new_rules]}
     put = lambda raw: _put(atoms, raw)  # noqa: E731
@@ -233,7 +236,7 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
                         refusal=put(V.atom_u64(int(fields["refusal"]))),
                         refutes=repo.rules_change_refusal(base.slots[2], new_rules, inp, budget)["refutes"])
     names = [f.split(":")[0] for f in V.RULES_CHANGE_CLASSES[kind][1]]
-    decision = V.Cell(schema.id, put(V.atom_utf8(f"{SCOPE}/rules-change/{new_rules.hex()[:12]}")),
+    decision = V.Cell(schema.id, put(V.atom_utf8(f"{SCOPE}/rules-change/{tip}")),  # one name per basis: unique
                       put(V.atom_utf8(f"{SCOPE} moves to rules {new_rules.hex()} ({kind}); shadow manifest "
                                       f"{manifest['digest']}, {len(manifest['differences'])} differences")),
                       slots=tuple(vals[n] for n in names))

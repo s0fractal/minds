@@ -37,7 +37,7 @@ _MV = _load_minds_verify()
 from minds_verify import (  # noqa: E402
     _B, _D, _I, _L, _Q, _ed_add, _ed_dec, _ed_enc, _ed_mul, _xrecover,
     ed25519_pubkey, ed25519_sign, ed25519_verify, weak_public_key, sha256,
-    MAX_INT, MAX_STATE_BYTES, MAX_UTF8_BYTES, MAX_LOSS_BYTES, MAX_HVEC_LEN,
+    MAX_INT, MAX_STATE_BYTES, MAX_UTF8_BYTES, MAX_LOSS_BYTES, MAX_HVEC_LEN, MAX_KIN1_BYTES,
     H_I, H_K, H_S, H_FALSE, H_INVALID, H_EMPTY, H_META_SCHEMA, H_ZERO, H_NORMAL_FORM, H_PAUSED, H_BLOCKED_REF,
     H_CYCLE_PROVEN, H_REPLAYED, H_ATTESTED, H_VERDICT_INVALID, H_NOT_ASSESSED, H_PROVISIONAL, H_OWNER, H_LENS_KERNEL,
     VarsError, atom_u64, parse_u64, atom_utf8, parse_utf8, validate_utf8_atom, atom_hvec, parse_hvec, atom_pol1,
