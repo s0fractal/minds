@@ -2829,7 +2829,7 @@ class TestVars1Conformance(unittest.TestCase):
         except V.VarsError as e:
             self.fail(f"a digest written in a v2 epoch vetoed the later cell it names: {e}")
         order = self.repo.rules_output("cx", c2, V.H_LENS_KERNEL_V2)[1]["order"]
-        self.cx_y = y
+        self.cx_y, self.cx_s0 = y, s0
         return (c2, order.index(x.id)), y, x
 
     def _change_rules(self, scope: str, parent: str, base: V.Cell, new_rules: bytes, sks: list[bytes],
@@ -3222,16 +3222,31 @@ class TestVars1Conformance(unittest.TestCase):
         V2 = V.H_LENS_KERNEL_V2
         tree = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{cx[0]}^{{tree}}"],
                               capture_output=True, text=True, check=True).stdout.strip()
-        for name in ("refs/vars/heads/cx", cx[0][:12], f"{cx[0]}^{{commit}}", cx[0].upper(), "--all", tree):
+        git = lambda *a: subprocess.run(["git", "-C", str(self.repo_path), *a], check=True)  # noqa: E731
+        hex_refs = ("a" * 64, "b" * 40)  # hex-named refs: of the other length a ref, of the native length an id
+        for h in hex_refs:
+            git("update-ref", f"refs/heads/{h}", cx[0])
+        git("-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "-m", "an annotated tag", "cx-tag", cx[0])
+        tag = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", "cx-tag"], capture_output=True, text=True,
+                             check=True).stdout.strip()
+        for name in ("refs/vars/heads/cx", cx[0][:12], f"{cx[0]}^{{commit}}", cx[0].upper(), "--all", tree, tag,
+                     *hex_refs):
             attempt = self._change_rules("core", c1, s0, V2, [self.sk1], cx,
                                          override={"counterexample": lambda put, n=name: put(V.atom_utf8(n))})[0]
             self._gate_refuses("counterexample is not a full commit id", "core", attempt, c1)
         cand, _, _ = self._change_rules("core", c1, s0, V2, [self.sk1], cx)
         self.repo.admit_and_advance("core", cand, expected_old=c1)
-        # the counterexample's scope moves on, then its ref is deleted: the objects stay, the decision still replays
+        # the counterexample's scope moves on with a cell that changes the rules' output there, and the hex-named refs
+        # follow it; then the refs are deleted: the objects stay, the decision still replays
+        before = self.repo.rules_output("cx", cx[0], V2)[0]
         a: dict[bytes, bytes] = {}
-        later = self.repo.build_candidate_commit("cx", a, [], [], parent_commit=cx[0])
+        late = self._axiom(a, "cx/later", "a later cell of the counterexample's scope")
+        later = self.repo.build_candidate_commit("cx", a, [late], [V.Seal.sign(self.sk1, late.id, self.cx_s0.id)],
+                                                 parent_commit=cx[0])
         self.repo.admit_and_advance("cx", later, expected_old=cx[0])
+        self.assertNotEqual(self.repo.rules_output("cx", later, V2)[0], before, "the moved ref names other evidence")
+        for h in hex_refs:
+            git("update-ref", f"refs/heads/{h}", later)
         for moved in ("advanced", "deleted"):
             for gate in (self.repo, V.GitVarsRepo(self.repo_path)):
                 try:
@@ -3239,7 +3254,77 @@ class TestVars1Conformance(unittest.TestCase):
                 except V.VarsError as e:
                     self.fail(f"after the counterexample's ref was {moved}, a {'warm' if gate is self.repo else 'fresh'} "
                               f"gate refuses the admitted rotation: {e}")
-            subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "-d", "refs/vars/heads/cx"], check=True)
+            for ref in ("refs/vars/heads/cx", *(f"refs/heads/{h}" for h in hex_refs)):
+                git("update-ref", "-d", ref)
+
+    def test_60_the_gate_names_commits_by_canonical_id(self) -> None:
+        """Review round 2: the gate and the chain reader accept a commit only by its canonical id in this repository's
+        object format. A candidate, a parent or a chain tip given as a ref, a hex-named ref or an abbreviation is
+        refused, so what the gate checked is what the ref records."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        ax = self._axiom(a, "core/fact", "a fact")
+        cand = self.repo.build_candidate_commit("core", a, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id)], parent_commit=c0)
+        git = lambda *a: subprocess.run(["git", "-C", str(self.repo_path), *a], check=True)  # noqa: E731
+        for h in ("refs/heads/cand", "a" * 64):
+            git("update-ref", h if h.startswith("refs/") else f"refs/heads/{h}", cand)
+        for name in ("refs/heads/cand", "a" * 64, cand[:12], "refs/vars/heads/core"):
+            with self.assertRaisesRegex(V.VarsError, "not the full commit id", msg=name):
+                self.repo.commit_chain(name)
+        for name in ("refs/heads/cand", "a" * 64, cand[:12]):
+            self._gate_refuses("not the full commit id", "core", name, c0)
+        git("update-ref", "refs/heads/old", c0)
+        with self.assertRaisesRegex(V.VarsError, "not the full commit id"):
+            self.repo.check_chain("core", "refs/heads/old")
+        with self.assertRaisesRegex(V.VarsError, "not the full commit id"):
+            self.repo.projection_digests("core", "refs/vars/heads/core")
+        self.repo.admit_and_advance("core", cand, expected_old=c0)
+
+    def test_61_release_checks_name_commits_by_canonical_id(self) -> None:
+        """Review round 2: `checks_at` checks out a release commit, and extracts sibling pins, only by canonical ids of
+        their own repositories (in a SHA-256 repository a 40-hex name may be a ref), and the spec's Book I pin is a full
+        id, not the abbreviation a same-named ref would shadow."""
+        mc = self._minds_chain()
+        proj = Path(self.tmp.name) / "proj256"
+
+        def repo(name):
+            d = proj / name
+            d.mkdir(parents=True)
+            g = lambda *a: subprocess.run(["git", "-C", str(d), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                          capture_output=True, text=True, check=True).stdout.strip()
+            g("init", "-q", "-b", "main", "--object-format=sha256")
+            (d / "f").write_text(name)
+            g("add", "f")
+            g("commit", "-q", "-m", "one")
+            return d, g
+
+        minds, gm = repo("minds")
+        m1 = gm("rev-parse", "HEAD")
+        self.assertEqual(len(m1), 64)
+        ref40 = "c" * 40
+        gm("update-ref", f"refs/heads/{ref40}", m1)
+        ran = []
+        real, mc.run_checks = mc.run_checks, lambda root, rules: (ran.append(root), (["spy OK"], True))[1]
+        try:
+            with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
+                mc.checks_at(minds, ref40, V.H_LENS_KERNEL)
+            self.assertEqual(ran, [], "no check ran at a commit named by a ref")
+            sg, gs = repo("sigma-glyph")
+            pr, gp = repo("primitives")
+            gs("update-ref", f"refs/heads/{ref40}", gs("rev-parse", "HEAD"))
+            with self.assertRaisesRegex(V.VarsError, "sigma-glyph pin .* not a full commit id"):
+                mc.checks_at(minds, m1, V.H_LENS_KERNEL, {"sigma-glyph": ref40, "primitives": gp("rev-parse", "HEAD")})
+            self.assertEqual(ran, [])
+            pins = {"sigma-glyph": gs("rev-parse", "HEAD"), "primitives": gp("rev-parse", "HEAD")}
+            with self.assertRaisesRegex(V.VarsError, "Book I pin"):  # the spec's pin is no commit of this sibling
+                mc.checks_at(minds, m1, V.H_LENS_KERNEL, pins)
+            self.assertEqual(ran, [])
+            self.assertEqual(mc.checks_at(minds, m1, V.H_LENS_KERNEL), (["spy OK"], True))
+        finally:
+            mc.run_checks = real
+        spec_pin = re.search(r"`sigma-glyph` at `([0-9a-f]+)`", (ROOT_DIR / "VARS-1-SPEC.md").read_text()).group(1)
+        self.assertRegex(mc.SIGMA_PIN, r"^[0-9a-f]{40}$")
+        self.assertTrue(mc.SIGMA_PIN.startswith(spec_pin))
 
 
 if __name__ == "__main__":

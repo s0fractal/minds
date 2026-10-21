@@ -150,7 +150,10 @@ cycle witness. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§
 
 ## 3. Store and gate
 
-`refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. Each commit's
+`refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. A commit is
+named by its canonical id, the full lowercase hex id of the repository's object format that Git resolves to itself,
+never by a ref, an abbreviation or a revision expression: by the gate and the chain reader, in a rules-change decision,
+and in a release's checks and sibling pins. Each commit's
 tree is `cas/{atoms,cells,seals}/<2 hex>/<62 hex>`, every entry a regular file (`100644`) whose bytes hash to
 its path.
 
@@ -325,8 +328,7 @@ id of the rotation's parent, and the governing scope's admission quorum seals it
 
 The gate runs the old and the new rules over the chain up to `basis` and over the counterexample, the chain of
 scope `counterexample_scope` up to commit `counterexample`, which must pass every check of this gate;
-`counterexample` is that commit's full id (40 or 64 lowercase hex digits), never a ref, an abbreviation or a
-revision expression, so what the decision names cannot move after admission; each log is
+`counterexample` is that commit's canonical id (§3), never a ref, an abbreviation or a revision expression, so what the decision names cannot move after admission; each log is
 encoded for the rules that read it, and either rules refusing either log refuses the rotation. Then (a) `reproduce`
 is SHA-256 over the SHA-256 of the old and of the new output over the chain so far, and the two give the same
 governing scope and the same status byte for every cell; (b) `refutes` is that digest over the counterexample, and

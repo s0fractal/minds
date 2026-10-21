@@ -39,7 +39,7 @@ import vars1 as V  # noqa: E402
 
 SCOPE = "minds"
 SIBLINGS = ("sigma-glyph", "primitives")
-SIGMA_PIN = "c864d3e"  # VARS-1-SPEC.md: Book I as the spec depends on it
+SIGMA_PIN = "c864d3ee01a2fe46c528bd6e9552438e64df5f6b"  # VARS-1-SPEC.md `c864d3e`: Book I as the spec depends on it
 BOOK_I = ("impl/sigma_resume.py", "proofs")
 
 
@@ -290,8 +290,16 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     each extracted at that commit beside it (read from the sibling repository with `git archive`), and Book I is
     compared with the spec's pin. The worktree and any extracted siblings are removed afterwards."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True)
-    git("merge-base", "--is-ancestor", sha, "main")
+    # every commit checked out or compared is named by its canonical id in its own repository, never by a ref
+    if not V.canonical_commit_id(repo_dir, sha):
+        raise V.VarsError(f"release commit {sha[:80]!r} is not a full commit id of {repo_dir}")
     parent = Path(repo_dir).resolve().parent
+    for sib, pin in (siblings or {}).items():
+        if not V.canonical_commit_id(parent / sib, pin):
+            raise V.VarsError(f"{sib} pin {pin[:80]!r} is not a full commit id of its repository")
+    if siblings is not None and not V.canonical_commit_id(parent / "sigma-glyph", SIGMA_PIN):
+        raise V.VarsError(f"the spec's Book I pin {SIGMA_PIN} is not a commit of the sigma-glyph checkout")
+    git("merge-base", "--is-ancestor", sha, "main")
     base = Path(repo_dir) / ".git" / "vars" / "verify" / sha[:12]
     base.mkdir(parents=True, exist_ok=True)
     pre: List[Tuple[str, bool]] = []

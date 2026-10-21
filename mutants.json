@@ -593,20 +593,52 @@
    "test_59_a_counterexample_is_named_by_its_full_commit_id"
   ]
  },
- "m-rc-commit-id-form": {
+ "m-commit-id-canonical": {
   "file": "vars1.py",
-  "find": "        if not self._COMMIT_ID.match(name):\n            return False\n",
-  "replace": "",
+  "find": "    return got.returncode == 0 and got.stdout.strip() == name",
+  "replace": "    return got.returncode == 0",
   "kills": [
    "test_59_a_counterexample_is_named_by_its_full_commit_id"
   ]
  },
- "m-rc-commit-id-type": {
+ "m-chain-commit-id": {
   "file": "vars1.py",
-  "find": "            return self._git(\"cat-file\", \"-t\", name).strip() == b\"commit\"",
-  "replace": "            return True",
+  "find": "        if not self.is_commit_id(tip_commit):\n            raise",
+  "replace": "        if False:\n            raise",
   "kills": [
-   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+   "test_60_the_gate_names_commits_by_canonical_id"
+  ]
+ },
+ "m-release-commit-id": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not V.canonical_commit_id(repo_dir, sha):",
+  "replace": "    if False:",
+  "kills": [
+   "test_61_release_checks_name_commits_by_canonical_id"
+  ]
+ },
+ "m-release-sibling-id": {
+  "file": "tools/minds_chain.py",
+  "find": "        if not V.canonical_commit_id(parent / sib, pin):",
+  "replace": "        if False:",
+  "kills": [
+   "test_61_release_checks_name_commits_by_canonical_id"
+  ]
+ },
+ "m-release-book-pin": {
+  "file": "tools/minds_chain.py",
+  "find": "    if siblings is not None and not V.canonical_commit_id(parent / \"sigma-glyph\", SIGMA_PIN):",
+  "replace": "    if False:",
+  "kills": [
+   "test_61_release_checks_name_commits_by_canonical_id"
+  ]
+ },
+ "m-release-book-pin-full": {
+  "file": "tools/minds_chain.py",
+  "find": "SIGMA_PIN = \"c864d3ee01a2fe46c528bd6e9552438e64df5f6b\"",
+  "replace": "SIGMA_PIN = \"c864d3e\"",
+  "kills": [
+   "test_61_release_checks_name_commits_by_canonical_id"
   ]
  }
 }

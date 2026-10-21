@@ -348,6 +348,24 @@
    "mutants": []
   },
   {
+   "id": "store.commit-ids",
+   "quote": "A commit is named by its canonical id, the full lowercase hex id of the repository's object format that Git resolves to itself, never by a ref, an abbreviation or a revision expression",
+   "status": "tested",
+   "witnesses": [
+    "test:test_60_the_gate_names_commits_by_canonical_id",
+    "test:test_61_release_checks_name_commits_by_canonical_id",
+    "test:test_59_a_counterexample_is_named_by_its_full_commit_id"
+   ],
+   "mutants": [
+    "m-chain-commit-id",
+    "m-commit-id-canonical",
+    "m-release-commit-id",
+    "m-release-sibling-id",
+    "m-release-book-pin",
+    "m-release-book-pin-full"
+   ]
+  },
+  {
    "id": "gate.cas",
    "quote": "then the ref moves by compare-and-swap (`git update-ref <ref> T_new T_old`).",
    "status": "tested",
@@ -983,15 +1001,14 @@
   },
   {
    "id": "rules.change.counterexample-id",
-   "quote": "`counterexample` is that commit's full id (40 or 64 lowercase hex digits), never a ref, an abbreviation or a revision expression",
+   "quote": "`counterexample` is that commit's canonical id (§3), never a ref, an abbreviation or a revision expression",
    "status": "tested",
    "witnesses": [
     "test:test_59_a_counterexample_is_named_by_its_full_commit_id"
    ],
    "mutants": [
     "m-rc-commit-id",
-    "m-rc-commit-id-form",
-    "m-rc-commit-id-type"
+    "m-commit-id-canonical"
    ]
   },
   {

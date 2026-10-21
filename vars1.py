@@ -755,6 +755,17 @@ def kernel_facts(scope: str, deltas: List["Delta"], rules: Optional[bytes] = Non
     return bytes(out), order
 
 
+def canonical_commit_id(repo_dir: Path | str, name: str) -> bool:
+    """`name` is the canonical id of a commit in the repository at `repo_dir`: Git resolves it, as a commit, to
+    exactly `name`. Git reads a lowercase hex string of the repository's native object-id length as that object's
+    id, never as a ref, and prints ids that way; any other string, a hex one of the other length (SHA-1 versus
+    SHA-256) included, may be a ref, an abbreviation or a revision expression, whose meaning can move, and resolves
+    to a different string, if at all."""
+    got = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", "--end-of-options",
+                          f"{name}^{{commit}}"], capture_output=True, text=True)
+    return got.returncode == 0 and got.stdout.strip() == name
+
+
 # ---------------------------------------------------------------------------
 # §3 Git Plumbing Store & Mandatory 5-Check Admission Gate
 # ---------------------------------------------------------------------------
@@ -767,6 +778,7 @@ class GitVarsRepo:
         self._checked: Dict[Tuple[str, bytes], object] = {}
         self._fold_memo: Dict[Tuple[str, str], Dict[str, object]] = {}
         self._gate_checked: Set[Tuple[str, str]] = set()  # (scope, commit): every gate check passed for that chain
+        self._commit_ids: Set[str] = set()  # names checked to be canonical commit ids (an id never changes meaning)
 
     def _git(self, *args: str, input_bytes: Optional[bytes] = None) -> bytes:
         res = subprocess.run(
@@ -791,6 +803,8 @@ class GitVarsRepo:
     def commit_chain(self, tip_commit: str) -> List[str]:
         """The commits from genesis to `tip_commit`, oldest first. A chain is one line of single-parent commits (the
         gate's Check #1), so a history with a merge or a second root is refused rather than linearized."""
+        if not self.is_commit_id(tip_commit):
+            raise VarsError(f"{tip_commit[:80]!r} is not the full commit id of a commit in this repository")
         chain: List[str] = []
         for line in self._git("rev-list", "--reverse", "--parents", tip_commit).decode().splitlines():
             commit, *parents = line.split()
@@ -1000,16 +1014,14 @@ class GitVarsRepo:
             cmd.append("0" * 40)
         self._git(*cmd)
 
-    _COMMIT_ID = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
-
     def is_commit_id(self, name: str) -> bool:
-        """`name` is a full lowercase hex object id, as Git prints it, of a commit present in this repository."""
-        if not self._COMMIT_ID.match(name):
-            return False
-        try:
-            return self._git("cat-file", "-t", name).strip() == b"commit"
-        except VarsError:
-            return False
+        """`name` is the canonical id of a commit in this repository (`canonical_commit_id`)."""
+        if name in self._commit_ids:
+            return True
+        ok = canonical_commit_id(self.repo_dir, name)
+        if ok:
+            self._commit_ids.add(name)
+        return ok
 
     def check_chain(self, scope: str, tip: str) -> None:
         """Every commit from genesis to `tip` passes the gate's checks for `scope`, as at its admission; no ref moves.
@@ -1027,7 +1039,8 @@ class GitVarsRepo:
             parent = commit
 
     def _check_commit(self, scope: str, candidate_commit: str, expected_old: Optional[str]) -> None:
-        """Checks #1-#6 and the fold for `candidate_commit` on top of `expected_old` (§3); nothing is written."""
+        """Checks #1-#6 and the fold for `candidate_commit` on top of `expected_old` (§3); nothing is written.
+        Both are read through `commit_chain`, which takes canonical commit ids only."""
         # Check #1: Single-parent linear chain (or Genesis)
         cat_commit = self._git("cat-file", "commit", candidate_commit).decode()
         header = cat_commit.split("\n\n", 1)[0]  # the message may contain any line
