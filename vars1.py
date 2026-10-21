@@ -501,6 +501,28 @@ def verify_cycle_witness_replay(c: Cell, atoms: Dict[bytes, bytes], *, gate_mode
     return "CYCLE_PROVEN"
 
 
+def gate_cycle_witness(c: Cell, atoms: Dict[bytes, bytes]) -> str:
+    """§3 check 4 for a `schema.cycle_witness` cell: `1 <= cycle_actions <= cycle_cost`, then `verify_cycle`.
+    Returns CYCLE_PROVEN or NOT_ASSESSED (the period above the host ceiling); anything else is a VarsError."""
+    actions = parse_u64(atom_of(c.slots[2], atoms, "Check #4 failed: atom for cycle_actions"))
+    cost = parse_u64(atom_of(c.slots[3], atoms, "Check #4 failed: atom for cycle_cost"))
+    if actions < 1 or cost < actions:
+        raise VarsError("CYCLE_WITNESS requires actions >= 1 and cost >= actions")
+    return verify_cycle_witness_replay(c, atoms, gate_mode=True)
+
+
+def cycle_witness_answers(cw: Cell, req_comp: bytes, exp_out: bytes, atoms: Dict[bytes, bytes]) -> bool:
+    """§4.2 Pass 3: a cycle witness answers a contract or decision with `required_comp = req_comp` and
+    `expected_outcome = exp_out` iff it is a witness of that computation, the outcome is `H_CYCLE_PROVEN`, and
+    `verify_cycle` proves it (a NOT_ASSESSED witness never answers)."""
+    if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:
+        return False
+    try:
+        return verify_cycle_witness_replay(cw, atoms, gate_mode=False) == "CYCLE_PROVEN"
+    except VarsError:
+        return False
+
+
 KERNEL_CODES = {
     -1: "malformed input", -2: "edge not in forward topological order", -3: "out of memory",
     -4: "Pass 2 not monotone", -5: "Pass 2 without fixed point",
@@ -1316,11 +1338,7 @@ class GitVarsRepo:
                     raise VarsError("CHECKPOINT must chain via H_relies, never H_supersedes")
                 verify_checkpoint_replay(c, atoms, cells, gate_mode=True, memo=replay_memo)
             elif c.h_schema == H_SCHEMA["cycle_witness"]:
-                actions = parse_u64(req_atom(c.slots[2], "cycle_actions"))
-                cost = parse_u64(req_atom(c.slots[3], "cycle_cost"))
-                if actions < 1 or cost < actions:
-                    raise VarsError("CYCLE_WITNESS requires actions >= 1 and cost >= actions")
-                verify_cycle_witness_replay(c, atoms, gate_mode=True)
+                gate_cycle_witness(c, atoms)
             elif c.h_schema == H_SCHEMA["verdict"]:
                 if c.slots[0] == H_EMPTY and c.slots[1] == H_REPLAYED:
                     raise VarsError("VERDICT with H_EMPTY checkpoint must use H_ATTESTED, not H_REPLAYED")
@@ -2353,12 +2371,7 @@ class GitVarsRepo:
                             if th != exp_out:
                                 continue
                         elif cw.h_schema == H_SCHEMA["cycle_witness"]:
-                            if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:
-                                continue
-                            try:
-                                if verify_cycle_witness_replay(cw, atoms, gate_mode=False) != "CYCLE_PROVEN":
-                                    continue
-                            except VarsError:
+                            if not cycle_witness_answers(cw, req_comp, exp_out, atoms):
                                 continue
                         else:
                             continue

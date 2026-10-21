@@ -997,34 +997,26 @@
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
- "m-cycle-bounds": {
-  "file": "vars1.py",
-  "find": "                if actions < 1 or cost < actions:",
-  "replace": "                if False:",
-  "kills": [
-   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
-  ]
- },
  "m-cycle-pass3-comp": {
   "file": "vars1.py",
-  "find": "                            if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:",
-  "replace": "                            if exp_out != H_CYCLE_PROVEN:",
+  "find": "    if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:\n        return False",
+  "replace": "    if exp_out != H_CYCLE_PROVEN:\n        return False",
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
  "m-cycle-pass3-expected": {
   "file": "vars1.py",
-  "find": "                            if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:",
-  "replace": "                            if cw.slots[0] != req_comp:",
+  "find": "    if cw.slots[0] != req_comp or exp_out != H_CYCLE_PROVEN:\n        return False",
+  "replace": "    if cw.slots[0] != req_comp:\n        return False",
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
  "m-cycle-pass3-not-assessed": {
   "file": "vars1.py",
-  "find": "                                if verify_cycle_witness_replay(cw, atoms, gate_mode=False) != \"CYCLE_PROVEN\":",
-  "replace": "                                if verify_cycle_witness_replay(cw, atoms, gate_mode=True) not in (\"CYCLE_PROVEN\", \"NOT_ASSESSED\"):",
+  "find": "        return verify_cycle_witness_replay(cw, atoms, gate_mode=False) == \"CYCLE_PROVEN\"",
+  "replace": "        return verify_cycle_witness_replay(cw, atoms, gate_mode=True) in (\"CYCLE_PROVEN\", \"NOT_ASSESSED\")",
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]

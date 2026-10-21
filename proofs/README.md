@@ -57,8 +57,8 @@ by `entry_spent`, whose own admission ceiling turns `entry_spent > max_atp` into
 `NOT_ASSESSED`); the prefix must spend exactly `entry_spent`, stop `PAUSED` and stop at the entry; the period, `_run`
 with `max_actions = n` and `cost` available, must do `n` actions, spend `cost` and return to the entry. It is compiled
 as `vars1cycle` over finite transition tables, and the property suite checks on generated tables and witnesses, true
-ones and their neighbours, that `verify_cycle` with the table substituted for `STEP`, and `vars1.py`'s glue in gate
-and Pass 3 modes, give its verdict (I12). So the gate's cycle check is compared with the checker the theorem is
+ones and their neighbours, that `verify_cycle` with the table substituted for `STEP`, and the two functions the gate
+and the lens call (`vars1.gate_cycle_witness`, `vars1.cycle_witness_answers`), give its verdict (I12). So the gate's cycle check is compared with the checker the theorem is
 about, not trusted. A mutant of the model that changes a verdict but not soundness (prefix admission read as
 `NOT_ASSESSED`; the ceiling checked before `n = 0`) fails I12; one that weakens it breaks the proof.
 

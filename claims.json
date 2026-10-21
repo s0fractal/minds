@@ -320,13 +320,11 @@
   {
    "id": "payloads.cycle-witness",
    "quote": "cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`.",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
    ],
-   "mutants": [
-    "m-cycle-bounds"
-   ]
+   "mutants": []
   },
   {
    "id": "payloads.projection",
