@@ -506,7 +506,9 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,
   compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
-  for every contract and decision without `required_comp` (I11).
+  for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle
+  witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
+  (`proofs/Vars1/Cycle.lean`, compiled) (I12).
 - `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and
   run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
   INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an

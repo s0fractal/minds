@@ -318,6 +318,15 @@
    ]
   },
   {
+   "id": "payloads.cycle-witness",
+   "quote": "cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
+   ],
+   "mutants": []
+  },
+  {
    "id": "payloads.projection",
    "quote": "projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).",
    "status": "tested",
@@ -452,6 +461,22 @@
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child"
    ],
    "mutants": []
+  },
+  {
+   "id": "gate.cycle-witness",
+   "quote": "a cycle witness passes `sigma_resume.verify_cycle`.",
+   "status": "differential",
+   "witnesses": [
+    "lean:cycle_proven_no_normal_form",
+    "prop:I12",
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
+   ],
+   "mutants": [
+    "m-cycle-fields",
+    "m-cycle-entry-spent",
+    "m-cycle-verdict",
+    "m-cycle-not-assessed"
+   ]
   },
   {
    "id": "gate.foreign",
@@ -728,6 +753,22 @@
     "prop:I4"
    ],
    "mutants": []
+  },
+  {
+   "id": "lens.pass3-cycle",
+   "quote": "or a cycle witness of `r` when `e = H_CYCLE_PROVEN`;",
+   "status": "proved",
+   "witnesses": [
+    "lean:settled_cycle_no_normal_form",
+    "lean:replayed_nf_excludes_cycle",
+    "prop:I12",
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
+   ],
+   "mutants": [
+    "m-cycle-pass3-comp",
+    "m-cycle-pass3-expected",
+    "m-cycle-pass3-not-assessed"
+   ]
   },
   {
    "id": "lens.pass3-question",

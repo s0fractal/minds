@@ -3971,6 +3971,103 @@ class TestVars1Conformance(unittest.TestCase):
         except V.VarsError as e:
             self.fail(f"after aborted runs, a gate in the same process refuses the admitted hardening: {e}")
 
+    def _cycle_fixture(self, atoms: dict[bytes, bytes]) -> tuple[bytes, V.Cell, bytes]:
+        """`M M` under the rich profile (`ski+Y+M+W`): the input thunk is forced (3 ATP), then `M M -> M M` costs 2
+        and returns to the same state. Returns the computation id, its computation cell and the entry state id."""
+        app = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=SR.M_H, right=SR.M_H)
+        h_app = self._put_atom(atoms, app)
+        h_env = self._put_atom(atoms, V.atom_environment([h_app]))
+        comp_id = self._put_atom(atoms, V.atom_computation_root(h_app, h_env, SR.RICH_RUNTIME_ID,
+                                                                SR.RICH_COST_MODEL_ID))
+        env = SR.Environment([h_app], {h_app: app})
+        doc, i, sb = SR.start(comp_id.hex(), h_app)
+        entry = SR.advance(doc, i, sb, env, 3, runtime=SR.RICH_RUNTIME_ID)
+        self.assertEqual((entry.outcome, entry.checkpoint["spent_total"]), (SR.PAUSED, 3))
+        comp = V.Cell(h_schema=V.H_SCHEMA["computation"], h_slot_name=self._put_atom(atoms, V.atom_utf8("core/comp.mm")),
+                      h_payload=comp_id)
+        return comp_id, comp, self._put_atom(atoms, entry.state_bytes)
+
+    def _cycle_witness(self, atoms: dict[bytes, bytes], name: str, comp: V.Cell, entry: bytes, spent: int,
+                       actions: int, cost: int) -> V.Cell:
+        u = lambda n: self._put_atom(atoms, V.atom_u64(n))
+        return V.Cell(h_schema=V.H_SCHEMA["cycle_witness"], h_slot_name=self._put_atom(atoms, V.atom_utf8(name)),
+                      h_payload=entry, h_relies=self._hv(atoms, [comp.id]),
+                      slots=(comp.h_payload, u(spent), u(actions), u(cost)))
+
+    def _cycle_contract(self, atoms: dict[bytes, bytes], name: str, comp: V.Cell, expected: bytes,
+                        witness: V.Cell) -> tuple[V.Cell, V.Cell]:
+        k = V.Cell(h_schema=V.H_SCHEMA["contract"], h_slot_name=self._put_atom(atoms, V.atom_utf8(name)),
+                   h_payload=self._put_atom(atoms, V.atom_utf8(f"{name} never reaches a normal form")),
+                   h_relies=self._hv(atoms, [comp.id]), slots=(V.H_PROVISIONAL, comp.h_payload, expected, V.H_EMPTY))
+        w = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=self._put_atom(atoms, V.atom_utf8(f"{name}.verdict")),
+                   h_payload=k.id, h_relies=self._hv(atoms, [witness.id]), h_attests=self._hv(atoms, [k.id]),
+                   slots=(witness.id, V.H_REPLAYED, self._put_atom(atoms, V.atom_utf8(SR.VERIFIER_ID))))
+        return k, w
+
+    def test_75_a_cycle_witness_is_checked_by_verify_cycle(self) -> None:
+        """§3 check 4 and §4.2 Pass 3, `H_CYCLE_PROVEN`: the gate admits a cycle witness only if
+        `sigma_resume.verify_cycle` proves it, admits one whose period exceeds the host ceiling as `NOT_ASSESSED`, and
+        Pass 3 counts a witness only for a contract of its own computation expecting `H_CYCLE_PROVEN`, and never a
+        `NOT_ASSESSED` one. What `CYCLE_PROVEN` establishes is proved in proofs/Vars1/Cycle.lean; the property suite
+        compares `verify_cycle` with the compiled model (I12)."""
+        c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=2)
+        atoms: dict[bytes, bytes] = {}
+        comp_id, comp, entry = self._cycle_fixture(atoms)
+        sign = lambda cells: [V.Seal.sign(self.sk1, c.id, s0.id) for c in cells]
+        c1 = self._admit(atoms, [comp], sign([comp]), c0)
+
+        # False witnesses are refused at the gate, each by the check that catches it.
+        for name, spent, actions, cost, wrong_entry, why in (
+                ("core/cw.cost", 3, 1, 3, False, "replay failed: INVALID_CYCLE_WITNESS: the period costs 2, not 3"),
+                ("core/cw.actions", 3, 2, 2, False, "replay failed: INVALID_CYCLE_WITNESS: the period stops after 1 actions (PAUSED)"),
+                ("core/cw.spent", 2, 1, 2, False, "replay failed: PREFIX_MISMATCH"),
+                ("core/cw.entry", 3, 1, 2, True, "replay failed: PREFIX_MISMATCH: the entry is not the state"),
+                ("core/cw.zero", 3, 0, 2, False, "CYCLE_WITNESS requires actions >= 1 and cost >= actions"),
+                ("core/cw.cheap", 3, 3, 2, False, "CYCLE_WITNESS requires actions >= 1 and cost >= actions")):
+            bad = self._cycle_witness(atoms, name, comp, comp_id if wrong_entry else entry, spent, actions, cost)
+            cand = self.repo.build_candidate_commit("core", atoms, [bad], sign([bad]), parent_commit=c1)
+            with self.assertRaisesRegex(V.VarsError, re.escape(why)):
+                self.repo.admit_and_advance("core", cand, expected_old=c1)
+
+        # The true witness, a NOT_ASSESSED one (period above the 10^7 ceiling), and contracts over them.
+        cw = self._cycle_witness(atoms, "core/cw.mm", comp, entry, 3, 1, 2)
+        big = self._cycle_witness(atoms, "core/cw.big", comp, entry, 3, 1, 10_000_001)
+        all_atoms = {**V.STD_SCHEMA_ATOMS, **atoms}
+        try:
+            self.assertEqual(V.verify_cycle_witness_replay(cw, all_atoms, gate_mode=True), "CYCLE_PROVEN")
+            self.assertEqual(V.verify_cycle_witness_replay(cw, all_atoms, gate_mode=False), "CYCLE_PROVEN")
+            self.assertEqual(V.verify_cycle_witness_replay(big, all_atoms, gate_mode=True), "NOT_ASSESSED")
+        except V.VarsError as e:
+            self.fail(f"a true witness, or one above the host ceiling, is refused: {e}")
+        with self.assertRaisesRegex(V.VarsError, "NOT_ASSESSED"):
+            V.verify_cycle_witness_replay(big, all_atoms, gate_mode=False)
+        k_ok, w_ok = self._cycle_contract(atoms, "core/k.cycle", comp, V.H_CYCLE_PROVEN, cw)
+        k_big, w_big = self._cycle_contract(atoms, "core/k.big", comp, V.H_CYCLE_PROVEN, big)
+        k_nf, w_nf = self._cycle_contract(atoms, "core/k.nf", comp, V.H_K, cw)
+        # a witness of another computation (same term, Book I profile) does not settle a contract of this one
+        h_env = V.sha256(V.atom_environment([V.sha256(SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=SR.M_H,
+                                                                  right=SR.M_H))]))
+        other_id = self._put_atom(atoms, V.atom_computation_root(V.sha256(SG.ser(
+            SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=SR.M_H, right=SR.M_H)), h_env))
+        other = V.Cell(h_schema=V.H_SCHEMA["computation"],
+                       h_slot_name=self._put_atom(atoms, V.atom_utf8("core/comp.other")), h_payload=other_id)
+        k_other, w_other = self._cycle_contract(atoms, "core/k.other", other, V.H_CYCLE_PROVEN, cw)
+        # the boundary: without required_comp, a contract expecting H_CYCLE_PROVEN settles on an attestation alone
+        k_att = V.Cell(h_schema=V.H_SCHEMA["contract"], h_slot_name=self._put_atom(atoms, V.atom_utf8("core/k.att")),
+                       h_payload=self._put_atom(atoms, V.atom_utf8("attested, not replayed")),
+                       slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_CYCLE_PROVEN, V.H_EMPTY))
+        w_att = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=self._put_atom(atoms, V.atom_utf8("core/k.att.verdict")),
+                       h_payload=k_att.id, h_attests=self._hv(atoms, [k_att.id]),
+                       slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(atoms, V.atom_utf8(SR.VERIFIER_ID))))
+        cells = [cw, big, k_ok, w_ok, k_big, w_big, k_nf, w_nf, other, k_other, w_other, k_att, w_att]
+        self._admit(atoms, cells, sign(cells), c1)
+        lens = self.repo.lens("core")
+        self.assertTrue(lens["settled"][k_ok.id], "a proven cycle witness settles its contract")
+        self.assertFalse(lens["settled"][k_big.id], "a NOT_ASSESSED cycle witness is never a witness")
+        self.assertFalse(lens["settled"][k_nf.id], "a cycle witness answers only H_CYCLE_PROVEN")
+        self.assertFalse(lens["settled"][k_other.id], "a cycle witness answers only for its own computation")
+        self.assertTrue(lens["settled"][k_att.id], "without required_comp, Settled is an attestation (ASSURANCE.md)")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

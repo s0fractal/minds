@@ -13,8 +13,9 @@ checks:
   I3  no Active cell has a supersedes edge that the spec §4.1 fold does not authorize (oracle from the spec);
       I3b additionally compares the whole latched edge set with that oracle;
       I3c compares the acceptance, custom-schema and scope Authorized latches with a spec oracle (latches 1, 2, 4)
-  I4  every Settled contract/decision with required_comp has a REPLAYED checkpoint witness that a full replay from
-      ComputationRoot reproduces (state bytes, NORMAL_FORM) with term_hash == expected_outcome
+  I4  every Settled contract/decision with required_comp has a REPLAYED witness: a checkpoint that a full replay from
+      ComputationRoot reproduces (state bytes, NORMAL_FORM) with term_hash == expected_outcome, or, for
+      expected_outcome = H_CYCLE_PROVEN, a cycle witness of that computation that verify_cycle proves
   I5  latches (scope, acceptance, schema, edge) never unlatch across commits
   I6  the lens is independent of dict iteration order (shuffled CAS dicts in-process) and of PYTHONHASHSEED
   I7  the scope cell the fold governs with is the unique Active local schema.scope cell
@@ -23,6 +24,11 @@ checks:
   I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
   I11 Pass 3 recomputed from the kernel's input and output alone (`pass3_at_tip`, what a client holding a projection
       bundle computes) equals the lens's Settled for every contract and decision without required_comp
+  I12 on generated finite transition tables and cycle witnesses, true and false, `sigma_resume.verify_cycle` (with the
+      table as its transition) and the gate's cycle check (`vars1.gate_cycle_witness`) give the verdict of the model's
+      own checker, `checkCycle` of proofs/Vars1/Cycle.lean compiled as `vars1cycle`, and Pass 3's
+      (`vars1.cycle_witness_answers`) counts a witness exactly when the model proves it, for a contract of its own
+      computation expecting `H_CYCLE_PROVEN`
 
 Failing programs are shrunk greedily (drop commits, ops, signers, edges) and frozen below as named regression
 tests. Run `VARS1_PBT_SEQS=400 python3 test_vars1_props.py` for a longer exploration; the default stays < 2 min.
@@ -98,7 +104,17 @@ CKPT_VARIANTS = {
     "f_big_nf": ("fake", _FAKE_K, BIG, BIG, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", 0),
     "f_small_nf": ("fake", _FAKE_K, 10, 4, _NF.checkpoint["peak_semantic_size"], "NORMAL_FORM", 0),
 }
-EXP = {"K": V.H_K, "I": V.H_I, "EMPTY": V.H_EMPTY}
+# A computation that never stops: `M M` under the rich profile (`ski+Y+M+W`); the input thunk is forced for 3 ATP, then
+# `M M -> M M` costs 2 and returns to the same state. Cycle witness variant -> (entry_spent, cycle_actions, cycle_cost):
+# a true one, one whose period is above the 10^7 ceiling (NOT_ASSESSED at the gate), one the gate refuses.
+_APP_MM = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=SR.M_H, right=SR.M_H)
+_H_MM = _put(COMP_ATOMS, _APP_MM)
+COMP["cycle"] = _put(COMP_ATOMS, V.atom_computation_root(_H_MM, _put(COMP_ATOMS, V.atom_environment([_H_MM])),
+                                                         SR.RICH_RUNTIME_ID, SR.RICH_COST_MODEL_ID))
+_d, _i, _s = SR.start(COMP["cycle"].hex(), _H_MM)
+_MM_ENTRY = SR.advance(_d, _i, _s, SR.Environment([_H_MM], {_H_MM: _APP_MM}), 3, runtime=SR.RICH_RUNTIME_ID).state_bytes
+CYCLE_VARIANTS = {"true": (3, 1, 2), "big": (3, 1, BIG), "bad_cost": (3, 1, 3)}
+EXP = {"K": V.H_K, "I": V.H_I, "EMPTY": V.H_EMPTY, "CYCLE": V.H_CYCLE_PROVEN}
 STATUS_KEYS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "provisional")
 
 
@@ -358,6 +374,11 @@ class Interp:
             u = lambda n: _put(atoms, V.atom_u64(n))  # noqa: E731
             return V.Cell(h_schema=sch, h_slot_name=name, h_payload=_put(atoms, state),
                           slots=(COMP[comp], u(credit), u(spent), u(peak), _put(atoms, V.atom_utf8(outc)), u(actions)), **kw)
+        if kind == "cycle_witness":
+            spent, actions, cost = CYCLE_VARIANTS[op["variant"]]
+            u = lambda n: _put(atoms, V.atom_u64(n))  # noqa: E731
+            return V.Cell(h_schema=sch, h_slot_name=name, h_payload=_put(atoms, _MM_ENTRY),
+                          slots=(COMP["cycle"], u(spent), u(actions), u(cost)), **kw)
         if kind in ("contract", "question"):
             pol = self._pol(atoms, op["pol"][0], op["pol"][1]) if op.get("pol") else V.H_EMPTY
             if kind == "question":
@@ -615,11 +636,12 @@ class Gen:
         return {"op": "seal", "target": r.choice(targets), "key": r.choice(adm), "ctx": None}
 
     def bundle(self, it: Interp) -> List[dict]:
-        """computation -> checkpoint lineage -> contract -> REPLAYED/ATTESTED/INVALID verdicts in one commit."""
+        """computation -> checkpoint lineage (or a cycle witness) -> contract -> REPLAYED/ATTESTED/INVALID verdicts in
+        one commit."""
         r = self.r
         ops: List[dict] = []
         sig = lambda: self.signers(it)  # noqa: E731
-        comp = r.choice(["honest", "honest", "fake"])
+        comp = r.choice(["honest", "honest", "fake", "cycle"])
         comps = self.handles(it, lambda hh, m: m["kind"] == "computation" and m.get("comp") == comp)
         if comps and r.random() < 0.6:
             hc = r.choice(comps)
@@ -628,13 +650,15 @@ class Gen:
             ops.append({"op": "cell", "h": hc, "origin": SCOPE, "kind": "computation", "comp": comp,
                         "name": f"{SCOPE}/computation.u{hc}", "edges": {}, "signers": sig()})
         lineage = {"honest": [["h_nf"], ["h_paused0", "h_nf"], ["h_nf_claims_paused"], ["h_nf_wrong_actions"]],
-                   "fake": [["i_nf"], ["f_big_paused", "f_big_nf"], ["f_big_paused", "f_big_nf"], ["f_big_nf"], ["f_small_nf"]]}[comp]
+                   "fake": [["i_nf"], ["f_big_paused", "f_big_nf"], ["f_big_paused", "f_big_nf"], ["f_big_nf"], ["f_small_nf"]]}
+        lineage["cycle"] = [["true"], ["true"], ["big"], ["bad_cost"]]
         parent = None
-        for variant in r.choice(lineage):
+        for variant in r.choice(lineage[comp]):
             hk = self.h()
             rel = [hc] + ([parent] if parent else [])
-            ops.append({"op": "cell", "h": hk, "origin": SCOPE, "kind": "checkpoint", "variant": variant,
-                        "name": f"{SCOPE}/checkpoint.u{hk}", "edges": {"relies": rel}, "signers": sig()})
+            kind = "cycle_witness" if comp == "cycle" else "checkpoint"
+            ops.append({"op": "cell", "h": hk, "origin": SCOPE, "kind": kind, "variant": variant,
+                        "name": f"{SCOPE}/{kind}.u{hk}", "edges": {"relies": rel}, "signers": sig()})
             parent = hk
         adm, _ = it.roster()
         pol = None
@@ -642,8 +666,14 @@ class Gen:
             keys = self.subset(adm)
             pol = [r.randint(1, len(keys)), keys]
         hk_contract = self.h()
+        exp = r.choice(["CYCLE", "CYCLE", "K"] if comp == "cycle" else ["K", "I", "K", "I", "CYCLE"])
+        # a contract of another computation expecting H_CYCLE_PROVEN, answered by an earlier cycle witness of M M
+        cws = self.handles(it, lambda hh, m: m["kind"] == "cycle_witness")
+        if comp != "cycle" and exp == "CYCLE" and cws and r.random() < 0.7:
+            parent = r.choice(cws)
         ops.append({"op": "cell", "h": hk_contract, "origin": SCOPE, "kind": "contract", "tier": r.choice(["provisional", "owner"]),
-                    "req": comp, "exp": r.choice(["K", "I"]), "pol": pol, "name": f"{SCOPE}/contract.u{hk_contract}",
+                    "req": comp, "exp": exp,
+                    "pol": pol, "name": f"{SCOPE}/contract.u{hk_contract}",
                     "edges": {"relies": [hc]}, "signers": sig()})
         for _ in range(r.choice([1, 1, 2])):
             hv = self.h()
@@ -979,6 +1009,17 @@ def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], l
         stale = {u: stale[u] or nxt[u] for u in cells}
 
 
+def oracle_cycle(cw: V.Cell, atoms) -> bool:
+    """`sigma_resume.verify_cycle` called on the witness's fields directly, not through vars1.py."""
+    root_doc = json.loads(atoms[cw.slots[0]])
+    env_doc = json.loads(atoms[bytes.fromhex(root_doc["environment_id"])])
+    env = SR.Environment([bytes.fromhex(h) for h in env_doc["hashes"]], atoms)
+    witness = {"schema": SR.SCHEMA_CYCLE, "computation_id": cw.slots[0].hex(),
+               "entry_spent_total": V.parse_u64(atoms[cw.slots[1]]), "entry_state_id": cw.h_payload.hex(),
+               "cycle_action_count": V.parse_u64(atoms[cw.slots[2]]), "cycle_cost": V.parse_u64(atoms[cw.slots[3]])}
+    return SR.verify_cycle((root_doc, cw.slots[0].hex()), env, witness) == "CYCLE_PROVEN"
+
+
 def full_replay_term_hash(ck: V.Cell, atoms) -> Optional[bytes]:
     """Replay a checkpoint from its ComputationRoot in one advance (no parent trust). Returns its NF term_hash."""
     try:
@@ -1131,6 +1172,156 @@ def model_fold(line: str) -> List[int]:
 _RUNNER: Optional["V.KernelRunner"] = None
 
 
+# ---------------------------------------------------------------------------
+# I12: cycle witnesses against the model's checker
+# ---------------------------------------------------------------------------
+CYCLE_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin" / "vars1cycle"
+_TOY_TAG = b"vars1-toy-state"
+
+
+def toy_term(i: int) -> tuple:
+    """State `i` of a toy table as a Sigma state: a thunk whose hash names it (no Book I term has a state cycle, so
+    the transition is substituted, as sigma_resume.STEP allows)."""
+    return ("thunk", V.sha256(_TOY_TAG + i.to_bytes(4, "big")))
+
+
+def toy_step(table: List[tuple]):
+    """`sigma_resume.STEP`'s contract over a table: ("nf",), ("blocked",) or ("fire", j, c)."""
+    index = {toy_term(i): i for i in range(len(table))}
+
+    def step(term, remaining, env, stats, limits):
+        i = index.get(term)
+        if i is None or table[i][0] == "nf":
+            return None
+        if table[i][0] == "blocked":
+            raise SG.Unresolved()
+        _, j, c = table[i]
+        if c > remaining:
+            raise SG.BudgetExhausted()
+        return toy_term(j), c
+    return step
+
+
+def gen_cycle_cases(rng: random.Random, n_tables: int) -> List[tuple]:
+    """(table, start, entry, entry_spent, actions, cost, max_atp): true witnesses read off a simulated orbit, their
+    neighbours (one field off by one, another entry, a doubled period, the ceiling below the period or the prefix),
+    and random ones."""
+    cases = []
+    for _ in range(n_tables):
+        n = rng.randint(1, 6)
+        table = []
+        for _ in range(n):
+            x = rng.random()
+            table.append(("nf",) if x < 0.12 else ("blocked",) if x < 0.2 else
+                         ("fire", rng.randrange(n), rng.randint(1, 3)))
+        start = rng.randrange(n)
+        orbit, spent, s = [], [0], start
+        for _ in range(3 * n + 2):
+            orbit.append(s)
+            if table[s][0] != "fire":
+                break
+            s, c = table[s][1], table[s][2]
+            spent.append(spent[-1] + c)
+        truths = []
+        seen = {}
+        for p, st in enumerate(orbit):
+            if st in seen:
+                a = seen[st]
+                period = p - a
+                for q in range(a, len(orbit) - period):
+                    truths.append((orbit[q], spent[q], period, spent[q + period] - spent[q]))
+                break
+            seen[st] = p
+        for entry, k, acts, cost in truths[:3]:
+            ceil = 10_000_000
+            cases.append((table, start, entry, k, acts, cost, ceil))
+            cases.append((table, start, entry, k, 2 * acts, 2 * cost, ceil))
+            for dk, da, dc in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                if k + dk >= 0 and acts + da >= 0 and cost + dc >= 0:
+                    cases.append((table, start, entry, k + dk, acts + da, cost + dc, ceil))
+            cases.append((table, start, (entry + 1) % n, k, acts, cost, ceil))
+            cases.append((table, start, entry, k, acts, cost, cost - 1))
+            cases.append((table, start, entry, k, acts, cost, max(cost, k - 1)))
+            cases.append((table, start, entry, k, acts, cost, max(cost, k)))
+            cases.append((table, start, entry, k, acts, ceil + 1, ceil))
+            cases.append((table, start, entry, ceil + 1, acts, cost, ceil))
+        for _ in range(3):
+            cases.append((table, start, rng.randrange(n + 1), rng.randint(0, 8), rng.randint(0, 4), rng.randint(0, 9),
+                          rng.choice([10_000_000, rng.randint(0, 9)])))
+    return cases
+
+
+def model_cycle(cases: List[tuple]) -> List[str]:
+    """`vars1cycle`'s answers (P, N, R), one per case."""
+    if not CYCLE_BIN.exists():
+        raise RuntimeError("build the model's cycle checker first: cd proofs && lake build vars1cycle")
+    lines = []
+    for table, start, entry, k, acts, cost, ceil in cases:
+        enc = []
+        for t in table:
+            enc += [0] if t[0] == "nf" else [1] if t[0] == "blocked" else [2, t[1], t[2]]
+        lines.append(" ".join(map(str, [len(table), *enc, start, entry, k, acts, cost, ceil])))
+    out = subprocess.run([str(CYCLE_BIN)], input="\n".join(lines) + "\n", capture_output=True, text=True,
+                         check=True).stdout.split()
+    if len(out) != len(cases) or set(out) - {"P", "N", "R"}:
+        raise RuntimeError(f"vars1cycle answered {out[:5]}… for {len(cases)} cases")
+    return out
+
+
+def python_cycle(case: tuple) -> Tuple[str, Optional[str], Optional[str]]:
+    """(verify_cycle, the gate's check, Pass 3) as P/N/R; Pass 3 is P when it counts the witness for a contract of its
+    computation expecting H_CYCLE_PROVEN, R when it does not, and "X" when it counts it for another computation or
+    another outcome. The vars1 functions run only at their own ceiling (10^7), else None."""
+    table, start, entry, k, acts, cost, ceil = case
+    env = SR.Environment([], {})
+    root_doc, cid = SR.root(toy_term(start)[1], env)
+    witness = {"schema": SR.SCHEMA_CYCLE, "computation_id": cid,
+               "entry_spent_total": k, "entry_state_id": SR.state_id(SR.encode_state(cid, toy_term(entry))),
+               "cycle_action_count": acts, "cycle_cost": cost}
+    saved = SR.STEP
+    SR.STEP = toy_step(table)
+    try:
+        v = SR.verify_cycle((root_doc, cid), env, witness, dict(SG.VERIFIER_LIMITS, max_atp=ceil))
+        sr = "P" if v == "CYCLE_PROVEN" else "N" if v.startswith("NOT_ASSESSED") else "R"
+        if ceil != SG.VERIFIER_LIMITS["max_atp"]:
+            return sr, None, None
+        atoms: Dict[bytes, bytes] = {}
+        env_h = _put(atoms, V.atom_environment([]))
+        comp_id = _put(atoms, V.atom_computation_root(toy_term(start)[1], env_h))
+        assert comp_id.hex() == cid
+        u = lambda x: _put(atoms, V.atom_u64(x))
+        cell = V.Cell(h_schema=V.H_SCHEMA["cycle_witness"], h_slot_name=_put(atoms, V.atom_utf8("core/cw")),
+                      h_payload=bytes.fromhex(witness["entry_state_id"]), slots=(comp_id, u(k), u(acts), u(cost)))
+        try:
+            r = V.gate_cycle_witness(cell, atoms)
+            gate = "P" if r == "CYCLE_PROVEN" else "N" if r == "NOT_ASSESSED" else "?" + r
+        except V.VarsError:
+            gate = "R"
+        other = V.sha256(b"another computation")
+        if V.cycle_witness_answers(cell, other, V.H_CYCLE_PROVEN, atoms) or \
+                V.cycle_witness_answers(cell, comp_id, V.H_K, atoms):
+            return sr, gate, "X"
+        return sr, gate, "P" if V.cycle_witness_answers(cell, comp_id, V.H_CYCLE_PROVEN, atoms) else "R"
+    finally:
+        SR.STEP = saved
+
+
+def check_cycles(seed: int, n_tables: int) -> Tuple[List[str], Dict[str, int]]:
+    """I12 violations and the count of each model verdict (so a run that only ever refuses is visible)."""
+    cases = gen_cycle_cases(random.Random(seed), n_tables)
+    model = model_cycle(cases)
+    out, counts = [], {}
+    for case, m in zip(cases, model):
+        sr, gate, pass3 = python_cycle(case)
+        counts[m] = counts.get(m, 0) + 1
+        if gate is not None:
+            counts["gate " + m] = counts.get("gate " + m, 0) + 1
+        want = (m, m, "P" if m == "P" else "R") if gate is not None else (m, None, None)
+        if (sr, gate, pass3) != want:
+            out.append(f"I12: model {m}, verify_cycle {sr}, gate {gate}, Pass 3 {pass3} on {case}")
+    return out, counts
+
+
 def kernel_runner() -> "V.KernelRunner":
     global _RUNNER
     if _RUNNER is None:
@@ -1244,11 +1435,15 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
             if (w.h_schema == V.H_SCHEMA["verdict"] and w.h_payload == cid and cid in _items(atoms, w.h_attests)
                     and w.slots[1] == V.H_REPLAYED and active[wid] and not lens["stale"][wid] and w.slots[0] in cells):
                 ck = cells[w.slots[0]]
-                if (ck.h_schema == V.H_SCHEMA["checkpoint"] and ck.slots[0] == req and active[w.slots[0]]
-                        and not lens["stale"][w.slots[0]] and full_replay_term_hash(ck, atoms) == exp):
+                if not (ck.slots[0] == req and active[w.slots[0]] and not lens["stale"][w.slots[0]]):
+                    continue
+                if ck.h_schema == V.H_SCHEMA["checkpoint"] and full_replay_term_hash(ck, atoms) == exp:
+                    ok = True
+                if ck.h_schema == V.H_SCHEMA["cycle_witness"] and exp == V.H_CYCLE_PROVEN and oracle_cycle(ck, atoms):
                     ok = True
         if not ok:
-            out.append(("I4", f"Settled {cid.hex()[:10]} has no fully-replayable REPLAYED witness with term_hash == expected"))
+            out.append(("I4", f"Settled {cid.hex()[:10]} has no REPLAYED witness: neither a full replay with term_hash == "
+                              f"expected nor a cycle witness verify_cycle proves for H_CYCLE_PROVEN"))
 
     # I7: the scope the fold governs with is the one Active local scope cell
     act_scopes = [cid for cid, c in cells.items() if c.h_schema == V.H_SCHEMA["scope"] and _origin(atoms, c) == SCOPE and active[cid]]
@@ -1572,6 +1767,13 @@ class TestVars1Properties(unittest.TestCase):
             print(f"\n  known (frozen) violation classes hit: {known_hits}", file=sys.stderr)
         self.assertGreater(admitted_total, self.N_SEQS * 3, "generator admits too few commits to be meaningful")
         self.assertEqual(found, {}, "new invariant violations (shrink with VARS1_PBT_SHRINK=1)")
+
+    def test_cycle_witnesses_agree_with_the_model(self) -> None:
+        """I12: verify_cycle and the vars1 glue give the compiled model checker's verdict on every generated case."""
+        violations, counts = check_cycles(self.SEED0, int(os.environ.get("VARS1_PBT_CYCLE_TABLES", "300")))
+        self.assertEqual(violations[:10], [])
+        for verdict in ("P", "N", "R", "gate P", "gate N", "gate R"):
+            self.assertGreater(counts.get(verdict, 0), 20, f"too few {verdict} cases to be meaningful: {counts}")
 
 
 def _make_regression(name: str, inv: str, program):

@@ -24,3 +24,9 @@ root = "Vars1ExecMain"
 [[lean_exe]]
 name = "vars1fold"
 root = "Vars1FoldMain"
+
+# The model's cycle checker (Vars1/Cycle.lean `checkCycle`) compiled, for differential checks against
+# sigma_resume.verify_cycle.
+[[lean_exe]]
+name = "vars1cycle"
+root = "Vars1CycleMain"

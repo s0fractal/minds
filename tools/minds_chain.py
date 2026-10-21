@@ -418,9 +418,9 @@ def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], b
     rules module built from `root` must hash to its identity, and `rules` must be one of them."""
     run = _run
 
-    # The Lean executables first: properties I9 and I10 run them, so in a fresh checkout they must exist
+    # The Lean executables first: properties I9, I10 and I12 run them, so in a fresh checkout they must exist
     results: List[Tuple[str, bool]] = []
-    for target in ("", "vars1exec", "vars1fold", "Vars1Sigma"):
+    for target in ("", "vars1exec", "vars1fold", "vars1cycle", "Vars1Sigma"):
         results.append((f"lake build {target}".strip(), run(["lake", "build", *([target] if target else [])], root / "proofs")))
     results += [
         ("test_vars1", run([sys.executable, "-m", "unittest", "test_vars1"], root)),

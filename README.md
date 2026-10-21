@@ -63,9 +63,9 @@ revision the spec pins. The Lean link's three sigma-glyph files and the Ed25519 
 ```
 git clone https://github.com/s0fractal/minds && cd minds
 python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
-(cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build Vars1Sigma)
+(cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build vars1cycle && lake build Vars1Sigma)
 .venv/bin/python -m unittest test_vars1     # conformance; every fold and lens runs kernel/lens.wasm and its twin
-.venv/bin/python test_vars1_props.py        # property-based invariants I0–I11 (I9, I10 need the proofs' executables)
+.venv/bin/python test_vars1_props.py        # property-based invariants I0–I12 (I9, I10, I12 need the proofs' executables)
 .venv/bin/python vars1.py verify-projection BUNDLE.json --require PUBKEY   # with no repository (spec §4.4)
 ```
 
