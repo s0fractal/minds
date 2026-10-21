@@ -66,7 +66,7 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
             flush()
             section = int(m.group(1))
             continue
-        if line.startswith("#"):
+        if re.match(r"^ {0,3}#{1,6}(?:[ \t]|$)", line):  # a heading; `#word` is a paragraph (CommonMark)
             flush()
             continue
         if not line.strip():
@@ -86,29 +86,15 @@ EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Diff
 
 
 def assurance_rows(text: str) -> list[tuple[str, str]]:
-    """(claim column, evidence column) of every table row of ASSURANCE.md, read line by line as CommonMark reads it:
-    a fenced block is code (a comment inside it is literal text), a line opening with `<!--` starts an HTML block
-    that runs to the line holding `-->`, and an inline comment is removed from a row. A quote is held by the row that
-    states it, never by retired, hidden or example text."""
+    """(claim column, evidence column) of every table row of ASSURANCE.md. The file may hold no HTML comment and no
+    fenced block: text hidden or quoted there could hold a quote whose live row was withdrawn, and telling the two
+    apart is a Markdown parser's work, not this checker's (Codex review of PR #4, rounds 1–7). So either is refused,
+    and every line opening with `|` is a live row."""
+    for n, line in enumerate(LINES.split(text), 1):
+        if "<!--" in line or re.match(r"^ {0,3}(`{3,}|~{3,})", line):
+            raise ValueError(f"ASSURANCE.md:{n}: an HTML comment or a fenced block; neither may hold or hide a row")
     rows = []
-    fence = ""  # the open fence: its character repeated as often as it opened
-    html = False  # inside an HTML comment block
     for line in LINES.split(text):
-        if html:
-            html = "-->" not in line
-            continue
-        m = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
-        if fence:
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and re.fullmatch(r"[ \t]*", m.group(2)):
-                fence = ""
-            continue
-        if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
-            fence = m.group(1)  # a fenced block is an example, never a live row
-            continue
-        if re.match(r"^ {0,3}<!--", line):
-            html = "-->" not in line[line.index("<!--") + 4:]
-            continue
-        line = re.sub(r"<!--.*?(-->|$)", "", line)  # an inline comment, or one left open, holds nothing
         cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else []
         if len(cells) >= 2 and not set(cells[0]) <= set("-: "):
             rows.append((norm(cells[0]), norm(cells[1])))
@@ -142,7 +128,11 @@ def main(argv: list[str]) -> int:
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     flat = norm(spec)
-    sources = {"ASSURANCE.md": assurance_rows(arg("--assurance", ROOT / "ASSURANCE.md").read_text())}
+    try:
+        sources = {"ASSURANCE.md": assurance_rows(arg("--assurance", ROOT / "ASSURANCE.md").read_text())}
+    except ValueError as e:
+        errors.append(str(e))
+        sources = {"ASSURANCE.md": []}
 
     ids = [c["id"] for c in claims]
     for dup in sorted({i for i in ids if ids.count(i) > 1}):

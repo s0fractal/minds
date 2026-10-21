@@ -1536,19 +1536,27 @@
   {
    "id": "assurance.claim-rows",
    "source": "ASSURANCE.md",
-   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments and fenced blocks removed (lines broken only where Markdown breaks them), whose evidence column begins with the claim's status",
+   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row whose evidence column begins with the claim's status; the file may hold no HTML comment and no fenced block",
    "status": "tested",
    "witnesses": [
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
    ],
    "mutants": [
     "m-claims-status-word",
-    "m-claims-fence",
-    "m-claims-fence-kind",
-    "m-claims-fence-space",
-    "m-claims-lines",
-    "m-claims-comments",
-    "m-claims-inline"
+    "m-claims-hidden",
+    "m-claims-comment"
+   ]
+  },
+  {
+   "id": "assurance.spec-coverage",
+   "source": "ASSURANCE.md",
+   "quote": "Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5 holds the quote of a claim or of an informative passage",
+   "status": "tested",
+   "witnesses": [
+    "test:test_45_the_spec_is_a_projection_of_its_witnesses"
+   ],
+   "mutants": [
+    "m-spec-heading"
    ]
   }
  ],

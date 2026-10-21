@@ -1221,38 +1221,6 @@
    "test_79_status_reads_pass_3"
   ]
  },
- "m-claims-fence": {
-  "file": "tools/check_claims.py",
-  "find": "            fence = m.group(1)  # a fenced block is an example, never a live row",
-  "replace": "            pass",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-claims-fence-kind": {
-  "file": "tools/check_claims.py",
-  "find": "            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and re.fullmatch(r\"[ \\t]*\", m.group(2)):",
-  "replace": "            if m:",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-claims-fence-space": {
-  "file": "tools/check_claims.py",
-  "find": "re.fullmatch(r\"[ \\t]*\", m.group(2)):",
-  "replace": "not m.group(2).strip():",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-claims-lines": {
-  "file": "tools/check_claims.py",
-  "find": "    for line in LINES.split(text):",
-  "replace": "    for line in text.splitlines():",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
  "m-profile-all": {
   "file": "tools/minds_chain.py",
   "find": "        files[path], blobs[path] = V.sha256(raw).hex(), raw",
@@ -1269,18 +1237,26 @@
    "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
- "m-claims-comments": {
+ "m-claims-hidden": {
   "file": "tools/check_claims.py",
-  "find": "        if re.match(r\"^ {0,3}<!--\", line):",
+  "find": "        if \"<!--\" in line or re.match(r\"^ {0,3}(`{3,}|~{3,})\", line):",
   "replace": "        if False:",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-claims-inline": {
+ "m-claims-comment": {
   "file": "tools/check_claims.py",
-  "find": "        line = re.sub(r\"<!--.*?(-->|$)\", \"\", line)",
-  "replace": "        line = line",
+  "find": "        if \"<!--\" in line or re.match(",
+  "replace": "        if re.match(",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-heading": {
+  "file": "tools/check_claims.py",
+  "find": "        if re.match(r\"^ {0,3}#{1,6}(?:[ \\t]|$)\", line):",
+  "replace": "        if line.startswith(\"#\"):",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]

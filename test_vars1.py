@@ -2759,25 +2759,22 @@ class TestVars1Conformance(unittest.TestCase):
         held["quote"] += " and more"
         code, out = check(spec, moved)
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
-        # a quote kept only in a comment, its live row changed, holds nothing (Codex PR #4 r1 F6)
+        # Hidden or quoted text could hold a quote whose live row was withdrawn (Codex PR #4 r1–r7: a comment, a fence,
+        # fences of other kinds and lengths, closers followed by Unicode space or line separators, a literal comment
+        # inside code, a comment opened mid-line): ASSURANCE.md may hold neither, so each such document is refused
         row = next(l for l in assurance.splitlines() if norm(held["quote"][: -len(" and more")]) in norm(l))
-        hidden = assurance.replace(row, "| `verify-release` does not check profiles | Not established | — |\n<!--\n" + row + "\n-->")
-        code, out = check(spec, claims, hidden)
-        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
-        code, out = check(spec, claims, hidden.replace("<!--\n", "```\n").replace("\n-->", "\n```"))
-        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in a fenced example (Codex r2 F4)")
-        for opening, inner in (("````", "```"), ("~~~", "```"), ("```", "```\u00a0"), ("~~~", "~~~\u2003"),
-                               ("```", "```\u2028"), ("```", "```\x85"),  # Markdown breaks lines at \n, \r only (r5 F2)
-                               ("```", "```<!-- literal, not a closer -->"), ("```", "``<!-- code -->`")):  # r6 F2
-            # a fence closes only on its own kind and length (Codex r3 F2), followed by spaces or tabs only (r4 F3)
-            fenced = hidden.replace("<!--\n", f"{opening}\n{inner}\n").replace("\n-->", f"\n{opening}")
-            code, out = check(spec, claims, fenced)
-            self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, opening)
-        # a quote kept only in an inline comment of a live row holds nothing
+        withdrawn = "| `verify-release` does not check profiles | Not established | — |"
         cell = row.split("|")[1]
+        for before, after in (("<!--\n", "\n-->"), ("```\n", "\n```"), ("~~~\n", "\n~~~"), ("    ```\n", "\n```"),
+                              ("Retired: <!--\n", "\n-->"), ("| Retired | Not established | <!--\n", "\n-->")):
+            code, out = check(spec, claims, assurance.replace(row, f"{withdrawn}\n{before}{row}{after}"))
+            self.assertEqual(code, 1, before)
+            self.assertIn("an HTML comment or a fenced block", out, before)
         inline = assurance.replace(row, row.replace(cell, " <!-- " + cell.strip() + " --> `verify-release` does not check profiles "))
-        code, out = check(spec, claims, inline)
-        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in an inline comment")
+        self.assertIn("an HTML comment or a fenced block", check(spec, claims, inline)[1])
+        # a line opening with `#` and no space is a paragraph, not a heading, and must be covered (Codex r7 F2)
+        code, out = check(spec.replace(anchor, anchor + "\n\n#Admission without a witness is permitted.\n"), claims)
+        self.assertIn("no claim or informative quote covers this block", out)
         # a live row whose evidence column no longer states the claim's status
         code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
         self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
