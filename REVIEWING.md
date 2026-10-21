@@ -3,6 +3,25 @@
 For any reviewer, human or agent, asked to "review minds" or "verify minds". Work from the code, not from the
 maintainer's summaries: read commit messages, README and ASSURANCE.md last, as claims to test.
 
+## 0. Which changes get a model's review
+
+Review is expensive and a weak reviewer is worse than none (a false ACCEPT), so the strength of review follows the
+cost of a mistake, not the size of the diff.
+
+- **Always, for every change: the mechanical checks.** CI (conformance, properties, kernel hash, claims) and the
+  mutants job. A killed mutant is a claim no reviewer needs to recheck by hand.
+- **A strong adversarial review, one reviewer per pull request, only where a mistake is costly:** the gate
+  (`vars1.py` admission), the rules kernel (`kernel/`, `kernel2/`), rules changes (VARS-1-SPEC.md §4.3), the bundle
+  verifier (`verify/`), the release tool's checks, and any change to a normative block of the spec. Not two
+  reviewers on the same head: a second opinion is a deliberate choice, recorded as such.
+- **No model review** for documentation, tests, tooling or refactors that change no behaviour; CI and the mutants
+  carry them.
+- **Scope the review to the claims that moved.** The reviewer starts from the change to `claims.json` (new or
+  changed claims, their witnesses and mutants), then reads the code those claims point at. Checking that each quote,
+  witness and mutant matches the code is mechanical and may go to a lighter model; trying to refute the claims may not.
+- **Batch by theme.** A pull request carries one theme in full rather than one commit at a time: review costs per
+  round, not per line.
+
 ## 1. Verify releases (members only)
 
 ```
