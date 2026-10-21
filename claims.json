@@ -1380,6 +1380,13 @@
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child"
    ],
    "mutants": []
+  },
+  {
+   "id": "privacy.commitments",
+   "quote": "**Personal data.** No atom carries data about a person in the clear, nor a bare hash of it",
+   "status": "assumed",
+   "witnesses": [],
+   "mutants": []
   }
  ],
  "informative": [
