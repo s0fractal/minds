@@ -474,15 +474,13 @@
   {
    "id": "gate.references",
    "quote": "4. **References and replay.** Every referenced hash is present",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_05_signatures_names_dependencies_verdicts_acceptance",
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
     "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": [
-    "m-seal-refs"
-   ]
+   "mutants": []
   },
   {
    "id": "gate.cycle-witness",
@@ -1495,13 +1493,55 @@
    "quote": "`status` tells merged from Settled",
    "status": "tested",
    "witnesses": [
-    "test:test_77_status_tells_merged_from_settled"
+    "test:test_77_status_tells_merged_from_settled",
+    "test:test_79_status_reads_pass_3"
    ],
    "mutants": [
-    "m-status-evaluators",
     "m-status-invalid-answer",
     "m-status-behind",
-    "m-status-main-released"
+    "m-status-main-released",
+    "m-status-pass3",
+    "m-status-live-invalid",
+    "m-status-settled-awaits"
+   ]
+  },
+  {
+   "id": "assurance.profile-regular",
+   "source": "ASSURANCE.md",
+   "quote": "A profile path that is a symlink or a submodule is refused",
+   "status": "tested",
+   "witnesses": [
+    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not",
+    "test:test_80_the_profile_closes_over_what_the_gate_loads"
+   ],
+   "mutants": [
+    "m-profile-regular",
+    "m-profile-meter"
+   ]
+  },
+  {
+   "id": "assurance.statement-tail",
+   "source": "ASSURANCE.md",
+   "quote": "A release statement names its profile after its checks, so a reader of the earlier format still reads its commit, rules and pins",
+   "status": "tested",
+   "witnesses": [
+    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+   ],
+   "mutants": [
+    "m-statement-guard"
+   ]
+  },
+  {
+   "id": "assurance.claim-rows",
+   "source": "ASSURANCE.md",
+   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments removed, whose evidence column begins with the claim's status",
+   "status": "tested",
+   "witnesses": [
+    "test:test_45_the_spec_is_a_projection_of_its_witnesses"
+   ],
+   "mutants": [
+    "m-claims-comments",
+    "m-claims-status-word"
    ]
   }
  ],

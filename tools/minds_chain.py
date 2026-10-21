@@ -333,6 +333,15 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
         out = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "blob", f"{sha}:{path}"], capture_output=True)
         return out.stdout if out.returncode == 0 else None
 
+    # A profile names bytes. A symlink's blob is its target's name, a submodule names another repository: either
+    # would let a commit change what runs without changing the profile, so neither is accepted in a profile path.
+    tree = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-z", sha, "--", *PROFILE_FILES],
+                          capture_output=True, check=True).stdout
+    for entry in filter(None, tree.split(b"\0")):
+        meta, _, path_b = entry.partition(b"\t")
+        mode = meta.split(b" ")[0].decode()
+        if mode not in ("100644", "100755"):
+            raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a regular file (mode {mode}): a profile names bytes")
     files: Dict[str, Optional[str]] = {}
     for path in PROFILE_FILES:
         raw = blob(path)
@@ -363,9 +372,12 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     keys = roster(repo)
     everyone = _policy(atoms, len(keys), keys)
     pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
-    prof = f" profile@{profile}" if profile else ""
-    statement = (f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{prof}{pins}; checks: "
-                 + "; ".join(checks))
+    if any(";" in c or c.startswith("profile@") for c in checks):
+        raise V.VarsError("a check line may not contain ';' nor start with 'profile@': they mark the statement's parts")
+    # The profile goes last, after the checks: a reader of the earlier format matches only the prefix up to the
+    # first ';', so it still reads main, rules and pins from a statement that names a profile.
+    statement = (f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{pins}; checks: "
+                 + "; ".join(checks) + (f"; profile@{profile}" if profile else ""))
     tag = main_sha[:12]
     decision = V.Cell(
         h_schema=V.H_SCHEMA["decision"],
@@ -416,24 +428,26 @@ RULES_NAMES = {V.H_LENS_KERNEL: "v1", V.H_LENS_KERNEL_V1B: "v1b", V.H_LENS_KERNE
 
 def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
     """Where the release process stands, read only: whether `main` is released, and for each release whether it is
-    Settled and which roster keys have attested it, contradicted it, or not yet answered; which projections await a
-    witness (each against the keys it names itself, the roster when it was recorded); the governing rules; the rules changes on the chain; and the claims debt at `main`. Nothing is signed
-    or written. Merged is not Settled: a release is settled only when every member has attested it."""
+    Settled and, as Pass 3 reads it, which evaluators' endorsements count, which have a live INVALID on it, and which
+    have not yet answered; which projections await a witness; the governing rules; the rules changes on the chain;
+    and the claims debt at `main`. Nothing is signed or written. Merged is not Settled."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True)
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     if tip is None:
         raise V.VarsError("no chain: run `init` first")
     atoms, cells, seals = repo.read_cas_tree(tip)
-    settled = repo.lens(SCOPE)["settled"]
+    lens = repo.lens(SCOPE)
+    settled = lens["settled"]
     keys = roster(repo)
     sealers: Dict[bytes, set] = {}
     for x in seals.values():
         sealers.setdefault(x.h_target, set()).add(x.actor_pubkey)
-    answers: Dict[bytes, Dict[bytes, set]] = {}  # decision -> outcome -> keys that sealed a verdict with it
+    live = lambda cid: lens["active"].get(cid, False) and not lens["stale"].get(cid, False)
+    blocking: Dict[bytes, set] = {}  # decision -> keys that sealed a live INVALID verdict on it
     for cid, c in cells.items():
-        if c.h_schema == V.H_SCHEMA["verdict"]:
-            answers.setdefault(c.h_payload, {}).setdefault(c.slots[1], set()).update(sealers.get(cid, set()))
+        if c.h_schema == V.H_SCHEMA["verdict"] and c.slots[1] == V.H_VERDICT_INVALID and live(cid):
+            blocking.setdefault(c.h_payload, set()).update(sealers.get(cid, set()))
     main_sha = git("rev-parse", "--verify", f"{main}^{{commit}}").stdout.strip() or None
     releases, projections = [], []
     for cid, c in sorted(cells.items(), key=lambda kv: V.parse_utf8(atoms[kv[1].h_slot_name])):
@@ -445,19 +459,18 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
         if c.h_schema != V.H_SCHEMA["decision"] or not name.startswith(f"{SCOPE}/release/"):
             continue
         sha, rules, profile, _ = parse_release_profile(V.parse_utf8(atoms[c.h_payload]))
-        got = answers.get(cid, {})
-        attested, invalid = got.get(V.H_ATTESTED, set()), got.get(V.H_VERDICT_INVALID, set())
         row: Dict[str, object] = {"name": name, "id": cid.hex(), "commit": sha, "profile": profile,
                                   "settled": bool(settled.get(cid))}
-        if c.slots[3] == V.H_EMPTY:  # an early release naming no evaluators: its scope's policy settled it
-            row.update(attested_by=sorted(k.hex() for k in attested), invalid_by=sorted(k.hex() for k in invalid),
-                       awaiting=None)
-        else:  # the evaluators the release itself names: the roster when it was recorded
-            _, hv = V.parse_pol1(atoms[c.slots[3]])
-            evaluators = V.parse_hvec(atoms[hv], require_sorted=True)
-            row.update(attested_by=sorted(k.hex() for k in attested if k in evaluators),
-                       invalid_by=sorted(k.hex() for k in invalid if k in evaluators),
-                       awaiting=sorted(k.hex() for k in evaluators if k not in attested | invalid))
+        if cid not in lens["evaluators"]:  # not live, so Pass 3 does not evaluate it and no one is awaited
+            row.update(threshold=None, evaluators=None, attested_by=[], invalid_by=[], awaiting=[])
+        else:  # Pass 3's own reading: its evaluation policy (the release's, or the scope's for an early release
+            # naming none) and the endorsements it counts; an evaluator with a live INVALID has answered
+            thr, evaluators = lens["evaluators"][cid]
+            counted, invalid = lens["endorsers"][cid], blocking.get(cid, set()) & evaluators
+            row.update(threshold=thr, evaluators=sorted(k.hex() for k in evaluators),
+                       attested_by=sorted(k.hex() for k in counted),
+                       invalid_by=sorted(k.hex() for k in invalid),
+                       awaiting=[] if row["settled"] else sorted(k.hex() for k in evaluators - counted - invalid))
         releases.append(row)
     released = {r["commit"] for r in releases}
     last = None
@@ -578,12 +591,12 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
     """The commit, rules hash, release profile id (for releases that name one) and sibling pins (for releases that
     pin them) a release statement names."""
     sib = "".join(rf"(?: {k}@([0-9a-f]{{40}}))" for k in SIBLINGS)
-    m = re.match(rf"^minds release main@([0-9a-f]{{40}}) rules@([0-9a-f]{{64}})(?: profile@([0-9a-f]{{64}}))?"
-                 rf"(?:{sib})?;", statement)
+    m = re.match(rf"^minds release main@([0-9a-f]{{40}}) rules@([0-9a-f]{{64}})(?:{sib})?;", statement)
     if m is None:
         raise V.VarsError("not a release statement")
-    pins = dict(zip(SIBLINGS, m.groups()[3:])) if m.group(4) else None
-    return m.group(1), bytes.fromhex(m.group(2)), m.group(3), pins
+    pins = dict(zip(SIBLINGS, m.groups()[2:])) if m.group(3) else None
+    tail = re.search(r"; profile@([0-9a-f]{64})$", statement)
+    return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 
 def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
@@ -657,7 +670,10 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     sha, rules, profile, pins = parse_release_profile(V.parse_utf8(atoms[d.h_payload]))
     lines, ok = checks(repo_dir, sha, rules, siblings=pins) if pins else checks(repo_dir, sha, rules)
     if profile is not None:  # the files the release names are the files at its commit, recomputed here
-        same = profile_at(repo_dir, sha)["id"] == profile
+        try:
+            same = profile_at(repo_dir, sha)["id"] == profile
+        except V.VarsError:
+            same = False
         lines = lines + [f"release profile {profile[:12]} is the commit's {'OK' if same else 'FAILED'}"]
         ok = ok and same
     s = governing_scope(repo)

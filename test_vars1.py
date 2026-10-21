@@ -2722,12 +2722,16 @@ class TestVars1Conformance(unittest.TestCase):
         spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text()
         claims = json.loads((ROOT_DIR / "claims.json").read_text())
 
-        def check(spec_text, claims_obj):
+        assurance = (ROOT_DIR / "ASSURANCE.md").read_text()
+        norm = lambda t: re.sub(r"\s+", " ", t).strip()
+
+        def check(spec_text, claims_obj, assurance_text=assurance):
             d = Path(self.tmp.name)
             (d / "spec.md").write_text(spec_text)
             (d / "claims.json").write_text(json.dumps(claims_obj))
-            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json")],
-                                 capture_output=True, text=True)
+            (d / "assurance.md").write_text(assurance_text)
+            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json"),
+                                  "--assurance", str(d / "assurance.md")], capture_output=True, text=True)
             return out.returncode, out.stdout
 
         code, out = check(spec, claims)
@@ -2754,7 +2758,15 @@ class TestVars1Conformance(unittest.TestCase):
         held = next(c for c in moved["claims"] if c.get("source") == "ASSURANCE.md")
         held["quote"] += " and more"
         code, out = check(spec, moved)
-        self.assertIn(f"{held['id']}: quote not in ASSURANCE.md", out)
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        # a quote kept only in a comment, its live row changed, holds nothing (Codex PR #4 r1 F6)
+        row = next(l for l in assurance.splitlines() if norm(held["quote"][: -len(" and more")]) in norm(l))
+        hidden = assurance.replace(row, "| `verify-release` does not check profiles | Not established | — |\n<!--\n" + row + "\n-->")
+        code, out = check(spec, claims, hidden)
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        # a live row whose evidence column no longer states the claim's status
+        code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
+        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
         held["quote"], held["source"] = held["quote"][: -len(" and more")], "README.md"
         code, out = check(spec, moved)
         self.assertIn(f"{held['id']}: unknown source 'README.md'", out)
@@ -4136,6 +4148,48 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(lens["settled"][good["decision"]])
         self.assertFalse(lens["settled"][wrong["decision"]])
 
+        # The earlier reader (before profiles, main@21ffb48) matched this prefix only; it still reads a new statement
+        old = r"^minds release main@([0-9a-f]{40}) rules@([0-9a-f]{64})(?: sigma-glyph@([0-9a-f]{40}))?(?: primitives@([0-9a-f]{40}))?;"
+        self.assertEqual(re.match(old, stmt).groups()[:2], (b, V.H_LENS_KERNEL.hex()))
+        self.assertTrue(stmt.endswith(f"; profile@{pb['id']}"))
+        for bad in (["a; b OK"], ["profile@" + "0" * 64]):
+            with self.assertRaisesRegex(V.VarsError, "may not contain"):
+                mc.release(self.repo_path, sk, b, bad, profile=pb["id"])
+
+        # A symlink's blob is a name, not the bytes that run (Codex PR #4 r1 F1): a profile path must be a regular file
+        (self.repo_path / "kernel" / "body.mjs").write_bytes(b"// runner\n")
+        (self.repo_path / "kernel" / "run.mjs").symlink_to("body.mjs")
+        g = lambda *x: subprocess.run(["git", "-C", str(self.repo_path), *x], capture_output=True, check=True).stdout
+        g("add", "kernel/body.mjs", "kernel/run.mjs")
+        g("commit", "-q", "-m", "link")
+        link = g("rev-parse", "HEAD").decode().strip()
+        with self.assertRaisesRegex(V.VarsError, "kernel/run.mjs .* is not a regular file"):
+            mc.profile_at(self.repo_path, link)
+        _, linked = mc.release(self.repo_path, sk, link, ["test_vars1 OK"], profile=pb["id"])
+        _, ok, lines = mc.verify_release(self.repo_path, sk2, linked["decision"], "second", checks=fake)
+        self.assertFalse(ok)
+        self.assertIn(f"release profile {pb['id'][:12]} is the commit's FAILED", lines)
+
+    def test_80_the_profile_closes_over_what_the_gate_loads(self) -> None:
+        """Every repository file the profiled code loads is itself profiled: the local modules the Python files
+        import, the files `vars1.py` opens under kernel/ and kernel2/, and the relative imports of the wasm runners
+        (node built-ins and the Python standard library come from the host, ASSURANCE.md)."""
+        mc = self._minds_chain()
+        profiled = set(mc.PROFILE_FILES)
+        for path in profiled:
+            text = (ROOT_DIR / path).read_text(errors="replace") if not path.endswith(".wasm") else ""
+            if path.endswith(".py"):
+                for mod in re.findall(r"^\s*(?:from|import)\s+([A-Za-z_]\w*)", text, re.M):
+                    for where in (f"{mod}.py", f"verify/{mod}.py"):
+                        if (ROOT_DIR / where).exists():
+                            self.assertIn(where, profiled, f"{path} imports {mod}")
+                for d, name in re.findall(r"(KERNEL2?_DIR) / \"([^\"]+)\"", text):
+                    self.assertIn(("kernel2/" if d == "KERNEL2_DIR" else "kernel/") + name, profiled, f"{path} opens it")
+            if path.endswith(".mjs"):
+                for spec in re.findall(r"from\s+\"(\.{1,2}/[^\"]+)\"", text):
+                    rel = (Path(path).parent / spec).as_posix()
+                    self.assertIn(rel, profiled, f"{path} imports {spec}")
+
     def test_77_status_tells_merged_from_settled(self) -> None:
         """`status` reads the chain and main and writes nothing: whether main is released, how far main is past its
         last release, and for each release who has attested it, contradicted it, or not yet answered — counted
@@ -4177,11 +4231,88 @@ class TestVars1Conformance(unittest.TestCase):
         st = mc.status(self.repo_path)
         self.assertEqual((st["main_released"], st["last_released"], st["commits_since_release"]), (False, three, 2))
 
+    def test_79_status_reads_pass_3(self) -> None:
+        """`status` counts what Pass 3 counts, not every stored verdict (Codex PR #4 r1 F3, F4): a verdict that
+        attests nothing, an answer superseded by NOT_ASSESSED, and a superseded INVALID leave the member awaited;
+        an early release naming no evaluators is read under the scope's current admission policy, so after a
+        rotation that replaces the key that attested it, the new key is awaited."""
+        import dataclasses
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        pk2 = V.ed25519_pubkey(sk2).hex()
+        repo = V.GitVarsRepo(self.repo_path)
+
+        def add(atoms: dict, cells: list, signer: bytes) -> None:
+            s = mc.governing_scope(repo)
+            tip = repo.ref_commit("minds")
+            c = repo.build_candidate_commit("minds", atoms, cells, [V.Seal.sign(signer, x.id, s) for x in cells],
+                                            parent_commit=tip)
+            repo.admit_and_advance("minds", c, expected_old=tip)
+
+        def row(did: bytes) -> dict:
+            return next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == did.hex())
+
+        def answer(did: bytes, ok: bool) -> V.Cell:
+            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a: (["x OK"], ok))
+            atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
+            return next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == did
+                        and V.parse_utf8(atoms[c.slots[2]]) == "second")
+
+        def withdraw(w: V.Cell) -> None:
+            a: dict[bytes, bytes] = {}
+            add(a, [dataclasses.replace(w, h_supersedes=mc._put(a, V.atom_hvec([w.id])),
+                                        h_loss=mc._put(a, V.atom_utf8("withdrawn")),
+                                        slots=(V.H_EMPTY, V.H_NOT_ASSESSED, w.slots[2]))], sk2)
+
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, bytes.fromhex(pk2), "second")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        a: dict[bytes, bytes] = {}
+        add(a, [V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/no-attests")), r1["decision"],
+                       slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("second"))))], sk2)
+        r = row(r1["decision"])
+        self.assertEqual((r["settled"], r["awaiting"]), (False, [pk2]), "a verdict attesting nothing is no answer")
+
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        withdraw(answer(r2["decision"], True))
+        r = row(r2["decision"])
+        self.assertEqual((r["settled"], r["awaiting"], pk2 in r["attested_by"]), (False, [pk2], False),
+                         "a superseded ATTESTED is no answer")
+
+        _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["x OK"])
+        w = answer(r3["decision"], False)
+        self.assertEqual((row(r3["decision"])["invalid_by"], row(r3["decision"])["awaiting"]), ([pk2], []))
+        withdraw(w)
+        r = row(r3["decision"])
+        self.assertEqual((r["invalid_by"], r["awaiting"]), ([], [pk2]), "a superseded INVALID is no answer")
+
+        # an early release, naming no evaluators: the scope's admission policy, current at the tip
+        a = {}
+        d = V.Cell(V.H_SCHEMA["decision"], mc._put(a, V.atom_utf8("minds/release/cccccccccccc")),
+                   mc._put(a, V.atom_utf8(f"minds release main@{'c' * 40} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK")),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        v = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/legacy")), d.id,
+                   h_attests=mc._put(a, V.atom_hvec([d.id])),
+                   slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("minds-maintainer"))))
+        add(a, [d, v], sk)
+        r = row(d.id)
+        self.assertEqual((r["settled"], r["threshold"], r["awaiting"]), (True, 1, []),
+                         "1-of-2 admission: the maintainer alone settles it, and a Settled release awaits no one")
+        a = {}
+        pol = mc._policy(a, 1, [bytes.fromhex(pk2)])
+        add(a, [V.Cell(V.H_SCHEMA["scope"], mc._put(a, V.atom_utf8("minds/SCOPE")), mc._put(a, V.atom_utf8("new roster")),
+                       h_supersedes=mc._put(a, V.atom_hvec([mc.governing_scope(repo)])),
+                       h_loss=mc._put(a, V.atom_utf8("replace the maintainer")), slots=(pol, pol, V.H_LENS_KERNEL))], sk)
+        r = row(d.id)
+        self.assertEqual((r["settled"], r["evaluators"], r["attested_by"], r["awaiting"]), (False, [pk2], [], [pk2]))
+
     def test_78_each_structural_refusal_has_its_own_input(self) -> None:
-        """Each refusal below is reached by an input that only it stops (the claims' earlier witnesses reached them
-        only through other checks, so a mutant removing one survived): raw cell and seal bytes written to the CAS as
-        a writer could, a seal on a cell the commit lacks, a foreign cell without its scope, a schema cell with a
-        payload. A canonical neighbour of each is admitted."""
+        """Each refusal below is reached by its own input (the claims' earlier witnesses never reached them, so a
+        mutant removing one survived): raw cell and seal bytes written to the CAS as a writer could, a seal on a cell
+        the commit lacks, a foreign cell without its scope, a schema cell with a payload. Without its check, the loss,
+        magic and schema inputs are admitted; the foreign cell is still refused by the kernel (twin divergence) and
+        the stray seal by the generic malformed-commit refusal, so only the reason changes there. A canonical
+        neighbour of each is admitted."""
         c0, s0, _ = self._bootstrap_genesis("core")
 
         def raw_cell(path_raw: bytes, atoms: dict, seals: list, cells: tuple = ()) -> str:

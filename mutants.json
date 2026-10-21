@@ -1053,20 +1053,12 @@
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
  },
- "m-status-evaluators": {
-  "file": "tools/minds_chain.py",
-  "find": "awaiting=sorted(k.hex() for k in evaluators if",
-  "replace": "awaiting=sorted(k.hex() for k in keys if",
-  "kills": [
-   "test_77_status_tells_merged_from_settled"
-  ]
- },
  "m-status-invalid-answer": {
   "file": "tools/minds_chain.py",
-  "find": "for k in evaluators if k not in attested | invalid)",
-  "replace": "for k in evaluators if k not in attested)",
+  "find": "else sorted(k.hex() for k in evaluators - counted - invalid))",
+  "replace": "else sorted(k.hex() for k in evaluators - counted))",
   "kills": [
-   "test_77_status_tells_merged_from_settled"
+   "test_79_status_reads_pass_3"
   ]
  },
  "m-status-behind": {
@@ -1125,14 +1117,6 @@
    "test_78_each_structural_refusal_has_its_own_input"
   ]
  },
- "m-seal-refs": {
-  "file": "vars1.py",
-  "find": "            if s.h_target not in cells or s.h_scope_ctx not in cells:",
-  "replace": "            if False:",
-  "kills": [
-   "test_78_each_structural_refusal_has_its_own_input"
-  ]
- },
  "m-att-supplied": {
   "file": "verify/minds_verify.py",
   "find": "        \"accepted\": False,\n        \"rules_status\": None,",
@@ -1179,6 +1163,70 @@
   "replace": "    if False:  # a ref",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-status-pass3": {
+  "file": "tools/minds_chain.py",
+  "find": "counted, invalid = lens[\"endorsers\"][cid],",
+  "replace": "counted, invalid = lens[\"evaluators\"][cid][1],",
+  "kills": [
+   "test_79_status_reads_pass_3"
+  ]
+ },
+ "m-status-live-invalid": {
+  "file": "tools/minds_chain.py",
+  "find": "c.slots[1] == V.H_VERDICT_INVALID and live(cid):",
+  "replace": "c.slots[1] == V.H_VERDICT_INVALID:",
+  "kills": [
+   "test_79_status_reads_pass_3"
+  ]
+ },
+ "m-status-settled-awaits": {
+  "file": "tools/minds_chain.py",
+  "find": "awaiting=[] if row[\"settled\"] else sorted(",
+  "replace": "awaiting=sorted(",
+  "kills": [
+   "test_79_status_reads_pass_3"
+  ]
+ },
+ "m-profile-regular": {
+  "file": "tools/minds_chain.py",
+  "find": "        if mode not in (\"100644\", \"100755\"):",
+  "replace": "        if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-meter": {
+  "file": "tools/minds_chain.py",
+  "find": "\"verify/minds_verify.py\", \"meter.py\", ",
+  "replace": "\"verify/minds_verify.py\", ",
+  "kills": [
+   "test_80_the_profile_closes_over_what_the_gate_loads"
+  ]
+ },
+ "m-statement-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "    if any(\";\" in c or c.startswith(\"profile@\") for c in checks):",
+  "replace": "    if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-claims-comments": {
+  "file": "tools/check_claims.py",
+  "find": "    text = re.sub(r\"<!--.*?-->\", \"\", text, flags=re.S)\n",
+  "replace": "",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-claims-status-word": {
+  "file": "tools/check_claims.py",
+  "find": "            elif not held[0].startswith(EVIDENCE_WORD.get(c[\"status\"], \"?\")):",
+  "replace": "            elif False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  }
 }

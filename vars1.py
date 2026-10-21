@@ -2274,6 +2274,9 @@ class GitVarsRepo:
         lens_replay_memo: Dict[bytes, str] = {}
         settled: Dict[bytes, bool] = {}
         provisional: Dict[bytes, bool] = {}
+        # For each contract, decision and question Pass 3 evaluates: its evaluation policy and the keys it counts
+        evaluators: Dict[bytes, Tuple[int, Set[bytes]]] = {}
+        endorsers: Dict[bytes, Set[bytes]] = {}
 
         def witness_endorsers(wid: bytes) -> Set[bytes]:
             w_cell = cells[wid]
@@ -2380,6 +2383,7 @@ class GitVarsRepo:
                         continue
                 valid_endorsers |= (witness_endorsers(wid) & p_pks)
 
+            evaluators[cid], endorsers[cid] = (p_thr, set(p_pks)), set(valid_endorsers)
             is_set = len(valid_endorsers) >= p_thr
             settled[cid] = is_set
             provisional[cid] = not is_set
@@ -2399,6 +2403,8 @@ class GitVarsRepo:
             "stale": stale,
             "settled": settled,
             "provisional": provisional,
+            "evaluators": evaluators,
+            "endorsers": endorsers,
         }
 
 
