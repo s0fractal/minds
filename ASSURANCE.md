@@ -15,7 +15,9 @@ mutation tests. **Assumed** means nothing here checks it.
 | An executable Passes 1–2 equals the model | Proved | `Exec.lean`, `ExecProof.lean` |
 | `kernel/lens.wasm` Passes 1–2 equal that executable | Differential (I9) | `test_vars1_props.py` |
 | `kernel/lens.wasm` fold equals the model's own compiled fold | Differential (I10) | `test_vars1_props.py` |
-| On every two-cell log in nine families (a genesis scope and an axiom with each edge kind, an INVALID verdict, an acceptance, a scope rotation, a foreign scope, a contract; symbolic threshold, origin, birth and one extra seal), the kernel does not panic or overflow, and refuses with a known code or answers with status bits that obey §4.2 (effective = not invalidated; active ⇒ effective, accepted, not retired, not superseded; stale ⇒ active; local ⇒ accepted; flags 0/1; the governing scope is a local scope) | Bounded (Kani, CI) | `kernel/src/lib.rs` `proofs`, `.github/workflows/kani.yml` |
+| On every two-cell log in three families (a genesis scope plus: an axiom relying on it; an acceptance of it; a foreign scope no acceptance admits), with symbolic threshold, origin, birth and one extra seal, the kernel does not panic or overflow, and refuses with a known code or answers with status bits that obey §4.2 (effective = not invalidated; active ⇒ effective, accepted, not retired, not superseded; stale ⇒ active; local ⇒ accepted; flags 0/1; the governing scope is a local scope) | Bounded (Kani 0.68, local: `kernel/assure.sh kani`, 4–7 min and 14–15 GB each; not in CI) | `kernel/src/lib.rs` `proofs` |
+| The same for families with supersedes, retires or invalidates edges, an INVALID verdict, a scope rotation, a contract | **Not established**: they need deeper unwinding or more than 16 GB on this machine | — |
+| The kernel does not panic, overflow or return an unknown code on arbitrary bytes | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`) | `kernel/fuzz` |
 | `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL`, on macOS and Linux | Tested (CI) | `.github/workflows/check.yml` |
 
 ## Replay (§5)
@@ -54,6 +56,13 @@ One mutant has been run so far: making `Active` ignore `accepted` fails `two_cel
 assertion. The other invariants and families are not yet burned by mutants of their own. The first version of these checks had no family that reached an unaccepted cell (a foreign cell is refused
 without a self-sealed scope of its origin, which no two-cell log had), so the same mutant passed every family; the
 foreign-scope family was added for that reason. An invariant is only as checked as the families that reach it.
+
+**Kernel time is not bounded by input size.** Fuzzing found that every count in the input is checked against the
+input's length except the commit count `C`, and the fold visits every commit: an 8 KB input claiming 84 million
+commits runs for minutes. The host supplies `C` from its own chain and bundles never run the kernel, so the live
+chains are not exposed; as a standalone component the kernel's time is `O(C·(N+S))`. Bounding `C` (or skipping
+commits with no births or seals) changes `lens.wasm`, hence `H_LENS_KERNEL`: it waits for the next rules identity.
+The fuzzer skips inputs with `C > 4096` so it keeps looking for correctness defects.
 
 Kani runs the kernel on the host, where `usize` is 64 bits; wasm32 has 32. An overflow possible only at 32 bits is
 outside these checks (the kernel bounds every count by the input length, which wasm32 already bounds). The bounds

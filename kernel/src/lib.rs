@@ -21,22 +21,22 @@
 //! (bit 0: an Authorized scope, acceptance or schema cell), and one byte per invalidates, retires and supersedes edge,
 //! cell by cell in that order (1 = authorized). A negative return is a malformed input (-1..-5) or a refusal of the
 //! commit log by the fold (-10 and below).
-#![cfg_attr(not(kani), no_std)]
+#![cfg_attr(not(any(kani, fuzzing)), no_std)]
 
-#[cfg(not(kani))] use core::arch::wasm32;
+#[cfg(not(any(kani, fuzzing)))] use core::arch::wasm32;
 
-#[cfg(not(kani))] #[panic_handler]
+#[cfg(not(any(kani, fuzzing)))] #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     wasm32::unreachable()
 }
 
-#[cfg(not(kani))] extern "C" {
+#[cfg(not(any(kani, fuzzing)))] extern "C" {
     static __heap_base: u8;
 }
 
 static mut TOP: usize = 0;
 
-#[cfg(not(kani))] unsafe fn bump(bytes: usize) -> *mut u8 {
+#[cfg(not(any(kani, fuzzing)))] unsafe fn bump(bytes: usize) -> *mut u8 {
     if TOP == 0 {
         TOP = core::ptr::addr_of!(__heap_base) as usize;
     }
@@ -941,22 +941,27 @@ unsafe fn lens(g: &Graph, scope: usize, latched: &[u8], auth: &[u8]) -> Result<i
 // Kani runs on the host (64-bit usize), so it does not see wasm32-only overflows; the arena below stands in for
 // linear memory and logs every allocation, so a harness can find the output `lens` returned.
 // ---------------------------------------------------------------------------------------------------------------
-#[cfg(kani)]
+#[cfg(any(kani, fuzzing))]
 extern crate std;
-#[cfg(kani)]
+#[cfg(any(kani, fuzzing))]
 static mut ALLOCS: [(*const u8, usize); 96] = [(core::ptr::null(), 0); 96];
-#[cfg(kani)]
+#[cfg(any(kani, fuzzing))]
 static mut NALLOC: usize = 0;
 
-/// Under Kani each allocation is its own heap object (the model checker tracks separate objects far more cheaply
-/// than offsets into one arena), logged so a harness can find the output `lens` returned.
-#[cfg(kani)]
+/// On the host (Kani, fuzzing) each allocation is its own heap object (the model checker tracks separate objects far
+/// more cheaply than offsets into one arena), logged so a harness can find the output `lens` returned, and freed at
+/// the next `reset`.
+#[cfg(any(kani, fuzzing))]
 unsafe fn bump(bytes: usize) -> *mut u8 {
     if TOP == 0 {
         TOP = 1;
+        for i in 0..NALLOC {
+            let (p, b) = ALLOCS[i];
+            std::alloc::dealloc(p as *mut u8, std::alloc::Layout::from_size_align(b.max(1), 8).unwrap());
+        }
         NALLOC = 0;
     }
-    if bytes > 1 << 16 || NALLOC >= 96 {
+    if bytes > 1 << 24 || NALLOC >= 96 {
         return core::ptr::null_mut();
     }
     let layout = std::alloc::Layout::from_size_align(bytes.max(1), 8).unwrap();
@@ -1078,9 +1083,13 @@ mod proofs {
         match r {
             Err(e) => assert!(known_refusal(e)),
             Ok(_) => {
+                // the output's length is known from the input: header, two status and two authority bytes, and one
+                // flag per invalidates, retires and supersedes edge of cell 1 (a concrete bound keeps the check cheap)
+                let flags = (edges1[2] as usize) + (edges1[3] as usize) + (edges1[4] as usize);
                 let out = output();
+                assert_eq!(out.len(), 12 + flags);
                 let total = u32::from_le_bytes([out[0], out[1], out[2], out[3]]) as usize;
-                assert_eq!(total + 4, out.len());
+                assert_eq!(total + 4, 12 + flags);
                 let scope = u32::from_le_bytes([out[4], out[5], out[6], out[7]]) as usize;
                 assert!(scope == 0 || (scope == 1 && *schema1 == S_SCOPE && origin1 == 0));
                 let origin = [0, origin1];
@@ -1095,66 +1104,42 @@ mod proofs {
                     assert!(origin[v] != 0 || acc);
                     assert!(out[10 + v] <= 1);
                 }
-                for f in &out[12..] {
-                    assert!(*f <= 1);
+                for i in 0..flags {
+                    assert!(out[12 + i] <= 1);
                 }
             }
         }
     }
 
     #[kani::proof]
-    #[kani::unwind(34)]
+    #[kani::unwind(20)]
     fn two_cells_axiom_relies() {
         unsafe { two_cells(&STANDARD[0], &[7u8; 32], &H_EMPTY, &[], [true, false, false, false, false]) }
     }
 
     #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_axiom_supersedes() {
-        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &[6u8; 32], &[], [false, false, true, false, false]) }
-    }
-
-    #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_axiom_retires() {
-        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &[6u8; 32], &[], [false, false, false, true, false]) }
-    }
-
-    #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_axiom_invalidates() {
-        unsafe { two_cells(&STANDARD[0], &[7u8; 32], &H_EMPTY, &[], [false, false, false, false, true]) }
-    }
-
-    #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_invalid_verdict() {
-        unsafe { two_cells(&S_VERDICT, &ID0, &H_EMPTY, &[H_EMPTY, H_VERDICT_INVALID, [8u8; 32]], [false, true, false, false, true]) }
-    }
-
-    #[kani::proof]
-    #[kani::unwind(34)]
+    #[kani::unwind(20)]
     fn two_cells_acceptance() {
         unsafe { two_cells(&S_ACCEPTANCE, &ID0, &H_EMPTY, &[[9u8; 32], ID0], [false, false, false, false, false]) }
-    }
-
-    #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_scope_rotation() {
-        unsafe { two_cells(&S_SCOPE, &[7u8; 32], &[6u8; 32], &[POL, POL, H_EMPTY], [false, false, true, false, false]) }
     }
 
     /// Cell 1 as a scope cell: with origin 1 and a self-seal it is a foreign scope that no acceptance admits, so the
     /// invariants about unaccepted cells are reached (the other cases' foreign cells are refused for want of one).
     #[kani::proof]
-    #[kani::unwind(34)]
+    #[kani::unwind(20)]
     fn two_cells_foreign_scope() {
         unsafe { two_cells(&S_SCOPE, &[7u8; 32], &H_EMPTY, &[POL, POL, H_EMPTY], [false, false, false, false, false]) }
     }
+}
 
-    #[kani::proof]
-    #[kani::unwind(34)]
-    fn two_cells_contract() {
-        unsafe { two_cells(&S_CONTRACT, &[7u8; 32], &H_EMPTY, &[H_PROVISIONAL, H_EMPTY, H_EMPTY, POL], [true, false, false, false, false]) }
+/// The fuzz entry point (`kernel/fuzz`): one evaluation of arbitrary bytes, its result code (0 for an output).
+#[cfg(fuzzing)]
+pub fn fuzz_evaluate(input: &[u8]) -> i32 {
+    unsafe {
+        reset();
+        match evaluate(input) {
+            Ok(_) => 0,
+            Err(e) => e,
+        }
     }
 }
