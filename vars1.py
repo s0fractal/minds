@@ -17,7 +17,7 @@ import sys
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 
 # The bundle verifier (§4.4) is its own standalone file: Ed25519, atoms, cells, seals, the standard schemas and the
@@ -78,8 +78,32 @@ H_LENS_KERNEL_V2 = bytes.fromhex("7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730c
 KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
 if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
     raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
-RULES_MODULES: Dict[bytes, Path] = {H_LENS_KERNEL: KERNEL_DIR / "lens.wasm", H_LENS_KERNEL_V2: KERNEL2_DIR / "lens2.wasm"}
-RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM}
+# v1 with the commit count bounded by the input's length (`kernel/`, built with `--features commit-bound`): the first
+# resource hardening (AMENDMENTS.md). Dormant like v2: a scope reaches it only by a rules change (§4.3).
+H_LENS_KERNEL_V1B = bytes.fromhex("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd")
+KERNEL1B_ATOM = (KERNEL_DIR / "lens1b.wasm").read_bytes()
+if sha256(KERNEL1B_ATOM) != H_LENS_KERNEL_V1B:
+    raise RuntimeError("kernel/lens1b.wasm does not hash to H_LENS_KERNEL_V1B")
+
+
+@dataclass(frozen=True)
+class Rules:
+    """A rules module this host implements: its file, the input encoding it reads (`v1`, or `v2` with typed
+    references, RULES-V2.md), and its resource refusals: the negative codes by which it refuses an input for its
+    size, not its meaning (§4.3, a resource hardening)."""
+    path: Path
+    encoding: str
+    resource_codes: FrozenSet[int] = frozenset()
+
+
+RULES: Dict[bytes, Rules] = {
+    H_LENS_KERNEL: Rules(KERNEL_DIR / "lens.wasm", "v1"),
+    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / "lens2.wasm", "v2"),
+    H_LENS_KERNEL_V1B: Rules(KERNEL_DIR / "lens1b.wasm", "v1", frozenset({-7})),
+}
+RULES_MODULES: Dict[bytes, Path] = {h: r.path for h, r in RULES.items()}
+RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM,
+                                   H_LENS_KERNEL_V1B: KERNEL1B_ATOM}
 KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 INTRINSIC_HASHES: Set[bytes] = {
@@ -123,7 +147,7 @@ def u64_of(h: bytes, atoms: Dict[bytes, bytes], what: str = "u64") -> int:
 
 # Fields that may hold H_EMPTY to mean "none"; every other slot must have its declared type.
 # Closed: a schema naming another type is refused at the gate, so check_slot_type never sees one
-FIELD_TYPES = {"utf8", "u64", "pol1", "root", "digest", "wasm", "cell", "hash"}
+FIELD_TYPES = {"utf8", "u64", "pol1", "root", "digest", "wasm", "kin1", "cell", "hash"}
 VERDICT_CODES = {H_REPLAYED, H_ATTESTED, H_VERDICT_INVALID, H_NOT_ASSESSED}
 OPTIONAL_FIELDS = {"required_comp", "expected_outcome", "evaluator_policy", "ckpt_or_witness"}
 
@@ -425,6 +449,8 @@ def check_slot_type(h: bytes, typ: str, atoms: Dict[bytes, bytes], cells: Dict[b
         pass  # a bare SHA-256 value; it names bytes that need not be stored (§2, projection)
     elif typ == "wasm":
         atom(b"\x00asm")
+    elif typ == "kin1":
+        atom(b"KIN1")
     elif typ == "cell":
         if h not in cells:
             raise VarsError(f"slot type: {h.hex()[:12]} is not a cell")
@@ -484,6 +510,7 @@ KERNEL_CODES = {
     -20: "new scope lacks admission quorum", -21: "acceptance not pinned to a self-sealed scope",
     -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
     -6: "reference list differs from the rules' reading", -25: "rotation back to the v1 rules",
+    -7: "more commits than input bytes (a resource bound)",
 }
 
 
@@ -493,6 +520,11 @@ class KernelRefusal(VarsError):
     def __init__(self, code: int):
         self.code = code
         super().__init__(f"rules kernel E{code}: {KERNEL_CODES.get(code, 'unknown code')}")
+
+
+class EvidenceMissing(VarsError):
+    """What a rules-change decision names is not in this repository: its replay cannot run here. This is not a
+    refutation of the decision; fetch its evidence (`refs/vars/evidence/*`, AMENDMENTS.md) and replay again."""
 
 
 class TwinDivergence(RuntimeError):
@@ -535,7 +567,62 @@ class KernelRunner:
         self.proc.wait(timeout=10)
 
 
+@dataclass(frozen=True)
+class RulesResult:
+    """What running rules on an input under a budget of steps gives (§4.3): an `output` (its bytes), a `refusal`
+    (its code), `exhausted` (the budget ran out first) or `fault` (the module trapped: a defect, never a verdict).
+    Exhaustion is a fact about the budget, not about the input: it is a local result, never a semantic one."""
+    kind: str
+    output: bytes = b""
+    code: int = 0
+
+    def encode(self) -> bytes:
+        """`O` + output bytes, `E` + the code as i32 little-endian, `X` or `T`: what a decision's digests hash."""
+        if self.kind == "output":
+            return b"O" + self.output
+        if self.kind == "refusal":
+            return b"E" + struct.pack("<i", self.code)
+        return {"exhausted": b"X", "fault": b"T"}[self.kind]
+
+
+MAX_RULES_BUDGET = 1 << 30  # steps a decision may ask the gate to spend on one metered run
+
+
+class MeteredRunner:
+    """Runs a rules module rewritten by `meter.metered` under a budget of steps (kernel/run_metered.mjs)."""
+
+    def __init__(self, rules: bytes) -> None:
+        import meter
+        self.rules = rules
+        self.proc = subprocess.Popen(["node", str(KERNEL_DIR / "run_metered.mjs")],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.proc.stdin.write(meter.metered(RULES_MODULES[rules].read_bytes()).hex() + "\n")
+
+    def run(self, kernel_input: bytes, budget: int) -> RulesResult:
+        if not 0 <= budget <= MAX_RULES_BUDGET:
+            raise VarsError(f"a budget of {budget} steps is outside 0..{MAX_RULES_BUDGET}")
+        self.proc.stdin.write(f"{budget} {kernel_input.hex()}\n")
+        self.proc.stdin.flush()
+        line = self.proc.stdout.readline().strip()
+        if not line:
+            raise RuntimeError("metered rules kernel produced no output")
+        if line == "X":
+            return RulesResult("exhausted")
+        if line == "T":
+            return RulesResult("fault")
+        if line.startswith("E"):
+            return RulesResult("refusal", code=int(line[1:]))
+        return RulesResult("output", output=bytes.fromhex(line))
+
+
 _KERNELS: Dict[bytes, KernelRunner] = {}
+_METERED: Dict[bytes, MeteredRunner] = {}
+
+
+def metered_runner(rules: bytes) -> MeteredRunner:
+    if rules not in _METERED:
+        _METERED[rules] = MeteredRunner(rules)
+    return _METERED[rules]
 
 
 def kernel_runner(rules: bytes = H_LENS_KERNEL) -> KernelRunner:
@@ -651,8 +738,9 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes],
 Delta = Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]
 
 
-# §4.3 Changing the rules. A rules-change decision is a cell of the scope's schema `<scope>/rules-change/schema`
-# with exactly these fields; its id is fixed by the scope's name, so the gate recognises a decision by schema id.
+# §4.3 Changing the rules. A rules-change decision is a cell of one of the scope's rules-change schemas, one per class
+# of change, each with exactly its fields; their ids are fixed by the scope's name, so the gate recognises a decision
+# by schema id. A semantic correction (`<scope>/rules-change/schema`, the first class) carries (a)-(c):
 RULES_CHANGE_FIELDS = (
     "old_rules:wasm", "new_rules:wasm",          # the governing scope's rules, and those the rotation names
     "basis:utf8",                                # hex id of the rotation's parent: the chain so far
@@ -662,19 +750,46 @@ RULES_CHANGE_FIELDS = (
     "refutes:digest",                            # (b)
     "latches:digest",                            # (c) over both logs
 )
+# A resource hardening or a validation tightening: the new rules refuse an input (a KIN1 atom) on which the old rules
+# exhaust the budget or trap (hardening), or give an output (tightening); the chain so far is reproduced byte for byte.
+REFUSAL_CHANGE_FIELDS = (
+    "old_rules:wasm", "new_rules:wasm", "basis:utf8", "reproduce:digest",
+    "input:kin1",                                # the counterexample: an input of both rules (one encoding)
+    "budget:u64",                                # steps each rules may take on it (meter.py)
+    "refusal:u64",                               # the new rules' refusal code, negated
+    "refutes:digest",                            # over both results on the input
+)
+# An implementation-equivalent change: other bytes, the same output over the chain so far, byte for byte.
+EQUIVALENT_CHANGE_FIELDS = ("old_rules:wasm", "new_rules:wasm", "basis:utf8", "reproduce:digest")
+RULES_CHANGE_CLASSES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "correction": ("rules-change/schema", RULES_CHANGE_FIELDS),
+    "hardening": ("rules-change/hardening/schema", REFUSAL_CHANGE_FIELDS),
+    "tightening": ("rules-change/tightening/schema", REFUSAL_CHANGE_FIELDS),
+    "equivalent": ("rules-change/equivalent/schema", EQUIVALENT_CHANGE_FIELDS),
+}
 
 
-def rules_change_schema(scope: str) -> Tuple[Cell, Dict[bytes, bytes]]:
-    """The schema cell whose instances are `scope`'s rules-change decisions, with the atoms it names."""
+def rules_change_schema(scope: str, kind: str = "correction") -> Tuple[Cell, Dict[bytes, bytes]]:
+    """The schema cell whose instances are `scope`'s rules-change decisions of class `kind`, with the atoms it
+    names."""
     atoms: Dict[bytes, bytes] = {}
 
     def put(raw: bytes) -> bytes:
         atoms[sha256(raw)] = raw
         return sha256(raw)
 
-    cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/rules-change/schema")), h_payload=H_EMPTY,
-                slots=tuple(put(atom_utf8(d)) for d in RULES_CHANGE_FIELDS))
+    name, fields = RULES_CHANGE_CLASSES[kind]
+    cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/{name}")), h_payload=H_EMPTY,
+                slots=tuple(put(atom_utf8(d)) for d in fields))
     return cell, atoms
+
+
+def rules_change_class(scope: str, schema_id: bytes) -> Optional[str]:
+    """The class of change whose decision schema of `scope` has id `schema_id`, if any."""
+    for kind in RULES_CHANGE_CLASSES:
+        if rules_change_schema(scope, kind)[0].id == schema_id:
+            return kind
+    return None
 
 
 def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, List[bytes]]]:
@@ -691,6 +806,11 @@ def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, Li
     return (thr, pks) if len(set(pks)) >= thr else None
 
 
+def atom_kin1(kernel_input: bytes) -> bytes:
+    """A KIN1 atom: an input of rules (§4.3), carried as the counterexample of a hardening or a tightening."""
+    return b"KIN1" + kernel_input
+
+
 def kernel_facts(scope: str, deltas: List["Delta"], rules: Optional[bytes] = None) -> Tuple[bytes, List[bytes]]:
     """Encode a commit log as the input of `rules` (§4.3), by default the rules of its last commit's epoch: parsed
     cells, verified seals, POL1 rosters; for v2, schema masks and every cell's references, each read by the rules of
@@ -699,7 +819,7 @@ def kernel_facts(scope: str, deltas: List["Delta"], rules: Optional[bytes] = Non
     `deltas[i]` holds what commit i adds to its parent's tree, so an object's birth is the index of its delta.
     Only parsing happens here: the order of cells, interned origins and keys, and edge lists as cell indices."""
     value_refs, _, epochs = chain_refs(scope, deltas)
-    v2 = (epochs[-1] if rules is None else rules) != H_LENS_KERNEL
+    v2 = RULES[epochs[-1] if rules is None else rules].encoding == "v2"
     atoms: Dict[bytes, bytes] = {}
     cells: Dict[bytes, Cell] = {}
     seals: Dict[bytes, Seal] = {}
@@ -1003,16 +1123,14 @@ class GitVarsRepo:
         actual_old = self.ref_commit(scope)
         if actual_old != expected_old:
             raise VarsError(f"CAS ref mismatch: expected {expected_old}, actual {actual_old}")
-        self._check_commit(scope, candidate_commit, expected_old)
+        evidence = self._check_commit(scope, candidate_commit, expected_old)
         self._gate_checked.add((scope, candidate_commit))
 
-        # Atomic compare-and-swap update-ref
-        cmd = ["update-ref", f"refs/vars/heads/{scope}", candidate_commit]
-        if expected_old is not None:
-            cmd.append(expected_old)
-        else:
-            cmd.append("0" * 40)
-        self._git(*cmd)
+        # Atomic compare-and-swap of the scope's ref, in one transaction with the evidence refs of a rules change
+        # (§4.3): its counterexample stays reachable from refs/vars/* wherever the chain goes
+        lines = [f"update refs/vars/heads/{scope} {candidate_commit} {expected_old or '0' * self.oid_hex_len()}"]
+        lines += [f"update {ref} {commit}" for ref, commit in evidence]
+        self._git("update-ref", "--stdin", input_bytes=("\n".join(lines) + "\n").encode())
 
     def is_commit_id(self, name: str) -> bool:
         """`name` is the canonical id of a commit in this repository (`canonical_commit_id`)."""
@@ -1038,9 +1156,10 @@ class GitVarsRepo:
                 self._gate_checked.add((scope, commit))
             parent = commit
 
-    def _check_commit(self, scope: str, candidate_commit: str, expected_old: Optional[str]) -> None:
-        """Checks #1-#6 and the fold for `candidate_commit` on top of `expected_old` (§3); nothing is written.
-        Both are read through `commit_chain`, which takes canonical commit ids only."""
+    def _check_commit(self, scope: str, candidate_commit: str, expected_old: Optional[str]) -> List[Tuple[str, str]]:
+        """Checks #1-#7 and the fold for `candidate_commit` on top of `expected_old` (§3); nothing is written.
+        Both are read through `commit_chain`, which takes canonical commit ids only. Returns the evidence refs a
+        rules change asks to be written with it (§4.3)."""
         # Check #1: Single-parent linear chain (or Genesis)
         cat_commit = self._git("cat-file", "commit", candidate_commit).decode()
         header = cat_commit.split("\n\n", 1)[0]  # the message may contain any line
@@ -1108,8 +1227,8 @@ class GitVarsRepo:
             is_scope_name = slot_str == f"{slot_str.split('/', 1)[0]}/SCOPE"
             if (c.h_schema == H_SCHEMA["scope"]) != is_scope_name:
                 raise VarsError(f"reserved scope name: {slot_str!r} must be <origin>/SCOPE iff the cell is a schema.scope")
-            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES_MODULES:
-                raise VarsError("scope names rules this host does not implement (slots[2] is neither v1 nor v2)")
+            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES:
+                raise VarsError("scope names rules this host does not implement (slots[2] is not in RULES)")
             if c.h_schema == H_META_SCHEMA:
                 if c.h_payload != H_EMPTY or any(
                     m != H_EMPTY for m in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates, c.h_loss)
@@ -1237,7 +1356,7 @@ class GitVarsRepo:
         # reference, so a new cell may not have an id that an older cell born in a v1 epoch names there. A cell born
         # under v2 rules reads references by type (RULES-V2.md): its opaque values veto nothing.
         prior_rules = commit_rules(scope, prior_deltas) if prior_deltas else []
-        named_before = {x for i, (_, d_cells, _) in enumerate(prior_deltas) if prior_rules[i] == H_LENS_KERNEL
+        named_before = {x for i, (_, d_cells, _) in enumerate(prior_deltas) if RULES[prior_rules[i]].encoding == "v1"
                         for pc in d_cells.values() for x in (pc.h_payload, *pc.slots)}
         for cid in set(cells) - prior:
             if cid in named_before:
@@ -1261,19 +1380,18 @@ class GitVarsRepo:
         self._evaluate_commit_chain(scope, self.commit_chain(candidate_commit))
 
         # Changing the rules (§4.3): only by a rotation admitted with a decision whose computations replay
-        self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior)
+        return self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior)
 
     def _check_rules_change(self, scope: str, expected_old: Optional[str], prior_chain: List[str],
                             cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], seals: Dict[bytes, Seal],
-                            prior: Set[bytes]) -> None:
+                            prior: Set[bytes]) -> List[Tuple[str, str]]:
         """A rotation whose new scope names other rules than the governing scope is admitted only with exactly one
-        rules-change decision in its commit, endorsed by the governing admission quorum, whose three computations
-        the gate replays here: (a) the new rules reproduce every status the old rules give over the chain so far,
-        (b) the counterexample, a chain this gate admits, gets the verdict the decision names right from the new
-        rules and another from the old, and (c) no latch the old rules set there or over the chain is lost."""
+        rules-change decision in its commit, of one class (§4.3), endorsed by the governing admission quorum, whose
+        computations the gate replays here for its class; and the new rules must still decide every earlier rules
+        change's counterexample as that change established (d). Returns the evidence refs to write with the
+        rotation: `(refs/vars/evidence/<scope>/<decision id>, counterexample commit)` for a counterexample chain."""
         new = set(cells) - prior
-        schema_id = rules_change_schema(scope)[0].id
-        decisions = sorted(cid for cid in new if cells[cid].h_schema == schema_id)
+        decisions = sorted(cid for cid in new if rules_change_class(scope, cells[cid].h_schema) is not None)
         origin = lambda c: parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]  # noqa: E731
         rotation = [cells[cid] for cid in new if cells[cid].h_schema == H_SCHEMA["scope"] and origin(cells[cid]) == scope]
         base = None
@@ -1282,12 +1400,15 @@ class GitVarsRepo:
         if base is None or rotation[0].slots[2] == base.slots[2]:
             if decisions:
                 raise VarsError("a rules-change decision comes only with the rotation to the rules it names")
-            return
+            return []
         if len(decisions) != 1:
             raise VarsError("a rotation to other rules needs exactly one rules-change decision in its commit (§4.3)")
         d = cells[decisions[0]]
+        kind = rules_change_class(scope, d.h_schema)
         old, new_rules = base.slots[2], rotation[0].slots[2]
-        f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_FIELDS), d.slots))
+        if RULES[old].encoding == "v2" and RULES[new_rules].encoding == "v1":
+            raise VarsError("rules that read references as v1 does cannot read a v2 epoch: no rotation goes there")
+        f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_CLASSES[kind][1]), d.slots))
         if (f["old_rules"], f["new_rules"]) != (old, new_rules):
             raise VarsError("the rules-change decision names other rules than those the rotation changes")
         if parse_utf8(atoms[f["basis"]]) != expected_old:
@@ -1298,13 +1419,33 @@ class GitVarsRepo:
                      if s.h_target == d.id and s.h_scope_ctx == base.id and s.actor_pubkey in pks}
         if len(endorsers) < thr:
             raise VarsError("the rules-change decision lacks the governing scope's admission quorum")
+        refs: List[Tuple[str, str]] = []
+        if kind == "correction":
+            refs = self._check_correction(scope, expected_old, old, new_rules, f, atoms, d.id)
+        else:
+            if RULES[old].encoding != RULES[new_rules].encoding:
+                raise VarsError(f"{'an' if kind == 'equivalent' else 'a'} {kind} change keeps the input encoding: its "
+                                "evidence is one input of both rules")
+            ev = self.rules_change_basis(scope, expected_old, old, new_rules)
+            if f["reproduce"] != ev["reproduce"]:
+                raise VarsError(f"rules change ({kind}): the decision's reproduce digest differs from the gate's replay")
+            if ev["old"] != ev["new"]:
+                raise VarsError(f"rules change ({kind}): the new rules do not give the old rules' output over the "
+                                "chain so far, byte for byte")
+            if kind != "equivalent":
+                self._check_refusal(kind, old, new_rules, f, atoms)
+        self._check_earlier_changes(scope, prior_chain, new_rules, d.id)
+        return refs
+
+    def _check_correction(self, scope: str, basis: str, old: bytes, new_rules: bytes, f: Dict[str, bytes],
+                          atoms: Dict[bytes, bytes], decision: bytes) -> List[Tuple[str, str]]:
+        """(a)-(c) of a semantic correction (§4.3)."""
         cx_scope, cx_tip = parse_utf8(atoms[f["counterexample_scope"]]), parse_utf8(atoms[f["counterexample"]])
         # the signed field pins the counterexample: a ref, an abbreviation or a revision expression would let its
         # meaning move after admission, so a later replay could disagree with the gate that admitted it
-        if not self.is_commit_id(cx_tip):
-            raise VarsError("the rules-change decision's counterexample is not a full commit id")
+        self.require_evidence_commit(cx_tip, "the rules-change decision's counterexample")
         self.check_chain(cx_scope, cx_tip)
-        ev = self.rules_change_evidence(scope, expected_old, old, new_rules, cx_scope, cx_tip)
+        ev = self.rules_change_evidence(scope, basis, old, new_rules, cx_scope, cx_tip)
 
         # (a) every status of the chain so far, and its governing scope, reproduced
         if f["reproduce"] != ev["reproduce"]:
@@ -1331,6 +1472,96 @@ class GitVarsRepo:
             if any(v and not n["auth"][k] for k, v in o["auth"].items()) or \
                     any(v and not n["edges"][k] for k, v in o["edges"].items()):
                 raise VarsError("rules change (c): a latch the old rules set is lost under the new rules")
+        return [(f"refs/vars/evidence/{scope}/{decision.hex()}", cx_tip)]
+
+    def _check_refusal(self, kind: str, old: bytes, new_rules: bytes, f: Dict[str, bytes],
+                       atoms: Dict[bytes, bytes]) -> None:
+        """A resource hardening or a validation tightening (§4.3): on the decision's input, under its budget of
+        steps, the new rules refuse with the code it names, a resource refusal of theirs for a hardening and any other
+        for a tightening; the old rules exhaust the budget or trap (hardening), or give an output (tightening)."""
+        budget, code = u64_of(f["budget"], atoms, "budget"), -u64_of(f["refusal"], atoms, "refusal")
+        ev = self.rules_change_refusal(old, new_rules, atom_of(f["input"], atoms, "input")[4:], budget)
+        if f["refutes"] != ev["refutes"]:
+            raise VarsError(f"rules change ({kind}): the decision's refutes digest differs from the gate's replay")
+        o, n = ev["old"], ev["new"]
+        if n != RulesResult("refusal", code=code):
+            raise VarsError(f"rules change ({kind}): the new rules do not refuse the input with E{code} within the "
+                            f"budget (they give {n.kind}{' E' + str(n.code) if n.kind == 'refusal' else ''})")
+        resource = code in RULES[new_rules].resource_codes
+        if kind == "hardening":
+            if not resource:
+                raise VarsError(f"rules change (hardening): E{code} is not a resource refusal of the new rules")
+            if o.kind not in ("exhausted", "fault"):
+                raise VarsError(f"rules change (hardening): the old rules give {o.kind} within the budget, so there "
+                                "is nothing to harden")
+        else:
+            if resource:
+                raise VarsError(f"rules change (tightening): E{code} is a resource refusal: that is a hardening")
+            if o.kind != "output":
+                raise VarsError(f"rules change (tightening): the old rules give {o.kind}, not an output, so the new "
+                                "refusal tightens nothing")
+
+    def _check_earlier_changes(self, scope: str, prior_chain: List[str], new_rules: bytes, decision: bytes) -> None:
+        """(d) Every earlier rules change of this chain is kept: its counterexample gets, under the new rules, the
+        result that change established for the rules it introduced. A correction: the named status of the named cell
+        (by id) is still right. A hardening or a tightening: the input is still refused with the same code within
+        its budget. An implementation-equivalent change has no counterexample."""
+        atoms: Dict[bytes, bytes] = {}
+        for d_atoms, d_cells, _ in self.chain_deltas(prior_chain):
+            atoms.update(d_atoms)
+            for cid in sorted(d_cells):
+                kind = rules_change_class(scope, d_cells[cid].h_schema)
+                if kind is None or kind == "equivalent":
+                    continue
+                f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_CLASSES[kind][1]), d_cells[cid].slots))
+                then = f["new_rules"]
+                what = f"(d): the earlier rules change {cid.hex()[:12]}"
+                if kind == "correction":
+                    cx_scope, cx_tip = parse_utf8(atoms[f["counterexample_scope"]]), parse_utf8(atoms[f["counterexample"]])
+                    self.require_evidence_commit(cx_tip, f"{what}: its counterexample")
+                    cell = self.rules_output(cx_scope, cx_tip, then)[1]["order"][u64_of(f["cell"], atoms)]
+                    bit, right = u64_of(f["status"], atoms), u64_of(f["right"], atoms)
+                    try:
+                        status = self.rules_output(cx_scope, cx_tip, new_rules)[1]["status"].get(cell)
+                    except VarsError as e:
+                        raise VarsError(f"{what}: the new rules over its counterexample: {e}") from None
+                    if status is None or (status >> bit & 1) != right:
+                        raise VarsError(f"{what} is undone: the new rules no longer give its counterexample's verdict")
+                else:
+                    if RULES[then].encoding != RULES[new_rules].encoding:
+                        raise VarsError(f"{what}: its input is encoded for other rules than the new rules read")
+                    code = -u64_of(f["refusal"], atoms)
+                    got = metered_runner(new_rules).run(atoms[f["input"]][4:], u64_of(f["budget"], atoms))
+                    if got != RulesResult("refusal", code=code):
+                        raise VarsError(f"{what} is undone: the new rules no longer refuse its input with E{code}")
+
+    def require_evidence_commit(self, name: str, what: str) -> None:
+        """`name` is the canonical id of a commit whose whole history is in this repository. A string that has the
+        form of a commit id of this repository's object format but whose history is not here is missing evidence
+        (`EvidenceMissing`), not a refusal of what names it; any other string is refused."""
+        if self.is_commit_id(name):
+            got = subprocess.run(["git", "-C", str(self.repo_dir), "rev-list", "--objects", "--quiet", name],
+                                 capture_output=True)
+            if got.returncode == 0 and not self._cut_by_shallow(name):
+                return
+        elif not re.fullmatch(f"[0-9a-f]{{{self.oid_hex_len()}}}", name) or subprocess.run(
+                ["git", "-C", str(self.repo_dir), "cat-file", "-e", name], capture_output=True).returncode == 0:
+            raise VarsError(f"{what} is not a full commit id")  # not an id, or the id of another object
+        raise EvidenceMissing(f"{what} {name} is not in this repository with its history: fetch refs/vars/evidence/*")
+
+    def _cut_by_shallow(self, commit: str) -> bool:
+        """A shallow clone cuts the history of `commit`: some commit of it is a shallow boundary, whose parents Git
+        pretends away. Such a history would replay as a different chain."""
+        path = Path(self._git("rev-parse", "--git-path", "shallow").decode().strip())
+        path = path if path.is_absolute() else self.repo_dir / path
+        if not path.exists():
+            return False
+        cut = set(path.read_text().split())
+        return any(c in cut for c in self._git("rev-list", commit).decode().split())
+
+    def oid_hex_len(self) -> int:
+        fmt = self._git("rev-parse", "--show-object-format").decode().strip()
+        return 64 if fmt == "sha256" else 40
 
     def rules_output(self, scope: str, tip: str, rules: bytes) -> Tuple[bytes, Dict[str, object]]:
         """The output of `rules` over the scope's chain up to `tip`, encoded for those rules, and its reading by cell
@@ -1351,6 +1582,23 @@ class GitVarsRepo:
         return out, {"order": order, "scope": order[int.from_bytes(out[:4], "little")],
                      "status": {cid: out[4 + i] for i, cid in enumerate(order)},
                      "auth": {cid: out[4 + n + i] for i, cid in enumerate(order)}, "edges": edges}
+
+    def rules_change_basis(self, scope: str, basis: str, old: bytes, new: bytes) -> Dict[str, object]:
+        """The old and the new rules' outputs over the chain up to `basis` and the digest a hardening, tightening or
+        equivalent change carries for them: `reproduce` = SHA-256(SHA-256(old output) ‖ SHA-256(new output))."""
+        outs = []
+        for rules, what in ((old, "the old rules"), (new, "the new rules")):
+            try:
+                outs.append(self.rules_output(scope, basis, rules)[0])
+            except VarsError as e:
+                raise VarsError(f"rules change: {what} over the chain so far: {e}") from None
+        return {"reproduce": sha256(sha256(outs[0]) + sha256(outs[1])), "old": outs[0], "new": outs[1]}
+
+    def rules_change_refusal(self, old: bytes, new: bytes, kernel_input: bytes, budget: int) -> Dict[str, object]:
+        """Both rules on `kernel_input` under `budget` steps (meter.py), and the digest a hardening or tightening
+        carries: `refutes` = SHA-256(SHA-256(old result) ‖ SHA-256(new result)), results as `RulesResult.encode`."""
+        o, n = metered_runner(old).run(kernel_input, budget), metered_runner(new).run(kernel_input, budget)
+        return {"old": o, "new": n, "refutes": sha256(sha256(o.encode()) + sha256(n.encode()))}
 
     def rules_change_evidence(self, scope: str, basis: str, old: bytes, new: bytes, cx_scope: str,
                               cx_tip: str) -> Dict[str, object]:
@@ -1399,6 +1647,9 @@ class GitVarsRepo:
             twin, twin_err = None, e
         kernel_input, order = kernel_facts(scope, deltas)
         value_refs, _, rules = chain_refs(scope, deltas)
+        if twin_err is None and -7 in RULES[rules[-1]].resource_codes and len(deltas) > len(kernel_input):
+            # the twin of a resource bound (H_LENS_KERNEL_V1B): more commits than input bytes
+            twin, twin_err = None, VarsError("the commit log has more commits than its rules input has bytes")
         try:
             out = kernel_runner(rules[-1]).run(kernel_input)
         except KernelRefusal as e:
@@ -1679,7 +1930,7 @@ class GitVarsRepo:
                         raise VarsError("new schema.scope cell must supersede active SCOPE only")
                     if len(signers(s_next_id, s_base_id, adm_pks)) < adm_thr:
                         raise VarsError("new schema.scope cell lacks admission quorum under active SCOPE")
-                    if s_base.slots[2] != H_LENS_KERNEL and s_next.slots[2] == H_LENS_KERNEL:
+                    if RULES[s_base.slots[2]].encoding == "v2" and s_next.slots[2] == H_LENS_KERNEL:
                         raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
                     pending_next_scope = s_next_id
 
@@ -1838,7 +2089,7 @@ class GitVarsRepo:
             return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
 
         forward_order, parents_of, children_of = topo_order(
-            cells, atoms, fold["value_refs"] if fold["rules"] != H_LENS_KERNEL else None)
+            cells, atoms, fold["value_refs"] if RULES[fold["rules"]].encoding == "v2" else None)
         reverse_order = list(reversed(forward_order))
 
         # Pass 1 (Reverse-Topological: newest/sinks -> oldest/sources)

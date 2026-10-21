@@ -21,6 +21,16 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py show                 # releases and projections with their status
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
+    tools/minds_chain.py shadow RULES [--out FILE]
+                                              # every historical tip under its epoch's rules and under RULES: the
+                                              # manifest of every difference (commit, cell, bit, old, new)
+    tools/minds_chain.py change-rules CLASS RULES --manifest FILE [--accept DIGEST]
+                [--input FILE --budget N --refusal N]                       (hardening, tightening)
+                [--counterexample-scope S --counterexample C --cell I --status B --right R]   (correction)
+                                              # rotate to RULES with a rules-change decision (VARS-1-SPEC.md §4.3),
+                                              # only if FILE is the shadow replay of the chain now
+    tools/minds_chain.py evidence             # what each past rules change needs to replay (AMENDMENTS.md)
+    tools/minds_chain.py replay-changes       # replay each past rules change with a fresh gate
 """
 from __future__ import annotations
 
@@ -136,6 +146,154 @@ def join(repo_dir: Path, sk: bytes, pubkey: bytes, name: str) -> str:
     return c
 
 
+def _rules_read(repo: V.GitVarsRepo, scope: str, commit: str, rules: bytes) -> Tuple[str, object]:
+    """`rules` over the chain up to `commit`: ("output", its reading) or ("refusal", "E<code>")."""
+    try:
+        return "output", repo.rules_output(scope, commit, rules)[1]
+    except V.KernelRefusal as e:
+        return "refusal", f"E{e.code}"
+
+
+def _digest(doc: Dict[str, object]) -> str:
+    return V.sha256(json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()).hex()
+
+
+def shadow(repo_dir: Path, new_rules: bytes, scope: str = SCOPE) -> Dict[str, object]:
+    """Shadow replay before a rules change (VARS-1-SPEC.md §4.3): at every historical tip of the chain, the rules of
+    that tip's epoch and `new_rules`, compared bit by bit. The manifest lists every difference as
+    `{commit, cell, bit, old, new}`: a status bit (`accepted` ... `stale`), `authorized` (a cell's latch, or an edge's,
+    whose `cell` is `<w>><v>:<kind>`), `governing` (the scope cell, `cell` "-") or `result` (output or a refusal,
+    `cell` "-"). `digest` is SHA-256 over the canonical JSON of the rest."""
+    repo = V.GitVarsRepo(repo_dir)
+    chain = repo.commit_chain(repo.ref_commit(scope))
+    epochs = V.commit_rules(scope, repo.chain_deltas(chain))
+    rows: List[Dict[str, object]] = []
+    for commit, old_rules in zip(chain, epochs):
+        (ok, o), (nk, n) = _rules_read(repo, scope, commit, old_rules), _rules_read(repo, scope, commit, new_rules)
+        if (ok, nk) != ("output", "output"):
+            if (ok, o) != (nk, n):
+                rows.append({"commit": commit, "cell": "-", "bit": "result",
+                             "old": o if ok == "refusal" else "output", "new": n if nk == "refusal" else "output"})
+            continue
+        if o["scope"] != n["scope"]:
+            rows.append({"commit": commit, "cell": "-", "bit": "governing", "old": o["scope"].hex(), "new": n["scope"].hex()})
+        for cid in sorted(o["status"]):
+            for b, name in enumerate(V.KERNEL_BITS):
+                ob, nb = o["status"][cid] >> b & 1, n["status"].get(cid, 0) >> b & 1
+                if ob != nb:
+                    rows.append({"commit": commit, "cell": cid.hex(), "bit": name, "old": ob, "new": nb})
+            if bool(o["auth"][cid]) != bool(n["auth"].get(cid, 0)):
+                rows.append({"commit": commit, "cell": cid.hex(), "bit": "authorized", "old": o["auth"][cid],
+                             "new": n["auth"].get(cid, 0)})
+        for (w, v, kind) in sorted(o["edges"]):
+            if bool(o["edges"][(w, v, kind)]) != bool(n["edges"].get((w, v, kind), 0)):
+                rows.append({"commit": commit, "cell": f"{w.hex()}>{v.hex()}:{kind}", "bit": "authorized",
+                             "old": o["edges"][(w, v, kind)], "new": n["edges"].get((w, v, kind), 0)})
+    doc: Dict[str, object] = {"scope": scope, "tip": chain[-1], "tips": len(chain), "new_rules": new_rules.hex(),
+                              "differences": rows}
+    return {**doc, "digest": _digest(doc)}
+
+
+def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifest: Dict[str, object],
+                 accept: Optional[str] = None, **fields: object) -> str:
+    """Record a rotation of the scope to `new_rules` with a rules-change decision of class `kind` (§4.3), only after
+    the shadow replay: `manifest` must be `shadow`'s replay of this chain now. A hardening or an equivalent change
+    must leave every historical tip as it was; a correction or a tightening may change some, and is recorded only
+    with `accept` equal to the manifest's digest. `fields`: for a correction `counterexample_scope`,
+    `counterexample`, `cell`, `status`, `right`; for a hardening or a tightening `input` (bytes), `budget`,
+    `refusal` (the code, negated). The gate then replays the decision's own computations."""
+    if manifest != shadow(repo_dir, new_rules):
+        raise V.VarsError("the shadow manifest is not this chain's replay under those rules now: run `shadow` again")
+    if manifest["differences"]:
+        if kind in ("hardening", "equivalent"):
+            raise V.VarsError(f"a {kind} change must leave every historical tip as it was: the shadow manifest lists "
+                              f"{len(manifest['differences'])} differences")
+        if accept != manifest["digest"]:
+            raise V.VarsError("the shadow manifest lists differences: record the change only with --accept <its digest>")
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    base_id = governing_scope(repo)
+    base = repo.read_cas_tree(tip)[1][base_id]
+    atoms: Dict[bytes, bytes] = {new_rules: V.RULES_ATOMS[new_rules]}
+    put = lambda raw: _put(atoms, raw)  # noqa: E731
+    schema, schema_atoms = V.rules_change_schema(SCOPE, kind)
+    atoms.update(schema_atoms)
+    vals: Dict[str, bytes] = {"old_rules": base.slots[2], "new_rules": new_rules, "basis": put(V.atom_utf8(tip))}
+    if kind == "correction":
+        cx_scope, cx = str(fields["counterexample_scope"]), str(fields["counterexample"])
+        ev = repo.rules_change_evidence(SCOPE, tip, base.slots[2], new_rules, cx_scope, cx)
+        vals.update(reproduce=ev["reproduce"], counterexample_scope=put(V.atom_utf8(cx_scope)),
+                    counterexample=put(V.atom_utf8(cx)), refutes=ev["refutes"], latches=ev["latches"],
+                    **{k: put(V.atom_u64(int(fields[k]))) for k in ("cell", "status", "right")})
+    else:
+        vals["reproduce"] = repo.rules_change_basis(SCOPE, tip, base.slots[2], new_rules)["reproduce"]
+        if kind != "equivalent":
+            inp, budget = bytes(fields["input"]), int(fields["budget"])
+            vals.update(input=put(V.atom_kin1(inp)), budget=put(V.atom_u64(budget)),
+                        refusal=put(V.atom_u64(int(fields["refusal"]))),
+                        refutes=repo.rules_change_refusal(base.slots[2], new_rules, inp, budget)["refutes"])
+    names = [f.split(":")[0] for f in V.RULES_CHANGE_CLASSES[kind][1]]
+    decision = V.Cell(schema.id, put(V.atom_utf8(f"{SCOPE}/rules-change/{new_rules.hex()[:12]}")),
+                      put(V.atom_utf8(f"{SCOPE} moves to rules {new_rules.hex()} ({kind}); shadow manifest "
+                                      f"{manifest['digest']}, {len(manifest['differences'])} differences")),
+                      slots=tuple(vals[n] for n in names))
+    scope = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8(f"{SCOPE}/SCOPE")),
+                   put(V.atom_utf8(f"{SCOPE} under rules {new_rules.hex()[:12]}")), h_supersedes=put(V.atom_hvec([base_id])),
+                   h_loss=put(V.atom_utf8(f"rules change ({kind})")), slots=(base.slots[0], base.slots[1], new_rules))
+    cells = [schema, decision, scope]
+    c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, base_id) for x in cells],
+                                    parent_commit=tip)
+    repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    return c
+
+
+def evidence(repo_dir: Path, scope: str = SCOPE) -> Dict[str, object]:
+    """The evidence manifest of every rules change on the chain (§4.3): for each decision, its rotation commit, class,
+    rules, basis, and what its replay needs beyond the chain: a counterexample chain, reachable from
+    `refs/vars/evidence/<scope>/<decision>`, or an input carried in the chain as a KIN1 atom. Every rules module it
+    names is carried in the chain as an atom too (`in_chain`). `package` is SHA-256 over the canonical JSON of the
+    items: what a fresh clone needs, by name, to replay each change (`replay_changes`)."""
+    repo = V.GitVarsRepo(repo_dir)
+    chain = repo.commit_chain(repo.ref_commit(scope))
+    items: List[Dict[str, object]] = []
+    atoms: Dict[bytes, bytes] = {}
+    for commit, (d_atoms, d_cells, _) in zip(chain, repo.chain_deltas(chain)):
+        atoms.update(d_atoms)
+        for cid in sorted(d_cells):
+            kind = V.rules_change_class(scope, d_cells[cid].h_schema)
+            if kind is None:
+                continue
+            f = dict(zip((x.split(":")[0] for x in V.RULES_CHANGE_CLASSES[kind][1]), d_cells[cid].slots))
+            item: Dict[str, object] = {"decision": cid.hex(), "commit": commit, "class": kind,
+                                       "old_rules": f["old_rules"].hex(), "new_rules": f["new_rules"].hex(),
+                                       "in_chain": sorted(h.hex() for h in (f["old_rules"], f["new_rules"]) if h in atoms),
+                                       "basis": V.parse_utf8(atoms[f["basis"]])}
+            if kind == "correction":
+                item["counterexample"] = {"scope": V.parse_utf8(atoms[f["counterexample_scope"]]),
+                                          "commit": V.parse_utf8(atoms[f["counterexample"]]),
+                                          "ref": f"refs/vars/evidence/{scope}/{cid.hex()}"}
+            elif kind != "equivalent":
+                item["input"] = {"atom": f["input"].hex(), "bytes": len(atoms[f["input"]]) - 4}
+            items.append(item)
+    return {"scope": scope, "tip": chain[-1], "changes": items, "package": _digest({"changes": items})}
+
+
+def replay_changes(repo_dir: Path, scope: str = SCOPE) -> List[Tuple[str, str]]:
+    """Replay every rules change of the chain with a fresh gate: `(decision, REPLAYED | EVIDENCE MISSING: ... |
+    REFUSED: ...)`. Missing evidence is not a refutation: fetch `refs/vars/evidence/*` and replay again."""
+    out = []
+    for item in evidence(repo_dir, scope)["changes"]:
+        gate = V.GitVarsRepo(repo_dir)
+        try:
+            gate.check_chain(scope, item["commit"])
+            out.append((item["decision"], "REPLAYED"))
+        except V.EvidenceMissing as e:
+            out.append((item["decision"], f"EVIDENCE MISSING: {e}"))
+        except V.VarsError as e:
+            out.append((item["decision"], f"REFUSED: {e}"))
+    return out
+
+
 def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
             siblings: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, bytes]]:
     """Record a release of `main_sha`: a decision stating it and the checks, the maintainer's ATTESTED verdict on it,
@@ -215,9 +373,13 @@ def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[byt
     return None if best is None else best[2]
 
 
-# Every rules module a commit may carry: its directory, the wasm cargo builds, and the identity it must hash to
-KERNELS = (("kernel", "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_KERNEL"),
-           ("kernel2", "vars_lens2.wasm", V.H_LENS_KERNEL_V2, "H_LENS_KERNEL_V2"))
+# Every rules module a commit may carry: the path whose presence says it carries it, the crate directory, cargo's
+# extra arguments, the wasm cargo builds, and the identity it must hash to. Built one after another: the v1b build
+# overwrites the v1 wasm in kernel/target, after it was hashed.
+KERNELS = (("kernel", "kernel", (), "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_KERNEL"),
+           ("kernel2", "kernel2", (), "vars_lens2.wasm", V.H_LENS_KERNEL_V2, "H_LENS_KERNEL_V2"),
+           ("kernel/lens1b.wasm", "kernel", ("--features", "commit-bound"), "vars_lens.wasm", V.H_LENS_KERNEL_V1B,
+            "H_LENS_KERNEL_V1B"))
 
 
 def _run(cmd: List[str], cwd: Path) -> bool:
@@ -225,17 +387,17 @@ def _run(cmd: List[str], cwd: Path) -> bool:
 
 
 def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
-    """Rebuild every rules module `root` carries (kernel/, and kernel2/ where present); each must hash to its pinned
-    identity, and the rules the release names must be one of those rebuilt here."""
+    """Rebuild every rules module `root` carries (kernel/, kernel2/ and kernel/lens1b.wasm where present); each must
+    hash to its pinned identity, and the rules the release names must be one of those rebuilt here."""
     results: List[Tuple[str, bool]] = []
     rebuilt = set()
-    for d, wasm_name, pinned, label in KERNELS:
-        if not (root / d).is_dir():
+    for marker, d, extra, wasm_name, pinned, label in KERNELS:
+        if not (root / marker).exists():
             continue
-        built = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown"], root / d)
+        built = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", *extra], root / d)
         wasm = root / d / "target" / "wasm32-unknown-unknown" / "release" / wasm_name
         ok = built and wasm.exists() and V.sha256(wasm.read_bytes()) == pinned
-        results.append((f"{d} rebuild hashes to {label}", ok))
+        results.append((f"{marker} rebuild hashes to {label}" if extra else f"{d} rebuild hashes to {label}", ok))
         if ok:
             rebuilt.add(pinned)
     results.append(("the released rules are rebuilt here", rules in rebuilt))
@@ -414,6 +576,32 @@ def _main(argv: List[str]) -> int:
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
+    if cmd == "shadow" and len(argv) in (2, 4) and argv[2:3] in ([], ["--out"]):
+        doc = json.dumps(shadow(repo_dir, bytes.fromhex(argv[1])), indent=2)
+        if len(argv) == 4:
+            Path(argv[3]).write_text(doc + "\n")
+        print(doc)
+        return 0
+    if cmd == "change-rules" and len(argv) >= 5 and argv[3] == "--manifest":
+        kind, new_rules = argv[1], bytes.fromhex(argv[2])
+        opts = dict(zip(argv[5::2], argv[6::2]))
+        fields: Dict[str, object] = {}
+        if kind == "correction":
+            fields = {k: opts[f"--{k.replace('_', '-')}"] for k in
+                      ("counterexample_scope", "counterexample", "cell", "status", "right")}
+        elif kind in ("hardening", "tightening"):
+            fields = {"input": Path(opts["--input"]).read_bytes(), "budget": opts["--budget"], "refusal": opts["--refusal"]}
+        manifest = json.loads(Path(argv[4]).read_text())
+        print(change_rules(repo_dir, load_or_create_key(repo_dir), kind, new_rules, manifest, opts.get("--accept"),
+                           **fields))
+        return 0
+    if cmd == "evidence":
+        print(json.dumps(evidence(repo_dir), indent=2))
+        return 0
+    if cmd == "replay-changes":
+        rows = replay_changes(repo_dir)
+        print("\n".join(f"{d} {r}" for d, r in rows))
+        return 0 if all(r == "REPLAYED" for _, r in rows) else 1
     if cmd == "show":
         print(json.dumps(show(repo_dir), indent=2))
         return 0

@@ -498,7 +498,7 @@
  },
  "m-v2-downgrade": {
   "file": "vars1.py",
-  "find": "                    if s_base.slots[2] != H_LENS_KERNEL and s_next.slots[2] == H_LENS_KERNEL:",
+  "find": "                    if RULES[s_base.slots[2]].encoding == \"v2\" and s_next.slots[2] == H_LENS_KERNEL:",
   "replace": "                    if False:",
   "kills": [
    "test_52_rules_never_rotate_back_to_v1"
@@ -506,7 +506,7 @@
  },
  "m-v2-interim-epoch": {
   "file": "vars1.py",
-  "find": "if prior_rules[i] == H_LENS_KERNEL\n",
+  "find": "if RULES[prior_rules[i]].encoding == \"v1\"\n",
   "replace": "if True\n",
   "kills": [
    "test_54_rules_v2_keep_an_opaque_digest_opaque"
@@ -571,7 +571,7 @@
  },
  "m-gate-scope-rules": {
   "file": "vars1.py",
-  "find": "            if c.h_schema == H_SCHEMA[\"scope\"] and len(c.slots) == 3 and c.slots[2] not in RULES_MODULES:",
+  "find": "            if c.h_schema == H_SCHEMA[\"scope\"] and len(c.slots) == 3 and c.slots[2] not in RULES:",
   "replace": "            if False:",
   "kills": [
    "test_57_rules_v2_from_genesis"
@@ -639,6 +639,250 @@
   "replace": "SIGMA_PIN = \"c864d3e\"",
   "kills": [
    "test_61_release_checks_name_commits_by_canonical_id"
+  ]
+ },
+ "m-amend-class": {
+  "file": "vars1.py",
+  "find": "    for kind in RULES_CHANGE_CLASSES:\n        if rules_change_schema(scope, kind)[0].id == schema_id:",
+  "replace": "    for kind in (\"correction\",):\n        if rules_change_schema(scope, kind)[0].id == schema_id:",
+  "kills": [
+   "test_62_a_resource_hardening_bounds_the_commit_count"
+  ]
+ },
+ "m-amend-v2-to-v1-encoding": {
+  "file": "vars1.py",
+  "find": "        if RULES[old].encoding == \"v2\" and RULES[new_rules].encoding == \"v1\":",
+  "replace": "        if False:",
+  "kills": [
+   "test_68_no_rotation_from_v2_to_rules_that_read_as_v1"
+  ]
+ },
+ "m-amend-same-encoding": {
+  "file": "vars1.py",
+  "find": "            if RULES[old].encoding != RULES[new_rules].encoding:",
+  "replace": "            if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece",
+   "test_66_an_implementation_equivalent_change"
+  ]
+ },
+ "m-amend-reproduce": {
+  "file": "vars1.py",
+  "find": "            if f[\"reproduce\"] != ev[\"reproduce\"]:\n                raise VarsError(f\"rules change ({kind})",
+  "replace": "            if False:\n                raise VarsError(f\"rules change ({kind})",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece",
+   "test_66_an_implementation_equivalent_change"
+  ]
+ },
+ "m-amend-bytes": {
+  "file": "vars1.py",
+  "find": "            if ev[\"old\"] != ev[\"new\"]:",
+  "replace": "            if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece",
+   "test_66_an_implementation_equivalent_change"
+  ]
+ },
+ "m-amend-refutes": {
+  "file": "vars1.py",
+  "find": "        if f[\"refutes\"] != ev[\"refutes\"]:\n            raise VarsError(f\"rules change ({kind})",
+  "replace": "        if False:\n            raise VarsError(f\"rules change ({kind})",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-new-refuses": {
+  "file": "vars1.py",
+  "find": "        if n != RulesResult(\"refusal\", code=code):",
+  "replace": "        if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-resource": {
+  "file": "vars1.py",
+  "find": "            if not resource:",
+  "replace": "            if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-old-unbounded": {
+  "file": "vars1.py",
+  "find": "            if o.kind not in (\"exhausted\", \"fault\"):",
+  "replace": "            if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-tight-resource": {
+  "file": "vars1.py",
+  "find": "            if resource:\n",
+  "replace": "            if False:\n",
+  "kills": [
+   "test_65_a_validation_tightening"
+  ]
+ },
+ "m-amend-tight-output": {
+  "file": "vars1.py",
+  "find": "            if o.kind != \"output\":",
+  "replace": "            if False:",
+  "kills": [
+   "test_65_a_validation_tightening"
+  ]
+ },
+ "m-amend-budget-max": {
+  "file": "vars1.py",
+  "find": "        if not 0 <= budget <= MAX_RULES_BUDGET:",
+  "replace": "        if False:",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-budget-passed": {
+  "file": "vars1.py",
+  "find": "        self.proc.stdin.write(f\"{budget} {kernel_input.hex()}\\n\")",
+  "replace": "        self.proc.stdin.write(f\"{MAX_RULES_BUDGET} {kernel_input.hex()}\\n\")",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-exhausted-flag": {
+  "file": "meter.py",
+  "find": "b\"\\x41\\x01\" + g(0x24, flag)",
+  "replace": "b\"\\x41\\x00\" + g(0x24, flag)",
+  "kills": [
+   "test_62_a_resource_hardening_bounds_the_commit_count"
+  ]
+ },
+ "m-amend-exhausted-read": {
+  "file": "kernel/run_metered.mjs",
+  "find": "minds_exhausted.value === 1 ? \"X\\n\" : \"T\\n\"",
+  "replace": "\"T\\n\"",
+  "kills": [
+   "test_62_a_resource_hardening_bounds_the_commit_count"
+  ]
+ },
+ "m-amend-d-skip": {
+  "file": "vars1.py",
+  "find": "                if kind is None or kind == \"equivalent\":\n                    continue",
+  "replace": "                if True:\n                    continue",
+  "kills": [
+   "test_67_earlier_counterexamples_stay_decided"
+  ]
+ },
+ "m-amend-d-correction": {
+  "file": "vars1.py",
+  "find": "                    if status is None or (status >> bit & 1) != right:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_67_earlier_counterexamples_stay_decided"
+  ]
+ },
+ "m-amend-d-refusal": {
+  "file": "vars1.py",
+  "find": "                    if got != RulesResult(\"refusal\", code=code):",
+  "replace": "                    if False:",
+  "kills": [
+   "test_67_earlier_counterexamples_stay_decided"
+  ]
+ },
+ "m-amend-d-encoding": {
+  "file": "vars1.py",
+  "find": "                    if RULES[then].encoding != RULES[new_rules].encoding:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_67_earlier_counterexamples_stay_decided"
+  ]
+ },
+ "m-amend-evidence-ref": {
+  "file": "vars1.py",
+  "find": "        lines += [f\"update {ref} {commit}\" for ref, commit in evidence]",
+  "replace": "        lines += []",
+  "kills": [
+   "test_69_a_fresh_clone_replays_a_past_rules_change"
+  ]
+ },
+ "m-amend-evidence-missing": {
+  "file": "vars1.py",
+  "find": "        raise EvidenceMissing(f\"{what} {name}",
+  "replace": "        raise VarsError(f\"{what} {name}",
+  "kills": [
+   "test_69_a_fresh_clone_replays_a_past_rules_change",
+   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+  ]
+ },
+ "m-amend-evidence-history": {
+  "file": "vars1.py",
+  "find": "            if got.returncode == 0 and not self._cut_by_shallow(name):",
+  "replace": "            if not self._cut_by_shallow(name):",
+  "kills": [
+   "test_69_a_fresh_clone_replays_a_past_rules_change"
+  ]
+ },
+ "m-amend-evidence-shallow": {
+  "file": "vars1.py",
+  "find": "            if got.returncode == 0 and not self._cut_by_shallow(name):",
+  "replace": "            if got.returncode == 0:",
+  "kills": [
+   "test_69_a_fresh_clone_replays_a_past_rules_change"
+  ]
+ },
+ "m-amend-other-object": {
+  "file": "vars1.py",
+  "find": "        elif not re.fullmatch(f\"[0-9a-f]{{{self.oid_hex_len()}}}\", name) or subprocess.run(",
+  "replace": "        elif not re.fullmatch(f\"[0-9a-f]{{{self.oid_hex_len()}}}\", name) or False and subprocess.run(",
+  "kills": [
+   "test_59_a_counterexample_is_named_by_its_full_commit_id"
+  ]
+ },
+ "m-amend-twin-bound": {
+  "file": "vars1.py",
+  "find": "        if twin_err is None and -7 in RULES[rules[-1]].resource_codes and len(deltas) > len(kernel_input):",
+  "replace": "        if False:",
+  "kills": [
+   "test_63_the_bound_refuses_a_chain_of_empty_commits"
+  ]
+ },
+ "m-amend-kin1-type": {
+  "file": "vars1.py",
+  "find": "        atom(b\"KIN1\")",
+  "replace": "        atom(b\"\")",
+  "kills": [
+   "test_64_a_resource_hardening_needs_each_piece"
+  ]
+ },
+ "m-amend-shadow-bits": {
+  "file": "tools/minds_chain.py",
+  "find": "                if ob != nb:",
+  "replace": "                if False:",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-shadow-check": {
+  "file": "tools/minds_chain.py",
+  "find": "    if manifest != shadow(repo_dir, new_rules):",
+  "replace": "    if False:",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-shadow-history": {
+  "file": "tools/minds_chain.py",
+  "find": "        if kind in (\"hardening\", \"equivalent\"):",
+  "replace": "        if False:",
+  "kills": [
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
+  ]
+ },
+ "m-amend-release-v1b": {
+  "file": "tools/minds_chain.py",
+  "find": "           (\"kernel/lens1b.wasm\", \"kernel\", (\"--features\", \"commit-bound\"),",
+  "replace": "           (\"kernel/lens1b.wasm\", \"kernel\", (),",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
   ]
  }
 }

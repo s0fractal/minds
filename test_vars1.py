@@ -3175,7 +3175,7 @@ class TestVars1Conformance(unittest.TestCase):
         # rules this host does not implement are refused, even as a stored wasm module
         other = {**atoms, V.sha256(b"\0asm\1\0\0\0"): b"\0asm\1\0\0\0"}
         s9 = V.Cell(V.H_SCHEMA["scope"], s0.h_slot_name, s0.h_payload, slots=(pol, pol, V.sha256(b"\0asm\1\0\0\0")))
-        self._gate_refuses("neither v1 nor v2", "other", self.repo.build_candidate_commit(
+        self._gate_refuses("rules this host does not implement", "other", self.repo.build_candidate_commit(
             "other", other, [*V.STD_SCHEMAS.values(), s9], [V.Seal.sign(self.sk1, s9.id, s9.id)], parent_commit=None), None)
         h_in, h_state = self.repo.projection_digests("core", c0)
         for rules, ok in ((V.H_LENS_KERNEL, False), (V.H_LENS_KERNEL_V2, True)):
@@ -3193,12 +3193,13 @@ class TestVars1Conformance(unittest.TestCase):
         and the rules the release names must be among them (an older commit without kernel2/ checks kernel/)."""
         mc = self._minds_chain()
         root = Path(self.tmp.name) / "wt"
-        built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM}
+        built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM, "commit-bound": V.KERNEL1B_ATOM}
 
         def fake_cargo(cmd, cwd):
             out = cwd / "target" / "wasm32-unknown-unknown" / "release"
             out.mkdir(parents=True, exist_ok=True)
-            (out / ("vars_lens.wasm" if cwd.name == "kernel" else "vars_lens2.wasm")).write_bytes(built[cwd.name])
+            (out / ("vars_lens.wasm" if cwd.name == "kernel" else "vars_lens2.wasm")).write_bytes(
+                built["commit-bound" if "commit-bound" in cmd else cwd.name])
             return True
 
         (root / "kernel").mkdir(parents=True)
@@ -3213,6 +3214,15 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.kernel_checks(root, V.H_LENS_KERNEL, fake_cargo),
                          [("kernel rebuild hashes to H_LENS_KERNEL", True),
                           ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", False), ("the released rules are rebuilt here", True)])
+        # a commit carrying kernel/lens1b.wasm rebuilds it with the commit-bound feature, after hashing kernel/'s v1
+        (root / "kernel" / "lens1b.wasm").write_bytes(V.KERNEL1B_ATOM)
+        self.assertEqual(mc.kernel_checks(root, V.H_LENS_KERNEL_V1B, fake_cargo),
+                         [("kernel rebuild hashes to H_LENS_KERNEL", True),
+                          ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", False),
+                          ("kernel/lens1b.wasm rebuild hashes to H_LENS_KERNEL_V1B", True),
+                          ("the released rules are rebuilt here", True)])
+        built["commit-bound"] = V.KERNEL_ATOM
+        self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V1B, fake_cargo)[-2][1])
 
     def test_59_a_counterexample_is_named_by_its_full_commit_id(self) -> None:
         """Review AMEND P1 on 2b82da8: the counterexample field must hold a full commit id, never a ref, an
@@ -3233,7 +3243,13 @@ class TestVars1Conformance(unittest.TestCase):
                      *hex_refs):
             attempt = self._change_rules("core", c1, s0, V2, [self.sk1], cx,
                                          override={"counterexample": lambda put, n=name: put(V.atom_utf8(n))})[0]
-            self._gate_refuses("counterexample is not a full commit id", "core", attempt, c1)
+            # a native-length hex id of no object here names a commit this repository lacks: missing evidence, refused
+            missing = name == "b" * 40
+            with self.assertRaises(V.VarsError) as got:
+                self.repo.admit_and_advance("core", attempt, expected_old=c1)
+            self.assertEqual(type(got.exception), V.EvidenceMissing if missing else V.VarsError, str(got.exception))
+            self.assertRegex(str(got.exception),
+                             "is not in this repository" if missing else "counterexample is not a full commit id")
         cand, _, _ = self._change_rules("core", c1, s0, V2, [self.sk1], cx)
         self.repo.admit_and_advance("core", cand, expected_old=c1)
         # the counterexample's scope moves on with a cell that changes the rules' output there, and the hex-named refs
@@ -3325,6 +3341,413 @@ class TestVars1Conformance(unittest.TestCase):
         spec_pin = re.search(r"`sigma-glyph` at `([0-9a-f]+)`", (ROOT_DIR / "VARS-1-SPEC.md").read_text()).group(1)
         self.assertRegex(mc.SIGMA_PIN, r"^[0-9a-f]{40}$")
         self.assertTrue(mc.SIGMA_PIN.startswith(spec_pin))
+
+
+    # -- classes of rules change (VARS-1-SPEC.md §4.3, AMENDMENTS.md) -------------------------------------------------
+    BUDGET = 10_000_000
+
+    def _fuzz_counterexample(self, commits: int = 84_000_000) -> bytes:
+        """The fuzzer's counterexample, rebuilt (its artifact was not kept): a real v1 input, a scope with a fact,
+        whose commit count says `commits`. Every other count is bounded by the input's length; this one is not."""
+        if not hasattr(self, "_seed_input"):
+            c0, s0, _ = self._bootstrap_genesis("seed")
+            a: dict[bytes, bytes] = {}
+            c1 = self._commit("seed", c0, s0, a, [self._axiom(a, "seed/fact", "a fact")])
+            self._seed_input = V.kernel_facts("seed", self.repo.chain_deltas(self.repo.commit_chain(c1)))[0]
+        inp = bytearray(self._seed_input)
+        inp[0:4] = struct.pack("<I", commits)
+        return bytes(inp)
+
+    def _register_rules(self, h: bytes, rules: "V.Rules", atom: bytes) -> None:
+        """A rules module as only this test's host implements it (a stand-in), restored after the test."""
+        saved = [(d, d.get(h)) for d in (V.RULES, V.RULES_MODULES, V.RULES_ATOMS)]
+        V.RULES[h], V.RULES_MODULES[h], V.RULES_ATOMS[h] = rules, rules.path, atom
+
+        def restore() -> None:
+            for d, old in saved:
+                if old is None:
+                    d.pop(h, None)
+                else:
+                    d[h] = old
+        self.addCleanup(restore)
+
+    def _equivalent_v1(self) -> bytes:
+        """v1 with other bytes and the same behaviour: lens.wasm with a custom section appended."""
+        raw = V.KERNEL_ATOM + b"\x00\x0b\x05minds" + b"same!"
+        path = Path(self.tmp.name) / "lens-equivalent.wasm"
+        path.write_bytes(raw)
+        self._register_rules(V.sha256(raw), V.Rules(path, "v1"), raw)
+        return V.sha256(raw)
+
+    def _change(self, kind: str, scope: str, parent: str, base: V.Cell, new_rules: bytes, *, label: str,
+                inp: bytes = b"", budget: int = BUDGET, refusal: int = 7, override: "dict | None" = None,
+                rotate: bool = True, fields: "list[str] | None" = None) -> tuple[str, V.Cell, V.Cell]:
+        """A candidate commit rotating `scope` to `new_rules` with a decision of class `kind` (not `correction`:
+        see `_change_rules`), its digests the gate's own replay; `override` replaces fields by name."""
+        a = dict(V.RULES_ATOMS)
+        put = lambda raw: self._put_atom(a, raw)  # noqa: E731
+        sch, sch_atoms = V.rules_change_schema(scope, kind)
+        a.update(sch_atoms)
+        all_fields = V.RULES_CHANGE_CLASSES[kind][1]
+        if fields is not None:
+            sch = V.Cell(V.H_META_SCHEMA, sch.h_slot_name, V.H_EMPTY, slots=tuple(put(V.atom_utf8(f)) for f in fields))
+        old = base.slots[2]
+        vals = {"old_rules": old, "new_rules": new_rules, "basis": put(V.atom_utf8(parent))}
+        try:
+            vals["reproduce"] = self.repo.rules_change_basis(scope, parent, old, new_rules)["reproduce"]
+        except V.VarsError:
+            vals["reproduce"] = bytes(32)
+        if kind != "equivalent":
+            vals.update(input=put(V.atom_kin1(inp)), budget=put(V.atom_u64(budget)), refusal=put(V.atom_u64(refusal)),
+                        refutes=self.repo.rules_change_refusal(old, new_rules, inp, min(budget, V.MAX_RULES_BUDGET))["refutes"])
+        for k, v in (override or {}).items():
+            vals[k] = v(put) if callable(v) else v
+        names = [f.split(":")[0] for f in (fields or all_fields)]
+        d = V.Cell(sch.id, put(V.atom_utf8(f"{scope}/rules-change/{label}")),
+                   put(V.atom_utf8(f"{scope} moves to rules {new_rules.hex()[:12]}: {kind}")),
+                   slots=tuple(vals[n] for n in names))
+        s = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8(f"{scope}/SCOPE")), put(V.atom_utf8(f"{scope} under {label}")),
+                   h_supersedes=self._hv(a, [base.id]), h_loss=put(V.atom_utf8(f"rules change to {label}")),
+                   slots=(base.slots[0], base.slots[1], new_rules))
+        cells = [d, sch] + ([s] if rotate else [])
+        seals = [V.Seal.sign(self.sk1, x.id, base.id) for x in cells]
+        return self.repo.build_candidate_commit(scope, a, cells, seals, parent_commit=parent), s, d
+
+    def _core(self) -> tuple[str, V.Cell]:
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        return self._commit("core", c0, s0, a, [self._axiom(a, "core/fact", "a fact")]), s0
+
+    def test_62_a_resource_hardening_bounds_the_commit_count(self) -> None:
+        """The first amendment (ASSURANCE.md, found by fuzzing): v1 visits every commit an input claims, so a small
+        input claiming 84 M commits runs unbounded; v1b refuses an input with more commits than bytes (E-7). The
+        rotation v1 -> v1b is a resource hardening: on the fuzzer's input, under a budget of steps, v1 exhausts it
+        and v1b refuses with its resource code; over the chain so far the two give the same output byte for byte."""
+        inp = self._fuzz_counterexample()
+        ev = self.repo.rules_change_refusal(V.H_LENS_KERNEL, V.H_LENS_KERNEL_V1B, inp, self.BUDGET)
+        self.assertEqual((ev["old"].kind, ev["new"]), ("exhausted", V.RulesResult("refusal", code=-7)))
+        honest = self._fuzz_counterexample(commits=2)  # its real count: both rules give the same output
+        self.assertEqual(V.kernel_runner(V.H_LENS_KERNEL).run(honest), V.kernel_runner(V.H_LENS_KERNEL_V1B).run(honest))
+        cx, _, _ = self._r2_03()
+        v2_input = V.kernel_facts("cx", self.repo.chain_deltas(self.repo.commit_chain(cx[0])))[0]
+        for rules, inputs in ((V.H_LENS_KERNEL, [honest, inp[:-1]]), (V.H_LENS_KERNEL_V1B, [honest, inp]),
+                              (V.H_LENS_KERNEL_V2, [v2_input, v2_input[:-1]])):
+            for x in inputs:
+                try:
+                    plain = V.RulesResult("output", output=V.kernel_runner(rules).run(x))
+                except V.KernelRefusal as e:
+                    plain = V.RulesResult("refusal", code=e.code)
+                self.assertEqual(V.metered_runner(rules).run(x, self.BUDGET), plain, "metering changes no result")
+        c1, s0 = self._core()
+        cand, s1, d = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)
+        try:
+            self.repo.admit_and_advance("core", cand, expected_old=c1)
+        except V.VarsError as e:
+            self.fail(f"the hardening v1 -> v1b was refused: {e}")
+        a: dict[bytes, bytes] = {}
+        self._commit("core", cand, s1, a, [self._axiom(a, "core/after", "after the hardening")])
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL_V1B)
+        self.assertTrue(lens["active"][d.id] and lens["active"][s1.id])
+
+    def test_63_the_bound_refuses_a_chain_of_empty_commits(self) -> None:
+        """The gate admits a commit that adds nothing, so a chain can claim more commits than its input has bytes:
+        v1 folds it, v1b refuses it (E-7), and the host's twin agrees with each (no TwinDivergence)."""
+        for rules in (V.H_LENS_KERNEL, V.H_LENS_KERNEL_V1B):
+            repo = V.GitVarsRepo(self.repo_path)
+            a = {**V.STD_SCHEMA_ATOMS, rules: V.RULES_ATOMS[rules]}
+            pol = self._pol(a, 1, [self.pk1])
+            s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(a, V.atom_utf8("e/SCOPE")), self._put_atom(a, V.atom_utf8("e")),
+                        slots=(pol, pol, rules))
+            c0 = repo.build_candidate_commit("e", a, [*V.STD_SCHEMAS.values(), s0], [V.Seal.sign(self.sk1, s0.id, s0.id)],
+                                             parent_commit=None)
+            n = len(V.kernel_facts("e", repo.chain_deltas([c0]))[0])
+            tree = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{c0}^{{tree}}"], capture_output=True,
+                                  text=True, check=True).stdout.strip()
+            script = "".join(f"commit refs/heads/empty\ncommitter t <t@t> 0 +0000\ndata 0\n"
+                             f"{'from ' + c0 + chr(10) if i == 0 else ''}M 040000 {tree} \"\"\n\n" for i in range(n))
+            subprocess.run(["git", "-C", str(self.repo_path), "fast-import", "--quiet", "--force"], input=script.encode(),
+                           check=True)
+            tip = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", "refs/heads/empty"], capture_output=True,
+                                 text=True, check=True).stdout.strip()
+            commits = repo.commit_chain(tip)
+            self.assertEqual(len(commits), n + 1)
+            if rules == V.H_LENS_KERNEL:
+                repo._evaluate_commit_chain("e", commits)
+                continue
+            with self.assertRaisesRegex(V.VarsError, r"more commits than its rules input has bytes \[rules kernel E-7"):
+                repo._evaluate_commit_chain("e", commits)
+            repo._evaluate_commit_chain("e", commits[:-1])  # one commit fewer: within the bound
+
+    def test_64_a_resource_hardening_needs_each_piece(self) -> None:
+        """A hardening is refused when its reproduce or refutes digest is not the replay's, when the chain so far
+        changes by a byte, when the new rules do not refuse the input with the named code within the budget, when
+        that code is not a resource refusal of theirs, when the old rules finish within the budget, when the budget is
+        over the gate's limit, when the input is no KIN1 atom, and across encodings."""
+        inp = self._fuzz_counterexample()
+        c1, s0 = self._core()
+        V1B = V.H_LENS_KERNEL_V1B
+        attempt = lambda **kw: self._change("hardening", "core", c1, s0, V1B, label="v1b", inp=inp, **kw)[0]  # noqa: E731
+        self._gate_refuses(r"\(hardening\): the decision's reproduce digest", "core", attempt(override={"reproduce": bytes(32)}), c1)
+        self._gate_refuses(r"\(hardening\): the decision's refutes digest", "core", attempt(override={"refutes": bytes(32)}), c1)
+        self._gate_refuses(r"\(hardening\): the new rules do not refuse the input with E-8", "core", attempt(refusal=8), c1)
+        self._gate_refuses(r"\(hardening\): the new rules do not refuse the input with E-7 within the budget \(they give "
+                           r"exhausted\)", "core", attempt(budget=3), c1)
+        self._gate_refuses("outside 0..", "core", attempt(budget=V.MAX_RULES_BUDGET + 1), c1)
+        malformed = inp[:4] + struct.pack("<I", 1 << 30) + inp[8:]  # N over the input's length: both refuse E-1
+        self._gate_refuses(r"\(hardening\): E-1 is not a resource refusal", "core",
+                           self._change("hardening", "core", c1, s0, V1B, label="v1b", inp=malformed, refusal=1)[0], c1)
+        over = self._fuzz_counterexample(commits=len(inp) + 1)  # just over the bound: v1 finishes at once
+        self._gate_refuses(r"\(hardening\): the old rules give output within the budget, so there is nothing to harden",
+                           "core", self._change("hardening", "core", c1, s0, V1B, label="v1b", inp=over)[0], c1)
+        self._gate_refuses("is not a kin1 atom", "core",
+                           attempt(override={"input": lambda put: put(V.atom_utf8("not an input"))}), c1)
+        self._gate_refuses("a hardening change keeps the input encoding", "core",
+                           self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V2, label="v2", inp=inp)[0], c1)
+        real = self.repo.rules_output
+
+        def one_byte_more(scope, tip, rules):
+            out, read = real(scope, tip, rules)
+            return (out + b"\x00" if rules == V1B else out), read
+
+        self.repo.rules_output = one_byte_more
+        try:
+            self._gate_refuses(r"\(hardening\): the new rules do not give the old rules' output over the chain so far, "
+                               "byte for byte", "core", attempt(), c1)
+        finally:
+            del self.repo.rules_output
+        need = "exactly one rules-change decision"
+        for drop in ("input", "budget", "refusal", "refutes", "reproduce"):
+            fields = [f for f in V.REFUSAL_CHANGE_FIELDS if f.split(":")[0] != drop]
+            self._gate_refuses(need, "core", attempt(fields=fields), c1)
+        self._gate_refuses("comes only with the rotation", "core", attempt(rotate=False), c1)
+        self.repo.admit_and_advance("core", attempt(), expected_old=c1)
+
+    def test_65_a_validation_tightening(self) -> None:
+        """A tightening: the new rules refuse, with a refusal that is not a resource one, an input the old rules
+        give an output for. A stand-in host reads v1b's E-7 as no resource refusal; then the input just over the
+        bound is a tightening, the fuzzer's input is none (v1 exhausts the budget there), and real v1b is refused as
+        a tightening (E-7 is its resource refusal: that is a hardening)."""
+        over = self._fuzz_counterexample(commits=len(self._fuzz_counterexample()) + 1)
+        c1, s0 = self._core()
+        V1B = V.H_LENS_KERNEL_V1B
+        self._gate_refuses(r"\(tightening\): E-7 is a resource refusal: that is a hardening", "core",
+                           self._change("tightening", "core", c1, s0, V1B, label="t", inp=over)[0], c1)
+        self._register_rules(V1B, V.Rules(V.RULES[V1B].path, "v1"), V.KERNEL1B_ATOM)
+        self._gate_refuses(r"\(tightening\): the old rules give exhausted, not an output", "core",
+                           self._change("tightening", "core", c1, s0, V1B, label="t", inp=self._fuzz_counterexample())[0], c1)
+        self.repo.admit_and_advance("core", self._change("tightening", "core", c1, s0, V1B, label="t", inp=over)[0],
+                                    expected_old=c1)
+
+    def test_66_an_implementation_equivalent_change(self) -> None:
+        """Other bytes, the same output over the chain so far byte for byte, no counterexample: admitted. Refused
+        with another reproduce digest, an output differing by a byte, or across encodings."""
+        c1, s0 = self._core()
+        eq = self._equivalent_v1()
+        self.assertNotEqual(eq, V.H_LENS_KERNEL)
+        attempt = lambda **kw: self._change("equivalent", "core", c1, s0, eq, label="eq", **kw)[0]  # noqa: E731
+        self._gate_refuses(r"\(equivalent\): the decision's reproduce digest", "core", attempt(override={"reproduce": bytes(32)}), c1)
+        self._gate_refuses("an equivalent change keeps the input encoding", "core",
+                           self._change("equivalent", "core", c1, s0, V.H_LENS_KERNEL_V2, label="v2")[0], c1)
+        real = self.repo.rules_output
+
+        def one_byte_more(scope, tip, rules):
+            out, read = real(scope, tip, rules)
+            return (out + b"\x00" if rules == eq else out), read
+
+        self.repo.rules_output = one_byte_more
+        try:
+            self._gate_refuses(r"\(equivalent\): the new rules do not give the old rules' output", "core", attempt(), c1)
+        finally:
+            del self.repo.rules_output
+        cand = attempt()
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        self.assertEqual(V.GitVarsRepo(self.repo_path).rules_output("core", cand, eq)[0],
+                         V.GitVarsRepo(self.repo_path).rules_output("core", cand, V.H_LENS_KERNEL)[0])
+
+    def test_67_earlier_counterexamples_stay_decided(self) -> None:
+        """(d): a later rules change must keep every earlier one. After the hardening v1 -> v1b, an "equivalent"
+        change back to v1 (the same output over the chain) is refused: v1 exhausts the budget on the hardening's input
+        again; so is v1b -> v2, whose encoding cannot read that input. After the correction v1 -> v2, an equivalent
+        v2' is admitted only while it still gives the correction's counterexample its verdict."""
+        inp = self._fuzz_counterexample()
+        cx, c1b, t0 = self._rules_change_fixture_on("q")
+        c1, s0 = self._core()
+        cand, s1, _ = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer refuse its "
+                           "input with E-7", "core",
+                           self._change("equivalent", "core", cand, s1, V.H_LENS_KERNEL, label="back")[0], cand)
+        self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12}: its input is encoded for other rules", "core",
+                           self._change_rules("core", cand, s1, V.H_LENS_KERNEL_V2, [self.sk1], cx)[0], cand)
+
+        cand2, t1, _ = self._change_rules("q", c1b, t0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("q", cand2, expected_old=c1b)
+        v2b = V.KERNEL2_ATOM + b"\x00\x0b\x05minds" + b"same!"
+        path = Path(self.tmp.name) / "lens2-equivalent.wasm"
+        path.write_bytes(v2b)
+        h2 = V.sha256(v2b)
+        self._register_rules(h2, V.Rules(path, "v2"), v2b)
+        real = self.repo.rules_output
+        x = real("cx", cx[0], V.H_LENS_KERNEL_V2)[1]["order"][cx[1]]
+
+        def gives_the_old_verdict(scope, tip, rules):
+            out, read = real(scope, tip, rules)
+            if scope == "cx" and rules == h2:
+                read = {**read, "status": {**read["status"], x: read["status"][x] | 1}}
+            return out, read
+
+        self.repo.rules_output = gives_the_old_verdict
+        try:
+            self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer give its "
+                               "counterexample's verdict", "q", self._change("equivalent", "q", cand2, t1, h2, label="v2b")[0],
+                               cand2)
+        finally:
+            del self.repo.rules_output
+        self.repo.admit_and_advance("q", self._change("equivalent", "q", cand2, t1, h2, label="v2b")[0], expected_old=cand2)
+
+    def _rules_change_fixture_on(self, scope: str) -> tuple[tuple[str, int], str, V.Cell]:
+        cx, _, _ = self._r2_03()
+        c0, s0, _ = self._bootstrap_genesis(scope)
+        a: dict[bytes, bytes] = {}
+        return cx, self._commit(scope, c0, s0, a, [self._axiom(a, f"{scope}/fact", "a fact")]), s0
+
+    def test_68_no_rotation_from_v2_to_rules_that_read_as_v1(self) -> None:
+        """v1b reads references as v1 does, so it cannot read a v2 epoch: v2 -> v1b is refused, whatever the class
+        (the v2 kernel's E-25 covers only v1 itself)."""
+        cx, c1, s0 = self._rules_change_fixture()
+        cand, s1, _ = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        self._gate_refuses("cannot read a v2 epoch", "core",
+                           self._change("hardening", "core", cand, s1, V.H_LENS_KERNEL_V1B, label="v1b",
+                                        inp=self._fuzz_counterexample())[0], cand)
+
+
+    def test_69_a_fresh_clone_replays_a_past_rules_change(self) -> None:
+        """Codex §4.5: a counterexample named by commit id is no edge Git follows. The gate writes
+        refs/vars/evidence/<scope>/<decision> with the rotation, in one transaction; a fresh clone that fetches only
+        refs/vars/heads/core and refs/vars/evidence/* replays the change after the author's helper refs are deleted;
+        without the evidence ref, after gc, the replay reports missing evidence, which is not a refutation. The
+        evidence manifest names each change's needs; a hardening's input travels in the chain itself."""
+        mc = self._minds_chain()
+        cx, c1, s0 = self._rules_change_fixture()
+        cand, s1, d = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        ref = f"refs/vars/evidence/core/{d.id.hex()}"
+        git = lambda repo, *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True,  # noqa: E731
+                                              check=True).stdout.strip()
+        got = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", "--verify", "--quiet", ref], capture_output=True,
+                             text=True).stdout.strip()
+        self.assertEqual(got, cx[0], "the rotation wrote the evidence ref")
+        man = mc.evidence(self.repo_path, "core")
+        self.assertEqual([(c["decision"], c["class"], c["counterexample"]) for c in man["changes"]],
+                         [(d.id.hex(), "correction", {"scope": "cx", "commit": cx[0], "ref": ref})])
+        self.assertEqual(man["changes"][0]["in_chain"], sorted([V.H_LENS_KERNEL.hex(), V.H_LENS_KERNEL_V2.hex()]))
+        git(self.repo_path, "update-ref", "-d", "refs/vars/heads/cx")  # the author's helper ref
+        git(self.repo_path, "reflog", "expire", "--expire=now", "--all")
+        git(self.repo_path, "gc", "--quiet", "--prune=now")
+
+        fresh = Path(self.tmp.name) / "fresh"
+        git(Path(self.tmp.name), "init", "-q", str(fresh))
+        git(fresh, "fetch", "-q", "--no-tags", str(self.repo_path),
+            "refs/vars/heads/core:refs/vars/heads/core", "+refs/vars/evidence/*:refs/vars/evidence/*")
+        self.assertEqual(git(fresh, "for-each-ref", "--format=%(refname)").split(), sorted([ref, "refs/vars/heads/core"]))
+        self.assertEqual(mc.evidence(fresh, "core"), man)
+        self.assertEqual(mc.replay_changes(fresh, "core"), [(d.id.hex(), "REPLAYED")])
+        V.GitVarsRepo(fresh).check_chain("core", cand)
+
+        git(fresh, "update-ref", "-d", ref)
+        git(fresh, "reflog", "expire", "--expire=now", "--all")
+        git(fresh, "gc", "--quiet", "--prune=now")
+        self._missing(f"counterexample {cx[0]} is not in this repository", fresh, cand)
+        (dec, result), = mc.replay_changes(fresh, "core")
+        self.assertTrue(result.startswith("EVIDENCE MISSING:"), result)
+        # the counterexample commit is here but not all its history: a shallow fetch, or a lost object
+        git(fresh, "fetch", "-q", "--no-tags", "--depth=1", str(self.repo_path), f"+{ref}:{ref}")
+        self.assertEqual(git(fresh, "rev-parse", "--is-shallow-repository"), "true")
+        self._missing("with its history", fresh, cand)
+        loose = Path(self.tmp.name) / "loose"
+        git(Path(self.tmp.name), "init", "-q", str(loose))
+        git(loose, "-c", "fetch.unpackLimit=1000000", "fetch", "-q", "--no-tags", str(self.repo_path),
+            "refs/vars/heads/core:refs/vars/heads/core", f"+{ref}:{ref}")
+        cx_genesis = git(loose, "rev-list", "--max-parents=0", cx[0])
+        (loose / ".git" / "objects" / cx_genesis[:2] / cx_genesis[2:]).unlink()
+        self._missing("with its history", loose, cand)
+
+        # a hardening needs no ref: its input is a KIN1 atom of the rotation commit
+        inp = self._fuzz_counterexample()
+        h0, t0, _ = self._bootstrap_genesis("h")
+        hc, _, hd = self._change("hardening", "h", h0, t0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)
+        self.repo.admit_and_advance("h", hc, expected_old=h0)
+        item, = mc.evidence(self.repo_path, "h")["changes"]
+        self.assertEqual(item["input"], {"atom": V.sha256(V.atom_kin1(inp)).hex(), "bytes": len(inp)})
+        fresh_h = Path(self.tmp.name) / "fresh-h"
+        git(Path(self.tmp.name), "init", "-q", str(fresh_h))
+        git(fresh_h, "fetch", "-q", "--no-tags", str(self.repo_path), "refs/vars/heads/h:refs/vars/heads/h")
+        self.assertEqual(mc.replay_changes(fresh_h, "h"), [(hd.id.hex(), "REPLAYED")])
+
+    def _missing(self, regex: str, repo: Path, tip: str) -> None:
+        """Replaying the chain up to `tip` in `repo` reports missing evidence, not a refusal of what it replays."""
+        try:
+            V.GitVarsRepo(repo).check_chain("core", tip)
+        except V.VarsError as e:
+            self.assertIsInstance(e, V.EvidenceMissing, f"missing evidence reported as a refusal: {e}")
+            self.assertRegex(str(e), regex)
+        else:
+            self.fail("the replay ran without its evidence")
+
+    def test_70_a_rotation_is_recorded_only_after_its_shadow_replay(self) -> None:
+        """tools/minds_chain.py: `shadow` replays every historical tip under its epoch's rules and the new rules and
+        lists every difference (commit, cell, bit, old, new); `change-rules` records a rotation only with a manifest
+        equal to that replay now, refuses a hardening or an equivalent change whose manifest lists a difference, and
+        records one that changes history only with --accept <digest>. v1 -> v1b leaves the release chain as it was."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tips = repo.commit_chain(repo.ref_commit("minds"))
+        man = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V1B)
+        self.assertEqual((man["tips"], man["differences"]), (len(tips), []))
+        self.assertEqual(mc.shadow(self.repo_path, V.H_LENS_KERNEL_V2)["differences"], [])
+        real = repo.rules_output.__func__
+        flip_at = tips[1]
+        fake = {}
+
+        def flips(self_, scope, tip, rules):
+            out, read = real(self_, scope, tip, rules)
+            if tip == flip_at and rules == fake.get("rules"):
+                cid = sorted(read["status"])[0]
+                read = {**read, "status": {**read["status"], cid: read["status"][cid] ^ 0x08}}
+                fake["cell"] = cid
+            return out, read
+
+        inp = self._fuzz_counterexample()
+        kw = {"input": inp, "budget": self.BUDGET, "refusal": 7}
+        V.GitVarsRepo.rules_output = flips
+        try:
+            fake["rules"] = V.H_LENS_KERNEL_V1B
+            bad = mc.shadow(self.repo_path, V.H_LENS_KERNEL_V1B)
+            self.assertEqual(bad["differences"], [{"commit": flip_at, "cell": fake["cell"].hex(), "bit": "retired",
+                                                   "old": 0, "new": 1}])
+            with self.assertRaisesRegex(V.VarsError, "must leave every historical tip as it was"):
+                mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, bad, **kw)
+            fake["rules"] = None
+        finally:
+            V.GitVarsRepo.rules_output = real
+        tampered = {**man, "tips": man["tips"] - 1}
+        with self.assertRaisesRegex(V.VarsError, "is not this chain's replay"):
+            mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, tampered, **kw)
+        with self.assertRaisesRegex(V.VarsError, "is not this chain's replay"):  # a manifest of other rules
+            mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B,
+                            {**mc.shadow(self.repo_path, V.H_LENS_KERNEL_V2), "new_rules": V.H_LENS_KERNEL_V1B.hex()}, **kw)
+        self.assertEqual(repo.ref_commit("minds"), tips[-1], "nothing was recorded")
+        mc.change_rules(self.repo_path, sk, "hardening", V.H_LENS_KERNEL_V1B, man, **kw)
+        self.assertEqual(mc.governing_rules(V.GitVarsRepo(self.repo_path)), V.H_LENS_KERNEL_V1B)
+        _, r3 = mc.release(self.repo_path, sk, "c" * 40, ["x OK"])
+        self.assertEqual(mc.replay_changes(self.repo_path), [(mc.evidence(self.repo_path)["changes"][0]["decision"],
+                                                              "REPLAYED")])
 
 
 if __name__ == "__main__":

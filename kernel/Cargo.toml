@@ -7,6 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 path = "src/lib.rs"
 
+[features]
+# v1 with the commit count bounded by the input's length (VARS-1-SPEC.md §4.3, AMENDMENTS.md): H_LENS_KERNEL_V1B
+commit-bound = []
+
 [profile.release]
 opt-level = "z"
 lto = true

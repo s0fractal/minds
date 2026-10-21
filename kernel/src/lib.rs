@@ -78,6 +78,10 @@ const BAD_EDGE: i32 = -2;
 const NO_MEMORY: i32 = -3;
 const NOT_MONOTONE: i32 = -4;
 const NO_FIXED_POINT: i32 = -5;
+// A resource bound (feature `commit-bound`, the rules H_LENS_KERNEL_V1B): more commits than input bytes. The fold
+// visits every commit, and the commit count is the one count of the input not otherwise bounded by its length.
+#[cfg(feature = "commit-bound")]
+const COMMIT_BOUND: i32 = -7;
 // Refusals of the fold (§3 step 3 and §4.1).
 const GENESIS_SCOPE: i32 = -10; // genesis must hold exactly one local scope cell, with empty eviction slots
 const GENESIS_QUORUM: i32 = -11; // genesis scope lacks its admission quorum of self-seals
@@ -353,6 +357,10 @@ unsafe fn evaluate(input: &[u8]) -> Result<i32, i32> {
     let np = r.u32()? as usize;
     if commits == 0 || n > input.len() || nk > input.len() || np > input.len() {
         return Err(MALFORMED);
+    }
+    #[cfg(feature = "commit-bound")]
+    if commits as usize > input.len() {
+        return Err(COMMIT_BOUND);
     }
     let kw = (nk + 31) / 32;
     let sets = Sets { kw };
