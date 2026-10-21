@@ -1544,7 +1544,8 @@
    "mutants": [
     "m-claims-status-word",
     "m-claims-hidden",
-    "m-claims-comment"
+    "m-claims-html",
+    "m-claims-table"
    ]
   },
   {
@@ -1556,7 +1557,8 @@
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
    ],
    "mutants": [
-    "m-spec-heading"
+    "m-spec-heading",
+    "m-spec-unread"
    ]
   }
  ],

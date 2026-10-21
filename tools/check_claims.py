@@ -34,8 +34,13 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+UNREAD = re.compile(r"^(?: {0,3}(?:[*+][ \t]|\d+\)[ \t]|~{3,}|>|<[A-Za-z!/?]|(?:=+|-{2,}|\*{3,}|_{3,})[ \t]*$)"
+                    r"| {1,3}`{3,}|[ \t]+(?:\d+[.)]|[-*+])[ \t])")
+
+
 def spec_blocks(spec: str) -> list[tuple[int, str]]:
-    """(line, text) of every block in §0–§5: paragraphs, list items, tables and code blocks; headings excluded."""
+    """(line, text) of every block in §0–§5: paragraphs, list items (`-` or `N.`), tables and code blocks (```);
+    headings excluded. Any other block construct in §0–§5 is refused (ValueError), never read into a neighbour."""
     blocks: list[tuple[int, str]] = []
     section = None
     cur: list[str] = []
@@ -61,6 +66,11 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
         if fenced:
             cur.append(line)
             continue
+        if section is not None and section <= 5 and (UNREAD.match(line) or (line[:1] in (" ", "\t") and not cur and
+                                                                          line.strip())):
+            # a block this checker does not split (another list marker, a nested or indented item, indented code, a
+            # quote, HTML, a setext underline or a rule, another fence) would be read into its neighbour's coverage
+            raise ValueError(f"VARS-1-SPEC.md:{n}: a block construct this checker does not read: {line.strip()[:60]!r}")
         m = re.match(r"^## (\d+)\.", line)
         if m:
             flush()
@@ -85,19 +95,37 @@ EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Diff
                  "assumed": "Assumed", "unburned": "Unburned"}
 
 
+DELIMITER = re.compile(r"^\|(?: *:?-+:? *\|)+ *$")
+
+
 def assurance_rows(text: str) -> list[tuple[str, str]]:
-    """(claim column, evidence column) of every table row of ASSURANCE.md. The file may hold no HTML comment and no
-    fenced block: text hidden or quoted there could hold a quote whose live row was withdrawn, and telling the two
-    apart is a Markdown parser's work, not this checker's (Codex review of PR #4, rounds 1–7). So either is refused,
-    and every line opening with `|` is a live row."""
-    for n, line in enumerate(LINES.split(text), 1):
-        if "<!--" in line or re.match(r"^ {0,3}(`{3,}|~{3,})", line):
-            raise ValueError(f"ASSURANCE.md:{n}: an HTML comment or a fenced block; neither may hold or hide a row")
+    """(claim column, evidence column) of every body row of every table of ASSURANCE.md. Telling a live row from
+    hidden, quoted or stray text is a Markdown parser's work, not this checker's (Codex review of PR #4, rounds
+    1–8), so the file is held to a form whose rows read the same either way, and anything else is refused: no HTML
+    (outside code spans), no fenced block, and every line opening with `|` inside a table, which opens after a blank
+    line or a heading with a header row and a delimiter row and runs while lines open with `|`."""
+    lines = LINES.split(text)
+    for n, line in enumerate(lines, 1):
+        bare = re.sub(r"`[^`]*`", "", line)  # code spans are literal text; an unmatched backtick stays, and is read
+        if "<" in bare and re.search(r"<[A-Za-z!/?]", bare) or re.match(r"^ {0,3}(`{3,}|~{3,})", line):
+            raise ValueError(f"ASSURANCE.md:{n}: HTML or a fenced block; neither may hold or hide a row")
     rows = []
-    for line in LINES.split(text):
-        cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else []
-        if len(cells) >= 2 and not set(cells[0]) <= set("-: "):
-            rows.append((norm(cells[0]), norm(cells[1])))
+    n = 0
+    while n < len(lines):
+        line = lines[n]
+        if not line.startswith("|"):
+            n += 1
+            continue
+        opens = (n == 0 or not lines[n - 1].strip() or lines[n - 1].startswith("#"))
+        if not (opens and n + 1 < len(lines) and DELIMITER.match(lines[n + 1])):
+            raise ValueError(f"ASSURANCE.md:{n + 1}: a row outside a table (a table opens after a blank line or a "
+                             f"heading, with a header row and a delimiter row)")
+        n += 2
+        while n < len(lines) and lines[n].startswith("|"):
+            cells = [c.strip() for c in lines[n].strip().strip("|").split("|")]
+            if len(cells) >= 2:
+                rows.append((norm(cells[0]), norm(cells[1])))
+            n += 1
     return rows
 
 
@@ -176,7 +204,12 @@ def main(argv: list[str]) -> int:
     for q in informative:
         if norm(q) not in flat:
             errors.append(f"informative quote not in the spec: {norm(q)[:80]!r}")
-    for line, block in spec_blocks(spec):
+    try:
+        blocks = spec_blocks(spec)
+    except ValueError as e:
+        errors.append(str(e))
+        blocks = []
+    for line, block in blocks:
         if not any(q in block for q in quotes):
             errors.append(f"VARS-1-SPEC.md:{line}: no claim or informative quote covers this block: {block[:90]!r}")
     used = {m for c in claims for m in c.get("mutants", [])}

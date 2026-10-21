@@ -2768,10 +2768,29 @@ class TestVars1Conformance(unittest.TestCase):
         for before, after in (("<!--\n", "\n-->"), ("```\n", "\n```"), ("~~~\n", "\n~~~"), ("    ```\n", "\n```"),
                               ("Retired: <!--\n", "\n-->"), ("| Retired | Not established | <!--\n", "\n-->")):
             code, out = check(spec, claims, assurance.replace(row, f"{withdrawn}\n{before}{row}{after}"))
-            self.assertEqual(code, 1, before)
-            self.assertIn("an HTML comment or a fenced block", out, before)
+            self.assertEqual(code, 1, before)  # refused, by the HTML or fence rule or by the table rule
+        # inside a live row only the HTML rule stands between the hidden quote and a green check
         inline = assurance.replace(row, row.replace(cell, " <!-- " + cell.strip() + " --> `verify-release` does not check profiles "))
-        self.assertIn("an HTML comment or a fenced block", check(spec, claims, inline)[1])
+        code, out = check(spec, claims, inline)
+        self.assertEqual(code, 1, out)
+        self.assertIn("HTML or a fenced block", out)
+        # nor outside a table, nor in raw HTML (Codex r8 F1)
+        for before, after, why in (("\nRetired text, not a live guarantee\n", "", "a row outside a table"),
+                                   ("\n<pre>\n", "\n</pre>", "HTML or a fenced block"),
+                                   ("\n<script type=\"text/plain\">\n", "\n</script>", "HTML or a fenced block")):
+            code, out = check(spec, claims, assurance.replace(row, f"{withdrawn}\n{before}{row}{after}"))
+            self.assertEqual(code, 1, why)
+            self.assertIn(why, out)
+        # every spec block the checker cannot split is refused, never read into its neighbour's coverage (Codex r8 F2)
+        item = "- `id(x) = SHA-256(bytes(x))`. Every object is addressed by its id."
+        for extra in ("* R8: admission without a witness.", "+ R8: admission without a witness.",
+                      "1) R8: admission without a witness.", "~~~\nR8: admission without a witness.\n~~~",
+                      "  - R8: admission without a witness.", "> R8: admission without a witness."):
+            code, out = check(spec.replace(item, item + "\n" + extra), claims)
+            self.assertEqual(code, 1, extra)
+            self.assertIn("a block construct this checker does not read", out, extra)
+        code, out = check(spec.replace(item, item + "\n- R8: admission without a witness."), claims)
+        self.assertIn("no claim or informative quote covers this block", out, "the control: a `-` item is its own block")
         # a line opening with `#` and no space is a paragraph, not a heading, and must be covered (Codex r7 F2)
         code, out = check(spec.replace(anchor, anchor + "\n\n#Admission without a witness is permitted.\n"), claims)
         self.assertIn("no claim or informative quote covers this block", out)

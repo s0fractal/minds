@@ -1237,26 +1237,42 @@
    "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
+ "m-spec-heading": {
+  "file": "tools/check_claims.py",
+  "find": "        if re.match(r\"^ {0,3}#{1,6}(?:[ \\t]|$)\", line):",
+  "replace": "        if line.startswith(\"#\"):",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
  "m-claims-hidden": {
   "file": "tools/check_claims.py",
-  "find": "        if \"<!--\" in line or re.match(r\"^ {0,3}(`{3,}|~{3,})\", line):",
+  "find": "        if \"<\" in bare and re.search(r\"<[A-Za-z!/?]\", bare) or re.match(r\"^ {0,3}(`{3,}|~{3,})\", line):",
   "replace": "        if False:",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-claims-comment": {
+ "m-claims-html": {
   "file": "tools/check_claims.py",
-  "find": "        if \"<!--\" in line or re.match(",
+  "find": "        if \"<\" in bare and re.search(r\"<[A-Za-z!/?]\", bare) or re.match(",
   "replace": "        if re.match(",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-spec-heading": {
+ "m-claims-table": {
   "file": "tools/check_claims.py",
-  "find": "        if re.match(r\"^ {0,3}#{1,6}(?:[ \\t]|$)\", line):",
-  "replace": "        if line.startswith(\"#\"):",
+  "find": "            raise ValueError(f\"ASSURANCE.md:{n + 1}: a row outside a table (a table opens after a blank line or a \"\n                             f\"heading, with a header row and a delimiter row)\")",
+  "replace": "            n -= 2  # read it as a row",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-unread": {
+  "file": "tools/check_claims.py",
+  "find": "        if section is not None and section <= 5 and (UNREAD.match(line) or",
+  "replace": "        if False and (UNREAD.match(line) or",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
