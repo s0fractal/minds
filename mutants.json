@@ -1174,9 +1174,9 @@
   ]
  },
  "m-status-live-invalid": {
-  "file": "tools/minds_chain.py",
-  "find": "c.slots[1] == V.H_VERDICT_INVALID and live(cid):",
-  "replace": "c.slots[1] == V.H_VERDICT_INVALID:",
+  "file": "vars1.py",
+  "find": "                    if (active.get(wid, False) and not stale.get(wid, False) and w.h_schema == H_SCHEMA[\"verdict\"]\n                            and w.h_payload == cid and w.slots[1] == H_VERDICT_INVALID):",
+  "replace": "                    if (w.h_schema == H_SCHEMA[\"verdict\"]\n                            and w.h_payload == cid and w.slots[1] == H_VERDICT_INVALID):",
   "kills": [
    "test_79_status_reads_pass_3"
   ]
@@ -1225,6 +1225,46 @@
   "file": "tools/check_claims.py",
   "find": "            elif not held[0].startswith(EVIDENCE_WORD.get(c[\"status\"], \"?\")):",
   "replace": "            elif False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-profile-parent-dir": {
+  "file": "tools/minds_chain.py",
+  "find": "        if meta.split(b\" \")[0] != b\"040000\":",
+  "replace": "        if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-format": {
+  "file": "tools/minds_chain.py",
+  "find": "    if profile is not None and not re.fullmatch(r\"[0-9a-f]{64}\", profile):",
+  "replace": "    if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-statement-malformed": {
+  "file": "tools/minds_chain.py",
+  "find": "    if tail is None and \"; profile@\" in statement:",
+  "replace": "    if False:",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-status-invalidators": {
+  "file": "vars1.py",
+  "find": "                        invalidators[cid] |= witness_endorsers(wid) & p_pks",
+  "replace": "                        invalidators[cid] |= p_pks",
+  "kills": [
+   "test_79_status_reads_pass_3"
+  ]
+ },
+ "m-claims-fence": {
+  "file": "tools/check_claims.py",
+  "find": "        if line.lstrip().startswith((\"```\", \"~~~\")):  # a fenced block is an example, never a live row\n            fenced = not fenced\n            continue\n",
+  "replace": "",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]

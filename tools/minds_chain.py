@@ -342,6 +342,14 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
         mode = meta.split(b" ")[0].decode()
         if mode not in ("100644", "100755"):
             raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a regular file (mode {mode}): a profile names bytes")
+    # nor may a directory on the way be a symlink: `kernel -> elsewhere` hides every file under it from the paths above
+    dirs = sorted({str(Path(f).parents[i]) for f in PROFILE_FILES for i in range(len(Path(f).parents) - 1)})
+    for entry in filter(None, subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-z", sha, "--", *dirs],
+                                             capture_output=True, check=True).stdout.split(b"\0")):
+        meta, _, path_b = entry.partition(b"\t")
+        if meta.split(b" ")[0] != b"040000":
+            raise V.VarsError(f"{path_b.decode()} at {sha[:12]} is not a directory (mode {meta.split(b' ')[0].decode()}):"
+                              f" a profile names bytes")
     files: Dict[str, Optional[str]] = {}
     for path in PROFILE_FILES:
         raw = blob(path)
@@ -372,6 +380,8 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     keys = roster(repo)
     everyone = _policy(atoms, len(keys), keys)
     pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
+    if profile is not None and not re.fullmatch(r"[0-9a-f]{64}", profile):
+        raise V.VarsError("a release profile is a SHA-256 in lowercase hex")
     if any(";" in c or c.startswith("profile@") for c in checks):
         raise V.VarsError("a check line may not contain ';' nor start with 'profile@': they mark the statement's parts")
     # The profile goes last, after the checks: a reader of the earlier format matches only the prefix up to the
@@ -443,11 +453,6 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
     sealers: Dict[bytes, set] = {}
     for x in seals.values():
         sealers.setdefault(x.h_target, set()).add(x.actor_pubkey)
-    live = lambda cid: lens["active"].get(cid, False) and not lens["stale"].get(cid, False)
-    blocking: Dict[bytes, set] = {}  # decision -> keys that sealed a live INVALID verdict on it
-    for cid, c in cells.items():
-        if c.h_schema == V.H_SCHEMA["verdict"] and c.slots[1] == V.H_VERDICT_INVALID and live(cid):
-            blocking.setdefault(c.h_payload, set()).update(sealers.get(cid, set()))
     main_sha = git("rev-parse", "--verify", f"{main}^{{commit}}").stdout.strip() or None
     releases, projections = [], []
     for cid, c in sorted(cells.items(), key=lambda kv: V.parse_utf8(atoms[kv[1].h_slot_name])):
@@ -466,7 +471,7 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
         else:  # Pass 3's own reading: its evaluation policy (the release's, or the scope's for an early release
             # naming none) and the endorsements it counts; an evaluator with a live INVALID has answered
             thr, evaluators = lens["evaluators"][cid]
-            counted, invalid = lens["endorsers"][cid], blocking.get(cid, set()) & evaluators
+            counted, invalid = lens["endorsers"][cid], lens["invalidators"][cid]
             row.update(threshold=thr, evaluators=sorted(k.hex() for k in evaluators),
                        attested_by=sorted(k.hex() for k in counted),
                        invalid_by=sorted(k.hex() for k in invalid),
@@ -596,6 +601,8 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
         raise V.VarsError("not a release statement")
     pins = dict(zip(SIBLINGS, m.groups()[2:])) if m.group(3) else None
     tail = re.search(r"; profile@([0-9a-f]{64})$", statement)
+    if tail is None and "; profile@" in statement:  # a marker that is not a profile is not "no profile"
+        raise V.VarsError("a release statement with a malformed profile")
     return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 

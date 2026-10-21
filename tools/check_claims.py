@@ -83,11 +83,17 @@ EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Diff
 
 
 def assurance_rows(text: str) -> list[tuple[str, str]]:
-    """(claim column, evidence column) of every table row of ASSURANCE.md, HTML comments removed: a quote is held
-    by the row that states it, never by retired or hidden text."""
+    """(claim column, evidence column) of every table row of ASSURANCE.md, HTML comments and fenced blocks removed:
+    a quote is held by the row that states it, never by retired, hidden or example text."""
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     rows = []
+    fenced = False
     for line in text.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):  # a fenced block is an example, never a live row
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else []
         if len(cells) >= 2 and not set(cells[0]) <= set("-: "):
             rows.append((norm(cells[0]), norm(cells[1])))

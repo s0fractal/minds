@@ -2764,6 +2764,8 @@ class TestVars1Conformance(unittest.TestCase):
         hidden = assurance.replace(row, "| `verify-release` does not check profiles | Not established | — |\n<!--\n" + row + "\n-->")
         code, out = check(spec, claims, hidden)
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        code, out = check(spec, claims, hidden.replace("<!--\n", "```\n").replace("\n-->", "\n```"))
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in a fenced example (Codex r2 F4)")
         # a live row whose evidence column no longer states the claim's status
         code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
         self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
@@ -4152,9 +4154,15 @@ class TestVars1Conformance(unittest.TestCase):
         old = r"^minds release main@([0-9a-f]{40}) rules@([0-9a-f]{64})(?: sigma-glyph@([0-9a-f]{40}))?(?: primitives@([0-9a-f]{40}))?;"
         self.assertEqual(re.match(old, stmt).groups()[:2], (b, V.H_LENS_KERNEL.hex()))
         self.assertTrue(stmt.endswith(f"; profile@{pb['id']}"))
-        for bad in (["a; b OK"], ["profile@" + "0" * 64]):
+        fresh = self._commit_files({"fresh": b"f"}, "a commit no release names yet")
+        for bad in (["a; b OK"], ["profile@" + "0" * 64]):  # without the guard, these would be recorded
             with self.assertRaisesRegex(V.VarsError, "may not contain"):
-                mc.release(self.repo_path, sk, b, bad, profile=pb["id"])
+                mc.release(self.repo_path, sk, fresh, bad, profile=pb["id"])
+        with self.assertRaisesRegex(V.VarsError, "lowercase hex"):  # Codex PR #4 r2 F3
+            mc.release(self.repo_path, sk, fresh, ["x OK"], profile="0" * 64 + "; extra")
+        with self.assertRaisesRegex(V.VarsError, "malformed profile"):
+            mc.parse_release_profile(f"minds release main@{fresh} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK; "
+                                     f"profile@{'0' * 64}; extra")
 
         # A symlink's blob is a name, not the bytes that run (Codex PR #4 r1 F1): a profile path must be a regular file
         (self.repo_path / "kernel" / "body.mjs").write_bytes(b"// runner\n")
@@ -4165,6 +4173,16 @@ class TestVars1Conformance(unittest.TestCase):
         link = g("rev-parse", "HEAD").decode().strip()
         with self.assertRaisesRegex(V.VarsError, "kernel/run.mjs .* is not a regular file"):
             mc.profile_at(self.repo_path, link)
+        # nor through a directory on the way (Codex PR #4 r2 F1): `kernel -> actual-kernel`
+        g("rm", "-q", "-r", "--cached", "kernel")
+        (self.repo_path / "kernel").rename(self.repo_path / "actual-kernel")
+        (self.repo_path / "actual-kernel" / "run.mjs").unlink()
+        (self.repo_path / "actual-kernel" / "run.mjs").write_bytes(b"// runner\n")
+        (self.repo_path / "kernel").symlink_to("actual-kernel")
+        g("add", "kernel", "actual-kernel")
+        g("commit", "-q", "-m", "linked directory")
+        with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a directory"):
+            mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
         _, linked = mc.release(self.repo_path, sk, link, ["test_vars1 OK"], profile=pb["id"])
         _, ok, lines = mc.verify_release(self.repo_path, sk2, linked["decision"], "second", checks=fake)
         self.assertFalse(ok)
@@ -4285,6 +4303,32 @@ class TestVars1Conformance(unittest.TestCase):
         withdraw(w)
         r = row(r3["decision"])
         self.assertEqual((r["invalid_by"], r["awaiting"]), ([], [pk2]), "a superseded INVALID is no answer")
+
+        # a foreign INVALID, cross-sealed by an evaluator: the cross-seal is edge authority, not Pass 3's endorsement
+        # (Codex PR #4 r2 F2); the evaluator is still awaited, and its own attestation settles the release
+        _, r4 = mc.release(self.repo_path, sk, "e" * 40, ["x OK"])
+        key = b"\x09" * 32
+        a = {}
+        pol = mc._policy(a, 1, [V.ed25519_pubkey(key)])
+        peer = V.Cell(V.H_SCHEMA["scope"], mc._put(a, V.atom_utf8("peer/SCOPE")), mc._put(a, V.atom_utf8("peer")),
+                      slots=(pol, pol, V.H_LENS_KERNEL))
+        bad = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("peer/invalid")), r4["decision"],
+                     slots=(V.H_EMPTY, V.H_VERDICT_INVALID, mc._put(a, V.atom_utf8("second"))))
+        acc = V.Cell(V.H_SCHEMA["acceptance"], mc._put(a, V.atom_utf8("minds/import-invalid")), bad.id,
+                     slots=(mc._put(a, V.atom_utf8("peer")), peer.id))
+        s = mc.governing_scope(repo)
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", a, [peer, bad, acc],
+                                        [V.Seal.sign(key, peer.id, peer.id), V.Seal.sign(key, bad.id, peer.id),
+                                         V.Seal.sign(sk2, bad.id, s), V.Seal.sign(sk, acc.id, s)], parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        lens = repo.lens("minds")
+        self.assertTrue(lens["active"][bad.id] and not lens["stale"][bad.id])
+        r = row(r4["decision"])
+        self.assertEqual((r["settled"], r["invalid_by"], r["awaiting"]), (False, [], [pk2]))
+        answer(r4["decision"], True)
+        r = row(r4["decision"])
+        self.assertEqual((r["settled"], r["invalid_by"], pk2 in r["attested_by"]), (True, [], True))
 
         # an early release, naming no evaluators: the scope's admission policy, current at the tip
         a = {}

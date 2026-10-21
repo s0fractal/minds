@@ -1484,7 +1484,9 @@
     "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
    ],
    "mutants": [
-    "m-verify-profile"
+    "m-verify-profile",
+    "m-profile-format",
+    "m-statement-malformed"
    ]
   },
   {
@@ -1502,7 +1504,8 @@
     "m-status-main-released",
     "m-status-pass3",
     "m-status-live-invalid",
-    "m-status-settled-awaits"
+    "m-status-settled-awaits",
+    "m-status-invalidators"
    ]
   },
   {
@@ -1516,7 +1519,8 @@
    ],
    "mutants": [
     "m-profile-regular",
-    "m-profile-meter"
+    "m-profile-meter",
+    "m-profile-parent-dir"
    ]
   },
   {
@@ -1534,14 +1538,15 @@
   {
    "id": "assurance.claim-rows",
    "source": "ASSURANCE.md",
-   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments removed, whose evidence column begins with the claim's status",
+   "quote": "A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row, comments and fenced blocks removed, whose evidence column begins with the claim's status",
    "status": "tested",
    "witnesses": [
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
    ],
    "mutants": [
     "m-claims-comments",
-    "m-claims-status-word"
+    "m-claims-status-word",
+    "m-claims-fence"
    ]
   }
  ],
