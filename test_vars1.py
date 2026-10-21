@@ -2748,6 +2748,42 @@ class TestVars1Conformance(unittest.TestCase):
         code, out = check(spec, bare)
         self.assertIn(f"{tested['id']}: tested without a mutant", out)
 
+    def test_46_latches_and_witnesses_need_their_quorum_and_kind(self) -> None:
+        """Below its quorum an acceptance admits nothing and a custom schema is not Authorized; at the quorum both
+        are. A decision whose only verdict is NOT_ASSESSED is not Settled; an ATTESTED one settles it."""
+        c0, s0 = self._genesis([self.pk1, self.pk2], 2, [self.pk1, self.pk2], 2, [self.sk1, self.sk2])
+        a: dict[bytes, bytes] = {}
+        fb = self._scope_cell(a, "peerB", "peerB", (1, [self.pk_peer]))
+        fx = self._axiom(a, "peerB/x", "a peerB fact")
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/custom")), V.H_EMPTY,
+                        slots=(self._put_atom(a, V.atom_utf8("n:u64")),))
+        acc = V.Cell(h_schema=V.H_SCHEMA["acceptance"], h_slot_name=self._put_atom(a, V.atom_utf8("core/acc")),
+                     h_payload=fx.id, slots=(self._put_atom(a, V.atom_utf8("peerB")), fb.id))
+        d = V.Cell(V.H_SCHEMA["decision"], self._put_atom(a, V.atom_utf8("core/d")), self._put_atom(a, V.atom_utf8("d")),
+                   slots=(V.H_OWNER, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        na = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8("core/na")), d.id,
+                    h_attests=self._hv(a, [d.id]),
+                    slots=(V.H_EMPTY, V.H_NOT_ASSESSED, self._put_atom(a, V.atom_utf8("v1"))))
+        c1 = self._admit(a, [fb, fx, schema, acc, d, na],
+                         [V.Seal.sign(self.sk_peer, fb.id, fb.id), V.Seal.sign(self.sk_peer, fx.id, fb.id),
+                          V.Seal.sign(self.sk1, schema.id, s0.id), V.Seal.sign(self.sk1, acc.id, s0.id),
+                          V.Seal.sign(self.sk1, d.id, s0.id), V.Seal.sign(self.sk1, na.id, s0.id),
+                          V.Seal.sign(self.sk2, na.id, s0.id)], c0)
+        lens = self.repo.lens("core")
+        self.assertFalse(lens["accepted"][fx.id], "an acceptance below its quorum admits nothing")
+        self.assertFalse(lens["settled"][schema.id], "a custom schema below the admission quorum is not Authorized")
+        self.assertFalse(lens["settled"][d.id], "a NOT_ASSESSED verdict is no witness")
+
+        a = {}
+        ok = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8("core/ok")), d.id,
+                    h_attests=self._hv(a, [d.id]), slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8("v2"))))
+        self._admit(a, [ok], [V.Seal.sign(self.sk2, schema.id, s0.id), V.Seal.sign(self.sk2, acc.id, s0.id),
+                              V.Seal.sign(self.sk1, ok.id, s0.id), V.Seal.sign(self.sk2, ok.id, s0.id)], c1)
+        lens = self.repo.lens("core")
+        self.assertTrue(lens["accepted"][fx.id])
+        self.assertTrue(lens["settled"][schema.id])
+        self.assertTrue(lens["settled"][d.id])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

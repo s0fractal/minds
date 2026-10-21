@@ -274,5 +274,106 @@
   "kills": [
    "test_27_a_historical_attestation_survives_a_rotation"
   ]
+ },
+ "m-twin-cumulative": {
+  "file": "vars1.py",
+  "find": "                    cumulative_endorsers.setdefault(s.h_target, set()).add(s.actor_pubkey)",
+  "replace": "                    pass",
+  "kills": [
+   "test_08_late_cosign_on_verdict_counts_and_grants_no_author_rights",
+   "test_19_a_second_member_verifies_releases",
+   "test_21_attestation_counts_what_the_lens_counts"
+  ]
+ },
+ "m-twin-owner-evict": {
+  "file": "vars1.py",
+  "find": "                        p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm\n                        author_can = False\n                    elif v.h_schema == H_SCHEMA[\"acceptance\"]:",
+  "replace": "                        p_thr, p_pks, w_ends = adm_thr, adm_pks, w_ends_adm\n                        author_can = True\n                    elif v.h_schema == H_SCHEMA[\"acceptance\"]:",
+  "kills": [
+   "test_13_governing_policy_rows",
+   "test_11_fold_refusals_are_decided_by_the_kernel",
+   "test_02_local_loop_rebinding_rollback_import_rotation"
+  ]
+ },
+ "m-twin-provisional-policy": {
+  "file": "vars1.py",
+  "find": "                        p_thr, p_pks = pol_quorum(v.slots[3]) if v.slots[3] != H_EMPTY else (adm_thr, adm_pks)\n                        w_ends = w_ends_adm\n                        author_can = True\n                    elif v.h_schema == H_SCHEMA[\"question\"]:",
+  "replace": "                        p_thr, p_pks = (adm_thr, adm_pks)\n                        w_ends = w_ends_adm\n                        author_can = True\n                    elif v.h_schema == H_SCHEMA[\"question\"]:",
+  "kills": [
+   "test_13_governing_policy_rows",
+   "test_11_fold_refusals_are_decided_by_the_kernel"
+  ]
+ },
+ "m-twin-acc-pin": {
+  "file": "vars1.py",
+  "find": "                    if c.slots[1] not in self_sealed_foreign_scopes:\n                        raise VarsError(\"ACCEPTANCE foreign_scope_cell is not self-sealed\")",
+  "replace": "                    if False:\n                        raise VarsError(\"ACCEPTANCE foreign_scope_cell is not self-sealed\")",
+  "kills": [
+   "test_11_fold_refusals_are_decided_by_the_kernel",
+   "test_05_signatures_names_dependencies_verdicts_acceptance"
+  ]
+ },
+ "m-twin-acc-latch": {
+  "file": "vars1.py",
+  "find": "                    if len(signers(cid, s_base_id, acc_pks)) >= acc_thr:",
+  "replace": "                    if True:",
+  "kills": [
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind"
+  ]
+ },
+ "m-twin-schema-latch": {
+  "file": "vars1.py",
+  "find": "                elif len(signers(cid, s_base_id, adm_pks)) >= adm_thr:",
+  "replace": "                elif True:",
+  "kills": [
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind"
+  ]
+ },
+ "m-twin-edge-quorum": {
+  "file": "vars1.py",
+  "find": "                    quorum_ok = len(w_ends & p_pks) >= p_thr",
+  "replace": "                    quorum_ok = True",
+  "kills": [
+   "test_11_fold_refusals_are_decided_by_the_kernel",
+   "test_07_slot_rebinding_requires_authorized_supersedes_chain",
+   "test_13_governing_policy_rows",
+   "test_02_local_loop_rebinding_rollback_import_rotation"
+  ]
+ },
+ "m-pass3-threshold": {
+  "file": "vars1.py",
+  "find": "            is_set = len(valid_endorsers) >= p_thr",
+  "replace": "            is_set = len(valid_endorsers) >= 0",
+  "kills": [
+   "test_16_light_client_verifies_a_release_attestation",
+   "test_21_attestation_counts_what_the_lens_counts",
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier"
+  ]
+ },
+ "m-pass3-attested": {
+  "file": "vars1.py",
+  "find": "                        if w.slots[0] != H_EMPTY or w.slots[1] != H_ATTESTED:",
+  "replace": "                        if w.slots[0] != H_EMPTY:",
+  "kills": [
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind",
+   "test_21_attestation_counts_what_the_lens_counts"
+  ]
+ },
+ "m-pass3-question": {
+  "file": "vars1.py",
+  "find": "                    if w.h_schema != c.slots[0]:",
+  "replace": "                    if True:",
+  "kills": [
+   "test_31_a_question_is_answered_by_any_cell_of_its_schema"
+  ]
+ },
+ "m-pass3-exclusion": {
+  "file": "vars1.py",
+  "find": "                    if has_conflict:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier",
+   "test_21_attestation_counts_what_the_lens_counts"
+  ]
  }
 }

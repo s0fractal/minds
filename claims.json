@@ -453,52 +453,66 @@
   {
    "id": "fold.cumulative",
    "quote": "`CumulativeEndorsers(v)`: every admitted seal on a local `v`, each checked under its own commit's scope.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_08_late_cosign_on_verdict_counts_and_grants_no_author_rights"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-cumulative"
+   ]
   },
   {
    "id": "fold.policy-table",
    "quote": "| contract/decision with tier provisional | its evaluator policy, else `S_i` admission | yes |",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
     "test:test_13_governing_policy_rows",
     "prop:I3"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-owner-evict",
+    "m-twin-provisional-policy"
+   ]
   },
   {
    "id": "fold.latch-acceptance",
    "quote": "A local acceptance whose `foreign_scope_cell` is not self-sealed refuses `T_i`.",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
-    "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+    "test:test_11_fold_refusals_are_decided_by_the_kernel",
+    "test:test_46_latches_and_witnesses_need_their_quorum_and_kind",
     "prop:I3c"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-acc-pin",
+    "m-twin-acc-latch"
+   ]
   },
   {
    "id": "fold.latch-schema",
    "quote": "2. A local custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**.",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
-    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes",
+    "test:test_46_latches_and_witnesses_need_their_quorum_and_kind",
     "prop:I3c"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-schema-latch"
+   ]
   },
   {
    "id": "fold.latch-edges",
    "quote": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`.",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
+    "test:test_07_slot_rebinding_requires_authorized_supersedes_chain",
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
     "prop:I3",
     "prop:I10"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-edge-quorum"
+   ]
   },
   {
    "id": "fold.latches-grow",
@@ -611,23 +625,27 @@
   {
    "id": "lens.pass3",
    "quote": "**Pass 3.** For an Active, non-Stale contract, decision or question `v`:",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_21_attestation_counts_what_the_lens_counts",
     "prop:I4",
     "prop:I11"
    ],
-   "mutants": []
+   "mutants": [
+    "m-pass3-threshold"
+   ]
   },
   {
    "id": "lens.pass3-attested",
    "quote": "contract/decision without `required_comp`: a verdict on `v` with `H_ATTESTED`;",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_16_light_client_verifies_a_release_attestation",
-    "prop:I11"
+    "test:test_46_latches_and_witnesses_need_their_quorum_and_kind",
+    "test:test_16_light_client_verifies_a_release_attestation"
    ],
-   "mutants": []
+   "mutants": [
+    "m-pass3-attested"
+   ]
   },
   {
    "id": "lens.pass3-replayed",
@@ -642,21 +660,25 @@
   {
    "id": "lens.pass3-question",
    "quote": "question: a cell of the expected schema.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_31_a_question_is_answered_by_any_cell_of_its_schema"
    ],
-   "mutants": []
+   "mutants": [
+    "m-pass3-question"
+   ]
   },
   {
    "id": "lens.pass3-exclusion",
    "quote": "For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with `H_VERDICT_INVALID` and the same `verifier_id`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_28_a_later_invalid_withdraws_only_its_own_verifier",
     "prop:I11"
    ],
-   "mutants": []
+   "mutants": [
+    "m-pass3-exclusion"
+   ]
   },
   {
    "id": "rules.module",
