@@ -308,14 +308,13 @@ def replay_changes(repo_dir: Path, scope: str = SCOPE) -> List[Tuple[str, str]]:
 
 # What a release identifies beyond its rules hash. H_LENS_KERNEL names the fold and Passes 1–2 only; the host decides
 # canonical bytes, types, replay, bindings and rules-change admission (ASSURANCE.md, "Changing the rules"), so a fix
-# there changes no rules hash. The profile names, by the SHA-256 of its bytes at the released commit, every file whose
-# behaviour an admission or a reading depends on: the gate, the offline verifier it imports, the metered runner, the
-# wasm runners, every rules module carried, the pinned dependencies and Lean toolchain, and the spec. Not named:
-# the interpreters (Python, node, Lean) themselves, which come from the host.
+# there changes no rules hash. The profile names the bytes of every file the released commit tracks: a list of the
+# files an admission depends on would be wider than anything that can check it, because profiled code can load any
+# other file (a module beside it, a package, a ZIP on its path, a file it reads), so nothing narrower is sound. It is
+# not the commit id: it is SHA-256 throughout (git's object ids are SHA-1 here) and leaves out the commit's metadata,
+# so two commits with the same bytes have one profile. Not named: the interpreters (Python, node, Lean, cargo),
+# which come from the host.
 PROFILE_FORMAT = "minds-profile/1"
-PROFILE_FILES = ("VARS-1-SPEC.md", "vars1.py", "verify/minds_verify.py", "meter.py", "kernel/run.mjs",
-                 "kernel/run_metered.mjs", "kernel/lens.wasm", "kernel/lens1b.wasm", "kernel2/lens2.wasm",
-                 "requirements.txt", "proofs/lean-toolchain", "proofs/lake-manifest.json")
 # The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
 # bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
 # gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
@@ -323,46 +322,37 @@ RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kern
 
 
 def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
-    """The release profile of commit `sha`, read from git's objects, not from a checkout: `files` (path -> SHA-256 of
-    its bytes, or null where the commit lacks it), `rules_carried`, `offline_reads` and `id`,
-    SHA-256 over the canonical JSON of the rest."""
+    """The release profile of commit `sha`, read from git's objects, not from a checkout: `files` (every tracked path
+    -> SHA-256 of its bytes), `rules_carried`, `offline_reads` and `id`, SHA-256 over the canonical JSON of the rest.
+    A commit with a symlink or a submodule has none: their bytes are not in the commit."""
     if not V.canonical_commit_id(Path(repo_dir), sha):  # a ref or a short id names no fixed set of files
         raise V.VarsError(f"{sha[:80]!r} is not a full commit id of {repo_dir}")
-
-    def blob(path: str) -> Optional[bytes]:
-        out = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "blob", f"{sha}:{path}"], capture_output=True)
-        return out.stdout if out.returncode == 0 else None
-
-    # One listing of the commit's tree, every entry with its mode (a symlink and a submodule appear as entries too)
     listing = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-r", "-z", "--full-tree", sha],
                              capture_output=True, check=True).stdout.decode()
-    modes = {}
+    entries = []  # (path, object id), every entry of the tree with its mode: a symlink and a submodule appear too
     for entry in filter(None, listing.split("\0")):
         meta, _, path = entry.partition("\t")
-        modes[path] = meta.split(" ")[0]
-    refuse = lambda path, why: V.VarsError(f"{path} at {sha[:12]} {why}: a profile names the bytes that run")
-    # What Python can load from a checkout is not a list of paths: a module beside the gate shadows the standard
-    # library's, a package or a namespace directory at any depth reaches more modules, a symlink's blob names a
-    # target rather than the bytes that run, a submodule names another repository, bytecode can stand in for its
-    # source and a native module is opaque. So a commit with any symlink, submodule, bytecode or native module has
-    # no profile, and every Python source file it tracks, at any depth, is profiled.
-    for path, mode in sorted(modes.items()):
+        mode, _, oid = meta.split(" ")
         if mode not in ("100644", "100755"):
-            raise refuse(path, f"is not a regular file (mode {mode})")
-        if "__pycache__" in path.split("/") or path.endswith((".pyc", ".pyo", ".so", ".pyd", ".dylib")):
-            raise refuse(path, "is bytecode or a native module")
-    reachable = [path for path in sorted(modes) if path.endswith((".py", ".pyw")) and path not in PROFILE_FILES]
-    files: Dict[str, Optional[str]] = {}
-    for path in (*PROFILE_FILES, *reachable):
-        raw = blob(path)
-        files[path] = None if raw is None else V.sha256(raw).hex()
-    carried = {name: files[path] for path, name in RULES_FILES if files[path] is not None}
-    verifier = blob("verify/minds_verify.py") or b""
-    m = re.search(rb'^H_LENS_KERNEL = bytes\.fromhex\("([0-9a-f]{64})"\)', verifier, re.M)
+            raise V.VarsError(f"{path} at {sha[:12]} is not a regular file (mode {mode}): its bytes are not in the commit")
+        entries.append((path, oid))
+    batch = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "--batch"], capture_output=True, check=True,
+                           input="".join(f"{oid}\n" for _, oid in entries).encode()).stdout
+    files: Dict[str, str] = {}
+    blobs: Dict[str, bytes] = {}
+    at = 0
+    for path, oid in entries:
+        header_end = batch.index(b"\n", at)
+        size = int(batch[at:header_end].split(b" ")[2])
+        raw = batch[header_end + 1: header_end + 1 + size]
+        at = header_end + 1 + size + 1
+        files[path], blobs[path] = V.sha256(raw).hex(), raw
+    carried = {name: files[path] for path, name in RULES_FILES if path in files}
+    m = re.search(rb'^H_LENS_KERNEL = bytes\.fromhex\("([0-9a-f]{64})"\)', blobs.get("verify/minds_verify.py", b""), re.M)
     offline = {name: h for name, h in carried.items() if m and h == m.group(1).decode()}
     if m and not offline:
         offline = {"other": m.group(1).decode()}  # a rules identity this commit does not carry
-    doc: Dict[str, object] = {"format": PROFILE_FORMAT, "files": files, "rules_carried": carried,
+    doc: Dict[str, object] = {"format": PROFILE_FORMAT, "files": dict(sorted(files.items())), "rules_carried": carried,
                               "offline_reads": offline}
     return dict(doc, id=_digest(doc))
 

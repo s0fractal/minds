@@ -2767,11 +2767,17 @@ class TestVars1Conformance(unittest.TestCase):
         code, out = check(spec, claims, hidden.replace("<!--\n", "```\n").replace("\n-->", "\n```"))
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in a fenced example (Codex r2 F4)")
         for opening, inner in (("````", "```"), ("~~~", "```"), ("```", "```\u00a0"), ("~~~", "~~~\u2003"),
-                               ("```", "```\u2028"), ("```", "```\x85")):  # Markdown breaks lines at \n, \r only (r5 F2)
+                               ("```", "```\u2028"), ("```", "```\x85"),  # Markdown breaks lines at \n, \r only (r5 F2)
+                               ("```", "```<!-- literal, not a closer -->"), ("```", "``<!-- code -->`")):  # r6 F2
             # a fence closes only on its own kind and length (Codex r3 F2), followed by spaces or tabs only (r4 F3)
             fenced = hidden.replace("<!--\n", f"{opening}\n{inner}\n").replace("\n-->", f"\n{opening}")
             code, out = check(spec, claims, fenced)
             self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, opening)
+        # a quote kept only in an inline comment of a live row holds nothing
+        cell = row.split("|")[1]
+        inline = assurance.replace(row, row.replace(cell, " <!-- " + cell.strip() + " --> `verify-release` does not check profiles "))
+        code, out = check(spec, claims, inline)
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out, "nor in an inline comment")
         # a live row whose evidence column no longer states the claim's status
         code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
         self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
@@ -4124,8 +4130,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(pa["rules_carried"], pb["rules_carried"], "the rules hash does not see the gate change")
         self.assertNotEqual(pa["id"], pb["id"], "the profile does")
         self.assertNotEqual(pa["files"].get("vars1.py"), pb["files"].get("vars1.py"))
-        self.assertIn("meter.py", pa["files"])
-        self.assertIsNone(pa["files"]["meter.py"], "a file the commit lacks is named as absent")
+        self.assertNotIn("meter.py", pa["files"], "the profile names the files the commit has")
         self.assertEqual(pa["offline_reads"], {"v1": V.H_LENS_KERNEL.hex()})
         c = self._commit_files({"verify/minds_verify.py": verifier.replace(V.H_LENS_KERNEL.hex().encode(), b"ab" * 32)},
                                "three")
@@ -4190,8 +4195,8 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a regular file"):
             mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
 
-        # Python loads what its path reaches (Codex PR #4 r3 F1): a module beside the gate that shadows the standard
-        # library's changes the profile, and tracked bytecode, which can run in place of its source, has none
+        # Profiled code can load any file of the commit (Codex PR #4 r3–r6: a module shadowing the standard library's,
+        # bytecode, a package, a namespace module, a ZIP on its path), so every tracked file is profiled
         g("rm", "-q", "--cached", "kernel")
         (self.repo_path / "kernel").unlink()
         g("commit", "-q", "-m", "no link")
@@ -4199,16 +4204,11 @@ class TestVars1Conformance(unittest.TestCase):
         shadow = self._commit_files({"json.py": b"raise SystemExit\n"}, "a module named like the stdlib's")
         self.assertIn("json.py", mc.profile_at(self.repo_path, shadow)["files"])
         self.assertNotEqual(mc.profile_at(self.repo_path, shadow)["id"], mc.profile_at(self.repo_path, base)["id"])
-        cached = self._commit_files({"verify/__pycache__/minds_verify.cpython-315.pyc": b"\0" * 16}, "bytecode")
-        with self.assertRaisesRegex(V.VarsError, "is bytecode or a native module"):
-            mc.profile_at(self.repo_path, cached)
-        g("rm", "-q", "-r", "verify/__pycache__")
-        g("commit", "-q", "-m", "no bytecode")
-        # Codex PR #4 r4 F1, r5 F1: a symlink anywhere, and a native module; a package or a namespace module at any
-        # depth is profiled, so changing it changes the profile
+        g("rm", "-q", "json.py")
+        g("commit", "-q", "-m", "no shadow")
+        # a symlink anywhere has no profile: its blob names a target, not the bytes that run
         (self.repo_path / "payload").mkdir()
         (self.repo_path / "payload" / "shadow.txt").write_bytes(b"raise SystemExit\n")
-        (self.repo_path / "json.py").unlink()
         (self.repo_path / "json.py").symlink_to("payload/shadow.txt")
         g("add", "-A")
         g("commit", "-q", "-m", "a linked module")
@@ -4218,7 +4218,9 @@ class TestVars1Conformance(unittest.TestCase):
         g("rm", "-q", "-r", "payload")
         g("commit", "-q", "-m", "no link")
         bare = mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
-        for files in ({"tools/json/__init__.py": b"x = 1\n"}, {"payload/hook.py": b"x = 1\n"}):
+        for files in ({"tools/json/__init__.py": b"x = 1\n"}, {"payload/hook.py": b"x = 1\n"},
+                      {"verify/__pycache__/minds_verify.cpython-315.pyc": b"x = 1\n"}, {"verify/_fast.so": b"x = 1\n"},
+                      {"payload/hooks.zip": b"x = 1\n"}, {"notes/data.txt": b"x = 1\n"}):
             one = self._commit_files(files, "a package or a namespace module")
             p1 = mc.profile_at(self.repo_path, one)
             self.assertIn(next(iter(files)), p1["files"])
@@ -4227,35 +4229,23 @@ class TestVars1Conformance(unittest.TestCase):
             self.assertNotEqual(p1["id"], bare["id"])
             g("rm", "-q", "-r", str(Path(next(iter(files))).parent))
             g("commit", "-q", "-m", "removed")
-        native = self._commit_files({"verify/_fast.so": b"\x7fELF"}, "a native module")
-        with self.assertRaisesRegex(V.VarsError, "_fast.so at .* is bytecode or a native module"):
-            mc.profile_at(self.repo_path, native)
         _, linked = mc.release(self.repo_path, sk, link, ["test_vars1 OK"], profile=pb["id"])
         _, ok, lines = mc.verify_release(self.repo_path, sk2, linked["decision"], "second", checks=fake)
         self.assertFalse(ok)
         self.assertIn(f"release profile {pb['id'][:12]} is the commit's FAILED", lines)
 
     def test_80_the_profile_closes_over_what_the_gate_loads(self) -> None:
-        """Every repository file the profiled code loads is itself profiled: the local modules the Python files
-        import, the files `vars1.py` opens under kernel/ and kernel2/, and the relative imports of the wasm runners
-        (node built-ins and the Python standard library come from the host, ASSURANCE.md)."""
+        """The profile names every file this commit tracks, by the SHA-256 of the bytes git holds for it: whatever
+        the profiled code loads from the repository is among them (the interpreters come from the host,
+        ASSURANCE.md)."""
         mc = self._minds_chain()
-        head = subprocess.run(["git", "-C", str(ROOT_DIR), "rev-parse", "HEAD"], capture_output=True, text=True,
-                              check=True).stdout.strip()
-        profiled = {f for f, h in mc.profile_at(ROOT_DIR, head)["files"].items() if h is not None}
-        for path in sorted(profiled):
-            text = (ROOT_DIR / path).read_text(errors="replace") if not path.endswith(".wasm") else ""
-            if path.endswith(".py"):
-                for mod in re.findall(r"^\s*(?:from|import)\s+([A-Za-z_]\w*)", text, re.M):
-                    for where in (f"{mod}.py", f"verify/{mod}.py"):
-                        if (ROOT_DIR / where).exists():
-                            self.assertIn(where, profiled, f"{path} imports {mod}")
-                for d, name in re.findall(r"(KERNEL2?_DIR) / \"([^\"]+)\"", text):
-                    self.assertIn(("kernel2/" if d == "KERNEL2_DIR" else "kernel/") + name, profiled, f"{path} opens it")
-            if path.endswith(".mjs"):
-                for spec in re.findall(r"from\s+\"(\.{1,2}/[^\"]+)\"", text):
-                    rel = (Path(path).parent / spec).as_posix()
-                    self.assertIn(rel, profiled, f"{path} imports {spec}")
+        git = lambda *a: subprocess.run(["git", "-C", str(ROOT_DIR), *a], capture_output=True, check=True).stdout
+        head = git("rev-parse", "HEAD").decode().strip()
+        files = mc.profile_at(ROOT_DIR, head)["files"]
+        tracked = git("ls-tree", "-r", "-z", "--name-only", "--full-tree", head).decode().split("\0")
+        self.assertEqual(sorted(files), sorted(t for t in tracked if t))
+        for path in ("vars1.py", "kernel/run.mjs", "kernel/lens.wasm", "VARS-1-SPEC.md"):
+            self.assertEqual(files[path], V.sha256(git("cat-file", "blob", f"{head}:{path}")).hex(), path)
 
     def test_77_status_tells_merged_from_settled(self) -> None:
         """`status` reads the chain and main and writes nothing: whether main is released, how far main is past its

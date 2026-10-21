@@ -1021,14 +1021,6 @@
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
- "m-profile-absent": {
-  "file": "tools/minds_chain.py",
-  "find": "        return out.stdout if out.returncode == 0 else None",
-  "replace": "        return out.stdout",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
  "m-profile-offline": {
   "file": "tools/minds_chain.py",
   "find": "if m and h == m.group(1).decode()}",
@@ -1183,18 +1175,10 @@
  },
  "m-profile-regular": {
   "file": "tools/minds_chain.py",
-  "find": "        if mode not in (\"100644\", \"100755\"):\n            raise refuse(path, f\"is not a regular file (mode {mode})\")",
-  "replace": "        if False:\n            raise refuse(path, f\"is not a regular file (mode {mode})\")",
+  "find": "        if mode not in (\"100644\", \"100755\"):\n            raise V.VarsError(f\"{path} at {sha[:12]} is not a regular file",
+  "replace": "        if False:\n            raise V.VarsError(f\"{path} at {sha[:12]} is not a regular file",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
- "m-profile-meter": {
-  "file": "tools/minds_chain.py",
-  "find": "                 \"kernel/run_metered.mjs\", ",
-  "replace": "                 ",
-  "kills": [
-   "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
  "m-statement-guard": {
@@ -1203,14 +1187,6 @@
   "replace": "    if False:",
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
- "m-claims-comments": {
-  "file": "tools/check_claims.py",
-  "find": "    text = re.sub(r\"<!--.*?-->\", \"\", text, flags=re.S)\n",
-  "replace": "",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
  "m-claims-status-word": {
@@ -1253,36 +1229,12 @@
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-profile-bytecode": {
-  "file": "tools/minds_chain.py",
-  "find": "        if \"__pycache__\" in path.split(\"/\") or path.endswith((\".pyc\", \".pyo\", \".so\", \".pyd\", \".dylib\")):",
-  "replace": "        if False:",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
- "m-profile-loader": {
-  "file": "tools/minds_chain.py",
-  "find": "    reachable = [path for path in sorted(modes) if path.endswith((\".py\", \".pyw\")) and path not in PROFILE_FILES]",
-  "replace": "    reachable = []",
-  "kills": [
-   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
-  ]
- },
  "m-claims-fence-kind": {
   "file": "tools/check_claims.py",
   "find": "            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and re.fullmatch(r\"[ \\t]*\", m.group(2)):",
   "replace": "            if m:",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-profile-runner": {
-  "file": "tools/minds_chain.py",
-  "find": "\"meter.py\", \"kernel/run.mjs\",\n",
-  "replace": "\"meter.py\",\n",
-  "kills": [
-   "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
  "m-claims-fence-space": {
@@ -1297,6 +1249,38 @@
   "file": "tools/check_claims.py",
   "find": "    for line in LINES.split(text):",
   "replace": "    for line in text.splitlines():",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-profile-all": {
+  "file": "tools/minds_chain.py",
+  "find": "        files[path], blobs[path] = V.sha256(raw).hex(), raw",
+  "replace": "        if path.endswith((\".py\", \".wasm\", \".mjs\", \".md\", \".txt\", \".json\", \".toml\")):\n            files[path], blobs[path] = V.sha256(raw).hex(), raw",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-profile-bytes": {
+  "file": "tools/minds_chain.py",
+  "find": "        files[path], blobs[path] = V.sha256(raw).hex(), raw",
+  "replace": "        files[path], blobs[path] = oid, raw",
+  "kills": [
+   "test_80_the_profile_closes_over_what_the_gate_loads"
+  ]
+ },
+ "m-claims-comments": {
+  "file": "tools/check_claims.py",
+  "find": "        if re.match(r\"^ {0,3}<!--\", line):",
+  "replace": "        if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-claims-inline": {
+  "file": "tools/check_claims.py",
+  "find": "        line = re.sub(r\"<!--.*?(-->|$)\", \"\", line)",
+  "replace": "        line = line",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]

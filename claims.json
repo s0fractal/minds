@@ -1463,17 +1463,17 @@
   {
    "id": "assurance.release-profile",
    "source": "ASSURANCE.md",
-   "quote": "A release names its release profile: the SHA-256 of every file an admission or a reading depends on at the released commit",
+   "quote": "A release names its release profile: the SHA-256 of the bytes of every file the released commit tracks",
    "status": "tested",
    "witnesses": [
     "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not",
     "test:test_80_the_profile_closes_over_what_the_gate_loads"
    ],
    "mutants": [
-    "m-profile-runner",
-    "m-profile-absent",
     "m-profile-offline",
-    "m-profile-commit-id"
+    "m-profile-commit-id",
+    "m-profile-all",
+    "m-profile-bytes"
    ]
   },
   {
@@ -1512,17 +1512,13 @@
   {
    "id": "assurance.profile-regular",
    "source": "ASSURANCE.md",
-   "quote": "A profile path that is a symlink or a submodule is refused",
+   "quote": "A commit with a symlink or a submodule has no profile",
    "status": "tested",
    "witnesses": [
-    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not",
-    "test:test_80_the_profile_closes_over_what_the_gate_loads"
+    "test:test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
    ],
    "mutants": [
-    "m-profile-regular",
-    "m-profile-meter",
-    "m-profile-bytecode",
-    "m-profile-loader"
+    "m-profile-regular"
    ]
   },
   {
@@ -1546,12 +1542,13 @@
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
    ],
    "mutants": [
-    "m-claims-comments",
     "m-claims-status-word",
     "m-claims-fence",
     "m-claims-fence-kind",
     "m-claims-fence-space",
-    "m-claims-lines"
+    "m-claims-lines",
+    "m-claims-comments",
+    "m-claims-inline"
    ]
   }
  ],

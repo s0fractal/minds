@@ -27,8 +27,8 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 ## Self-governance
 
 This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub alongside `main`). Each release is a
-`decision` naming `main@<sha>`, the rules kernel, the release profile (the SHA-256 of every file an admission
-depends on at that commit: `tools/minds_chain.py profile <sha>`) and the checks that passed, attested by the maintainer's key, with a
+`decision` naming `main@<sha>`, the rules kernel, the release profile (the SHA-256 of the bytes of every file
+that commit tracks: `tools/minds_chain.py profile <sha>`) and the checks that passed, attested by the maintainer's key, with a
 witnessed projection of the chain. `tools/minds_chain.py release` refuses unless HEAD is `main` and the tree is
 clean, before and after; it runs every check on that commit in a fresh worktree, so nothing left from earlier builds
 counts. `tools/minds_chain.py show` lists releases; `status` says, read only, whether `main` is released and which
