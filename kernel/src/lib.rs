@@ -949,8 +949,8 @@ static mut ALLOCS: [(*const u8, usize); 96] = [(core::ptr::null(), 0); 96];
 static mut NALLOC: usize = 0;
 
 /// On the host (Kani, fuzzing) each allocation is its own heap object (the model checker tracks separate objects far
-/// more cheaply than offsets into one arena), logged so a harness can find the output `lens` returned, and freed at
-/// the next `reset`.
+/// more cheaply than offsets into one arena), logged so a harness can find the output `lens` returned. `reset` only
+/// marks them stale; they are freed by the first allocation after it (at most 96 live at once).
 #[cfg(any(kani, fuzzing))]
 unsafe fn bump(bytes: usize) -> *mut u8 {
     if TOP == 0 {

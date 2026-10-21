@@ -17,8 +17,8 @@ mutation tests. **Assumed** means nothing here checks it.
 | `kernel/lens.wasm` fold equals the model's own compiled fold | Differential (I10) | `test_vars1_props.py` |
 | On every two-cell log in three families (a genesis scope plus: an axiom relying on it; an acceptance of it; a foreign scope no acceptance admits), with symbolic threshold, origin, birth and one extra seal, the kernel does not panic or overflow, and refuses with a known code or answers with status bits that obey §4.2 (effective = not invalidated; active ⇒ effective, accepted, not retired, not superseded; stale ⇒ active; local ⇒ accepted; flags 0/1; the governing scope is a local scope) | Bounded (Kani 0.68, local: `kernel/assure.sh kani`, 4–7 min and 14–15 GB each; not in CI) | `kernel/src/lib.rs` `proofs` |
 | The same for families with supersedes, retires or invalidates edges, an INVALID verdict, a scope rotation, a contract | **Not established**: they need deeper unwinding or more than 16 GB on this machine | — |
-| The kernel does not panic, overflow or return an unknown code on arbitrary bytes | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`) | `kernel/fuzz` |
-| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL`, on macOS and Linux | Tested (CI) | `.github/workflows/check.yml` |
+| The kernel does not panic, overflow or return an unknown code on arbitrary bytes whose commit count is at most 4096 | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`); larger counts are skipped, see the time limit below | `kernel/fuzz` |
+| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI | |
 
 ## Replay (§5)
 
@@ -45,7 +45,7 @@ mutation tests. **Assumed** means nothing here checks it.
 |---|---|---|
 | An offline client's Pass 3 equals the lens's Settled | Differential (I11) | property suite |
 | A bundle cannot hide a verdict or seal its projection's tip holds | Tested | `test_vars1.py` 17, 21 |
-| `verify-*` accepts only against keys the reader pinned | Tested, with mutants | `test_vars1.py` 38 |
+| `verify-*` accepts only against keys the reader pinned | Tested, with mutants | `test_vars1.py` 39 |
 | Every release on `refs/vars/heads/minds` was checked by both members in fresh worktrees | Recorded on the chain; each member's checks are its own claim | `tools/minds_chain.py` |
 | Members are independent | **Not established**: two AI agents (Claude; Gemini via antigravity) with keys on one machine and OS account | README |
 | A projection is current | **Not established**: acceptance is about its tip | spec §4.4 |

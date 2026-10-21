@@ -1394,7 +1394,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(lens["effective"][target.id], "an ATTESTED verdict's invalidates edge has no effect")
 
 
-    def test_11_projection_is_recomputed_at_the_gate_and_settled_by_witnesses(self) -> None:
+    def test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses(self) -> None:
         """A projection Π = (tip, rules, input, state) is admitted only if the gate's own recomputation of the rules
         at `tip` gives the same input and state digests; it is Settled once its witness policy has signed it."""
         c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=2, acc_threshold=2)
@@ -1456,7 +1456,7 @@ class TestVars1Conformance(unittest.TestCase):
             **kw,
         )
 
-    def test_12_witness_outside_the_roster_signs_a_projection(self) -> None:
+    def test_41_witness_outside_the_roster_signs_a_projection(self) -> None:
         """A projection's witnesses need not be in the scope's roster: a key of its witness_policy may seal that
         projection, and only that projection. Writing it still needs a roster seal."""
         c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=1)
@@ -1485,7 +1485,7 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaises(V.VarsError):
             self.repo.admit_and_advance("core", c3, expected_old=c2)
 
-    def test_13_projections_are_immutable_historical_facts(self) -> None:
+    def test_42_projections_are_immutable_historical_facts(self) -> None:
         """A projection states the rules' result at an earlier commit and the gate has recomputed it, so nothing can
         evict it and it has no edges: its Settled status is exactly its witness quorum, which a client can check."""
         c0, s0, _ = self._bootstrap_genesis("core", adm_threshold=1, acc_threshold=1)
@@ -2612,7 +2612,7 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "missing"):
             V.GitVarsRepo(self.repo_path).lens("core")
 
-    def test_38_verify_needs_a_trust_anchor_the_reader_chose(self) -> None:
+    def test_39_verify_needs_a_trust_anchor_the_reader_chose(self) -> None:
         """Monday F39: a bundle's own witness policy is self-declared. `verify-*` exits 0 only against keys the
         reader pins with --require (and, for a projection, with its data); `inspect-*` checks internal consistency
         and claims no trust."""
@@ -2670,6 +2670,12 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertNotEqual(cli("verify-attestation", att), 0, "the bundle's own scope policy is not a trust anchor")
         self.assertEqual(cli("verify-attestation", att, pk), 0)
         self.assertNotEqual(cli("verify-attestation", att, V.ed25519_pubkey(ska).hex()), 0)
+
+    def test_43_test_numbers_are_unique(self) -> None:
+        """Documents cite these tests by number (ASSURANCE.md), so a number names exactly one test."""
+        numbers = re.findall(r"^    def test_(\d+)_", (ROOT_DIR / "test_vars1.py").read_text(), re.M)
+        dupes = sorted({n for n in numbers if numbers.count(n) > 1})
+        self.assertEqual(dupes, [], "test numbers used more than once")
 
 
 if __name__ == "__main__":
