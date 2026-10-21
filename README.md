@@ -8,6 +8,9 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
   `cargo build --release --target wasm32-unknown-unknown`; the build is reproducible and must hash to
   `H_LENS_KERNEL`). Scopes name these rules by hash; the host only parses, hashes and verifies signatures, and
   keeps a Python twin of the rules for differential checking.
+- `kernel2/` — the v2 rules (`lens2.wasm`, `H_LENS_KERNEL_V2`): typed cell references (`RULES-V2.md`). Dormant:
+  v1 is the default, and a scope moves to v2 only by a rotation with a rules-change decision whose computations the
+  gate replays (spec §4.3). `refs/vars/heads/minds` stays on v1.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 - `ASSURANCE.md` — what is proved, model-checked (Kani), differentially tested or assumed, claim by claim.
 - `claims.json`, `mutants.json` — every normative block of the spec quoted, with the witnesses that hold it and the

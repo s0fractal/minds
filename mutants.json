@@ -375,5 +375,214 @@
    "test_28_a_later_invalid_withdraws_only_its_own_verifier",
    "test_21_attestation_counts_what_the_lens_counts"
   ]
+ },
+ "m-rc-needs-decision": {
+  "file": "vars1.py",
+  "find": "        if len(decisions) != 1:\n",
+  "replace": "        if False:\n",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-stray-decision": {
+  "file": "vars1.py",
+  "find": "            if decisions:\n                raise VarsError(\"a rules-change decision comes only",
+  "replace": "            if False:\n                raise VarsError(\"a rules-change decision comes only",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-rules": {
+  "file": "vars1.py",
+  "find": "        if (f[\"old_rules\"], f[\"new_rules\"]) != (old, new_rules):",
+  "replace": "        if False:",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-basis": {
+  "file": "vars1.py",
+  "find": "        if parse_utf8(atoms[f[\"basis\"]]) != expected_old:",
+  "replace": "        if False:",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-quorum": {
+  "file": "vars1.py",
+  "find": "        if len(endorsers) < thr:\n            raise VarsError(\"the rules-change decision lacks",
+  "replace": "        if False:\n            raise VarsError(\"the rules-change decision lacks",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-cx-admitted": {
+  "file": "vars1.py",
+  "find": "        self.check_chain(cx_scope, cx_tip)\n",
+  "replace": "",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-a-digest": {
+  "file": "vars1.py",
+  "find": "        if f[\"reproduce\"] != ev[\"reproduce\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_49_rules_change_a_reproduces_the_history"
+  ]
+ },
+ "m-rc-a-status": {
+  "file": "vars1.py",
+  "find": "        if o[\"scope\"] != n[\"scope\"] or o[\"status\"] != n[\"status\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_49_rules_change_a_reproduces_the_history"
+  ]
+ },
+ "m-rc-b-digest": {
+  "file": "vars1.py",
+  "find": "        if f[\"refutes\"] != ev[\"refutes\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-b-range": {
+  "file": "vars1.py",
+  "find": "        if i >= len(n[\"order\"]) or bit >= len(KERNEL_BITS) or right > 1:",
+  "replace": "        if False:",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-b-new": {
+  "file": "vars1.py",
+  "find": "        if (n[\"status\"][cid] >> bit & 1) != right:",
+  "replace": "        if False:",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-b-old": {
+  "file": "vars1.py",
+  "find": "        if (o[\"status\"][cid] >> bit & 1) == right:",
+  "replace": "        if False:",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-c-digest": {
+  "file": "vars1.py",
+  "find": "        if f[\"latches\"] != ev[\"latches\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_51_rules_change_c_latches_only_grow"
+  ]
+ },
+ "m-rc-c-lost": {
+  "file": "vars1.py",
+  "find": "            if any(v and not n[\"auth\"][k] for k, v in o[\"auth\"].items()) or \\\n",
+  "replace": "            if False and \\\n",
+  "kills": [
+   "test_51_rules_change_c_latches_only_grow"
+  ]
+ },
+ "m-rc-c-counterexample": {
+  "file": "vars1.py",
+  "find": "        for o, n in (ev[\"basis\"], ev[\"counterexample\"]):",
+  "replace": "        for o, n in (ev[\"basis\"],):",
+  "kills": [
+   "test_51_rules_change_c_latches_only_grow"
+  ]
+ },
+ "m-v2-downgrade": {
+  "file": "vars1.py",
+  "find": "                    if s_base.slots[2] != H_LENS_KERNEL and s_next.slots[2] == H_LENS_KERNEL:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_52_rules_never_rotate_back_to_v1"
+  ]
+ },
+ "m-v2-interim-epoch": {
+  "file": "vars1.py",
+  "find": "if prior_rules[i] == H_LENS_KERNEL\n",
+  "replace": "if True\n",
+  "kills": [
+   "test_54_rules_v2_keep_an_opaque_digest_opaque"
+  ]
+ },
+ "m-v2-typed-refs": {
+  "file": "vars1.py",
+  "find": "    vals = (c.h_payload, *c.slots)\n    if v1:",
+  "replace": "    vals = (c.h_payload, *c.slots)\n    if True:",
+  "kills": [
+   "test_55_rules_v2_read_references_by_type",
+   "test_47_rules_change_admits_a_rotation_whose_decision_replays"
+  ]
+ },
+ "m-v2-projection-rules": {
+  "file": "vars1.py",
+  "find": "            if c.slots[1] != chain_rules(scope, prior_deltas[:prior_chain.index(tip) + 1]):",
+  "replace": "            if False:",
+  "kills": [
+   "test_57_rules_v2_from_genesis"
+  ]
+ },
+ "m-f40-join": {
+  "file": "tools/minds_chain.py",
+  "find": "        slots=(pol, pol, governing_rules(repo)),",
+  "replace": "        slots=(pol, pol, V.H_LENS_KERNEL),",
+  "kills": [
+   "test_53_v1_releases_survive_a_rules_change"
+  ]
+ },
+ "m-f40-release-projection": {
+  "file": "tools/minds_chain.py",
+  "find": "slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, everyone),",
+  "replace": "slots=(_put(atoms, V.atom_utf8(tip)), V.H_LENS_KERNEL, h_in, h_state, everyone),",
+  "kills": [
+   "test_53_v1_releases_survive_a_rules_change"
+  ]
+ },
+ "m-f41-kernel2": {
+  "file": "tools/minds_chain.py",
+  "find": "           (\"kernel2\", \"vars_lens2.wasm\", V.H_LENS_KERNEL_V2, \"H_LENS_KERNEL_V2\"))",
+  "replace": "           )",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-f41-rules-rebuilt": {
+  "file": "tools/minds_chain.py",
+  "find": "    results.append((\"the released rules are rebuilt here\", rules in rebuilt))",
+  "replace": "    results.append((\"the released rules are rebuilt here\", True))",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-rc-refusal": {
+  "file": "vars1.py",
+  "find": "                raise VarsError(f\"rules change: {what}: {e}\") from None",
+  "replace": "                continue",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-gate-scope-rules": {
+  "file": "vars1.py",
+  "find": "            if c.h_schema == H_SCHEMA[\"scope\"] and len(c.slots) == 3 and c.slots[2] not in RULES_MODULES:",
+  "replace": "            if False:",
+  "kills": [
+   "test_57_rules_v2_from_genesis"
+  ]
+ },
+ "m-v2-epoch-start": {
+  "file": "vars1.py",
+  "find": "        if i == 0 and len(new) == 1:\n            cur = new[0]",
+  "replace": "        if len(new) == 1:\n            cur = new[0]",
+  "kills": [
+   "test_47_rules_change_admits_a_rotation_whose_decision_replays"
+  ]
  }
 }

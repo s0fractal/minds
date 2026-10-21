@@ -26,6 +26,19 @@ mutation tests. **Assumed** means nothing here checks it.
 | The kernel does not panic, overflow or return an unknown code on arbitrary bytes whose commit count is at most 4096 | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`); larger counts are skipped, see the time limit below | `kernel/fuzz` |
 | `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI | |
 
+## Changing the rules (§4.3) and the v2 rules (RULES-V2.md)
+
+| Claim | Evidence | Where |
+|---|---|---|
+| A rotation to other rules is admitted only with exactly one rules-change decision, sealed by the governing admission quorum, whose three computations the gate replays: (a) the new rules give every status and the governing scope the old rules give over the chain so far; (b) on a counterexample chain the gate admits, the new rules give the named status bit the value named right and the old rules do not; (c) no Authorized cell or authorized edge of the old rules is lost, on either log | Tested, with mutants for every check (`m-rc-*`) | `test_vars1.py` 47–51 |
+| The verdict a decision names right is right | **Not established**: the gate checks only that the old rules disagree with it and the new agree; rightness is the claim of the quorum that seals the decision | spec §4.3 |
+| The new rules agree with the old on inputs other than the chain so far, or refute them on inputs other than the counterexample | **Not established**: (a)–(c) compare two logs, not all inputs | — |
+| A rotation from v2 back to v1 is refused, with or without a decision | Differential (kernel E-25 and twin) and tested | `test_vars1.py` 52, 53 |
+| `kernel2/lens2.wasm` rebuilds to `H_LENS_KERNEL_V2` | Tested: in CI; in every release's checks when the released commit carries `kernel2/` | `tools/minds_chain.py` `kernel_checks`, `test_vars1.py` 58 |
+| v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
+| A custom schema's `cell` mask is parsed correctly from its descriptors | Assumed: host parsing in the trusted base (RULES-V2.md F42) | — |
+| The spec's text changes in the same decision | Assumed: nothing checks the text | — |
+
 ## Replay (§5)
 
 | Claim | Evidence | Where |

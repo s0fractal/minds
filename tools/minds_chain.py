@@ -95,6 +95,13 @@ def governing_scope(repo: V.GitVarsRepo) -> bytes:
     return repo._evaluate_commit_chain(SCOPE, repo.commit_chain(repo.ref_commit(SCOPE)))["active_scope_id"]
 
 
+def governing_rules(repo: V.GitVarsRepo) -> bytes:
+    """The rules the governing scope names. A membership rotation or a release keeps them; changing them is its own
+    operation, a rotation with a rules-change decision (VARS-1-SPEC.md §4.3), never a side effect of either."""
+    atoms, cells, _ = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    return cells[governing_scope(repo)].slots[2]
+
+
 def roster(repo: V.GitVarsRepo) -> List[bytes]:
     """The keys of the governing scope's admission policy."""
     atoms, cells, _ = repo.read_cas_tree(repo.ref_commit(SCOPE))
@@ -122,7 +129,7 @@ def join(repo_dir: Path, sk: bytes, pubkey: bytes, name: str) -> str:
         h_payload=_put(atoms, V.atom_utf8(f"{SCOPE} roster of {len(keys)}: {name} joins")),
         h_supersedes=_put(atoms, V.atom_hvec([s])),
         h_loss=_put(atoms, V.atom_utf8(f"rotation: {name} joins")),
-        slots=(pol, pol, V.H_LENS_KERNEL),
+        slots=(pol, pol, governing_rules(repo)),
     )
     c = repo.build_candidate_commit(SCOPE, atoms, [scope], [V.Seal.sign(sk, scope.id, s)], parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
@@ -144,7 +151,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     keys = roster(repo)
     everyone = _policy(atoms, len(keys), keys)
     pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
-    statement = f"minds release main@{main_sha} rules@{V.H_LENS_KERNEL.hex()}{pins}; checks: " + "; ".join(checks)
+    statement = f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{pins}; checks: " + "; ".join(checks)
     tag = main_sha[:12]
     decision = V.Cell(
         h_schema=V.H_SCHEMA["decision"],
@@ -160,11 +167,12 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
         slots=(V.H_EMPTY, V.H_ATTESTED, _put(atoms, V.atom_utf8("minds-maintainer"))),
     )
     h_in, h_state = repo.projection_digests(SCOPE, tip)
+    tip_rules = V.chain_rules(SCOPE, repo.chain_deltas(repo.commit_chain(tip)))  # the rules of the tip's epoch
     projection = V.Cell(
         h_schema=V.H_SCHEMA["projection"],
         h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/projection/{tip[:12]}")),
         h_payload=V.H_EMPTY,
-        slots=(_put(atoms, V.atom_utf8(tip)), V.H_LENS_KERNEL, h_in, h_state, everyone),
+        slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, everyone),
     )
     cells = [decision, verdict, projection]
     c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, s) for x in cells], parent_commit=tip)
@@ -207,11 +215,37 @@ def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[byt
     return None if best is None else best[2]
 
 
+# Every rules module a commit may carry: its directory, the wasm cargo builds, and the identity it must hash to
+KERNELS = (("kernel", "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_KERNEL"),
+           ("kernel2", "vars_lens2.wasm", V.H_LENS_KERNEL_V2, "H_LENS_KERNEL_V2"))
+
+
+def _run(cmd: List[str], cwd: Path) -> bool:
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True).returncode == 0
+
+
+def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
+    """Rebuild every rules module `root` carries (kernel/, and kernel2/ where present); each must hash to its pinned
+    identity, and the rules the release names must be one of those rebuilt here."""
+    results: List[Tuple[str, bool]] = []
+    rebuilt = set()
+    for d, wasm_name, pinned, label in KERNELS:
+        if not (root / d).is_dir():
+            continue
+        built = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown"], root / d)
+        wasm = root / d / "target" / "wasm32-unknown-unknown" / "release" / wasm_name
+        ok = built and wasm.exists() and V.sha256(wasm.read_bytes()) == pinned
+        results.append((f"{d} rebuild hashes to {label}", ok))
+        if ok:
+            rebuilt.add(pinned)
+    results.append(("the released rules are rebuilt here", rules in rebuilt))
+    return results
+
+
 def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], bool]:
-    """Every check a release requires, as `name OK|FAILED` lines; the release is refused unless all pass. The kernel
-    built from `root` must hash to `rules`."""
-    def run(cmd: List[str], cwd: Path) -> bool:
-        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True).returncode == 0
+    """Every check a release requires, as `name OK|FAILED` lines; the release is refused unless all pass. Every
+    rules module built from `root` must hash to its identity, and `rules` must be one of them."""
+    run = _run
 
     # The Lean executables first: properties I9 and I10 run them, so in a fresh checkout they must exist
     results: List[Tuple[str, bool]] = []
@@ -221,10 +255,7 @@ def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], b
         ("test_vars1", run([sys.executable, "-m", "unittest", "test_vars1"], root)),
         ("test_vars1_props", run([sys.executable, "test_vars1_props.py"], root)),
     ]
-    built = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown"], root / "kernel")
-    wasm = root / "kernel" / "target" / "wasm32-unknown-unknown" / "release" / "vars_lens.wasm"
-    results.append(("kernel rebuild hashes to H_LENS_KERNEL",
-                    built and wasm.exists() and V.sha256(wasm.read_bytes()) == rules))
+    results += kernel_checks(root, rules)
     return [f"{n} {'OK' if ok else 'FAILED'}" for n, ok in results], all(ok for _, ok in results)
 
 
@@ -355,7 +386,7 @@ def _main(argv: List[str]) -> int:
         if why:
             print(f"refused: {why}", file=sys.stderr)
             return 1
-        checks, ok = checks_at(repo_dir, main_sha, V.H_LENS_KERNEL)  # fresh: nothing left from earlier builds
+        checks, ok = checks_at(repo_dir, main_sha, governing_rules(V.GitVarsRepo(repo_dir)))  # fresh worktree
         print("\n".join(checks))
         if not ok:
             print("refused: a check failed", file=sys.stderr)

@@ -13,6 +13,7 @@ import dataclasses
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -28,15 +29,16 @@ import vars1 as V  # noqa: E402
 
 
 class KernelCheckedRepo(V.GitVarsRepo):
-    """Every lens() is re-run on a separate rules-kernel instance (kernel/lens.wasm): Passes 1-2 must reproduce."""
+    """Every lens() is re-run on a separate instance of the rules it names (kernel/lens.wasm, or kernel2/lens2.wasm
+    for a v2 epoch): Passes 1-2 must reproduce."""
 
-    runner: "V.KernelRunner | None" = None
+    runners: "dict[bytes, V.KernelRunner]" = {}
 
     def lens(self, scope: str):
         out = super().lens(scope)
-        if KernelCheckedRepo.runner is None:
-            KernelCheckedRepo.runner = V.KernelRunner()
-        for cid, bits in KernelCheckedRepo.runner.statuses(out).items():
+        if out["rules"] not in KernelCheckedRepo.runners:
+            KernelCheckedRepo.runners[out["rules"]] = V.KernelRunner(out["rules"])
+        for cid, bits in KernelCheckedRepo.runners[out["rules"]].statuses(out).items():
             for name, val in bits.items():
                 if out[name][cid] != val:
                     raise AssertionError(f"kernel disagrees on {name} of {cid.hex()[:12]}: python={out[name][cid]} wasm={val}")
@@ -2783,6 +2785,434 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(lens["accepted"][fx.id])
         self.assertTrue(lens["settled"][schema.id])
         self.assertTrue(lens["settled"][d.id])
+
+    # -- rules v2 (RULES-V2.md, dormant) and changing the rules (VARS-1-SPEC.md §4.3) ----------------------------------
+    def _commit(self, scope: str, parent: str, governing: V.Cell, a: dict[bytes, bytes], cells: list,
+                sk: bytes | None = None) -> str:
+        sk = sk or self.sk1
+        c = self.repo.build_candidate_commit(scope, a, cells, [V.Seal.sign(sk, x.id, governing.id) for x in cells],
+                                             parent_commit=parent)
+        self.repo.admit_and_advance(scope, c, expected_old=parent)
+        return c
+
+    def _r2_03(self) -> tuple[tuple[str, int], V.Cell, V.Cell]:
+        """Codex R2-03 as a chain under v2 rules, scope `cx`: a foreign cell Y, accepted, holds as an opaque `digest`
+        the id of a cell X of its own origin born after it. v1 reads every payload or slot equal to a cell id as a
+        reference, so X becomes Accepted through Y; v2 reads a `digest` field as a value, so X is not.
+        Returns (tip, X's index in the v2 kernel input), Y and X."""
+        a = {**V.STD_SCHEMA_ATOMS, V.H_LENS_KERNEL_V2: V.KERNEL2_ATOM}
+        pol = self._pol(a, 1, [self.pk1])
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(a, V.atom_utf8("cx/SCOPE")),
+                    self._put_atom(a, V.atom_utf8("counterexample R2-03")), slots=(pol, pol, V.H_LENS_KERNEL_V2))
+        c0 = self.repo.build_candidate_commit("cx", a, [*V.STD_SCHEMAS.values(), s0],
+                                              [V.Seal.sign(self.sk1, s0.id, s0.id)], parent_commit=None)
+        self.repo.admit_and_advance("cx", c0, expected_old=None)
+        b: dict[bytes, bytes] = {}
+        put = lambda raw: self._put_atom(b, raw)  # noqa: E731
+        ppol = self._pol(b, 1, [self.pk_peer])
+        sp = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8("peerB/SCOPE")), put(V.atom_utf8("peerB")),
+                    slots=(ppol, ppol, V.H_LENS_KERNEL))
+        opaque = V.Cell(V.H_META_SCHEMA, put(V.atom_utf8("cx/opaque")), V.H_EMPTY,
+                        slots=(put(V.atom_utf8("value:digest")),))
+        xa: dict[bytes, bytes] = {}
+        x = self._axiom(xa, "peerB/x", "born after the digest that names it")
+        y = V.Cell(opaque.id, put(V.atom_utf8("peerB/y")), put(V.atom_utf8("y")), slots=(x.id,))
+        acc = V.Cell(V.H_SCHEMA["acceptance"], put(V.atom_utf8("cx/accept.y")), y.id,
+                     slots=(put(V.atom_utf8("peerB")), sp.id))
+        c1 = self.repo.build_candidate_commit("cx", b, [sp, opaque, y, acc], [
+            V.Seal.sign(self.sk_peer, sp.id, sp.id), V.Seal.sign(self.sk1, opaque.id, s0.id),
+            V.Seal.sign(self.sk_peer, y.id, sp.id), V.Seal.sign(self.sk1, acc.id, s0.id)], parent_commit=c0)
+        self.repo.admit_and_advance("cx", c1, expected_old=c0)
+        c2 = self.repo.build_candidate_commit("cx", xa, [x], [V.Seal.sign(self.sk_peer, x.id, sp.id)], parent_commit=c1)
+        try:
+            self.repo.admit_and_advance("cx", c2, expected_old=c1)
+        except V.VarsError as e:
+            self.fail(f"a digest written in a v2 epoch vetoed the later cell it names: {e}")
+        order = self.repo.rules_output("cx", c2, V.H_LENS_KERNEL_V2)[1]["order"]
+        self.cx_y = y
+        return (c2, order.index(x.id)), y, x
+
+    def _change_rules(self, scope: str, parent: str, base: V.Cell, new_rules: bytes, sks: list[bytes],
+                      cx: tuple[str, int], *, label: str = "v2", fields: "list[str] | None" = None,
+                      override: "dict | None" = None, decision_sks: "list[bytes] | None" = None,
+                      rotate: bool = True, decide: bool = True, twice: bool = False,
+                      schema: bool = True) -> tuple[str, V.Cell, "V.Cell | None"]:
+        """A candidate commit (not admitted) rotating `scope` from `base` to a scope naming `new_rules`, with a
+        rules-change decision whose digests are the gate's own replay; `override` then replaces fields by name
+        (a value, or a function of `put`), and `fields` builds it on a schema with only those fields."""
+        cx_tip, cx_cell = cx
+        a = dict(V.RULES_ATOMS)
+        put = lambda raw: self._put_atom(a, raw)  # noqa: E731
+        sch, sch_atoms = V.rules_change_schema(scope)
+        a.update(sch_atoms)
+        if fields is not None:
+            sch = V.Cell(V.H_META_SCHEMA, sch.h_slot_name, V.H_EMPTY, slots=tuple(put(V.atom_utf8(f)) for f in fields))
+        ev = self.repo.rules_change_evidence(scope, parent, base.slots[2], new_rules, "cx", cx_tip)
+        vals = {"old_rules": base.slots[2], "new_rules": new_rules, "basis": put(V.atom_utf8(parent)),
+                "reproduce": ev["reproduce"], "counterexample_scope": put(V.atom_utf8("cx")),
+                "counterexample": put(V.atom_utf8(cx_tip)), "cell": put(V.atom_u64(cx_cell)),
+                "status": put(V.atom_u64(0)), "right": put(V.atom_u64(0)),  # X is not Accepted
+                "refutes": ev["refutes"], "latches": ev["latches"]}
+        for k, v in (override or {}).items():
+            vals[k] = v(put) if callable(v) else v
+        names = [f.split(":")[0] for f in (fields or V.RULES_CHANGE_FIELDS)]
+
+        def decision(tag: str) -> V.Cell:
+            return V.Cell(sch.id, put(V.atom_utf8(f"{scope}/rules-change/{label}{tag}")),
+                          put(V.atom_utf8(f"{scope} moves to rules {new_rules.hex()[:12]}: Codex R2-03{tag}")),
+                          slots=tuple(vals[n] for n in names))
+
+        s = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8(f"{scope}/SCOPE")), put(V.atom_utf8(f"{scope} under {label}")),
+                   h_supersedes=self._hv(a, [base.id]), h_loss=put(V.atom_utf8(f"rules change to {label}")),
+                   slots=(base.slots[0], base.slots[1], new_rules))
+        ds = ([decision("")] if decide else []) + ([decision(".again")] if twice else [])
+        cells = ds + ([s] if rotate else []) + ([sch] if schema and ds else [])
+        seals = [V.Seal.sign(k, s.id, base.id) for k in sks] if rotate else []
+        seals += [V.Seal.sign(k, d.id, base.id) for d in ds for k in (decision_sks or sks)]
+        seals += [V.Seal.sign(sks[0], sch.id, base.id)] if schema and ds else []
+        c = self.repo.build_candidate_commit(scope, a, cells, seals, parent_commit=parent)
+        return c, s, (ds[0] if ds else None)
+
+    def _gate_refuses(self, regex: str, scope: str, cand: str, parent: str) -> None:
+        with self.assertRaisesRegex(V.VarsError, regex):
+            self.repo.admit_and_advance(scope, cand, expected_old=parent)
+
+    def _rules_change_fixture(self) -> tuple[tuple[str, int], str, V.Cell]:
+        cx, _, _ = self._r2_03()
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        c1 = self._commit("core", c0, s0, a, [self._axiom(a, "core/fact", "a fact")])
+        return cx, c1, s0
+
+    def test_47_rules_change_admits_a_rotation_whose_decision_replays(self) -> None:
+        """§4.3: a rotation v1 -> v2 is admitted with a rules-change decision whose three computations the gate
+        replays: the new rules reproduce the history, refute the old on Codex R2-03, and keep every latch."""
+        cx, c1, s0 = self._rules_change_fixture()
+        ev = self.repo.rules_change_evidence("core", c1, V.H_LENS_KERNEL, V.H_LENS_KERNEL_V2, "cx", cx[0])
+        old_cx, new_cx = ev["counterexample"]
+        x = new_cx["order"][cx[1]]
+        self.assertEqual((old_cx["status"][x] & 1, new_cx["status"][x] & 1), (1, 0),
+                         "R2-03: under v1 the digest makes X Accepted, under v2 it does not")
+        self.assertEqual(ev["basis"][0]["status"], ev["basis"][1]["status"])
+
+        cand, s1, d = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL, "the rotation commit is still in the old epoch")
+        self.assertTrue(lens["active"][d.id] and lens["active"][s1.id])
+        a: dict[bytes, bytes] = {}
+        self._commit("core", cand, s1, a, [self._axiom(a, "core/after", "after the change")])
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL_V2)
+        self.assertEqual(struct.unpack_from("<I", lens["kernel_input"])[0], V.KERNEL2_MAGIC)
+
+    def test_48_rules_change_needs_its_decision(self) -> None:
+        """A rotation to other rules without a rules-change decision is refused, and so is one whose decision lacks
+        the fields of (a), (b) or (c) (another schema, so no decision), names other rules or another basis, lacks
+        the admission quorum, comes twice, or comes without the rotation it decides."""
+        cx, c1, s0 = self._rules_change_fixture()
+        V2 = V.H_LENS_KERNEL_V2
+        need = "exactly one rules-change decision"
+        self._gate_refuses(need, "core", self._change_rules("core", c1, s0, V2, [self.sk1], cx, decide=False)[0], c1)
+        for drop in ({"reproduce"}, {"counterexample_scope", "counterexample", "cell", "status", "right", "refutes"},
+                     {"latches"}):
+            fields = [f for f in V.RULES_CHANGE_FIELDS if f.split(":")[0] not in drop]
+            self._gate_refuses(need, "core", self._change_rules("core", c1, s0, V2, [self.sk1], cx, fields=fields)[0], c1)
+        self._gate_refuses(need, "core", self._change_rules("core", c1, s0, V2, [self.sk1], cx, twice=True)[0], c1)
+        self._gate_refuses("comes only with the rotation", "core",
+                      self._change_rules("core", c1, s0, V2, [self.sk1], cx, rotate=False)[0], c1)
+        self._gate_refuses("other rules than those the rotation changes", "core",
+                      self._change_rules("core", c1, s0, V2, [self.sk1], cx,
+                                         override={"old_rules": V2})[0], c1)
+        self._gate_refuses("basis is not the chain so far", "core",
+                      self._change_rules("core", c1, s0, V2, [self.sk1], cx,
+                                         override={"basis": lambda put: put(V.atom_utf8("0" * 40))})[0], c1)
+        # a 2-of-2 roster: the rotation carries both seals, the decision only one
+        q0, t0, _ = self._bootstrap_genesis("q", adm_threshold=2)
+        self._gate_refuses("lacks the governing scope's admission quorum", "q",
+                      self._change_rules("q", q0, t0, V2, [self.sk1, self.sk2], cx, decision_sks=[self.sk1])[0], q0)
+        cand, _, _ = self._change_rules("q", q0, t0, V2, [self.sk1, self.sk2], cx)
+        self.repo.admit_and_advance("q", cand, expected_old=q0)
+
+    def test_49_rules_change_a_reproduces_the_history(self) -> None:
+        """(a): a reproduce digest other than the replay's is refused, and so are new rules that change a status of
+        the chain so far (a stand-in that flips one status byte of the replay), digests notwithstanding."""
+        cx, c1, s0 = self._rules_change_fixture()
+        V2 = V.H_LENS_KERNEL_V2
+        self._gate_refuses(r"\(a\): the decision's reproduce digest", "core",
+                      self._change_rules("core", c1, s0, V2, [self.sk1], cx, override={"reproduce": bytes(32)})[0], c1)
+        real = self.repo.rules_output
+
+        def flips_a_status(scope, tip, rules):
+            out, read = real(scope, tip, rules)
+            if scope == "core" and rules == V2:
+                read = {**read, "status": {**read["status"], s0.id: read["status"][s0.id] ^ 0x40}}
+            return out, read
+
+        self.repo.rules_output = flips_a_status
+        try:
+            self._gate_refuses(r"\(a\): the new rules do not reproduce", "core",
+                          self._change_rules("core", c1, s0, V2, [self.sk1], cx)[0], c1)
+        finally:
+            del self.repo.rules_output
+
+    def test_50_rules_change_b_refutes_the_old_rules(self) -> None:
+        """(b): the counterexample must be a chain the gate admits, its digest the replay's, and the named status
+        must be one the new rules give right and the old rules wrong."""
+        cx, c1, s0 = self._rules_change_fixture()
+        V2 = V.H_LENS_KERNEL_V2
+        attempt = lambda **o: self._change_rules("core", c1, s0, V2, [self.sk1], cx, override=o)[0]  # noqa: E731
+        self._gate_refuses(r"\(b\): the decision's refutes digest", "core", attempt(refutes=bytes(32)), c1)
+        self._gate_refuses(r"\(b\): the new rules do not give", "core",
+                      attempt(right=lambda put: put(V.atom_u64(1))), c1)
+        y_ix = self.repo.rules_output("cx", cx[0], V2)[1]["order"].index(self.cx_y.id)
+        self._gate_refuses(r"\(b\): the old rules give that verdict too", "core",
+                      attempt(cell=lambda put: put(V.atom_u64(y_ix)), right=lambda put: put(V.atom_u64(1))), c1)
+        for o in ({"cell": 10_000}, {"status": 7}, {"right": 2}):
+            (k, v), = o.items()
+            self._gate_refuses(r"\(b\): the decision names no status", "core",
+                          attempt(**{k: lambda put, v=v: put(V.atom_u64(v))}), c1)
+        # a counterexample tip whose chain the gate refuses: an unsealed cell on top of the R2-03 chain
+        ua: dict[bytes, bytes] = {}
+        bad_tip = self.repo.build_candidate_commit("cx", ua, [self._axiom(ua, "cx/unsealed", "no seal")], [],
+                                                   parent_commit=cx[0])
+        self._gate_refuses("lacks a valid Seal", "core", attempt(counterexample=lambda put: put(V.atom_utf8(bad_tip))), c1)
+        # either rules refusing either log refuses the rotation (a stand-in: the old rules refuse the counterexample)
+        honest, real = attempt(), self.repo.rules_output
+
+        def refuses(scope, tip, rules):
+            if scope == "cx" and rules == V.H_LENS_KERNEL:
+                raise V.KernelRefusal(-2)
+            return real(scope, tip, rules)
+
+        self.repo.rules_output = refuses
+        try:
+            self._gate_refuses("rules change: the old rules over the counterexample: rules kernel E-2", "core", honest, c1)
+        finally:
+            del self.repo.rules_output
+
+    def test_51_rules_change_c_latches_only_grow(self) -> None:
+        """(c): a latches digest other than the replay's is refused, and so are new rules that drop a latch the old
+        rules set, over the chain so far or over the counterexample, while every status is reproduced."""
+        cx, c1, s0 = self._rules_change_fixture()
+        V2 = V.H_LENS_KERNEL_V2
+        self._gate_refuses(r"\(c\): the decision's latches digest", "core",
+                      self._change_rules("core", c1, s0, V2, [self.sk1], cx, override={"latches": bytes(32)})[0], c1)
+        real = self.repo.rules_output
+        for on in ("core", "cx"):
+            def drops_a_latch(scope, tip, rules, on=on):
+                out, read = real(scope, tip, rules)
+                if scope == on and rules == V2:
+                    auth = dict(read["auth"])
+                    auth[next(k for k, v in auth.items() if v and k not in V.STD_SCHEMA_IDS)] = 0
+                    read = {**read, "auth": auth}
+                return out, read
+
+            self.repo.rules_output = drops_a_latch
+            try:
+                self._gate_refuses(r"\(c\): a latch the old rules set is lost", "core",
+                              self._change_rules("core", c1, s0, V2, [self.sk1], cx)[0], c1)
+            finally:
+                del self.repo.rules_output
+
+    def test_52_rules_never_rotate_back_to_v1(self) -> None:
+        """A rotation from v2 back to v1 is refused (kernel E-25 and its twin), with or without a decision; a
+        rotation that keeps v2 needs none."""
+        cx, c1, s0 = self._rules_change_fixture()
+        cand, s1, _ = self._change_rules("core", c1, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        for decide in (True, False):
+            back, _, _ = self._change_rules("core", cand, s1, V.H_LENS_KERNEL, [self.sk1], cx, label="back",
+                                            decide=decide, schema=False)
+            self._gate_refuses("rules kernel E-25:", "core", back, cand)
+        again, _, _ = self._change_rules("core", cand, s1, V.H_LENS_KERNEL_V2, [self.sk1], cx, label="v2-again",
+                                         decide=False)
+        self.repo.admit_and_advance("core", again, expected_old=cand)
+        self.assertEqual(self.repo.lens("core")["rules"], V.H_LENS_KERNEL_V2)
+
+    def test_53_v1_releases_survive_a_rules_change(self) -> None:
+        """tools/minds_chain.py after a rotation to v2 (Monday F40): `release` and `join` keep the governing rules,
+        a release projection names its tip's epoch, and v1 projection and attestation bundles made before the
+        change still verify against a pinned key; a v2 projection is admitted, and offline it is unsupported."""
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        pk = V.ed25519_pubkey(sk)
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        cx, _, _ = self._r2_03()
+        tip = repo.ref_commit("minds")
+        base = repo.read_cas_tree(tip)[1][mc.governing_scope(repo)]
+        cand, _, _ = self._change_rules("minds", tip, base, V.H_LENS_KERNEL_V2, [sk], cx)
+        self.repo.admit_and_advance("minds", cand, expected_old=tip)
+        self.assertEqual(mc.governing_rules(repo), V.H_LENS_KERNEL_V2)
+
+        def admitted(step, *args):
+            try:
+                return step(self.repo_path, sk, *args)
+            except V.VarsError as e:
+                self.fail(f"{step.__name__} after the change to v2 was refused: {e}")
+
+        _, r3 = admitted(mc.release, "c" * 40, ["x OK"])  # its projection's tip is the rotation: a v1 epoch
+        _, r4 = admitted(mc.release, "d" * 40, ["x OK"])  # its projection's tip is in the v2 epoch
+        rows = {r["name"]: r for r in mc.show(self.repo_path)}
+        self.assertIn(f"rules@{V.H_LENS_KERNEL_V2.hex()}", rows["minds/release/cccccccccccc"]["statement"])
+        cells = repo.read_cas_tree(repo.ref_commit("minds"))[1]
+        self.assertEqual(cells[r3["projection"]].slots[1], V.H_LENS_KERNEL)
+        self.assertEqual(cells[r4["projection"]].slots[1], V.H_LENS_KERNEL_V2)
+        admitted(mc.join, V.ed25519_pubkey(sk2), "second")
+        self.assertEqual(mc.governing_rules(repo), V.H_LENS_KERNEL_V2, "a membership rotation keeps the rules")
+
+        got = V.verify_projection(json.loads(json.dumps(V.export_projection(repo, "minds", r2["projection"]))),
+                                  require=[pk])
+        self.assertTrue(got["witnessed"] and got["data_ok"] and not got["required_missing"])
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertTrue(V.verify_attestation(b, require=[pk])["accepted"])
+        self.assertTrue(repo.lens("minds")["settled"][r4["projection"]])
+        got = V.verify_projection(json.loads(json.dumps(V.export_projection(repo, "minds", r4["projection"]))))
+        self.assertEqual(got["rules_status"], "unsupported", "the offline verifier interprets v1 only")
+
+    def test_54_rules_v2_keep_an_opaque_digest_opaque(self) -> None:
+        """RULES-V2: after the change to v2, a digest equal to a later cell's id stays opaque and vetoes nothing; the
+        same digest written in the v1 epoch still refuses that cell, after the change too."""
+        cx, c1, s0 = self._rules_change_fixture()
+        fa: dict[bytes, bytes] = {}
+        planned_v1 = self._axiom(fa, "core/planned-1", "planned in v1")
+        planned_v2 = self._axiom(fa, "core/planned-2", "planned in v2")
+        a: dict[bytes, bytes] = {}
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/opaque-schema")), V.H_EMPTY,
+                        slots=(self._put_atom(a, V.atom_utf8("value:digest")),))
+        holder1 = V.Cell(schema.id, self._put_atom(a, V.atom_utf8("core/holder-1")), self._put_atom(a, V.atom_utf8("h1")),
+                         slots=(planned_v1.id,))
+        c2 = self._commit("core", c1, s0, a, [schema, holder1])
+        cand, s1, _ = self._change_rules("core", c2, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c2)
+        a3: dict[bytes, bytes] = {}
+        holder2 = V.Cell(schema.id, self._put_atom(a3, V.atom_utf8("core/holder-2")),
+                         self._put_atom(a3, V.atom_utf8("h2")), slots=(planned_v2.id,))
+        c3 = self._commit("core", cand, s1, a3, [holder2])
+        try:
+            c4 = self._commit("core", c3, s1, dict(fa), [planned_v2])
+        except V.VarsError as e:
+            self.fail(f"a digest written in the v2 epoch vetoed the cell it names: {e}")
+        fold = self.repo._evaluate_commit_chain("core", self.repo.commit_chain(c4))
+        self.assertEqual(fold["value_refs"][holder2.id], [], "a v2 digest is never a reference")
+        self.assertEqual(fold["value_refs"][holder1.id], [], "nor is a v1 digest naming no cell yet")
+        self.assertTrue(self.repo.lens("core")["active"][planned_v2.id])
+        late = self.repo.build_candidate_commit("core", dict(fa), [planned_v1],
+                                                [V.Seal.sign(self.sk1, planned_v1.id, s1.id)], parent_commit=c4)
+        self._gate_refuses("later-born cell", "core", late, c4)
+
+    def test_55_rules_v2_read_references_by_type(self) -> None:
+        """RULES-V2: a v2-born cell's references are its typed positions (a `cell` field); `hash` and `digest`
+        values naming existing cells are not. A v1-born cell keeps v1's reading under v2."""
+        cx, c1, s0 = self._rules_change_fixture()
+        a: dict[bytes, bytes] = {}
+        target = self._axiom(a, "core/target", "target")
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/mixed-schema")), V.H_EMPTY,
+                        slots=tuple(self._put_atom(a, V.atom_utf8(d)) for d in ("link:cell", "d:digest", "h:hash")))
+        old = V.Cell(schema.id, self._put_atom(a, V.atom_utf8("core/old")), target.id, slots=(target.id,) * 3)
+        c2 = self._commit("core", c1, s0, a, [target, schema, old])
+        cand, s1, _ = self._change_rules("core", c2, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c2)
+        a3: dict[bytes, bytes] = {}
+        new = V.Cell(schema.id, self._put_atom(a3, V.atom_utf8("core/new")), target.id, slots=(target.id,) * 3)
+        c3 = self._commit("core", cand, s1, a3, [new])
+        fold = self.repo._evaluate_commit_chain("core", self.repo.commit_chain(c3))
+        self.assertEqual(fold["rules"], V.H_LENS_KERNEL_V2)
+        self.assertEqual(fold["value_refs"][new.id], [(1, target.id)], "only the `cell` field is a reference")
+        self.assertEqual(fold["value_refs"][old.id], [(p, target.id) for p in range(4)],
+                         "v1-born: the payload and every slot")
+
+    def test_56_rules_v2_kernel_checks_the_reference_list(self) -> None:
+        """The v2 module recomputes every cell's reference positions and refuses an input whose list differs, and a
+        v1-encoded input; over a log wholly in v1 epochs it gives v1's output byte for byte."""
+        cx, c1, s0 = self._rules_change_fixture()
+        a: dict[bytes, bytes] = {}
+        target = self._axiom(a, "core/target", "target")
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/link-schema")), V.H_EMPTY,
+                        slots=(self._put_atom(a, V.atom_utf8("link:cell")), self._put_atom(a, V.atom_utf8("d:digest"))))
+        c2 = self._commit("core", c1, s0, a, [target, schema])
+        v1_deltas = self.repo.chain_deltas(self.repo.commit_chain(c2))
+        run1, run2 = V.kernel_runner(V.H_LENS_KERNEL).run, V.kernel_runner(V.H_LENS_KERNEL_V2).run
+        self.assertEqual(run2(V.kernel_facts("core", v1_deltas, V.H_LENS_KERNEL_V2)[0]),
+                         run1(V.kernel_facts("core", v1_deltas)[0]))
+        with self.assertRaisesRegex(V.KernelRefusal, "E-1:"):
+            run2(V.kernel_facts("core", v1_deltas)[0])
+        cand, s1, _ = self._change_rules("core", c2, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
+        self.repo.admit_and_advance("core", cand, expected_old=c2)
+        a3: dict[bytes, bytes] = {}
+        linker = V.Cell(schema.id, self._put_atom(a3, V.atom_utf8("core/linker")), self._put_atom(a3, V.atom_utf8("x")),
+                        slots=(target.id, target.id))
+        c3 = self._commit("core", cand, s1, a3, [linker])
+        deltas = self.repo.chain_deltas(self.repo.commit_chain(c3))
+        run2(V.kernel_facts("core", deltas)[0])  # the honest encoding is accepted
+        real = V.cell_refs
+        try:
+            for fake, why in ((lambda c, cells, atoms, v1: [], "dropped"),
+                              (lambda c, cells, atoms, v1: real(c, cells, atoms, True), "untyped added")):
+                V.cell_refs = lambda c, cells, atoms, v1, f=fake: f(c, cells, atoms, v1) if c.id == linker.id \
+                    else real(c, cells, atoms, v1)
+                with self.assertRaisesRegex(V.KernelRefusal, "E-6:", msg=why):
+                    run2(V.kernel_facts("core", deltas)[0])
+        finally:
+            V.cell_refs = real
+
+    def test_57_rules_v2_from_genesis(self) -> None:
+        """A scope may start under v2 without a decision: its genesis stores the module and names it. Projections
+        name the rules of their tip's epoch."""
+        atoms = {**V.STD_SCHEMA_ATOMS, V.H_LENS_KERNEL_V2: V.KERNEL2_ATOM}
+        pol = self._pol(atoms, 1, [self.pk1])
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(atoms, V.atom_utf8("core/SCOPE")),
+                    self._put_atom(atoms, V.atom_utf8("core")), slots=(pol, pol, V.H_LENS_KERNEL_V2))
+        c0 = self.repo.build_candidate_commit("core", atoms, [*V.STD_SCHEMAS.values(), s0],
+                                              [V.Seal.sign(self.sk1, s0.id, s0.id)], parent_commit=None)
+        self.repo.admit_and_advance("core", c0, expected_old=None)
+        lens = self.repo.lens("core")
+        self.assertEqual(lens["rules"], V.H_LENS_KERNEL_V2)
+        self.assertTrue(lens["active"][s0.id])
+        # rules this host does not implement are refused, even as a stored wasm module
+        other = {**atoms, V.sha256(b"\0asm\1\0\0\0"): b"\0asm\1\0\0\0"}
+        s9 = V.Cell(V.H_SCHEMA["scope"], s0.h_slot_name, s0.h_payload, slots=(pol, pol, V.sha256(b"\0asm\1\0\0\0")))
+        self._gate_refuses("neither v1 nor v2", "other", self.repo.build_candidate_commit(
+            "other", other, [*V.STD_SCHEMAS.values(), s9], [V.Seal.sign(self.sk1, s9.id, s9.id)], parent_commit=None), None)
+        h_in, h_state = self.repo.projection_digests("core", c0)
+        for rules, ok in ((V.H_LENS_KERNEL, False), (V.H_LENS_KERNEL_V2, True)):
+            pa: dict[bytes, bytes] = {}
+            p = V.Cell(V.H_SCHEMA["projection"], self._put_atom(pa, V.atom_utf8("core/p")), V.H_EMPTY,
+                       slots=(self._put_atom(pa, V.atom_utf8(c0)), rules, h_in, h_state, pol))
+            c = self.repo.build_candidate_commit("core", pa, [p], [V.Seal.sign(self.sk1, p.id, s0.id)], parent_commit=c0)
+            if ok:
+                self.repo.admit_and_advance("core", c, expected_old=c0)
+            else:
+                self._gate_refuses("rules than those of its tip's epoch", "core", c, c0)
+
+    def test_58_release_checks_rebuild_every_rules_module(self) -> None:
+        """Monday F41: a release rebuilds every rules module its commit carries; each must hash to its identity,
+        and the rules the release names must be among them (an older commit without kernel2/ checks kernel/)."""
+        mc = self._minds_chain()
+        root = Path(self.tmp.name) / "wt"
+        built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM}
+
+        def fake_cargo(cmd, cwd):
+            out = cwd / "target" / "wasm32-unknown-unknown" / "release"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / ("vars_lens.wasm" if cwd.name == "kernel" else "vars_lens2.wasm")).write_bytes(built[cwd.name])
+            return True
+
+        (root / "kernel").mkdir(parents=True)
+        self.assertEqual(mc.kernel_checks(root, V.H_LENS_KERNEL, fake_cargo),
+                         [("kernel rebuild hashes to H_LENS_KERNEL", True), ("the released rules are rebuilt here", True)])
+        self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V2, fake_cargo)[-1][1])
+        (root / "kernel2").mkdir()
+        self.assertEqual(mc.kernel_checks(root, V.H_LENS_KERNEL_V2, fake_cargo),
+                         [("kernel rebuild hashes to H_LENS_KERNEL", True),
+                          ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", True), ("the released rules are rebuilt here", True)])
+        built["kernel2"] = V.KERNEL2_ATOM + b"\x00"
+        self.assertEqual(mc.kernel_checks(root, V.H_LENS_KERNEL, fake_cargo),
+                         [("kernel rebuild hashes to H_LENS_KERNEL", True),
+                          ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", False), ("the released rules are rebuilt here", True)])
 
 
 if __name__ == "__main__":
