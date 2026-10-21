@@ -1,5 +1,11 @@
 # What is established about minds, and how
 
+The spec is checked against this, sentence by sentence: `claims.json` quotes every normative block of
+VARS-1-SPEC.md with its status and witnesses, and every tested or differential claim names mutants that
+`tools/run_mutants.py` must see killed. `python3 tools/check_claims.py` prints the debt: `assumed` claims (nothing
+checks them) and `unburned` ones (a witness exists, but no mutant has shown it bites). CI refuses an uncovered
+block, a stale quote, a missing witness or a surviving mutant.
+
 Each claim below names its kind of evidence. **Proved** means a machine-checked proof for all inputs, under the
 hypotheses listed. **Bounded** means a model checker (Kani/CBMC) explored every input within a stated bound.
 **Differential** means two independent implementations agree on generated inputs. **Tested** means example and

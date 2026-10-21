@@ -295,6 +295,16 @@ unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptan
 `vars1.py` keeps a Python fold and Passes 1–2 as a differential twin: a refusal by one and not the other, or any
 differing latch, scope or status bit, is a host fault (`TwinDivergence`), never a gate refusal.
 
+**Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them, admitted together
+with a decision that names the new rules' hash and carries, as computations the gate replays: that the new rules
+reproduce every status the old rules give over the chain so far; a counterexample on which the old rules give a
+wrong verdict, which is the reason for the change; and that latches only grow under the new rules. The
+specification's text changes in that same decision. This host does not yet implement or check this.
+
+**Contradictions.** Two rules that give one input two verdicts are recorded as a cell holding that input and both
+verdicts, not resolved by editing text; what depends on them is left to the lens (Stale) until a decision under the
+rule above replaces one of them. This host does not yet implement this.
+
 ### 4.4 Projections
 
 A projection `Π = (tip, rules, input, state)` is a historical statement: at commit `tip`, the rules `rules` give
@@ -385,7 +395,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 ## 6. Conformance
 
 - `test_vars1.py`: golden vectors, gate refusals, the scenarios of §§3–5, every Ed25519 vector of
-  `primitives/vectors/verify-sig.json`, and the schema table above. Every fold and `lens()` runs the kernel and
+  `vectors/verify-sig.json` (copied from primitives), and the schema table above. Every fold and `lens()` runs the kernel and
   its Python twin, and every `lens()` is re-run on the kernel.
 - `test_vars1_props.py`: seeded random admission sequences; on each admitted tip, gate refusals and the lens
   never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed

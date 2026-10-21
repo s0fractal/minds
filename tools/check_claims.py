@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""The specification as a projection of what holds it (claims.json).
+
+Every block of VARS-1-SPEC.md §0–§5 (a paragraph, a list item, a table, a code block) must contain the exact quote
+of a claim or of an informative passage; every quote must still be in the spec; every witness must exist; a claim
+that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
+exists. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
+mutant has shown that it bites). Exit 1 on any violation.
+
+    python3 tools/check_claims.py            # check
+    python3 tools/check_claims.py --table    # print claim -> status -> witnesses -> mutants
+    python3 tools/check_claims.py --spec FILE --claims FILE   # check other files (tests burn the checker so)
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+STATUSES = {"proved", "bounded", "differential", "tested", "unburned", "assumed"}
+DEBT = {"unburned", "assumed"}
+
+
+def norm(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def spec_blocks(spec: str) -> list[tuple[int, str]]:
+    """(line, text) of every block in §0–§5: paragraphs, list items, tables and code blocks; headings excluded."""
+    blocks: list[tuple[int, str]] = []
+    section = None
+    cur: list[str] = []
+    start = 0
+    fenced = False
+
+    def flush() -> None:
+        nonlocal cur
+        if cur and section is not None and section <= 5:
+            blocks.append((start, norm(" ".join(cur))))
+        cur = []
+
+    for n, line in enumerate(spec.splitlines(), 1):
+        if line.startswith("```"):
+            if not fenced:
+                flush()
+                start = n
+            cur.append(line)
+            fenced = not fenced
+            if not fenced:
+                flush()
+            continue
+        if fenced:
+            cur.append(line)
+            continue
+        m = re.match(r"^## (\d+)\.", line)
+        if m:
+            flush()
+            section = int(m.group(1))
+            continue
+        if line.startswith("#"):
+            flush()
+            continue
+        if not line.strip():
+            flush()
+            continue
+        if re.match(r"^(\d+\.|-) ", line):
+            flush()
+        if not cur:
+            start = n
+        cur.append(line)
+    flush()
+    return blocks
+
+
+def witness_exists(w: str) -> bool:
+    kind, _, name = w.partition(":")
+    if kind == "test":
+        return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "test_vars1.py").read_text(), re.M) is not None
+    if kind == "prop":
+        return re.search(rf"\b{re.escape(name)}\b", (ROOT / "test_vars1_props.py").read_text()) is not None
+    if kind == "lean":
+        return any(re.search(rf"^(theorem|lemma) {re.escape(name)}\b", f.read_text(), re.M)
+                   for f in (ROOT / "proofs").rglob("*.lean") if ".lake" not in f.parts)
+    if kind == "kani":
+        src = (ROOT / "kernel" / "src" / "lib.rs").read_text()
+        return re.search(rf"#\[kani::proof\][^\n]*\n(?:\s*#\[[^\n]*\n)*\s*fn {re.escape(name)}\(", src) is not None
+    if kind == "ci":
+        return any(f"name: {name}" in f.read_text() for f in (ROOT / ".github" / "workflows").glob("*.yml"))
+    return False
+
+
+def main(argv: list[str]) -> int:
+    def arg(name: str, default: Path) -> Path:
+        return Path(argv[argv.index(name) + 1]) if name in argv else default
+
+    spec = arg("--spec", ROOT / "VARS-1-SPEC.md").read_text()
+    data = json.loads(arg("--claims", ROOT / "claims.json").read_text())
+    mutants = json.loads((ROOT / "mutants.json").read_text())
+    claims, informative = data["claims"], data["informative"]
+    errors: list[str] = []
+    flat = norm(spec)
+
+    ids = [c["id"] for c in claims]
+    for dup in sorted({i for i in ids if ids.count(i) > 1}):
+        errors.append(f"claim id used twice: {dup}")
+    quotes = [norm(c["quote"]) for c in claims] + [norm(q) for q in informative]
+    for c in claims:
+        q = norm(c["quote"])
+        if q not in flat:
+            errors.append(f"{c['id']}: quote not in the spec: {q[:80]!r}")
+        if c["status"] not in STATUSES:
+            errors.append(f"{c['id']}: unknown status {c['status']!r}")
+        if c["status"] != "assumed" and not c.get("witnesses"):
+            errors.append(f"{c['id']}: {c['status']} without a witness")
+        if c["status"] == "unburned" and c.get("mutants"):
+            errors.append(f"{c['id']}: unburned, yet it names mutants (then it is tested or differential)")
+        if c["status"] == "assumed" and (c.get("witnesses") or c.get("mutants")):
+            errors.append(f"{c['id']}: assumed, yet it names witnesses or mutants")
+        for w in c.get("witnesses", []):
+            if not witness_exists(w):
+                errors.append(f"{c['id']}: witness does not exist: {w}")
+        kinds = {w.partition(":")[0] for w in c.get("witnesses", [])}
+        if c["status"] == "proved" and "lean" not in kinds:
+            errors.append(f"{c['id']}: proved without a lean witness")
+        if c["status"] == "bounded" and "kani" not in kinds:
+            errors.append(f"{c['id']}: bounded without a kani witness")
+        if c["status"] in ("tested", "differential") and not c.get("mutants"):
+            errors.append(f"{c['id']}: {c['status']} without a mutant")
+        for m in c.get("mutants", []):
+            if m not in mutants:
+                errors.append(f"{c['id']}: mutant does not exist: {m}")
+    for q in informative:
+        if norm(q) not in flat:
+            errors.append(f"informative quote not in the spec: {norm(q)[:80]!r}")
+    for line, block in spec_blocks(spec):
+        if not any(q in block for q in quotes):
+            errors.append(f"VARS-1-SPEC.md:{line}: no claim or informative quote covers this block: {block[:90]!r}")
+    used = {m for c in claims for m in c.get("mutants", [])}
+    for m in sorted(set(mutants) - used):
+        errors.append(f"mutant not named by any claim: {m}")
+
+    if "--table" in argv:
+        for c in claims:
+            print(f"{c['id']:<32} {c['status']:<12} {', '.join(c.get('witnesses', [])) or '-'}  "
+                  f"[{', '.join(c.get('mutants', []))}]")
+    counts = {s: sum(c["status"] == s for c in claims) for s in sorted(STATUSES)}
+    print(f"{len(claims)} claims {counts}; {len(mutants)} mutants")
+    for s in sorted(DEBT):
+        ids = [c["id"] for c in claims if c["status"] == s]
+        print(f"debt ({s}, {len(ids)}): {', '.join(ids) or 'none'}")
+    for e in errors:
+        print("ERROR", e)
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

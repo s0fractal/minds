@@ -1,0 +1,879 @@
+{
+ "claims": [
+  {
+   "id": "id.sha256",
+   "quote": "`id(x) = SHA-256(bytes(x))`. Every object is addressed by its id.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_01_golden_test_vectors"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "atoms.canonical",
+   "quote": "Non-canonical bytes are refused, never normalized.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects",
+    "test:test_03_gate_rejects_malformed_commits"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "atoms.node",
+   "quote": "| SigmaNodeV2 | `0x00`/`0x01`/`0x02`/`0xff` | Book I node: 34 or 66 bytes |",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-node"
+   ]
+  },
+  {
+   "id": "atoms.root",
+   "quote": "| ComputationRoot | `{\"schema\":\"sigma-resume.root@draft-1\",…}` | canonical JSON of `sigma_resume.py`; its id is `computation_id` |",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-root"
+   ]
+  },
+  {
+   "id": "atoms.environment",
+   "quote": "| Environment | `{\"schema\":\"sigma-resume.environment@draft-1\",…}` | canonical JSON of `sigma_resume.py` |",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-env"
+   ]
+  },
+  {
+   "id": "atoms.state",
+   "quote": "| MachineState | `SGS1` | `SGS1 ‖ computation_id ‖ preorder tree`, at most 64 MiB |",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-state"
+   ]
+  },
+  {
+   "id": "intrinsics.values",
+   "quote": "| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_01_golden_test_vectors"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "intrinsics.unstored",
+   "quote": "An intrinsic is known without reading the store: every consumer reads the same value whether or not its bytes are stored, and storing them changes no result.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_33_intrinsic_atoms_need_not_be_stored"
+   ],
+   "mutants": [
+    "m-intrinsic"
+   ]
+  },
+  {
+   "id": "rules.hash",
+   "quote": "`H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).",
+   "status": "unburned",
+   "witnesses": [
+    "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
+    "test:test_01_golden_test_vectors"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cells.layout",
+   "quote": "0..4 \"VAR1\"",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_01_golden_test_vectors"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cells.loss",
+   "quote": "1. **Loss.** `H_supersedes ≠ H_EMPTY` or `H_retires ≠ H_EMPTY` requires `H_loss ≠ H_EMPTY`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_03_gate_rejects_malformed_commits"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cells.edges.projection",
+   "quote": "Every element of the five edge vectors is a cell id, never the cell itself, and never a projection.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_42_projections_are_immutable_historical_facts"
+   ],
+   "mutants": [
+    "m-projection-edge"
+   ]
+  },
+  {
+   "id": "cells.edges.supersedes-schema",
+   "quote": "`supersedes` joins cells of the same schema.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness"
+   ],
+   "mutants": [
+    "m-cross-schema"
+   ]
+  },
+  {
+   "id": "cells.names",
+   "quote": "A name is `<origin>/SCOPE` iff the cell is a scope cell.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_10_scope_cells_use_the_reserved_scope_name"
+   ],
+   "mutants": [
+    "m-reserved-scope-name"
+   ]
+  },
+  {
+   "id": "cells.schemas",
+   "quote": "4. **Schemas.** A schema cell has `H_payload = H_EMPTY`, all edges and loss `H_EMPTY`",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_29_gate_enforces_payloads_and_enumerations"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cells.dependencies",
+   "quote": "5. **Dependencies.** A contract or decision with `required_comp ≠ H_EMPTY` relies on a computation cell whose payload is that `computation_id`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cells.rule6",
+   "quote": "6. **One binding per name.** A newly admitted local non-scope cell `c` must reach every other local cell with its name along `supersedes` edges",
+   "status": "differential",
+   "witnesses": [
+    "lean:unique_active_binding",
+    "prop:I1",
+    "test:test_07_slot_rebinding_requires_authorized_supersedes_chain"
+   ],
+   "mutants": [
+    "m-binding"
+   ]
+  },
+  {
+   "id": "seals.layout",
+   "quote": "164 bytes: `\"SEAL\" ‖ H_target ‖ H_scope_ctx ‖ actor_pubkey ‖ signature`",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "seals.strict",
+   "quote": "Verification is strict and cofactorless",
+   "status": "tested",
+   "witnesses": [
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance"
+   ],
+   "mutants": [
+    "m-ed25519-s"
+   ]
+  },
+  {
+   "id": "schemas.table",
+   "quote": "| checkpoint | `computation_id:root`, `credit_total:u64`, `spent_total:u64`, `peak_size:u64`, `kernel_outcome:utf8`, `actions:u64` |",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_01_golden_test_vectors"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "types.closed",
+   "quote": "These are all the types: a schema cell whose descriptor is not `name:type` of one of them is refused.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_29_gate_enforces_payloads_and_enumerations"
+   ],
+   "mutants": [
+    "m-field-type"
+   ]
+  },
+  {
+   "id": "payloads.tier",
+   "quote": "tier ∈ {`H_PROVISIONAL`, `H_OWNER`}.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_29_gate_enforces_payloads_and_enumerations"
+   ],
+   "mutants": [
+    "m-tier"
+   ]
+  },
+  {
+   "id": "payloads.actions",
+   "quote": "checkpoint `actions`: the number of actions of the transition from its parent checkpoint (or from the root), which replay must reproduce.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_30_checkpoint_actions_are_replayed"
+   ],
+   "mutants": [
+    "m-actions"
+   ]
+  },
+  {
+   "id": "payloads.scope-label",
+   "quote": "scope: `id(UTF8 label)`, free text that nothing evaluates",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-scope-label"
+   ]
+  },
+  {
+   "id": "payloads.verdict-target",
+   "quote": "or, for an `H_VERDICT_INVALID` verdict, any cell it refutes;",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-judged-kind"
+   ]
+  },
+  {
+   "id": "payloads.verdict-code",
+   "quote": "`verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`, `H_NOT_ASSESSED`}",
+   "status": "tested",
+   "witnesses": [
+    "test:test_29_gate_enforces_payloads_and_enumerations"
+   ],
+   "mutants": [
+    "m-verdict-code"
+   ]
+  },
+  {
+   "id": "payloads.attested-empty",
+   "quote": "`H_ATTESTED` has `ckpt_or_witness = H_EMPTY`",
+   "status": "tested",
+   "witnesses": [
+    "test:test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness"
+   ],
+   "mutants": [
+    "m-attested-witness"
+   ]
+  },
+  {
+   "id": "payloads.witness-kind",
+   "quote": "a nonempty `ckpt_or_witness` is always a checkpoint or cycle witness.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_32_gate_validates_whole_objects"
+   ],
+   "mutants": [
+    "m-ckpt-kind"
+   ]
+  },
+  {
+   "id": "payloads.projection",
+   "quote": "projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).",
+   "status": "tested",
+   "witnesses": [
+    "test:test_29_gate_enforces_payloads_and_enumerations"
+   ],
+   "mutants": [
+    "m-projection-payload"
+   ]
+  },
+  {
+   "id": "store.paths",
+   "quote": "every entry a regular file (`100644`) whose bytes hash to its path.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_03_gate_rejects_malformed_commits",
+    "test:test_38_caches_never_stand_in_for_new_bytes"
+   ],
+   "mutants": [
+    "m-cas-path"
+   ]
+  },
+  {
+   "id": "store.radicle",
+   "quote": "**Radicle.** A node's `refs/vars/heads/<scope>` replicates as",
+   "status": "assumed",
+   "witnesses": [],
+   "mutants": []
+  },
+  {
+   "id": "gate.cas",
+   "quote": "then the ref moves by compare-and-swap (`git update-ref <ref> T_new T_old`).",
+   "status": "tested",
+   "witnesses": [
+    "test:test_03_gate_rejects_malformed_commits"
+   ],
+   "mutants": [
+    "m-cas-ref"
+   ]
+  },
+  {
+   "id": "gate.no-crash",
+   "quote": "Every refusal is an error of the gate, never a crash.",
+   "status": "unburned",
+   "witnesses": [
+    "prop:I0"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "gate.chain",
+   "quote": "Any later commit has exactly the parent `T_old` and at most one new local scope cell",
+   "status": "tested",
+   "witnesses": [
+    "test:test_35_parents_come_from_the_commit_header",
+    "test:test_12_quorum_refusals_at_genesis_and_rotation"
+   ],
+   "mutants": [
+    "m-parents-header"
+   ]
+  },
+  {
+   "id": "gate.roster-rotation",
+   "quote": "That quorum alone may set the new roster, removing keys as well as adding them; no key has a veto over its own removal",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "gate.append-only",
+   "quote": "2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_03_gate_rejects_malformed_commits"
+   ],
+   "mutants": [
+    "m-append-only"
+   ]
+  },
+  {
+   "id": "gate.seals",
+   "quote": "Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of `S_base`'s admission policy",
+   "status": "differential",
+   "witnesses": [
+    "test:test_02_local_loop_rebinding_rollback_import_rotation",
+    "test:test_11_fold_refusals_are_decided_by_the_kernel",
+    "prop:I10"
+   ],
+   "mutants": [
+    "m-seal-signer"
+   ]
+  },
+  {
+   "id": "gate.references",
+   "quote": "4. **References and replay.** Every referenced hash is present",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+    "test:test_09_unassessed_parent_cannot_root_a_replayed_child"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "gate.foreign",
+   "quote": "5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope cell of its origin.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "gate.projections",
+   "quote": "6. **Projections.** For every new projection cell, `tip` is the hex id of an earlier commit of this chain,",
+   "status": "tested",
+   "witnesses": [
+    "test:test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses"
+   ],
+   "mutants": [
+    "m-projection-digests"
+   ]
+  },
+  {
+   "id": "gate.rules-object",
+   "quote": "and the fold itself are decided by the rules object (§4.3)",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_11_fold_refusals_are_decided_by_the_kernel",
+    "prop:I8",
+    "prop:I10"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.endorsers",
+   "quote": "`Endorsers_i(u)`: keys of seals on `u` with `H_scope_ctx = id(S_i)`",
+   "status": "proved",
+   "witnesses": [
+    "lean:step_epoch_binding",
+    "lean:endorser_signed",
+    "prop:I3",
+    "prop:I10"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.initial",
+   "quote": "`InitialEndorsers(v)`: `Endorsers_birth(v)(v)` for a local `v`; fixed at birth.",
+   "status": "proved",
+   "witnesses": [
+    "lean:stateAt_mono",
+    "prop:I3"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.cumulative",
+   "quote": "`CumulativeEndorsers(v)`: every admitted seal on a local `v`, each checked under its own commit's scope.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_08_late_cosign_on_verdict_counts_and_grants_no_author_rights"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.policy-table",
+   "quote": "| contract/decision with tier provisional | its evaluator policy, else `S_i` admission | yes |",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_13_governing_policy_rows",
+    "prop:I3"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.latch-acceptance",
+   "quote": "A local acceptance whose `foreign_scope_cell` is not self-sealed refuses `T_i`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+    "prop:I3c"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.latch-schema",
+   "quote": "2. A local custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes",
+    "prop:I3c"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.latch-edges",
+   "quote": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_11_fold_refusals_are_decided_by_the_kernel",
+    "prop:I3",
+    "prop:I10"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "fold.latches-grow",
+   "quote": "4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.",
+   "status": "proved",
+   "witnesses": [
+    "lean:stateAt_mono",
+    "lean:governed_superseded",
+    "prop:I5",
+    "prop:I7"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.order",
+   "quote": "Edges point from newer to older cells. **Pass 1**, newest first:",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.accepted",
+   "quote": "`Accepted(x)`: `x` is local or a standard schema;",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "prop:I9",
+    "kani:two_cells_foreign_scope"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.invalidated",
+   "quote": "`Effective = ¬Invalidated`.",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "prop:I9",
+    "kani:two_cells_acceptance"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.retired",
+   "quote": "`Retired(v)`: an Effective, Accepted `w` has an authorized retires edge to `v`.",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.superseded",
+   "quote": "`Superseded(v)`: some `w` has an authorized supersedes edge to `v` and is Effective and Accepted, or is itself Superseded.",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "lean:superseded_of_path",
+    "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.active",
+   "quote": "`Active(v)`: Effective, Accepted, not Retired, not Superseded, and every supersedes edge of `v` is authorized.",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_correct",
+    "prop:I9",
+    "kani:two_cells_foreign_scope"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.live",
+   "quote": "**Pass 2.** `Live(x)` for a foreign `x`:",
+   "status": "proved",
+   "witnesses": [
+    "lean:stale_correct",
+    "prop:I2",
+    "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.stale-lfp",
+   "quote": "`Stale(v) ⇔ Active(v) ∧",
+   "status": "proved",
+   "witnesses": [
+    "lean:stale_fixed",
+    "lean:stale_least",
+    "prop:I2"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.rounds",
+   "quote": "The operator is monotone, so at most `|cells| + 1` rounds are needed;",
+   "status": "proved",
+   "witnesses": [
+    "lean:sweep_reaches_stale",
+    "prop:I2"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.pass3",
+   "quote": "**Pass 3.** For an Active, non-Stale contract, decision or question `v`:",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_21_attestation_counts_what_the_lens_counts",
+    "prop:I4",
+    "prop:I11"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.pass3-attested",
+   "quote": "contract/decision without `required_comp`: a verdict on `v` with `H_ATTESTED`;",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_16_light_client_verifies_a_release_attestation",
+    "prop:I11"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.pass3-replayed",
+   "quote": "contract/decision with `required_comp = r` and `expected_outcome = e`: a verdict on `v` with `H_REPLAYED`",
+   "status": "proved",
+   "witnesses": [
+    "lean:settled_full_replay",
+    "prop:I4"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.pass3-question",
+   "quote": "question: a cell of the expected schema.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_31_a_question_is_answered_by_any_cell_of_its_schema"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "lens.pass3-exclusion",
+   "quote": "For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with `H_VERDICT_INVALID` and the same `verifier_id`",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_28_a_later_invalid_withdraws_only_its_own_verifier",
+    "prop:I11"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.module",
+   "quote": "are compiled to `kernel/lens.wasm`",
+   "status": "unburned",
+   "witnesses": [
+    "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
+    "prop:I8"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.input",
+   "quote": "C N NK P",
+   "status": "unburned",
+   "witnesses": [
+    "prop:I9",
+    "prop:I10",
+    "kani:two_cells_axiom_relies"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.forward-refs",
+   "quote": "so the gate refuses a new cell whose id an older cell already names in a payload or slot",
+   "status": "tested",
+   "witnesses": [
+    "test:test_34_no_reference_to_a_later_born_cell"
+   ],
+   "mutants": [
+    "m-forward-ref"
+   ]
+  },
+  {
+   "id": "rules.output",
+   "quote": "Output: a u32 length, the governing scope's index, one status byte per cell",
+   "status": "bounded",
+   "witnesses": [
+    "kani:two_cells_axiom_relies",
+    "kani:two_cells_acceptance",
+    "kani:two_cells_foreign_scope",
+    "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.twin",
+   "quote": "`vars1.py` keeps a Python fold and Passes 1–2 as a differential twin",
+   "status": "unburned",
+   "witnesses": [
+    "prop:I0",
+    "prop:I8"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "proj.recomputed",
+   "quote": "The gate recomputes both before admitting it (§3 check 6), so a chain never holds a false projection.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses"
+   ],
+   "mutants": [
+    "m-projection-digests"
+   ]
+  },
+  {
+   "id": "proj.history",
+   "quote": "That the witness quorum named by `witness_policy` vouches for the result at `tip`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_14_light_client_verifies_a_projection_bundle_without_the_repository"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "proj.not-fresh",
+   "quote": "**Not freshness.** Nothing about commits after `tip`",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_21_attestation_counts_what_the_lens_counts"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "proj.not-pass3",
+   "quote": "**Not Pass 3, not the statuses themselves.**",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_14_light_client_verifies_a_projection_bundle_without_the_repository"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "proj.bundle",
+   "quote": "a reader trusts a projection only if keys it pinned beforehand are among its witnesses.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_39_verify_needs_a_trust_anchor_the_reader_chose"
+   ],
+   "mutants": [
+    "m-verify-anchor",
+    "m-verify-witness-seal",
+    "m-verify-data",
+    "m-verify-pins"
+   ]
+  },
+  {
+   "id": "att.complete",
+   "quote": "refuses a bundle that omits any verdict on the cell held at `tip`",
+   "status": "tested",
+   "witnesses": [
+    "test:test_17_attestation_evidence_is_complete_at_the_projection_tip",
+    "test:test_21_attestation_counts_what_the_lens_counts"
+   ],
+   "mutants": [
+    "m-bundle-omits"
+   ]
+  },
+  {
+   "id": "att.supplied",
+   "quote": "A supplier can omit verdicts and seals, so alone this is evidence as supplied, never acceptance.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_17_attestation_evidence_is_complete_at_the_projection_tip"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "att.later",
+   "quote": "no supplied verdict from after `tip` contradicts it by a policy key.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_28_a_later_invalid_withdraws_only_its_own_verifier"
+   ],
+   "mutants": [
+    "m-own-verifier",
+    "m-later-ignored"
+   ]
+  },
+  {
+   "id": "att.scope-epoch",
+   "quote": "The bundled scope's policy is likewise self-declared:",
+   "status": "tested",
+   "witnesses": [
+    "test:test_39_verify_needs_a_trust_anchor_the_reader_chose",
+    "test:test_27_a_historical_attestation_survives_a_rotation"
+   ],
+   "mutants": [
+    "m-export-scope"
+   ]
+  },
+  {
+   "id": "rules.change",
+   "quote": "**Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them",
+   "status": "assumed",
+   "witnesses": [],
+   "mutants": []
+  },
+  {
+   "id": "rules.contradiction",
+   "quote": "**Contradictions.** Two rules that give one input two verdicts are recorded",
+   "status": "assumed",
+   "witnesses": [],
+   "mutants": []
+  },
+  {
+   "id": "offline.alone",
+   "quote": "**Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_36_offline_verifier_in_a_fresh_folder"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "offline.explain",
+   "quote": "Every result carries `explain`, derived from the bundle by the same computation as the verdict fields;",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_36_offline_verifier_in_a_fresh_folder"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "replay.ids",
+   "quote": "`computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_01_golden_test_vectors",
+    "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "replay.lineage",
+   "quote": "The parent's state is trusted only if the parent is itself replay-verified",
+   "status": "proved",
+   "witnesses": [
+    "lean:verify_lineage_sound",
+    "lean:not_assessed_ancestor_blocks",
+    "test:test_09_unassessed_parent_cannot_root_a_replayed_child"
+   ],
+   "mutants": []
+  }
+ ],
+ "informative": [
+  "**scope**: an authority domain.",
+  "**origin(c)**: the text before the first `/` in the UTF-8 preimage of `c.H_slot_name`.",
+  "**S_i**: the scope cell governing commit `T_i` (fixed at the start of `T_i`).",
+  "**Intrinsic constants** (known without reading the store):",
+  "Unsigned, `296 + 32·K` bytes:",
+  "Each is a schema cell named `core/schema.<name>` with the descriptors below.",
+  "For each commit `T_i` with governing scope `S_i`:",
+  "Governing policy and author rights of a target `v`:",
+  "Latches (never undone):",
+  "Input, u32 little-endian words (`H` = 32 raw bytes):",
+  "What a client without the history gets from a Settled projection, and what it does not:"
+ ]
+}

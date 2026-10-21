@@ -2677,6 +2677,77 @@ class TestVars1Conformance(unittest.TestCase):
         dupes = sorted({n for n in numbers if numbers.count(n) > 1})
         self.assertEqual(dupes, [], "test numbers used more than once")
 
+    def test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness(self) -> None:
+        """Each rule alone, with its well-formed neighbour: a decision may not supersede an axiom (an axiom may); an
+        ATTESTED verdict may not name even a real checkpoint (an INVALID verdict may)."""
+        def supersede(schema_of_new):
+            def b(put, ax, d, *_):
+                newer = V.Cell(schema_of_new, put(V.atom_utf8("core/newer")), put(V.atom_utf8("newer")),
+                               h_supersedes=put(V.atom_hvec([ax.id])), h_loss=put(V.atom_utf8("replaced")),
+                               slots=(V.H_OWNER, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY) if schema_of_new == V.H_SCHEMA["decision"] else ())
+                return [ax, newer]
+            return b
+        self.assertIn("cross-schema", self._try_admit(supersede(V.H_SCHEMA["decision"])) or "")
+        self.assertIsNone(self._try_admit(supersede(V.H_SCHEMA["axiom"])))
+
+        def verdict_naming_a_checkpoint(code):
+            def b(put, ax, d, *_):
+                raw = SG.ser(SG.APPLY, SG.F_LEFT | SG.F_RIGHT, left=V.H_I, right=V.H_K)
+                h = put(raw)
+                env = SR.Environment([h], {h: raw})
+                root = put(V.atom_computation_root(h, put(V.atom_environment([h]))))
+                doc, i, state = SR.start(root.hex(), h)
+                nf = SR.advance(doc, i, state, env, 10)
+                comp = V.Cell(V.H_SCHEMA["computation"], put(V.atom_utf8("core/comp")), root)
+                ck = V.Cell(V.H_SCHEMA["checkpoint"], put(V.atom_utf8("core/ck")), put(nf.state_bytes),
+                            h_relies=put(V.atom_hvec([comp.id])),
+                            slots=(root, put(V.atom_u64(10)), put(V.atom_u64(nf.checkpoint["spent_total"])),
+                                   put(V.atom_u64(nf.checkpoint["peak_semantic_size"])), V.H_NORMAL_FORM,
+                                   put(V.atom_u64(nf.checkpoint["transition_claim"]["actions"]))))
+                w = V.Cell(V.H_SCHEMA["verdict"], put(V.atom_utf8("core/verdict")), d.id,
+                           h_relies=put(V.atom_hvec([ck.id])), h_attests=put(V.atom_hvec([d.id])),
+                           slots=(ck.id, code, put(V.atom_utf8("verifier"))))
+                return [ax, d, comp, ck, w]
+            return b
+        self.assertIn("ATTESTED", self._try_admit(verdict_naming_a_checkpoint(V.H_ATTESTED)) or "")
+        self.assertIsNone(self._try_admit(verdict_naming_a_checkpoint(V.H_VERDICT_INVALID)))
+
+    def test_45_the_spec_is_a_projection_of_its_witnesses(self) -> None:
+        """tools/check_claims.py passes on the repository, and refuses each way the spec could go green over nothing:
+        an uncovered normative paragraph, an edited quote, a witness that does not exist, a tested claim without a
+        mutant."""
+        tool = ROOT_DIR / "tools" / "check_claims.py"
+        spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text()
+        claims = json.loads((ROOT_DIR / "claims.json").read_text())
+
+        def check(spec_text, claims_obj):
+            d = Path(self.tmp.name)
+            (d / "spec.md").write_text(spec_text)
+            (d / "claims.json").write_text(json.dumps(claims_obj))
+            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json")],
+                                 capture_output=True, text=True)
+            return out.returncode, out.stdout
+
+        code, out = check(spec, claims)
+        self.assertEqual(code, 0, out)
+        anchor = "### 4.3 Rules object"
+        code, out = check(spec.replace(anchor, anchor + "\n\nA new rule nobody holds to anything.\n"), claims)
+        self.assertEqual(code, 1)
+        self.assertIn("no claim or informative quote covers this block", out)
+        code, out = check(spec.replace("Non-canonical bytes are refused, never normalized.",
+                                       "Non-canonical bytes are refused, sometimes normalized."), claims)
+        self.assertIn("atoms.canonical: quote not in the spec", out)
+        weak = json.loads(json.dumps(claims))
+        tested = next(c for c in weak["claims"] if c["status"] == "tested")
+        tested["witnesses"] = ["test:test_99_does_not_exist"]
+        code, out = check(spec, weak)
+        self.assertIn("witness does not exist: test:test_99_does_not_exist", out)
+        bare = json.loads(json.dumps(claims))
+        tested = next(c for c in bare["claims"] if c["status"] == "tested")
+        tested["mutants"] = []
+        code, out = check(spec, bare)
+        self.assertIn(f"{tested['id']}: tested without a mutant", out)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

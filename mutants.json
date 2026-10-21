@@ -1,0 +1,278 @@
+{
+ "m-cas-path": {
+  "file": "vars1.py",
+  "find": "        if sha256(raw) != h:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
+  "replace": "        if False:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
+  "kills": [
+   "test_03_gate_rejects_malformed_commits",
+   "test_38_caches_never_stand_in_for_new_bytes"
+  ]
+ },
+ "m-cas-ref": {
+  "file": "vars1.py",
+  "find": "        if actual_old != expected_old:\n            raise VarsError(f\"CAS ref mismatch",
+  "replace": "        if False:\n            raise VarsError(f\"CAS ref mismatch",
+  "kills": [
+   "test_03_gate_rejects_malformed_commits"
+  ]
+ },
+ "m-append-only": {
+  "file": "vars1.py",
+  "find": "            if diff_out.strip():\n                raise VarsError(f\"Check #2 failed",
+  "replace": "            if False:\n                raise VarsError(f\"Check #2 failed",
+  "kills": [
+   "test_03_gate_rejects_malformed_commits"
+  ]
+ },
+ "m-reserved-scope-name": {
+  "file": "vars1.py",
+  "find": "            if (c.h_schema == H_SCHEMA[\"scope\"]) != is_scope_name:",
+  "replace": "            if False:",
+  "kills": [
+   "test_10_scope_cells_use_the_reserved_scope_name"
+  ]
+ },
+ "m-projection-digests": {
+  "file": "vars1.py",
+  "find": "            if (c.slots[2], c.slots[3]) != (h_in, h_state):",
+  "replace": "            if False:",
+  "kills": [
+   "test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses"
+  ]
+ },
+ "m-projection-edge": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"a projection is an immutable historical fact: no edge may name it\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_42_projections_are_immutable_historical_facts"
+  ]
+ },
+ "m-cross-schema": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"cross-schema supersedes is forbidden\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness"
+  ]
+ },
+ "m-seal-signer": {
+  "file": "vars1.py",
+  "find": "                        raise VarsError(\"Local seal signer not in active SCOPE policy\")",
+  "replace": "                        pass",
+  "kills": [
+   "test_02_local_loop_rebinding_rollback_import_rotation"
+  ]
+ },
+ "m-binding": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(f\"duplicate unlinked binding for slot {slot!r}\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_07_slot_rebinding_requires_authorized_supersedes_chain",
+   "test_02_local_loop_rebinding_rollback_import_rotation"
+  ]
+ },
+ "m-tier": {
+  "file": "vars1.py",
+  "find": "                raise VarsError(\"tier must be H_PROVISIONAL or H_OWNER\")",
+  "replace": "                pass",
+  "kills": [
+   "test_29_gate_enforces_payloads_and_enumerations"
+  ]
+ },
+ "m-projection-payload": {
+  "file": "vars1.py",
+  "find": "                raise VarsError(\"a projection's payload is H_EMPTY\")",
+  "replace": "                pass",
+  "kills": [
+   "test_29_gate_enforces_payloads_and_enumerations"
+  ]
+ },
+ "m-verdict-code": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"verdict_code is not one of REPLAYED, ATTESTED, INVALID, NOT_ASSESSED\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_29_gate_enforces_payloads_and_enumerations"
+  ]
+ },
+ "m-attested-witness": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"an ATTESTED verdict has an empty ckpt_or_witness\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness"
+  ]
+ },
+ "m-field-type": {
+  "file": "vars1.py",
+  "find": "                    if not fname or not sep or ftype not in FIELD_TYPES:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_29_gate_enforces_payloads_and_enumerations"
+  ]
+ },
+ "m-ckpt-kind": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"a verdict's ckpt_or_witness is a checkpoint or cycle witness\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-judged-kind": {
+  "file": "vars1.py",
+  "find": "                    raise VarsError(\"only an INVALID verdict may judge a cell other than a contract, decision or question\")",
+  "replace": "                    pass",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-scope-label": {
+  "file": "vars1.py",
+  "find": "                              H_SCHEMA[\"scope\"]) and c.h_payload not in INTRINSIC_UTF8:",
+  "replace": "                              ) and c.h_payload not in INTRINSIC_UTF8:",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-actions": {
+  "file": "vars1.py",
+  "find": "    if replay.checkpoint[\"transition_claim\"][\"actions\"] != u64_of(c.slots[5], atoms):",
+  "replace": "    if False:",
+  "kills": [
+   "test_30_checkpoint_actions_are_replayed"
+  ]
+ },
+ "m-root": {
+  "file": "verify/minds_verify.py",
+  "find": "                raise VarsError(\"ComputationRoot must have exactly its five fields, well typed\")",
+  "replace": "                pass",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-env": {
+  "file": "verify/minds_verify.py",
+  "find": "                raise VarsError(\"Environment must be its schema and a sorted, distinct list of hashes\")",
+  "replace": "                pass",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-state": {
+  "file": "vars1.py",
+  "find": "        sgs1_term_hash(raw)  # the whole state parses",
+  "replace": "        pass",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-node": {
+  "file": "vars1.py",
+  "find": "    elif SR.G.deser(raw) is None:",
+  "replace": "    elif len(raw) not in (34, 66):",
+  "kills": [
+   "test_32_gate_validates_whole_objects"
+  ]
+ },
+ "m-intrinsic": {
+  "file": "vars1.py",
+  "find": "        raw = INTRINSIC_ATOMS.get(h)",
+  "replace": "        pass",
+  "kills": [
+   "test_33_intrinsic_atoms_need_not_be_stored"
+  ]
+ },
+ "m-forward-ref": {
+  "file": "vars1.py",
+  "find": "            if cid in named_before:",
+  "replace": "            if False:",
+  "kills": [
+   "test_34_no_reference_to_a_later_born_cell"
+  ]
+ },
+ "m-parents-header": {
+  "file": "vars1.py",
+  "find": "        header = cat_commit.split(\"\\n\\n\", 1)[0]  # the message may contain any line",
+  "replace": "        header = cat_commit",
+  "kills": [
+   "test_35_parents_come_from_the_commit_header"
+  ]
+ },
+ "m-ed25519-s": {
+  "file": "verify/minds_verify.py",
+  "find": "    if S >= _L:\n        return False",
+  "replace": "    if False:\n        return False",
+  "kills": [
+   "test_05_signatures_names_dependencies_verdicts_acceptance"
+  ]
+ },
+ "m-verify-anchor": {
+  "file": "verify/minds_verify.py",
+  "find": "    if cmd.startswith(\"verify-\") and not pins:",
+  "replace": "    if False:",
+  "kills": [
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose"
+  ]
+ },
+ "m-verify-data": {
+  "file": "verify/minds_verify.py",
+  "find": "result[\"data_ok\"] is True",
+  "replace": "result[\"data_ok\"] in (True, None)",
+  "kills": [
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose"
+  ]
+ },
+ "m-verify-pins": {
+  "file": "verify/minds_verify.py",
+  "find": "              and not result[\"required_missing\"])",
+  "replace": "              )",
+  "kills": [
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose"
+  ]
+ },
+ "m-verify-witness-seal": {
+  "file": "verify/minds_verify.py",
+  "find": "if k not in witnesses],",
+  "replace": "if k not in keys],",
+  "kills": [
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose"
+  ]
+ },
+ "m-bundle-omits": {
+  "file": "verify/minds_verify.py",
+  "find": "    if missing:",
+  "replace": "    if False:",
+  "kills": [
+   "test_17_attestation_evidence_is_complete_at_the_projection_tip",
+   "test_21_attestation_counts_what_the_lens_counts"
+  ]
+ },
+ "m-own-verifier": {
+  "file": "verify/minds_verify.py",
+  "find": "        if c[\"slots\"][2] in blocked or c[\"slots\"][0] != H_EMPTY",
+  "replace": "        if blocked_after or c[\"slots\"][2] in blocked or c[\"slots\"][0] != H_EMPTY",
+  "kills": [
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier"
+  ]
+ },
+ "m-later-ignored": {
+  "file": "verify/minds_verify.py",
+  "find": "    now, end_now, trace_now = settled, end, trace",
+  "replace": "    now, end_now, trace_now = settled, end, trace\n    later_blocks = set()",
+  "kills": [
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier",
+   "test_21_attestation_counts_what_the_lens_counts"
+  ]
+ },
+ "m-export-scope": {
+  "file": "vars1.py",
+  "find": "        at = parse_utf8(atoms[pc.slots[0]])",
+  "replace": "        pass",
+  "kills": [
+   "test_27_a_historical_attestation_survives_a_rotation"
+  ]
+ }
+}
