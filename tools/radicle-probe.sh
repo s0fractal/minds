@@ -37,6 +37,9 @@ RID=$(node a rad inspect --rid)
 node a git push -q rad 'refs/vars/heads/core:refs/vars/heads/core' 2>/dev/null
 C2=$(mk cell2 "second" "$C1"); git update-ref refs/vars/heads/core "$C2" "$C1"
 node a git push -q rad 'refs/vars/heads/core:refs/vars/heads/core' 2>/dev/null
+# a rules change's evidence ref (§4.3): an unrelated commit, reachable only from refs/vars/evidence/*
+E1=$(mk evidence "counterexample"); git update-ref refs/vars/evidence/core/decision "$E1"
+node a git push -q rad 'refs/vars/evidence/core/decision:refs/vars/evidence/core/decision' 2>/dev/null
 
 node b rad seed "$RID" --scope all >/dev/null
 node b rad sync --fetch "$RID" --timeout 30sec >/dev/null
@@ -49,3 +52,11 @@ echo "A head=$C2  B head=$got"
 [ "$signed" = 1 ] && [ "$got" = "$C2" ] && git --git-dir "$B" merge-base --is-ancestor "$C1" "$got" \
   && echo "REPLICATED: refs/vars/heads/core arrives at B as $REF, signed, with history" \
   || { echo "NOT REPLICATED"; exit 1; }
+EREF="refs/namespaces/$NA/refs/vars/evidence/core/decision"
+esigned=$(git --git-dir "$A" show "refs/namespaces/$NA/refs/rad/sigrefs:refs" | grep -c ' refs/vars/evidence/core/decision$' || true)
+egot=$(git --git-dir "$B" rev-parse "$EREF" 2>/dev/null || echo none)
+echo "A signs refs/vars/evidence/core/decision in rad/sigrefs: $esigned"
+echo "A evidence=$E1  B evidence=$egot"
+[ "$esigned" = 1 ] && [ "$egot" = "$E1" ] && git --git-dir "$B" cat-file -e "$E1^{commit}" \
+  && echo "REPLICATED: refs/vars/evidence/core/decision arrives at B as $EREF, signed, with its commit" \
+  || { echo "EVIDENCE NOT REPLICATED"; exit 1; }

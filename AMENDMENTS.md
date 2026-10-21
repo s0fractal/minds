@@ -123,8 +123,9 @@ host and kernel agreeing, so the differential check could not see it). A v2 that
   the author's helper ref was deleted and gc'd; with the evidence ref deleted and gc'd, or fetched shallow, or with one
   object of the counterexample's history removed, it reports missing evidence.
 
-Not covered: Radicle replicates `refs/vars/heads/<scope>` (README, §3), not `refs/vars/evidence/*`. A Radicle peer
-holds the chain without a correction's counterexample until that mapping is extended.
+Radicle replicates `refs/vars/evidence/*` as it does `refs/vars/heads/<scope>`: `tools/radicle-probe.sh` pushes an
+evidence ref from one local node and finds it at the other, signed in `rad/sigrefs` and with its commit (rad 1.10.3).
+A peer fetching the node's namespace gets a correction's counterexample with the chain.
 
 ## Shadow replay before a rotation (release-time)
 
@@ -196,7 +197,6 @@ budget here is evidence about one input, not a bound on the rules.
   than a definition.
 - The kernel fuzzer builds without `commit-bound` and still skips C > 4096; a v1b fuzz target is not set up.
 - A hardening's input cannot yet move between encodings (v1 → v2), which blocks v1b → v2 under (d).
-- Radicle does not replicate `refs/vars/evidence/*`.
 - `evidence_closure` re-walks nested counterexample chains at every level that checks them: the work across a nesting
   of depth d grows about as d² (Codex review r2 measured 1, 6 and 28 entries at depths 2, 4 and 8). Real chains nest
   rarely; a memo per (scope, commit) would make it linear.
