@@ -513,7 +513,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   unsupported rules identity, with the `explain` trace checked in each case.
 - `test_vars1.py` tests 47–58: rules changes (§4.3), each computation of a rules-change decision missing or wrong,
   no rotation back to v1, v1 bundles after a change, and the v2 rules (RULES-V2.md).
-- `test_vars1.py` tests 62–73: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
+- `test_vars1.py` tests 62–74: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
   bound as a resource hardening on the fuzzer's input, (d), a past change replayed in a fresh clone and its evidence
   missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md).
 - `proofs/`: the theorems listed in `proofs/README.md`.

@@ -956,5 +956,13 @@
   "kills": [
    "test_71_a_trap_is_a_fault_not_exhaustion"
   ]
+ },
+ "m-amend-fresh-instance": {
+  "file": "kernel/run_metered.mjs",
+  "find": "(await WebAssembly.instantiate(module, {})).exports;",
+  "replace": "(globalThis.reused ??= await WebAssembly.instantiate(module, {})).exports;",
+  "kills": [
+   "test_74_a_metered_run_does_not_depend_on_earlier_runs"
+  ]
  }
 }

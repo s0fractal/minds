@@ -1167,10 +1167,12 @@
    "quote": "A step is an entry into a function body or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module (`meter.py`), so every host counts the same, whatever its engine or speed.",
    "status": "tested",
    "witnesses": [
-    "test:test_62_a_resource_hardening_bounds_the_commit_count"
+    "test:test_62_a_resource_hardening_bounds_the_commit_count",
+    "test:test_74_a_metered_run_does_not_depend_on_earlier_runs"
    ],
    "mutants": [
-    "m-amend-exhausted-flag"
+    "m-amend-exhausted-flag",
+    "m-amend-fresh-instance"
    ]
   },
   {

@@ -3946,5 +3946,31 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual([r for _, r in mc.replay_changes(self.repo_path)], ["REPLAYED"] * 3)
 
 
+    def test_74_a_metered_run_does_not_depend_on_earlier_runs(self) -> None:
+        """Second review of PR #2, P1: an exhausted or trapping run aborts mid-function, so a reused instance keeps
+        whatever it changed (its stack pointer among them); after enough aborts an honest input gave a fault, and a
+        gate in the same process refused an admitted hardening. Every metered run now starts from a fresh instance:
+        after aborts at many points, on every rules module, a run equals the first, and the admitted rotation replays
+        in the same process."""
+        inp = self._fuzz_counterexample()
+        honest = self._fuzz_counterexample(commits=2)
+        c1, s0 = self._core()
+        cand = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)[0]
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        cx, _, _ = self._r2_03()
+        v2_input = V.kernel_facts("cx", self.repo.chain_deltas(self.repo.commit_chain(cx[0])))[0]
+        for rules, x in ((V.H_LENS_KERNEL, honest), (V.H_LENS_KERNEL_V1B, honest), (V.H_LENS_KERNEL_V2, v2_input)):
+            runner = V.metered_runner(rules)
+            first = runner.run(x, self.BUDGET)
+            self.assertEqual(first.kind, "output")
+            for i in range(1500):
+                self.assertEqual(runner.run(x, 32 + i % 97).kind, "exhausted")
+            self.assertEqual(runner.run(x, self.BUDGET), first, f"{rules.hex()[:12]}: a run after 1500 aborts differs")
+        try:
+            V.GitVarsRepo(self.repo_path).check_chain("core", cand)
+        except V.VarsError as e:
+            self.fail(f"after aborted runs, a gate in the same process refuses the admitted hardening: {e}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

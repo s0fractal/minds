@@ -43,7 +43,10 @@ code at each function and loop start; every other byte copied) and `kernel/run_m
 property of the module's code and the input, so two hosts on different engines or machines count the same, and the
 gate's verdict on "the old rules exhaust B steps" replays anywhere. A wall-clock timeout would make admission depend on
 the machine. The rewriter decodes the instruction set the rules modules use and refuses any other opcode rather than
-guess an immediate's length; test 62 checks that metering changes no result on real v1, v1b and v2 inputs.
+guess an immediate's length; test 62 checks that metering changes no result on real v1, v1b and v2 inputs. The
+module is compiled once and every run gets a fresh instance: an aborted run leaves the instance mid-function (its
+stack pointer moved), and a second, independent review showed a reused one turning an honest output into a fault
+after ~1300 aborts (test 74).
 
 ## Four classes
 
