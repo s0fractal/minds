@@ -4052,13 +4052,21 @@ class TestVars1Conformance(unittest.TestCase):
         other = V.Cell(h_schema=V.H_SCHEMA["computation"],
                        h_slot_name=self._put_atom(atoms, V.atom_utf8("core/comp.other")), h_payload=other_id)
         k_other, w_other = self._cycle_contract(atoms, "core/k.other", other, V.H_CYCLE_PROVEN, cw)
-        cells = [cw, big, k_ok, w_ok, k_big, w_big, k_nf, w_nf, other, k_other, w_other]
+        # the boundary: without required_comp, a contract expecting H_CYCLE_PROVEN settles on an attestation alone
+        k_att = V.Cell(h_schema=V.H_SCHEMA["contract"], h_slot_name=self._put_atom(atoms, V.atom_utf8("core/k.att")),
+                       h_payload=self._put_atom(atoms, V.atom_utf8("attested, not replayed")),
+                       slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_CYCLE_PROVEN, V.H_EMPTY))
+        w_att = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=self._put_atom(atoms, V.atom_utf8("core/k.att.verdict")),
+                       h_payload=k_att.id, h_attests=self._hv(atoms, [k_att.id]),
+                       slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(atoms, V.atom_utf8(SR.VERIFIER_ID))))
+        cells = [cw, big, k_ok, w_ok, k_big, w_big, k_nf, w_nf, other, k_other, w_other, k_att, w_att]
         self._admit(atoms, cells, sign(cells), c1)
         lens = self.repo.lens("core")
         self.assertTrue(lens["settled"][k_ok.id], "a proven cycle witness settles its contract")
         self.assertFalse(lens["settled"][k_big.id], "a NOT_ASSESSED cycle witness is never a witness")
         self.assertFalse(lens["settled"][k_nf.id], "a cycle witness answers only H_CYCLE_PROVEN")
         self.assertFalse(lens["settled"][k_other.id], "a cycle witness answers only for its own computation")
+        self.assertTrue(lens["settled"][k_att.id], "without required_comp, Settled is an attestation (ASSURANCE.md)")
 
 
 if __name__ == "__main__":
