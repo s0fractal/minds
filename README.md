@@ -10,6 +10,7 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
   keeps a Python twin of the rules for differential checking.
 - `proofs/` — Lean proofs of the fold, the lens and replay soundness.
 - `ASSURANCE.md` — what is proved, model-checked (Kani), differentially tested or assumed, claim by claim.
+- `REVIEWING.md` — what a reviewer does, from the code rather than from the maintainer's summaries.
 - `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
 - `tools/minds_chain.py` — minds governs itself with VARS-1 (below).
 - `tools/bench_chain.py` — how admission and `lens()` cost grows with chain length (cold and warm instance).
