@@ -94,6 +94,31 @@
    "mutants": []
   },
   {
+   "id": "rules.v2-hash",
+   "quote": "`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f` is the id of `kernel2/lens2.wasm`",
+   "status": "tested",
+   "witnesses": [
+    "ci:Rebuild the v2 rules kernel; it must hash to H_LENS_KERNEL_V2",
+    "test:test_58_release_checks_rebuild_every_rules_module"
+   ],
+   "mutants": [
+    "m-f41-kernel2",
+    "m-f41-rules-rebuilt"
+   ]
+  },
+  {
+   "id": "rules.v2-default",
+   "quote": "A scope names them from its genesis or reaches them by a rules change (§4.3); v1 stays the default.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_57_rules_v2_from_genesis",
+    "test:test_48_rules_change_needs_its_decision"
+   ],
+   "mutants": [
+    "m-rc-needs-decision"
+   ]
+  },
+  {
    "id": "cells.layout",
    "quote": "0..4 \"VAR1\"",
    "status": "unburned",
@@ -323,6 +348,24 @@
    "mutants": []
   },
   {
+   "id": "store.commit-ids",
+   "quote": "A commit is named by its canonical id, the full lowercase hex id of the repository's object format that Git resolves to itself, never by a ref, an abbreviation or a revision expression",
+   "status": "tested",
+   "witnesses": [
+    "test:test_60_the_gate_names_commits_by_canonical_id",
+    "test:test_61_release_checks_name_commits_by_canonical_id",
+    "test:test_59_a_counterexample_is_named_by_its_full_commit_id"
+   ],
+   "mutants": [
+    "m-chain-commit-id",
+    "m-commit-id-canonical",
+    "m-release-commit-id",
+    "m-release-sibling-id",
+    "m-release-book-pin",
+    "m-release-book-pin-full"
+   ]
+  },
+  {
    "id": "gate.cas",
    "quote": "then the ref moves by compare-and-swap (`git update-ref <ref> T_new T_old`).",
    "status": "tested",
@@ -375,6 +418,17 @@
    ]
   },
   {
+   "id": "gate.scope-rules",
+   "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL` or `H_LENS_KERNEL_V2`",
+   "status": "tested",
+   "witnesses": [
+    "test:test_57_rules_v2_from_genesis"
+   ],
+   "mutants": [
+    "m-gate-scope-rules"
+   ]
+  },
+  {
    "id": "gate.seals",
    "quote": "Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of `S_base`'s admission policy",
    "status": "differential",
@@ -411,10 +465,26 @@
    "quote": "6. **Projections.** For every new projection cell, `tip` is the hex id of an earlier commit of this chain,",
    "status": "tested",
    "witnesses": [
-    "test:test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses"
+    "test:test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses",
+    "test:test_57_rules_v2_from_genesis",
+    "test:test_53_v1_releases_survive_a_rules_change"
    ],
    "mutants": [
-    "m-projection-digests"
+    "m-projection-digests",
+    "m-v2-projection-rules",
+    "m-f40-release-projection"
+   ]
+  },
+  {
+   "id": "gate.rules-change",
+   "quote": "7. **Rules change.** A new local scope cell that names other rules than the governing scope comes with exactly one rules-change decision in its commit",
+   "status": "tested",
+   "witnesses": [
+    "test:test_48_rules_change_needs_its_decision"
+   ],
+   "mutants": [
+    "m-rc-needs-decision",
+    "m-rc-stray-decision"
    ]
   },
   {
@@ -703,13 +773,15 @@
   },
   {
    "id": "rules.forward-refs",
-   "quote": "so the gate refuses a new cell whose id an older cell already names in a payload or slot",
+   "quote": "so the gate refuses a new cell whose id an older cell born in a v1 epoch already names in a payload or slot",
    "status": "tested",
    "witnesses": [
-    "test:test_34_no_reference_to_a_later_born_cell"
+    "test:test_34_no_reference_to_a_later_born_cell",
+    "test:test_54_rules_v2_keep_an_opaque_digest_opaque"
    ],
    "mutants": [
-    "m-forward-ref"
+    "m-forward-ref",
+    "m-v2-interim-epoch"
    ]
   },
   {
@@ -721,6 +793,58 @@
     "kani:two_cells_acceptance",
     "kani:two_cells_foreign_scope",
     "prop:I9"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.epochs",
+   "quote": "A commit is in the epoch of the rules its governing scope names, and a cell in that of its birth commit; a rotation commit is still in the old epoch.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays",
+    "test:test_55_rules_v2_read_references_by_type"
+   ],
+   "mutants": [
+    "m-v2-epoch-start"
+   ]
+  },
+  {
+   "id": "rules.v2-reading",
+   "quote": "The v2 rules read a cell born in a v1 epoch as v1 does and a cell born in a v2 epoch by type",
+   "status": "differential",
+   "witnesses": [
+    "test:test_55_rules_v2_read_references_by_type",
+    "test:test_54_rules_v2_keep_an_opaque_digest_opaque"
+   ],
+   "mutants": [
+    "m-v2-typed-refs"
+   ]
+  },
+  {
+   "id": "rules.v2-input",
+   "quote": "Their input begins with the word `0x32524156` (\"VAR2\")",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_56_rules_v2_kernel_checks_the_reference_list",
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.v2-refs-checked",
+   "quote": "They refuse a reference list other than their own reading (−6)",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_56_rules_v2_kernel_checks_the_reference_list"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "rules.v2-reads-v1-logs",
+   "quote": "Over a log wholly in v1 epochs they give v1's output byte for byte.",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_56_rules_v2_kernel_checks_the_reference_list"
    ],
    "mutants": []
   },
@@ -834,6 +958,128 @@
   {
    "id": "rules.change",
    "quote": "**Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them",
+   "status": "tested",
+   "witnesses": [
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays",
+    "test:test_48_rules_change_needs_its_decision",
+    "test:test_49_rules_change_a_reproduces_the_history",
+    "test:test_50_rules_change_b_refutes_the_old_rules",
+    "test:test_51_rules_change_c_latches_only_grow"
+   ],
+   "mutants": [
+    "m-rc-needs-decision",
+    "m-rc-a-status",
+    "m-rc-b-old",
+    "m-rc-c-lost"
+   ]
+  },
+  {
+   "id": "rules.change.decision",
+   "quote": "The decision is a local cell of the schema `<scope>/rules-change/schema`",
+   "status": "tested",
+   "witnesses": [
+    "test:test_48_rules_change_needs_its_decision",
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
+   ],
+   "mutants": [
+    "m-rc-stray-decision",
+    "m-rc-rules",
+    "m-rc-basis",
+    "m-rc-quorum"
+   ]
+  },
+  {
+   "id": "rules.change.counterexample-admitted",
+   "quote": "which must pass every check of this gate",
+   "status": "tested",
+   "witnesses": [
+    "test:test_50_rules_change_b_refutes_the_old_rules"
+   ],
+   "mutants": [
+    "m-rc-cx-admitted"
+   ]
+  },
+  {
+   "id": "rules.change.counterexample-id",
+   "quote": "`counterexample` is that commit's canonical id (§3), never a ref, an abbreviation or a revision expression",
+   "status": "tested",
+   "witnesses": [
+    "test:test_59_a_counterexample_is_named_by_its_full_commit_id"
+   ],
+   "mutants": [
+    "m-rc-commit-id",
+    "m-commit-id-canonical"
+   ]
+  },
+  {
+   "id": "rules.change.refusal",
+   "quote": "either rules refusing either log refuses the rotation",
+   "status": "tested",
+   "witnesses": [
+    "test:test_50_rules_change_b_refutes_the_old_rules"
+   ],
+   "mutants": [
+    "m-rc-refusal"
+   ]
+  },
+  {
+   "id": "rules.change.a",
+   "quote": "(a) `reproduce` is SHA-256 over the SHA-256 of the old and of the new output over the chain so far, and the two give the same governing scope and the same status byte for every cell",
+   "status": "tested",
+   "witnesses": [
+    "test:test_49_rules_change_a_reproduces_the_history",
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
+   ],
+   "mutants": [
+    "m-rc-a-digest",
+    "m-rc-a-status"
+   ]
+  },
+  {
+   "id": "rules.change.b",
+   "quote": "(b) `refutes` is that digest over the counterexample, and status bit `status` of the cell at index `cell` of the new rules' input is `right` under the new rules and not under the old",
+   "status": "tested",
+   "witnesses": [
+    "test:test_50_rules_change_b_refutes_the_old_rules",
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
+   ],
+   "mutants": [
+    "m-rc-b-digest",
+    "m-rc-b-range",
+    "m-rc-b-new",
+    "m-rc-b-old"
+   ]
+  },
+  {
+   "id": "rules.change.c",
+   "quote": "(c) `latches` is SHA-256 over the SHA-256 of all four outputs, and on both logs every cell Authorized and every edge authorized under the old rules is so under the new",
+   "status": "tested",
+   "witnesses": [
+    "test:test_51_rules_change_c_latches_only_grow",
+    "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
+   ],
+   "mutants": [
+    "m-rc-c-digest",
+    "m-rc-c-lost",
+    "m-rc-c-counterexample"
+   ]
+  },
+  {
+   "id": "rules.no-downgrade",
+   "quote": "A rotation from v2 back to v1 is refused whatever decision comes with it",
+   "status": "differential",
+   "witnesses": [
+    "test:test_52_rules_never_rotate_back_to_v1",
+    "test:test_53_v1_releases_survive_a_rules_change"
+   ],
+   "mutants": [
+    "m-v2-downgrade",
+    "m-f40-join"
+   ]
+  },
+  {
+   "id": "rules.change-text",
+   "quote": "The specification's text changes in that same decision; nothing checks the text.",
    "status": "assumed",
    "witnesses": [],
    "mutants": []
@@ -896,6 +1142,7 @@
   "Governing policy and author rights of a target `v`:",
   "Latches (never undone):",
   "Input, u32 little-endian words (`H` = 32 raw bytes):",
-  "What a client without the history gets from a Settled projection, and what it does not:"
+  "What a client without the history gets from a Settled projection, and what it does not:",
+  "The gate checks that the old rules disagree with the verdict the decision names right and the new rules agree; that it is right is the decision's claim, made by the quorum that seals it."
  ]
 }

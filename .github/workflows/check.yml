@@ -41,6 +41,14 @@ jobs:
           pinned=$(python -c "import sys; sys.path.insert(0, '..'); import vars1; print(vars1.H_LENS_KERNEL.hex())")
           echo "built $built pinned $pinned"
           test "$built" = "$pinned"
+      - name: Rebuild the v2 rules kernel; it must hash to H_LENS_KERNEL_V2
+        working-directory: kernel2
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          built=$(sha256sum target/wasm32-unknown-unknown/release/vars_lens2.wasm | cut -d' ' -f1)
+          pinned=$(python -c "import sys; sys.path.insert(0, '..'); import vars1; print(vars1.H_LENS_KERNEL_V2.hex())")
+          echo "built $built pinned $pinned"
+          test "$built" = "$pinned"
 
       - name: Install elan (Lean toolchain from proofs/lean-toolchain)
         run: |

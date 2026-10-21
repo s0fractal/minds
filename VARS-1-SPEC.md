@@ -61,6 +61,10 @@ are stored, and storing them changes no result.
 `H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
+`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f` is the id of
+`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md). A scope names them from its genesis or
+reaches them by a rules change (§4.3); v1 stays the default.
+
 ### 1.2 Cells (`cas/cells/`)
 
 Unsigned, `296 + 32·K` bytes:
@@ -146,7 +150,10 @@ cycle witness. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§
 
 ## 3. Store and gate
 
-`refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. Each commit's
+`refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. A commit is
+named by its canonical id, the full lowercase hex id of the repository's object format that Git resolves to itself,
+never by a ref, an abbreviation or a revision expression: by the gate and the chain reader, in a rules-change decision,
+and in a release's checks and sibling pins. Each commit's
 tree is `cas/{atoms,cells,seals}/<2 hex>/<62 hex>`, every entry a regular file (`100644`) whose bytes hash to
 its path.
 
@@ -163,8 +170,8 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
    new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the
    reader's pin).
 2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.
-3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell has
-   `rules = H_LENS_KERNEL`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
+3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell names
+   rules this host implements, `H_LENS_KERNEL` or `H_LENS_KERNEL_V2`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
    `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its
    `witness_policy`, roster or not). A **cross-seal** — a seal on a
    foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a
@@ -177,8 +184,11 @@ A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref
    cell of its origin. Seals count for it only under that scope and its admission keys.
 
 6. **Projections.** For every new projection cell, `tip` is the hex id of an earlier commit of this chain,
-   `rules = H_LENS_KERNEL`, and `(input, state)` equal the gate's own recomputation at `tip` (§4.4); otherwise
-   the commit is refused.
+   `rules` are the rules of `tip`'s epoch (§4.3), and `(input, state)` equal the gate's own recomputation at `tip`
+   with them (§4.4); otherwise the commit is refused.
+7. **Rules change.** A new local scope cell that names other rules than the governing scope comes with exactly one
+   rules-change decision in its commit, whose computations the gate replays, and a rules-change decision comes only
+   with such a rotation (§4.3).
 
 The fold (§4.1) then runs over the whole chain, including step 3b. The seal and authority rules of step 3 (seal
 contexts and keys, cross-seals, a seal on every new cell, evaluator policies within the roster, foreign scopes)
@@ -263,7 +273,8 @@ non-Stale cell is Settled.
 
 The fold of §4.1 (with the seal rules of §3 step 3) and Passes 1–2 of §4.2 are compiled to `kernel/lens.wasm`
 (`kernel/src/lib.rs`, Rust → wasm32, built reproducibly from `kernel/`). A scope names them in `slots[2]` by
-`H_LENS_KERNEL`; the gate refuses any other value, and every genesis stores the module as an atom. The host runs
+`H_LENS_KERNEL`, or names the v2 rules by `H_LENS_KERNEL_V2` (`kernel2/`, built the same way); the gate refuses any
+other value, and every genesis stores the module it names as an atom. The host runs
 the module on every admission and every lens: it decides admission authority and the statuses of Passes 1–2.
 The host parses bytes, hashes, verifies Ed25519 signatures and orders cells; Pass 3 (replay, witnesses, Settled)
 stays in the host.
@@ -279,10 +290,10 @@ S, S × (target, ctx, key, commit)            seals whose signatures the host ve
 ```
 
 Cells are in forward topological order: every edge, and every payload or slot that is a cell id, names an older
-index born no later. These rules read a payload or slot as a reference whenever it equals a cell id, whatever its
-field type, so the gate refuses a new cell whose id an older cell already names in a payload or slot: an opaque
-`digest` never turns into a reference to a later-born cell. (Typed references, which keep a digest opaque when
-its preimage appears, need new rules and so a new rules identity.) `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
+index born no later. These rules (v1) read a payload or slot as a reference whenever it equals a cell id, whatever
+its field type, so the gate refuses a new cell whose id an older cell born in a v1 epoch already names in a payload
+or slot: an opaque `digest` never turns into a reference to a later-born cell. A cell born in a v2 epoch keeps its
+opaque values opaque and vetoes nothing. `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the
 object. The module embeds the standard schema ids, `H_META_SCHEMA`, `H_EMPTY`, `H_OWNER`, `H_PROVISIONAL` and
 `H_VERDICT_INVALID`, and reads kinds, tiers, policy slots and verdict codes from the cell hashes itself.
 
@@ -292,14 +303,43 @@ invalidates, retires and supersedes edge in input order (authorized). A negative
 (−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,
 unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).
 
+**Epochs and the v2 rules.** A commit is in the epoch of the rules its governing scope names, and a cell in that of
+its birth commit; a rotation commit is still in the old epoch. The host runs the rules of the last commit's epoch
+over the whole log. The v2 rules read a cell born in a v1 epoch as v1 does and a cell born in a v2 epoch by type:
+the payload of a verdict or acceptance, and every slot its schema declares `cell`. Their input begins with the word
+`0x32524156` ("VAR2") and adds, for each cell, after its slots a schema cell's mask of `cell`-typed descriptors
+(`mask_lo, mask_hi`) and after its edges the list `R, R × (pos, index)` of its references (`pos` 0 the payload, 1 + s
+slot s). They refuse a reference list other than their own reading (−6) and a rotation back to v1 (−25). Over a log
+wholly in v1 epochs they give v1's output byte for byte.
+
 `vars1.py` keeps a Python fold and Passes 1–2 as a differential twin: a refusal by one and not the other, or any
 differing latch, scope or status bit, is a host fault (`TwinDivergence`), never a gate refusal.
 
 **Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them, admitted together
 with a decision that names the new rules' hash and carries, as computations the gate replays: that the new rules
 reproduce every status the old rules give over the chain so far; a counterexample on which the old rules give a
-wrong verdict, which is the reason for the change; and that latches only grow under the new rules. The
-specification's text changes in that same decision. This host does not yet implement or check this.
+wrong verdict, which is the reason for the change; and that latches only grow under the new rules.
+
+The decision is a local cell of the schema `<scope>/rules-change/schema`, whose descriptors are, in order,
+`old_rules:wasm`, `new_rules:wasm`, `basis:utf8`, `reproduce:digest`, `counterexample_scope:utf8`,
+`counterexample:utf8`, `cell:u64`, `status:u64`, `right:u64`, `refutes:digest`, `latches:digest`; the gate
+recognises it by that schema's id. It names the governing scope's rules and the new scope's, its `basis` is the hex
+id of the rotation's parent, and the governing scope's admission quorum seals it.
+
+The gate runs the old and the new rules over the chain up to `basis` and over the counterexample, the chain of
+scope `counterexample_scope` up to commit `counterexample`, which must pass every check of this gate;
+`counterexample` is that commit's canonical id (§3), never a ref, an abbreviation or a revision expression, so what the decision names cannot move after admission; each log is
+encoded for the rules that read it, and either rules refusing either log refuses the rotation. Then (a) `reproduce`
+is SHA-256 over the SHA-256 of the old and of the new output over the chain so far, and the two give the same
+governing scope and the same status byte for every cell; (b) `refutes` is that digest over the counterexample, and
+status bit `status` of the cell at index `cell` of the new rules' input is `right` under the new rules and not under
+the old; (c) `latches` is SHA-256 over the SHA-256 of all four outputs, and on both logs every cell Authorized and
+every edge authorized under the old rules is so under the new. Otherwise the rotation is refused.
+
+The gate checks that the old rules disagree with the verdict the decision names right and the new rules agree; that
+it is right is the decision's claim, made by the quorum that seals it. A rotation from v2 back to v1 is refused
+whatever decision comes with it: v1 cannot read a v2 epoch. The specification's text changes in that same decision;
+nothing checks the text.
 
 **Contradictions.** Two rules that give one input two verdicts are recorded as a cell holding that input and both
 verdicts, not resolved by editing text; what depends on them is left to the lens (Stale) until a decision under the
@@ -411,4 +451,6 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
   INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an
   unsupported rules identity, with the `explain` trace checked in each case.
+- `test_vars1.py` tests 47–58: rules changes (§4.3), each computation of a rules-change decision missing or wrong,
+  no rotation back to v1, v1 bundles after a change, and the v2 rules (RULES-V2.md).
 - `proofs/`: the theorems listed in `proofs/README.md`.

@@ -70,6 +70,17 @@ KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
+# Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input. Dormant: v1 is the default, and a scope
+# moves to v2 only by a rotation admitted with a rules-change decision (§4.3). The host keeps both modules, so every
+# past tip stays recomputable under the rules of its epoch.
+KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
+H_LENS_KERNEL_V2 = bytes.fromhex("7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f")
+KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
+if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
+    raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
+RULES_MODULES: Dict[bytes, Path] = {H_LENS_KERNEL: KERNEL_DIR / "lens.wasm", H_LENS_KERNEL_V2: KERNEL2_DIR / "lens2.wasm"}
+RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM}
+KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 INTRINSIC_HASHES: Set[bytes] = {
     H_I, H_K, H_S, H_FALSE, H_INVALID,
@@ -472,6 +483,7 @@ KERNEL_CODES = {
     -17: "foreign cell without self-sealed scope", -18: "several new local scopes", -19: "new scope shape",
     -20: "new scope lacks admission quorum", -21: "acceptance not pinned to a self-sealed scope",
     -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
+    -6: "reference list differs from the rules' reading", -25: "rotation back to the v1 rules",
 }
 
 
@@ -488,11 +500,13 @@ class TwinDivergence(RuntimeError):
 
 
 class KernelRunner:
-    """Runs `kernel/lens.wasm` under Node (WebAssembly, no other dependency): the rules object of §4.3."""
+    """Runs a rules module (`kernel/lens.wasm`, or `kernel2/lens2.wasm` for v2) under Node (WebAssembly, no other
+    dependency): the rules object of §4.3."""
 
-    def __init__(self) -> None:
+    def __init__(self, rules: bytes = H_LENS_KERNEL) -> None:
+        self.rules = rules
         self.proc = subprocess.Popen(
-            ["node", str(KERNEL_DIR / "run.mjs"), str(KERNEL_DIR / "lens.wasm")],
+            ["node", str(KERNEL_DIR / "run.mjs"), str(RULES_MODULES[rules])],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
         )
 
@@ -509,6 +523,8 @@ class KernelRunner:
 
     def statuses(self, lens: Dict[str, object]) -> Dict[bytes, Dict[str, bool]]:
         """Kernel statuses for a lens result, keyed by cell id, from a fresh run of its kernel input."""
+        if lens.get("rules", H_LENS_KERNEL) != self.rules:
+            raise RuntimeError("this lens was computed under other rules than this runner's")
         out = self.run(lens["kernel_input"])
         n = len(lens["kernel_order"])
         return {cid: {name: bool(out[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
@@ -519,18 +535,85 @@ class KernelRunner:
         self.proc.wait(timeout=10)
 
 
-_KERNEL: Optional[KernelRunner] = None
+_KERNELS: Dict[bytes, KernelRunner] = {}
 
 
-def kernel_runner() -> KernelRunner:
-    global _KERNEL
-    if _KERNEL is None:
-        _KERNEL = KernelRunner()
-    return _KERNEL
+def kernel_runner(rules: bytes = H_LENS_KERNEL) -> KernelRunner:
+    if rules not in _KERNELS:
+        _KERNELS[rules] = KernelRunner(rules)
+    return _KERNELS[rules]
 
 
-def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[List[bytes], Dict[bytes, Set[bytes]], Dict[bytes, Set[bytes]]]:
-    """Forward topological order (oldest first) over every cell reference, with parents (older) and children (newer)."""
+def schema_cell_mask(c: "Cell", atoms: Dict[bytes, bytes]) -> int:
+    """A schema cell's `cell`-typed descriptors, bit s for slot s (rules v2): host parsing of its UTF8 atoms."""
+    mask = 0
+    for s, d in enumerate(c.slots):
+        raw = atoms.get(d)
+        if raw is not None and raw[:4] == b"UTF8" and raw[4:].decode("utf-8", "replace").partition(":")[2] == "cell":
+            mask |= 1 << s
+    return mask
+
+
+def commit_rules(scope: str, deltas: List["Delta"]) -> List[bytes]:
+    """The rules of each commit's epoch: those named by the scope governing it (fixed at its start, §0). Parsed: the
+    genesis scope, then the newest local scope born in an earlier commit (§3 check 1 makes it the governing one; the
+    kernel recomputes it). A commit log the gate would refuse may get any answer here; the kernel refuses it."""
+    out: List[bytes] = []
+    cur: Optional[Cell] = None
+    name = b"UTF8" + f"{scope}/SCOPE".encode()
+    atoms: Dict[bytes, bytes] = {}
+    for i, (d_atoms, d_cells, _) in enumerate(deltas):
+        atoms.update(d_atoms)
+        new = [c for c in d_cells.values() if c.h_schema == H_SCHEMA["scope"] and atoms.get(c.h_slot_name) == name]
+        if i == 0 and len(new) == 1:
+            cur = new[0]
+        out.append(cur.slots[2] if cur is not None and len(cur.slots) == 3 else H_LENS_KERNEL)
+        if i > 0 and len(new) == 1:
+            cur = new[0]
+    return out
+
+
+def chain_rules(scope: str, deltas: List["Delta"]) -> bytes:
+    """The rules that evaluate a commit log: those of its last commit's epoch (RULES-V2.md §4)."""
+    return commit_rules(scope, deltas)[-1]
+
+
+def cell_refs(c: "Cell", cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes], v1: bool) -> List[Tuple[int, bytes]]:
+    """The reference positions of a cell (0 payload, 1 + s slot s) and the cells they name. v1 reads every payload or
+    slot equal to a cell id as a reference; v2 (RULES-V2.md) reads only the payload of a verdict or acceptance and
+    the slots its schema declares `cell`."""
+    vals = (c.h_payload, *c.slots)
+    if v1:
+        return [(p, x) for p, x in enumerate(vals) if x in cells]
+    if c.h_schema == H_META_SCHEMA:
+        return []
+    sc = cells.get(c.h_schema)
+    mask = schema_cell_mask(sc, atoms) if sc is not None else 0
+    typed = [0] if c.h_schema in (H_SCHEMA["verdict"], H_SCHEMA["acceptance"]) else []
+    typed += [1 + s for s in range(len(c.slots)) if mask >> s & 1 and c.slots[s] != H_EMPTY]
+    return [(p, vals[p]) for p in typed if vals[p] in cells]
+
+
+def chain_refs(scope: str, deltas: List["Delta"]) -> Tuple[Dict[bytes, List[Tuple[int, bytes]]], Dict[bytes, int], List[bytes]]:
+    """Every cell's references, each read by the rules of its birth epoch; with births and per-commit rules."""
+    atoms: Dict[bytes, bytes] = {}
+    cells: Dict[bytes, Cell] = {}
+    birth: Dict[bytes, int] = {}
+    for i, (d_atoms, d_cells, _) in enumerate(deltas):
+        atoms.update(d_atoms)
+        cells.update(d_cells)
+        for cid in d_cells:
+            birth.setdefault(cid, i)
+    rules = commit_rules(scope, deltas)
+    refs = {cid: cell_refs(c, cells, atoms, rules[birth[cid]] == H_LENS_KERNEL) for cid, c in cells.items()}
+    return refs, birth, rules
+
+
+def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes],
+               value_refs: Optional[Dict[bytes, List[Tuple[int, bytes]]]] = None
+               ) -> Tuple[List[bytes], Dict[bytes, Set[bytes]], Dict[bytes, Set[bytes]]]:
+    """Forward topological order (oldest first) over every cell reference, with parents (older) and children (newer).
+    `value_refs` are the payload and slot references the rules read (`chain_refs`); by default, v1's reading."""
 
     def hvec_items(h: bytes) -> List[bytes]:
         return [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
@@ -541,7 +624,10 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[L
         refs: Set[bytes] = set()
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             refs.update(hvec_items(mh))
-        refs.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        if value_refs is None:
+            refs.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        else:
+            refs.update(x for _, x in value_refs[u])
         for v in refs:
             if v in cells and v != u:
                 parents_of[u].add(v)
@@ -565,6 +651,32 @@ def topo_order(cells: Dict[bytes, "Cell"], atoms: Dict[bytes, bytes]) -> Tuple[L
 Delta = Tuple[Dict[bytes, bytes], Dict[bytes, Cell], Dict[bytes, Seal]]
 
 
+# §4.3 Changing the rules. A rules-change decision is a cell of the scope's schema `<scope>/rules-change/schema`
+# with exactly these fields; its id is fixed by the scope's name, so the gate recognises a decision by schema id.
+RULES_CHANGE_FIELDS = (
+    "old_rules:wasm", "new_rules:wasm",          # the governing scope's rules, and those the rotation names
+    "basis:utf8",                                # hex id of the rotation's parent: the chain so far
+    "reproduce:digest",                          # (a) over the chain so far
+    "counterexample_scope:utf8", "counterexample:utf8",  # (b) a chain this gate admits: its scope and tip commit
+    "cell:u64", "status:u64", "right:u64",       # (b) cell index in the new rules' input, status bit, right value
+    "refutes:digest",                            # (b)
+    "latches:digest",                            # (c) over both logs
+)
+
+
+def rules_change_schema(scope: str) -> Tuple[Cell, Dict[bytes, bytes]]:
+    """The schema cell whose instances are `scope`'s rules-change decisions, with the atoms it names."""
+    atoms: Dict[bytes, bytes] = {}
+
+    def put(raw: bytes) -> bytes:
+        atoms[sha256(raw)] = raw
+        return sha256(raw)
+
+    cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/rules-change/schema")), h_payload=H_EMPTY,
+                slots=tuple(put(atom_utf8(d)) for d in RULES_CHANGE_FIELDS))
+    return cell, atoms
+
+
 def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, List[bytes]]]:
     """A POL1 atom's threshold and keys if it is well formed with strong, distinct-enough keys; else None."""
     try:
@@ -579,11 +691,15 @@ def strong_pol1(raw: bytes, atoms: Dict[bytes, bytes]) -> Optional[Tuple[int, Li
     return (thr, pks) if len(set(pks)) >= thr else None
 
 
-def kernel_facts(scope: str, deltas: List["Delta"]) -> Tuple[bytes, List[bytes]]:
-    """Encode a commit log as the rules kernel's input (§4.3): parsed cells, verified seals, POL1 rosters.
+def kernel_facts(scope: str, deltas: List["Delta"], rules: Optional[bytes] = None) -> Tuple[bytes, List[bytes]]:
+    """Encode a commit log as the input of `rules` (§4.3), by default the rules of its last commit's epoch: parsed
+    cells, verified seals, POL1 rosters; for v2, schema masks and every cell's references, each read by the rules of
+    its birth epoch. v1's encoding reads every payload or slot equal to a cell id as a reference, whatever the epoch.
 
     `deltas[i]` holds what commit i adds to its parent's tree, so an object's birth is the index of its delta.
     Only parsing happens here: the order of cells, interned origins and keys, and edge lists as cell indices."""
+    value_refs, _, epochs = chain_refs(scope, deltas)
+    v2 = (epochs[-1] if rules is None else rules) != H_LENS_KERNEL
     atoms: Dict[bytes, bytes] = {}
     cells: Dict[bytes, Cell] = {}
     seals: Dict[bytes, Seal] = {}
@@ -597,7 +713,7 @@ def kernel_facts(scope: str, deltas: List["Delta"]) -> Tuple[bytes, List[bytes]]
             birth_c.setdefault(cid, i)
         for sid in d_seals:
             birth_s.setdefault(sid, i)
-    order, _, _ = topo_order(cells, atoms)
+    order, _, _ = topo_order(cells, atoms, value_refs if v2 else None)
     pos = {cid: i for i, cid in enumerate(order)}
 
     def origin(c: "Cell") -> str:
@@ -614,7 +730,8 @@ def kernel_facts(scope: str, deltas: List["Delta"]) -> Tuple[bytes, List[bytes]]
     keys = sorted({pk for _, pks in pols.values() for pk in pks} | {s.actor_pubkey for s in seals.values()})
     key_ix = {k: i for i, k in enumerate(keys)}
 
-    out = bytearray(struct.pack("<4I", len(deltas), len(order), len(keys), len(pols)))
+    out = bytearray(struct.pack("<I", KERNEL2_MAGIC) if v2 else b"")
+    out += struct.pack("<4I", len(deltas), len(order), len(keys), len(pols))
     for h in sorted(pols):
         thr, pks = pols[h]
         out += h + struct.pack(f"<{2 + len(pks)}I", thr, len(pks), *(key_ix[k] for k in pks))
@@ -622,14 +739,31 @@ def kernel_facts(scope: str, deltas: List["Delta"]) -> Tuple[bytes, List[bytes]]
         c = cells[cid]
         out += cid + c.h_schema + c.h_payload + c.h_slot_name + c.h_loss
         out += struct.pack("<3I", origin_ix[origin(c)], birth_c[cid], len(c.slots)) + b"".join(c.slots)
+        if v2:
+            mask = schema_cell_mask(c, atoms) if c.h_schema == H_META_SCHEMA else 0
+            out += struct.pack("<2I", mask & 0xFFFFFFFF, mask >> 32)
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             items = [] if mh == H_EMPTY else parse_hvec(atoms[mh], require_sorted=True)
             out += struct.pack(f"<{1 + len(items)}I", len(items), *(pos[v] for v in items))
+        if v2:
+            rs = value_refs[cid]
+            out += struct.pack(f"<{1 + 2 * len(rs)}I", len(rs), *(w for p, x in rs for w in (p, pos[x])))
     out += struct.pack("<I", len(seals))
     for sid in sorted(seals):
         sl = seals[sid]
         out += struct.pack("<4I", pos[sl.h_target], pos[sl.h_scope_ctx], key_ix[sl.actor_pubkey], birth_s[sid])
     return bytes(out), order
+
+
+def canonical_commit_id(repo_dir: Path | str, name: str) -> bool:
+    """`name` is the canonical id of a commit in the repository at `repo_dir`: Git resolves it, as a commit, to
+    exactly `name`. Git reads a lowercase hex string of the repository's native object-id length as that object's
+    id, never as a ref, and prints ids that way; any other string, a hex one of the other length (SHA-1 versus
+    SHA-256) included, may be a ref, an abbreviation or a revision expression, whose meaning can move, and resolves
+    to a different string, if at all."""
+    got = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", "--end-of-options",
+                          f"{name}^{{commit}}"], capture_output=True, text=True)
+    return got.returncode == 0 and got.stdout.strip() == name
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +777,8 @@ class GitVarsRepo:
         self._delta_by_commit: Dict[str, Delta] = {}
         self._checked: Dict[Tuple[str, bytes], object] = {}
         self._fold_memo: Dict[Tuple[str, str], Dict[str, object]] = {}
+        self._gate_checked: Set[Tuple[str, str]] = set()  # (scope, commit): every gate check passed for that chain
+        self._commit_ids: Set[str] = set()  # names checked to be canonical commit ids (an id never changes meaning)
 
     def _git(self, *args: str, input_bytes: Optional[bytes] = None) -> bytes:
         res = subprocess.run(
@@ -667,6 +803,8 @@ class GitVarsRepo:
     def commit_chain(self, tip_commit: str) -> List[str]:
         """The commits from genesis to `tip_commit`, oldest first. A chain is one line of single-parent commits (the
         gate's Check #1), so a history with a merge or a second root is refused rather than linearized."""
+        if not self.is_commit_id(tip_commit):
+            raise VarsError(f"{tip_commit[:80]!r} is not the full commit id of a commit in this repository")
         chain: List[str] = []
         for line in self._git("rev-list", "--reverse", "--parents", tip_commit).decode().splitlines():
             commit, *parents = line.split()
@@ -865,7 +1003,44 @@ class GitVarsRepo:
         actual_old = self.ref_commit(scope)
         if actual_old != expected_old:
             raise VarsError(f"CAS ref mismatch: expected {expected_old}, actual {actual_old}")
+        self._check_commit(scope, candidate_commit, expected_old)
+        self._gate_checked.add((scope, candidate_commit))
 
+        # Atomic compare-and-swap update-ref
+        cmd = ["update-ref", f"refs/vars/heads/{scope}", candidate_commit]
+        if expected_old is not None:
+            cmd.append(expected_old)
+        else:
+            cmd.append("0" * 40)
+        self._git(*cmd)
+
+    def is_commit_id(self, name: str) -> bool:
+        """`name` is the canonical id of a commit in this repository (`canonical_commit_id`)."""
+        if name in self._commit_ids:
+            return True
+        ok = canonical_commit_id(self.repo_dir, name)
+        if ok:
+            self._commit_ids.add(name)
+        return ok
+
+    def check_chain(self, scope: str, tip: str) -> None:
+        """Every commit from genesis to `tip` passes the gate's checks for `scope`, as at its admission; no ref moves.
+        A rules-change decision's counterexample must be such a chain (§4.3)."""
+        parent: Optional[str] = None
+        for commit in self.commit_chain(tip):
+            if (scope, commit) not in self._gate_checked:
+                try:
+                    self._check_commit(scope, commit, parent)
+                except VarsError:
+                    raise
+                except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:
+                    raise VarsError(f"malformed commit refused ({type(e).__name__}: {e})") from None
+                self._gate_checked.add((scope, commit))
+            parent = commit
+
+    def _check_commit(self, scope: str, candidate_commit: str, expected_old: Optional[str]) -> None:
+        """Checks #1-#6 and the fold for `candidate_commit` on top of `expected_old` (§3); nothing is written.
+        Both are read through `commit_chain`, which takes canonical commit ids only."""
         # Check #1: Single-parent linear chain (or Genesis)
         cat_commit = self._git("cat-file", "commit", candidate_commit).decode()
         header = cat_commit.split("\n\n", 1)[0]  # the message may contain any line
@@ -933,8 +1108,8 @@ class GitVarsRepo:
             is_scope_name = slot_str == f"{slot_str.split('/', 1)[0]}/SCOPE"
             if (c.h_schema == H_SCHEMA["scope"]) != is_scope_name:
                 raise VarsError(f"reserved scope name: {slot_str!r} must be <origin>/SCOPE iff the cell is a schema.scope")
-            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] != H_LENS_KERNEL:
-                raise VarsError("scope names rules this host does not implement (slots[2] != H_LENS_KERNEL)")
+            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES_MODULES:
+                raise VarsError("scope names rules this host does not implement (slots[2] is neither v1 nor v2)")
             if c.h_schema == H_META_SCHEMA:
                 if c.h_payload != H_EMPTY or any(
                     m != H_EMPTY for m in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates, c.h_loss)
@@ -1054,25 +1229,30 @@ class GitVarsRepo:
             if s.h_target not in cells or s.h_scope_ctx not in cells:
                 raise VarsError("Check #4 failed: Seal target or scope_ctx missing from cas/cells/")
 
-        prior_cells = self.read_cas_tree(expected_old)[1] if expected_old is not None else {}
+        prior_chain = self.commit_chain(expected_old) if expected_old is not None else []
+        prior_deltas = self.chain_deltas(prior_chain)
+        prior_cells = {cid: c for _, d_cells, _ in prior_deltas for cid, c in d_cells.items()}
         prior = set(prior_cells)
-        # References never point forward in time (§4.3): the rules read any payload or slot equal to a cell id as
-        # a reference, so a new cell may not have an id that an older cell already names there
-        named_before = {x for pc in prior_cells.values() for x in (pc.h_payload, *pc.slots)}
+        # References never point forward in time (§4.3): v1 rules read any payload or slot equal to a cell id as a
+        # reference, so a new cell may not have an id that an older cell born in a v1 epoch names there. A cell born
+        # under v2 rules reads references by type (RULES-V2.md): its opaque values veto nothing.
+        prior_rules = commit_rules(scope, prior_deltas) if prior_deltas else []
+        named_before = {x for i, (_, d_cells, _) in enumerate(prior_deltas) if prior_rules[i] == H_LENS_KERNEL
+                        for pc in d_cells.values() for x in (pc.h_payload, *pc.slots)}
         for cid in set(cells) - prior:
             if cid in named_before:
                 raise VarsError(f"an older cell names {cid.hex()[:12]} in a payload or slot: a reference to a later-born cell")
 
         # Projections: the gate recomputes the rules at the named tip and refuses any digest that differs
-        chain = set(self.commit_chain(expected_old)) if expected_old is not None else set()
+        chain = set(prior_chain)
         for cid, c in cells.items():
             if c.h_schema != H_SCHEMA["projection"] or cid in prior:
                 continue
             tip = parse_utf8(req_atom(c.slots[0], "projection tip"))
             if tip not in chain:
                 raise VarsError(f"projection tip {tip[:12]} is not a commit of refs/vars/heads/{scope} before this one")
-            if c.slots[1] != H_LENS_KERNEL:
-                raise VarsError("projection names rules this host does not implement")
+            if c.slots[1] != chain_rules(scope, prior_deltas[:prior_chain.index(tip) + 1]):
+                raise VarsError("projection names other rules than those of its tip's epoch")
             h_in, h_state = self.projection_digests(scope, tip)
             if (c.slots[2], c.slots[3]) != (h_in, h_state):
                 raise VarsError("projection digests differ from the gate's recomputation of the rules at its tip")
@@ -1080,13 +1260,118 @@ class GitVarsRepo:
         # Run the commit-chain fold to verify admission authority on the new commit
         self._evaluate_commit_chain(scope, self.commit_chain(candidate_commit))
 
-        # Atomic compare-and-swap update-ref
-        cmd = ["update-ref", f"refs/vars/heads/{scope}", candidate_commit]
-        if expected_old is not None:
-            cmd.append(expected_old)
-        else:
-            cmd.append("0" * 40)
-        self._git(*cmd)
+        # Changing the rules (§4.3): only by a rotation admitted with a decision whose computations replay
+        self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior)
+
+    def _check_rules_change(self, scope: str, expected_old: Optional[str], prior_chain: List[str],
+                            cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], seals: Dict[bytes, Seal],
+                            prior: Set[bytes]) -> None:
+        """A rotation whose new scope names other rules than the governing scope is admitted only with exactly one
+        rules-change decision in its commit, endorsed by the governing admission quorum, whose three computations
+        the gate replays here: (a) the new rules reproduce every status the old rules give over the chain so far,
+        (b) the counterexample, a chain this gate admits, gets the verdict the decision names right from the new
+        rules and another from the old, and (c) no latch the old rules set there or over the chain is lost."""
+        new = set(cells) - prior
+        schema_id = rules_change_schema(scope)[0].id
+        decisions = sorted(cid for cid in new if cells[cid].h_schema == schema_id)
+        origin = lambda c: parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]  # noqa: E731
+        rotation = [cells[cid] for cid in new if cells[cid].h_schema == H_SCHEMA["scope"] and origin(cells[cid]) == scope]
+        base = None
+        if expected_old is not None and rotation:
+            base = cells[self._evaluate_commit_chain(scope, prior_chain)["active_scope_id"]]
+        if base is None or rotation[0].slots[2] == base.slots[2]:
+            if decisions:
+                raise VarsError("a rules-change decision comes only with the rotation to the rules it names")
+            return
+        if len(decisions) != 1:
+            raise VarsError("a rotation to other rules needs exactly one rules-change decision in its commit (§4.3)")
+        d = cells[decisions[0]]
+        old, new_rules = base.slots[2], rotation[0].slots[2]
+        f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_FIELDS), d.slots))
+        if (f["old_rules"], f["new_rules"]) != (old, new_rules):
+            raise VarsError("the rules-change decision names other rules than those the rotation changes")
+        if parse_utf8(atoms[f["basis"]]) != expected_old:
+            raise VarsError("the rules-change decision's basis is not the chain so far (the rotation's parent)")
+        thr, hv = parse_pol1(atoms[base.slots[0]])
+        pks = set(parse_hvec(atoms[hv], require_sorted=True))
+        endorsers = {s.actor_pubkey for s in seals.values()
+                     if s.h_target == d.id and s.h_scope_ctx == base.id and s.actor_pubkey in pks}
+        if len(endorsers) < thr:
+            raise VarsError("the rules-change decision lacks the governing scope's admission quorum")
+        cx_scope, cx_tip = parse_utf8(atoms[f["counterexample_scope"]]), parse_utf8(atoms[f["counterexample"]])
+        # the signed field pins the counterexample: a ref, an abbreviation or a revision expression would let its
+        # meaning move after admission, so a later replay could disagree with the gate that admitted it
+        if not self.is_commit_id(cx_tip):
+            raise VarsError("the rules-change decision's counterexample is not a full commit id")
+        self.check_chain(cx_scope, cx_tip)
+        ev = self.rules_change_evidence(scope, expected_old, old, new_rules, cx_scope, cx_tip)
+
+        # (a) every status of the chain so far, and its governing scope, reproduced
+        if f["reproduce"] != ev["reproduce"]:
+            raise VarsError("rules change (a): the decision's reproduce digest differs from the gate's replay")
+        o, n = ev["basis"]
+        if o["scope"] != n["scope"] or o["status"] != n["status"]:
+            raise VarsError("rules change (a): the new rules do not reproduce every status the old rules give")
+        # (b) a counterexample: the new rules give the verdict the decision names right, the old rules another
+        if f["refutes"] != ev["refutes"]:
+            raise VarsError("rules change (b): the decision's refutes digest differs from the gate's replay")
+        o, n = ev["counterexample"]
+        i, bit, right = (u64_of(f[k], atoms) for k in ("cell", "status", "right"))
+        if i >= len(n["order"]) or bit >= len(KERNEL_BITS) or right > 1:
+            raise VarsError("rules change (b): the decision names no status of the counterexample")
+        cid = n["order"][i]
+        if (n["status"][cid] >> bit & 1) != right:
+            raise VarsError("rules change (b): the new rules do not give the verdict the decision names right")
+        if (o["status"][cid] >> bit & 1) == right:
+            raise VarsError("rules change (b): the old rules give that verdict too, so it is no counterexample")
+        # (c) latches only grow: no Authorized cell or authorized edge of the old rules is lost, on either log
+        if f["latches"] != ev["latches"]:
+            raise VarsError("rules change (c): the decision's latches digest differs from the gate's replay")
+        for o, n in (ev["basis"], ev["counterexample"]):
+            if any(v and not n["auth"][k] for k, v in o["auth"].items()) or \
+                    any(v and not n["edges"][k] for k, v in o["edges"].items()):
+                raise VarsError("rules change (c): a latch the old rules set is lost under the new rules")
+
+    def rules_output(self, scope: str, tip: str, rules: bytes) -> Tuple[bytes, Dict[str, object]]:
+        """The output of `rules` over the scope's chain up to `tip`, encoded for those rules, and its reading by cell
+        id: governing scope, status and Authorized bytes, and edge latches keyed `(w, v, kind)`."""
+        deltas = self.chain_deltas(self.commit_chain(tip))
+        kernel_input, order = kernel_facts(scope, deltas, rules)
+        out = kernel_runner(rules).run(kernel_input)
+        cells = {cid: c for _, d_cells, _ in deltas for cid, c in d_cells.items()}
+        atoms = {h: raw for d_atoms, _, _ in deltas for h, raw in d_atoms.items()}
+        n = len(order)
+        flags = iter(out[4 + 2 * n:])
+        edges = {}
+        for wid in order:
+            w = cells[wid]
+            for kind, mh in (("invalidates", w.h_invalidates), ("retires", w.h_retires), ("supersedes", w.h_supersedes)):
+                for vid in [] if mh == H_EMPTY else parse_hvec(atoms[mh], require_sorted=True):
+                    edges[(wid, vid, kind)] = next(flags)
+        return out, {"order": order, "scope": order[int.from_bytes(out[:4], "little")],
+                     "status": {cid: out[4 + i] for i, cid in enumerate(order)},
+                     "auth": {cid: out[4 + n + i] for i, cid in enumerate(order)}, "edges": edges}
+
+    def rules_change_evidence(self, scope: str, basis: str, old: bytes, new: bytes, cx_scope: str,
+                              cx_tip: str) -> Dict[str, object]:
+        """The computations of a rules-change decision (§4.3): the old and the new rules over the chain up to `basis`
+        and over the counterexample chain, and the digests a decision carries for them: each is SHA-256 over the
+        SHA-256 of every output its check reads, in the order (old basis, new basis, old counterexample, new
+        counterexample). Either rules refusing either log is a refusal of the decision."""
+        outs, reads = [], []
+        for sc, tip, rules, what in ((scope, basis, old, "the old rules over the chain so far"),
+                                     (scope, basis, new, "the new rules over the chain so far"),
+                                     (cx_scope, cx_tip, old, "the old rules over the counterexample"),
+                                     (cx_scope, cx_tip, new, "the new rules over the counterexample")):
+            try:
+                out, read = self.rules_output(sc, tip, rules)
+            except VarsError as e:
+                raise VarsError(f"rules change: {what}: {e}") from None
+            outs.append(sha256(out))
+            reads.append(read)
+        digest = lambda *ix: sha256(b"".join(outs[i] for i in ix))  # noqa: E731
+        return {"reproduce": digest(0, 1), "refutes": digest(2, 3), "latches": digest(0, 1, 2, 3),
+                "basis": (reads[0], reads[1]), "counterexample": (reads[2], reads[3])}
 
     # -----------------------------------------------------------------------
     # §4 Commit-Chain Fold & Three-Pass Lensing
@@ -1094,8 +1379,9 @@ class GitVarsRepo:
     def projection_digests(self, scope: str, tip: str) -> Tuple[bytes, bytes]:
         """`(sha256(kernel input), sha256(kernel output))` for the scope's chain up to and including `tip`: the
         `input` and `state` a projection at `tip` must carry. Anyone holding the chain can recompute them."""
-        kernel_input, _ = kernel_facts(scope, self.chain_deltas(self.commit_chain(tip)))
-        return sha256(kernel_input), sha256(kernel_runner().run(kernel_input))
+        deltas = self.chain_deltas(self.commit_chain(tip))
+        kernel_input, _ = kernel_facts(scope, deltas)
+        return sha256(kernel_input), sha256(kernel_runner(chain_rules(scope, deltas)).run(kernel_input))
 
     def _evaluate_commit_chain(self, scope: str, commits: List[str]) -> Dict[str, object]:
         """§4.1 fold. The rules kernel decides authority; `_fold_twin` recomputes it in Python and must agree.
@@ -1112,8 +1398,9 @@ class GitVarsRepo:
         except VarsError as e:
             twin, twin_err = None, e
         kernel_input, order = kernel_facts(scope, deltas)
+        value_refs, _, rules = chain_refs(scope, deltas)
         try:
-            out = kernel_runner().run(kernel_input)
+            out = kernel_runner(rules[-1]).run(kernel_input)
         except KernelRefusal as e:
             if twin_err is None:
                 raise TwinDivergence(f"{e}, but the host fold admits the commit log") from None
@@ -1145,6 +1432,8 @@ class GitVarsRepo:
             **kernel,
             "kernel_input": kernel_input,
             "kernel_order": order,
+            "rules": rules[-1],
+            "value_refs": value_refs,
             "kernel_status": {cid: {name: bool(status[i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
                               for i, cid in enumerate(order)},
         }
@@ -1390,6 +1679,8 @@ class GitVarsRepo:
                         raise VarsError("new schema.scope cell must supersede active SCOPE only")
                     if len(signers(s_next_id, s_base_id, adm_pks)) < adm_thr:
                         raise VarsError("new schema.scope cell lacks admission quorum under active SCOPE")
+                    if s_base.slots[2] != H_LENS_KERNEL and s_next.slots[2] == H_LENS_KERNEL:
+                        raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
                     pending_next_scope = s_next_id
 
             # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells. An open
@@ -1546,7 +1837,8 @@ class GitVarsRepo:
         def cell_origin(c: Cell) -> str:
             return parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
 
-        forward_order, parents_of, children_of = topo_order(cells, atoms)
+        forward_order, parents_of, children_of = topo_order(
+            cells, atoms, fold["value_refs"] if fold["rules"] != H_LENS_KERNEL else None)
         reverse_order = list(reversed(forward_order))
 
         # Pass 1 (Reverse-Topological: newest/sinks -> oldest/sources)
@@ -1803,6 +2095,7 @@ class GitVarsRepo:
         return {
             "kernel_input": fold["kernel_input"],
             "kernel_order": forward_order,
+            "rules": fold["rules"],
             "cells": cells,
             "atoms": atoms,
             "accepted": accepted,
@@ -1837,9 +2130,10 @@ def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, wit
     }
     if with_data:
         tip = parse_utf8(atoms[cell.slots[0]])
-        kernel_input, _ = kernel_facts(scope, repo.chain_deltas(repo.commit_chain(tip)))
+        deltas = repo.chain_deltas(repo.commit_chain(tip))
+        kernel_input, _ = kernel_facts(scope, deltas)
         bundle["input"] = kernel_input.hex()
-        bundle["output"] = kernel_runner().run(kernel_input).hex()
+        bundle["output"] = kernel_runner(chain_rules(scope, deltas)).run(kernel_input).hex()
     return bundle
 
 
