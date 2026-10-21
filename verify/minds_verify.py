@@ -196,6 +196,9 @@ H_OWNER = sha256(b"UTF8owner")
 H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
 
 
+MAX_KIN1_BYTES = 1 << 20  # a rules input carried as an atom (KIN1, §1.1): the counterexample of a rules change
+
+
 class VarsError(ValueError):
     """Raised when an Atom, Cell, Seal, or Admission Gate check fails."""
 
@@ -325,6 +328,9 @@ def validate_atom(raw: bytes, extended: Optional[Callable[[bytes], None]] = None
                 raise VarsError("Environment must be its schema and a sorted, distinct list of hashes")
         else:
             raise VarsError("unknown JSON atom schema")
+    elif raw[:4] == b"KIN1":
+        if len(raw) - 4 > MAX_KIN1_BYTES:
+            raise VarsError("KIN1 rules input over 1 MiB")  # any bytes: an input of rules, valid or not (§4.3)
     elif raw[:8] == b"\x00asm\x01\x00\x00\x00":
         pass  # a wasm module: identity is its hash; only the rules this host implements are ever executed
     else:
