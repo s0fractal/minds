@@ -1287,8 +1287,8 @@
  },
  "m-whatif-judged": {
   "file": "vars1.py",
-  "find": "        region |= {acells[v].h_payload for v in region | targets if acells[v].h_schema == H_SCHEMA[\"verdict\"]",
-  "replace": "        region |= {acells[v].h_payload for v in set() if acells[v].h_schema == H_SCHEMA[\"verdict\"]",
+  "find": "            for ch in relied_by.get(u, set()) | judged(u):",
+  "replace": "            for ch in relied_by.get(u, set()):",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
@@ -1313,6 +1313,22 @@
   "file": "vars1.py",
   "find": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\")",
   "replace": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\")",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-relies": {
+  "file": "vars1.py",
+  "find": "            for ch in relied_by.get(u, set()) | judged(u):",
+  "replace": "            for ch in children_of[u] | judged(u):",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-shortest": {
+  "file": "vars1.py",
+  "find": "                if v not in dist:\n                    dist[v], prev[v] = dist[u] + 1, u",
+  "replace": "                if v not in dist and (v in region or v in targets):\n                    dist[v], prev[v] = dist[u] + 1, u",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]

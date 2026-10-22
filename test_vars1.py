@@ -4501,7 +4501,20 @@ class TestVars1Conformance(unittest.TestCase):
                                    h_attests=self._hv(a, [G.id]),
                                    slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8(n))))
         V1, V2 = verdict("v1"), verdict("v2")
-        cells = [A, B, X, Y, Z, G, V1, V2]
+        W = self._axiom(a, "core/w", "rests on G", relies=[G.id])
+        AT = self._axiom(a, "core/attester", "attests G, relies on nothing", attests=[G.id])
+        X1 = self._axiom(a, "core/x1", "rests on A and B", relies=[A.id, B.id])
+        X2 = self._axiom(a, "core/x2", "rests on X1", relies=[X1.id])
+        X3 = self._axiom(a, "core/x3", "rests on X2", relies=[X2.id])
+        Y2 = self._axiom(a, "core/y2", "rests on X3 and B", relies=[X3.id, B.id])
+        C = self._axiom(a, "core/c", "ground C")
+        A2 = self._axiom(a, "core/a2", "rests on C", relies=[C.id])
+        pol2 = self._pol(a, 2, [self.pk1, self.pk2])
+        G2 = V.Cell(V.H_SCHEMA["decision"], self._put_atom(a, V.atom_utf8("core/g2")), self._put_atom(a, V.atom_utf8("g2")),
+                    h_relies=self._hv(a, [C.id]), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol2))
+        U1 = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8("core/g2.u1")), G2.id,
+                    h_attests=self._hv(a, [G2.id]), slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8("u1"))))
+        cells = [A, B, X, Y, Z, G, V1, W, AT, X1, X2, X3, Y2, C, A2, G2, U1, V2]
         seals = [V.Seal.sign(self.sk1, c.id, s0.id) for c in cells[:-1]] + [V.Seal.sign(self.sk2, V2.id, s0.id)]
         c1 = self._admit(a, cells, seals, c0)
         self.assertTrue(self.repo.lens("core")["settled"][G.id])
@@ -4514,17 +4527,28 @@ class TestVars1Conformance(unittest.TestCase):
         r = self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))
         self.assertEqual(self.repo.ref_commit("core"), c1, "no ref moves")
         lost = {x["name"]: x for x in r["lost"]}
-        self.assertEqual(set(lost), {"core/a", "core/x", "core/y"})
+        self.assertEqual(set(lost), {"core/a", "core/x", "core/y", "core/x1", "core/x2", "core/x3", "core/y2"})
         self.assertEqual(lost["core/a"]["after"]["invalidated"], True)
         self.assertEqual((lost["core/y"]["before"]["stale"], lost["core/y"]["after"]["stale"]), (False, True))
         self.assertEqual(lost["core/y"]["path"][1:],
                          [A.id.hex(), X.id.hex(), Y.id.hex()], "the path runs hypothesis, A, X, Y")
         self.assertNotIn("core/z", {x["name"] for x in r["lost"] + r["held"]}, "Z rests on B, outside the region")
+        self.assertIn("core/y2", lost)
+        self.assertEqual(lost["core/y2"]["path"][1:], [A.id.hex(), X1.id.hex(), B.id.hex(), Y2.id.hex()],
+                         "the shortest reference path, through B outside the region (Codex PR #6 r1 F2)")
         self.assertEqual(self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))["digest"], r["digest"])
 
         one = self.repo.what_if("core", *hypothesis("core/suppose.v1", [V1.id]))
         self.assertEqual({x["name"] for x in one["lost"]}, {"core/g.v1"})
-        self.assertEqual({x["name"] for x in one["held"]}, {"core/g"}, "G stays Settled through V2")
+        self.assertEqual({x["name"] for x in one["held"]}, {"core/g", "core/w"},
+                         "G stays Settled through V2 and W with it; the attester of G does not rely on it (r1 F1)")
+        # a change outside the region still carries the reference path that exists (Codex PR #6 r1 F2)
+        h, hc, hs = hypothesis("core/suppose.a2", [A2.id])
+        out = self.repo.what_if("core", h, hc, hs + [V.Seal.sign(self.sk2, U1.id, s0.id)])
+        g2 = next((x for x in out["lost"] if x["name"] == "core/g2"), None)
+        self.assertIsNotNone(g2, "the second seal settles G2")
+        self.assertEqual((g2["before"], g2["after"]), ({"settled": False}, {"settled": True}))
+        self.assertEqual(g2["path"][1:], [A2.id.hex(), C.id.hex(), G2.id.hex()])
         both = self.repo.what_if("core", *hypothesis("core/suppose.both", [V1.id, V2.id]))
         self.assertIn("core/g", {x["name"] for x in both["lost"]}, "neither verdict stands: G loses Settled")
         g = next(x for x in both["lost"] if x["name"] == "core/g")

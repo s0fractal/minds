@@ -455,7 +455,7 @@
       "`test_vars1.py` 81; `vars1.py` `what_if`"
      ],
      [
-      "`what_if` reports the cells of the hypothesis's region (the cells it names, every cell relying on them transitively, the cells their verdicts judge) that keep their statuses through other grounds, and every cell whose statuses change, with its bits before and after and its shortest reference path from the hypothesis; equal consequences give an equal digest",
+      "`what_if` reports the cells of the hypothesis's region (the cells it names, closed under two steps: a cell relying on a region cell, and the cell a region verdict judges) that keep their statuses through other grounds, and every cell whose statuses change, with its bits before and after and its shortest path from the hypothesis in the reference graph the rules read in that epoch, empty only when none exists; equal consequences give an equal digest",
       "Tested, with mutants: a failed ground takes its transitive dependents with it; a decision stays Settled through a second verdict and loses it when both fail; a ground on another basis is outside the region",
       "`test_vars1.py` 81"
      ],

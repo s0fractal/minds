@@ -1585,7 +1585,9 @@
     "m-whatif-judged",
     "m-whatif-held",
     "m-whatif-path",
-    "m-whatif-settled"
+    "m-whatif-settled",
+    "m-whatif-relies",
+    "m-whatif-shortest"
    ]
   },
   {

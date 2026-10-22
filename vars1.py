@@ -2415,6 +2415,8 @@ class GitVarsRepo:
             "evaluators": evaluators,
             "endorsers": endorsers,
             "invalidators": invalidators,
+            "parents_of": parents_of,  # the reference graph the rules read in this epoch (v2: typed references)
+            "children_of": children_of,
         }
 
     def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"]
@@ -2424,9 +2426,9 @@ class GitVarsRepo:
         admission would be, but no ref moves: the canonical chain is unchanged. The lens is computed at the tip and at
         the candidate. `lost` is every cell of the chain whose statuses change (each with its bits before and after),
         complete by construction; `held` is every cell of the hypothesis's region that keeps them (a decision still
-        Settled through other verdicts, say), the region being the cells it names, every cell that relies on them
-        transitively, and the cells their verdicts judge. Each row carries the shortest reference path from the
-        hypothesis, empty for a change no chain of references explains. `digest`
+        Settled through other verdicts, say), the region being the cells it names closed under two steps: a cell
+        that relies on a region cell, and the cell a region verdict judges. Each row carries the shortest reference path from the
+        hypothesis in the whole reference graph as the rules read it in this epoch, empty only when none exists. `digest`
         is SHA-256 over the canonical JSON of both lists: two readers who agree on the consequences agree on it."""
         tip = self.ref_commit(scope)
         if tip is None:
@@ -2443,30 +2445,40 @@ class GitVarsRepo:
             raise RuntimeError("what_if moved the scope's ref")
         hyp = {c.id for c in cells}
         acells, aatoms = after["cells"], after["atoms"]
-        _, parents_of, children_of = topo_order(acells, aatoms)
+        parents_of, children_of = after["parents_of"], after["children_of"]  # as the rules read references here
+
+        def relies_on(cid: bytes) -> List[bytes]:
+            h = acells[cid].h_relies
+            return [] if h == H_EMPTY else parse_hvec(aatoms[h], require_sorted=True)
+
+        relied_by: Dict[bytes, Set[bytes]] = {}
+        for cid in acells:
+            for v in relies_on(cid):
+                relied_by.setdefault(v, set()).add(cid)
         targets = set().union(*(parents_of[h] for h in hyp)) - hyp
+        judged = lambda v: ({acells[v].h_payload} if acells[v].h_schema == H_SCHEMA["verdict"]
+                            and acells[v].h_payload in before["cells"] else set())
         region, todo = set(targets), list(targets)
-        while todo:  # everything that refers, transitively, to a ground the hypothesis touches
-            for ch in children_of[todo.pop()]:
+        while todo:  # to a fixed point: what relies on a region cell, and what a region verdict judges
+            u = todo.pop()
+            for ch in relied_by.get(u, set()) | judged(u):
                 if ch not in region and ch not in hyp:
                     region.add(ch)
                     todo.append(ch)
-        region |= {acells[v].h_payload for v in region | targets if acells[v].h_schema == H_SCHEMA["verdict"]
-                   and acells[v].h_payload in before["cells"]}
         bits = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled")
         state = lambda lens, cid: {b: bool(lens[b].get(cid, False)) for b in bits}
-        # shortest reference path from the hypothesis, over references in either direction
+        # shortest path from the hypothesis in the whole reference graph, references followed either way
         dist, prev, todo2 = {h: 0 for h in hyp}, {}, deque(sorted(hyp))
         while todo2:
             u = todo2.popleft()
             for v in sorted(parents_of[u] | children_of[u]):
-                if v not in dist and (v in region or v in targets):
+                if v not in dist:
                     dist[v], prev[v] = dist[u] + 1, u
                     todo2.append(v)
 
         def path(cid: bytes) -> List[str]:
             if cid not in dist:
-                return []  # changed, but not by a chain of references from the hypothesis (a latch, say)
+                return []  # no chain of references connects it to the hypothesis
             out = [cid]
             while out[-1] in prev:
                 out.append(prev[out[-1]])
