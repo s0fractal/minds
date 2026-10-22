@@ -220,8 +220,8 @@
       "`test_vars1.py` 75"
      ],
      [
-      "`sigma_resume.verify_cycle`, the gate's cycle check (`gate_cycle_witness`) and Pass 3's (`cycle_witness_answers`) give `checkCycle`'s verdict; Pass 3 counts a witness only for its own computation and `H_CYCLE_PROVEN`",
-      "Differential (I12: compiled `checkCycle` over generated tables, true and false witnesses, the host ceiling varied; the two functions are the ones the gate and the lens call) and tested with mutants (`m-cycle-*`, killed by test 75 on the real `M M` cycle; each also fails I12, checked by hand, not by the mutants job)",
+      "`sigma_resume.verify_cycle` gives `checkCycle`'s verdict, the gate's cycle check (`gate_cycle_witness`) gives `gateCycle`'s (a well-shaped witness whose entry is beyond the host ceiling is `NOT_ASSESSED`, not refused), and Pass 3 (`cycle_witness_answers`) counts a witness only when `checkCycle` proves it, for its own computation and `H_CYCLE_PROVEN`; the gate proves exactly what `checkCycle` proves (`gateCycle_proven_iff`)",
+      "Proved (`gateCycle_proven_iff`) and differential (I12, now with witnesses whose entry is above the gate's ceiling: compiled `checkCycle` over generated tables, true and false witnesses, the host ceiling varied; the two functions are the ones the gate and the lens call) and tested with mutants (`m-cycle-*`, killed by test 75 on the real `M M` cycle; each also fails I12, checked by hand, not by the mutants job)",
       "property suite, `test_vars1.py` 75"
      ],
      [

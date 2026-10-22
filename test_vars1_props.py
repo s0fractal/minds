@@ -1243,6 +1243,9 @@ def gen_cycle_cases(rng: random.Random, n_tables: int) -> List[tuple]:
             cases.append((table, start, entry, k, acts, cost, cost - 1))
             cases.append((table, start, entry, k, acts, cost, max(cost, k - 1)))
             cases.append((table, start, entry, k, acts, cost, max(cost, k)))
+            # at the gate's own ceiling, an entry above it: refused by verify_cycle, NOT_ASSESSED by the gate (§5)
+            cases.append((table, start, entry, 10_000_000 + 1 + k, acts, cost, 10_000_000))
+            cases.append((table, start, entry, 10_000_000 + 1 + k, 0, cost, 10_000_000))
             cases.append((table, start, entry, k, acts, ceil + 1, ceil))
             cases.append((table, start, entry, ceil + 1, acts, cost, ceil))
         for _ in range(3):
@@ -1252,7 +1255,7 @@ def gen_cycle_cases(rng: random.Random, n_tables: int) -> List[tuple]:
 
 
 def model_cycle(cases: List[tuple]) -> List[str]:
-    """`vars1cycle`'s answers (P, N, R), one per case."""
+    """`vars1cycle`'s answers, one per case: two letters (P, N, R), `checkCycle`'s then `gateCycle`'s."""
     if not CYCLE_BIN.exists():
         raise RuntimeError("build the model's cycle checker first: cd proofs && lake build vars1cycle")
     lines = []
@@ -1263,7 +1266,7 @@ def model_cycle(cases: List[tuple]) -> List[str]:
         lines.append(" ".join(map(str, [len(table), *enc, start, entry, k, acts, cost, ceil])))
     out = subprocess.run([str(CYCLE_BIN)], input="\n".join(lines) + "\n", capture_output=True, text=True,
                          check=True).stdout.split()
-    if len(out) != len(cases) or set(out) - {"P", "N", "R"}:
+    if len(out) != len(cases) or any(len(x) != 2 or set(x) - {"P", "N", "R"} for x in out):
         raise RuntimeError(f"vars1cycle answered {out[:5]}… for {len(cases)} cases")
     return out
 
@@ -1311,14 +1314,17 @@ def check_cycles(seed: int, n_tables: int) -> Tuple[List[str], Dict[str, int]]:
     cases = gen_cycle_cases(random.Random(seed), n_tables)
     model = model_cycle(cases)
     out, counts = [], {}
-    for case, m in zip(cases, model):
+    for case, (m, mg) in zip(cases, model):
         sr, gate, pass3 = python_cycle(case)
         counts[m] = counts.get(m, 0) + 1
         if gate is not None:
-            counts["gate " + m] = counts.get("gate " + m, 0) + 1
-        want = (m, m, "P" if m == "P" else "R") if gate is not None else (m, None, None)
+            counts["gate " + mg] = counts.get("gate " + mg, 0) + 1
+            if (m, mg) == ("R", "N"):
+                counts["entry above the ceiling"] = counts.get("entry above the ceiling", 0) + 1
+        # verify_cycle is checkCycle; the gate is gateCycle; Pass 3 counts exactly what checkCycle proves
+        want = (m, mg, "P" if m == "P" else "R") if gate is not None else (m, None, None)
         if (sr, gate, pass3) != want:
-            out.append(f"I12: model {m}, verify_cycle {sr}, gate {gate}, Pass 3 {pass3} on {case}")
+            out.append(f"I12: model {m}/{mg}, verify_cycle {sr}, gate {gate}, Pass 3 {pass3} on {case}")
     return out, counts
 
 
@@ -1774,6 +1780,7 @@ class TestVars1Properties(unittest.TestCase):
         self.assertEqual(violations[:10], [])
         for verdict in ("P", "N", "R", "gate P", "gate N", "gate R"):
             self.assertGreater(counts.get(verdict, 0), 20, f"too few {verdict} cases to be meaningful: {counts}")
+        self.assertGreater(counts.get("entry above the ceiling", 0), 20, f"the gate's own NOT_ASSESSED is exercised: {counts}")
 
 
 def _make_regression(name: str, inv: str, program):
