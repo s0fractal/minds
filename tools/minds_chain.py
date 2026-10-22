@@ -22,8 +22,10 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
-    tools/minds_chain.py what-if CELL...      # read only: what would follow if CELL... (a release's check, say)
-                                              # were invalidated; checked by the gate, no ref moves
+    tools/minds_chain.py what-if CELL... [--key FILE]
+                                              # what would follow if CELL... (a release's check, say) were
+                                              # invalidated: checked by the gate, sealed by FILE or the maintainer
+                                              # key (never created), no ref moves, nothing filed on the chain
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -723,9 +725,32 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     return c, ok, lines
 
 
+def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], bytes]:
+    """`what-if CELL... [--key FILE]`: the cells, and the seed that seals the hypothesis: FILE (a member's own key),
+    else the maintainer key if it exists. Nothing is created: a missing key is a refusal."""
+    if "--key" in args:
+        i = args.index("--key")
+        if i + 1 >= len(args):
+            raise V.VarsError("--key needs a file")
+        key, args = Path(args[i + 1]), args[:i] + args[i + 2:]
+    else:
+        key = key_path(repo_dir)
+    if not key.is_file():
+        raise V.VarsError(f"no key at {key}: pass --key FILE (a member's own seed)")
+    if not args:
+        raise V.VarsError("what-if needs at least one cell id")
+    cells = []
+    for a in args:
+        if not re.fullmatch(r"[0-9a-f]{64}", a):
+            raise V.VarsError(f"{a[:80]!r} is not a cell id (64 lowercase hex digits)")
+        cells.append(bytes.fromhex(a))
+    return cells, bytes.fromhex(key.read_text().strip())
+
+
 def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "") -> Dict[str, object]:
-    """What would follow if `cells` were invalidated now: a hypothesis cell invalidating them, sealed by `sk`, run
-    through `GitVarsRepo.what_if` (checked by the gate, no ref moved). Nothing is written to the chain."""
+    """What would follow if `cells` were invalidated now: a hypothesis cell invalidating them, sealed by `sk` (a key
+    on the roster), run through `GitVarsRepo.what_if`: checked by the gate, no ref moved, nothing filed on the chain.
+    The candidate commit's objects stay in the object store, unreachable, until git's gc removes them."""
     repo = V.GitVarsRepo(repo_dir)
     atoms: Dict[bytes, bytes] = {}
     label = name or "-".join(c.hex()[:12] for c in cells)
@@ -798,7 +823,8 @@ def _main(argv: List[str]) -> int:
         print(json.dumps(show(repo_dir), indent=2))
         return 0
     if cmd == "what-if" and len(argv) >= 2:
-        print(json.dumps(what_if(repo_dir, load_or_create_key(repo_dir), [bytes.fromhex(x) for x in argv[1:]]), indent=2))
+        cells, sk = what_if_args(repo_dir, argv[1:])
+        print(json.dumps(what_if(repo_dir, sk, cells), indent=2))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))

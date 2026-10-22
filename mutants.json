@@ -1372,5 +1372,13 @@
   "kills": [
    "test_82_a_release_rests_on_its_checks"
   ]
+ },
+ "m-whatif-key": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not key.is_file():\n        raise V.VarsError(f\"no key at {key}: pass --key FILE (a member's own seed)\")",
+  "replace": "    if not key.is_file():\n        key.parent.mkdir(parents=True, exist_ok=True); key.write_text(os.urandom(32).hex())",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
  }
 }

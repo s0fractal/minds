@@ -4624,6 +4624,21 @@ class TestVars1Conformance(unittest.TestCase):
                          "the maintainer's own check failing makes the release Stale")
         self.assertEqual(repo.ref_commit("minds"), tip, "no ref moves")
 
+        # the command line: a member's own key, never a maintainer key created on the way (Codex PR #8 r1)
+        k2 = Path(self.tmp.name) / "second.key"
+        k2.write_text(sk2.hex())
+        absent = mc.key_path(self.repo_path)
+        self.assertFalse(absent.exists())
+        cells_, seed = mc.what_if_args(self.repo_path, [mine.hex(), "--key", str(k2)])
+        self.assertEqual((cells_, seed), ([mine], sk2))
+        self.assertEqual(next(x for x in mc.what_if(self.repo_path, seed, cells_)["lost"] if x["name"] == tag)["after"],
+                         {"settled": False}, "the member's own key seals the hypothesis")
+        for args, why in (([mine.hex()], "no key at"), ([mine.hex(), "--key"], "needs a file"),
+                          (["--key", str(k2)], "at least one cell"), (["zz", "--key", str(k2)], "not a cell id")):
+            with self.assertRaisesRegex(V.VarsError, why):
+                mc.what_if_args(self.repo_path, args)
+        self.assertFalse(absent.exists(), "no key was created")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
