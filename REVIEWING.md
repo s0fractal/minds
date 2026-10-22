@@ -21,6 +21,15 @@ cost of a mistake, not the size of the diff.
   witness and mutant matches the code is mechanical and may go to a lighter model; trying to refute the claims may not.
 - **Batch by theme.** A pull request carries one theme in full rather than one commit at a time: review costs per
   round, not per line.
+- **One round, then only where it costs.** After a strong review's findings are fixed, a further round is run only
+  when a fix touched a costly surface above; fixes to tooling, tests or documentation get CI and their mutants. The
+  final round is scoped to the costly claims that moved, by name.
+- **A finding that recurs in a new form is a design signal.** When each round finds another corner of the same
+  thing (PR #4: nine rounds on lists of files a gate loads and on hand-read Markdown), stop patching instances:
+  generate the artifact from data, or refuse what cannot be read, so the class closes.
+- **Locally, what the change touches; everything in CI.** Before a push, run the tests and the mutants of the claims
+  that moved (minutes); the full suites and every mutant run in CI on each push (a few minutes there, twenty or more
+  here, serially), and a pull request merges only on green CI.
 
 ## 1. Verify releases (members only)
 
