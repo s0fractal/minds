@@ -4,15 +4,16 @@
 Every block of VARS-1-SPEC.md §0–§5 (a paragraph, a list item, a table, a code block) must contain the exact quote
 of a claim or of an informative passage; every quote must still be in the spec, or, for a claim with
 `"source": "ASSURANCE.md"` (what this repository's tools establish beyond the spec, such as the release checks), in
-the claim column of exactly one table row of ASSURANCE.md (comments removed) whose evidence column begins with the
-claim's status; every witness must exist; a claim
+the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status, and
+ASSURANCE.md must be exactly the rendering of assurance.json; every witness must exist; a claim
 that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
 exists. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
 mutant has shown that it bites). Exit 1 on any violation.
 
     python3 tools/check_claims.py            # check
     python3 tools/check_claims.py --table    # print claim -> status -> witnesses -> mutants
-    python3 tools/check_claims.py --spec FILE --claims FILE [--assurance FILE]
+    python3 tools/check_claims.py --write-assurance  # render ASSURANCE.md from assurance.json
+    python3 tools/check_claims.py --spec FILE --claims FILE [--assurance FILE] [--assurance-data FILE]
                                              # check other files (tests burn the checker so)
 """
 from __future__ import annotations
@@ -95,38 +96,26 @@ EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Diff
                  "assumed": "Assumed", "unburned": "Unburned"}
 
 
-DELIMITER = re.compile(r"^\|(?: *:?-+:? *\|)+ *$")
-
-
-def assurance_rows(text: str) -> list[tuple[str, str]]:
-    """(claim column, evidence column) of every body row of every table of ASSURANCE.md. Telling a live row from
-    hidden, quoted or stray text is a Markdown parser's work, not this checker's (Codex review of PR #4, rounds
-    1–8), so the file is held to a form whose rows read the same either way, and anything else is refused: no HTML
-    (outside code spans), no fenced block, and every line opening with `|` inside a table, which opens after a blank
-    line or a heading with a header row and a delimiter row and runs while lines open with `|`."""
-    lines = LINES.split(text)
-    for n, line in enumerate(lines, 1):
-        bare = re.sub(r"`[^`]*`", "", line)  # code spans are literal text; an unmatched backtick stays, and is read
-        if "<" in bare and re.search(r"<[A-Za-z!/?]", bare) or re.match(r"^ {0,3}(`{3,}|~{3,})", line):
-            raise ValueError(f"ASSURANCE.md:{n}: HTML or a fenced block; neither may hold or hide a row")
-    rows = []
-    n = 0
-    while n < len(lines):
-        line = lines[n]
-        if not line.startswith("|"):
-            n += 1
+def render_assurance(doc: dict) -> str:
+    """ASSURANCE.md is a projection of assurance.json: prose parts verbatim, tables rendered from their cells (a `|` in
+    a cell escaped). Nothing parses the Markdown; the file must be exactly this rendering. A table whose first header
+    is `Claim` holds claim rows."""
+    out = []
+    for part in doc["parts"]:
+        if "md" in part:
+            out.append(part["md"])
             continue
-        opens = (n == 0 or not lines[n - 1].strip() or lines[n - 1].startswith("#"))
-        if not (opens and n + 1 < len(lines) and DELIMITER.match(lines[n + 1])):
-            raise ValueError(f"ASSURANCE.md:{n + 1}: a row outside a table (a table opens after a blank line or a "
-                             f"heading, with a header row and a delimiter row)")
-        n += 2
-        while n < len(lines) and lines[n].startswith("|"):
-            cells = [c.strip() for c in lines[n].strip().strip("|").split("|")]
-            if len(cells) >= 2:
-                rows.append((norm(cells[0]), norm(cells[1])))
-            n += 1
-    return rows
+        t = part["table"]
+        cell = lambda c: c.replace("|", "\\|")
+        out.append("\n".join(["| " + " | ".join(map(cell, t["header"])) + " |", "|" + "---|" * len(t["header"])]
+                             + ["| " + " | ".join(map(cell, r)) + " |" for r in t["rows"]]) + "\n")
+    return "".join(out)
+
+
+def assurance_rows(doc: dict) -> list[tuple[str, str]]:
+    """(claim cell, evidence cell) of every row of every claim table of assurance.json: data, not parsed text."""
+    return [(norm(r[0]), norm(r[1])) for part in doc["parts"] if "table" in part
+            and part["table"]["header"][0] == "Claim" for r in part["table"]["rows"]]
 
 
 def witness_exists(w: str) -> bool:
@@ -156,11 +145,13 @@ def main(argv: list[str]) -> int:
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     flat = norm(spec)
-    try:
-        sources = {"ASSURANCE.md": assurance_rows(arg("--assurance", ROOT / "ASSURANCE.md").read_text())}
-    except ValueError as e:
-        errors.append(str(e))
-        sources = {"ASSURANCE.md": []}
+    assurance_doc = json.loads(arg("--assurance-data", ROOT / "assurance.json").read_text())
+    rendered = render_assurance(assurance_doc)
+    if "--write-assurance" in argv:
+        arg("--assurance", ROOT / "ASSURANCE.md").write_text(rendered)
+    if arg("--assurance", ROOT / "ASSURANCE.md").read_text() != rendered:
+        errors.append("ASSURANCE.md is not the rendering of assurance.json (tools/check_claims.py --write-assurance)")
+    sources = {"ASSURANCE.md": assurance_rows(assurance_doc)}
 
     ids = [c["id"] for c in claims]
     for dup in sorted({i for i in ids if ids.count(i) > 1}):

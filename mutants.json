@@ -1245,34 +1245,26 @@
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-claims-hidden": {
-  "file": "tools/check_claims.py",
-  "find": "        if \"<\" in bare and re.search(r\"<[A-Za-z!/?]\", bare) or re.match(r\"^ {0,3}(`{3,}|~{3,})\", line):",
-  "replace": "        if False:",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-claims-html": {
-  "file": "tools/check_claims.py",
-  "find": "        if \"<\" in bare and re.search(r\"<[A-Za-z!/?]\", bare) or re.match(",
-  "replace": "        if re.match(",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-claims-table": {
-  "file": "tools/check_claims.py",
-  "find": "            raise ValueError(f\"ASSURANCE.md:{n + 1}: a row outside a table (a table opens after a blank line or a \"\n                             f\"heading, with a header row and a delimiter row)\")",
-  "replace": "            n -= 2  # read it as a row",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
  "m-spec-unread": {
   "file": "tools/check_claims.py",
   "find": "        if section is not None and section <= 5 and (UNREAD.match(line) or",
   "replace": "        if False and (UNREAD.match(line) or",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-assurance-render": {
+  "file": "tools/check_claims.py",
+  "find": "    if arg(\"--assurance\", ROOT / \"ASSURANCE.md\").read_text() != rendered:",
+  "replace": "    if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-assurance-escape": {
+  "file": "tools/check_claims.py",
+  "find": "        cell = lambda c: c.replace(\"|\", \"\\\\|\")",
+  "replace": "        cell = lambda c: c",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]

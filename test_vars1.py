@@ -2723,15 +2723,18 @@ class TestVars1Conformance(unittest.TestCase):
         claims = json.loads((ROOT_DIR / "claims.json").read_text())
 
         assurance = (ROOT_DIR / "ASSURANCE.md").read_text()
+        adoc = json.loads((ROOT_DIR / "assurance.json").read_text())
         norm = lambda t: re.sub(r"\s+", " ", t).strip()
 
-        def check(spec_text, claims_obj, assurance_text=assurance):
+        def check(spec_text, claims_obj, assurance_text=assurance, assurance_doc=adoc, write=False):
             d = Path(self.tmp.name)
             (d / "spec.md").write_text(spec_text)
             (d / "claims.json").write_text(json.dumps(claims_obj))
             (d / "assurance.md").write_text(assurance_text)
+            (d / "assurance.json").write_text(json.dumps(assurance_doc))
             out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json"),
-                                  "--assurance", str(d / "assurance.md")], capture_output=True, text=True)
+                                  "--assurance", str(d / "assurance.md"), "--assurance-data", str(d / "assurance.json"),
+                                  *(["--write-assurance"] if write else [])], capture_output=True, text=True)
             return out.returncode, out.stdout
 
         code, out = check(spec, claims)
@@ -2759,28 +2762,38 @@ class TestVars1Conformance(unittest.TestCase):
         held["quote"] += " and more"
         code, out = check(spec, moved)
         self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
-        # Hidden or quoted text could hold a quote whose live row was withdrawn (Codex PR #4 r1–r7: a comment, a fence,
-        # fences of other kinds and lengths, closers followed by Unicode space or line separators, a literal comment
-        # inside code, a comment opened mid-line): ASSURANCE.md may hold neither, so each such document is refused
-        row = next(l for l in assurance.splitlines() if norm(held["quote"][: -len(" and more")]) in norm(l))
-        withdrawn = "| `verify-release` does not check profiles | Not established | — |"
-        cell = row.split("|")[1]
-        for before, after in (("<!--\n", "\n-->"), ("```\n", "\n```"), ("~~~\n", "\n~~~"), ("    ```\n", "\n```"),
-                              ("Retired: <!--\n", "\n-->"), ("| Retired | Not established | <!--\n", "\n-->")):
-            code, out = check(spec, claims, assurance.replace(row, f"{withdrawn}\n{before}{row}{after}"))
-            self.assertEqual(code, 1, before)  # refused, by the HTML or fence rule or by the table rule
-        # inside a live row only the HTML rule stands between the hidden quote and a green check
-        inline = assurance.replace(row, row.replace(cell, " <!-- " + cell.strip() + " --> `verify-release` does not check profiles "))
-        code, out = check(spec, claims, inline)
-        self.assertEqual(code, 1, out)
-        self.assertIn("HTML or a fenced block", out)
-        # nor outside a table, nor in raw HTML (Codex r8 F1)
-        for before, after, why in (("\nRetired text, not a live guarantee\n", "", "a row outside a table"),
-                                   ("\n<pre>\n", "\n</pre>", "HTML or a fenced block"),
-                                   ("\n<script type=\"text/plain\">\n", "\n</script>", "HTML or a fenced block")):
-            code, out = check(spec, claims, assurance.replace(row, f"{withdrawn}\n{before}{row}{after}"))
-            self.assertEqual(code, 1, why)
-            self.assertIn(why, out)
+        # ASSURANCE.md is the rendering of assurance.json and nothing else: no hand edit (a comment, a fence, a stray
+        # row, raw HTML, where Codex review of PR #4 found nine ways to hide a quote in parsed Markdown) is accepted,
+        # and rows are read from the data, so a withdrawn row's quote is held by nothing
+        for edit in ("<!--\n" + "| x | Tested | — |" + "\n-->\n", "```\n| x | Tested | — |\n```\n", "\n| x | Tested | — |\n"):
+            code, out = check(spec, claims, assurance + edit)
+            self.assertEqual(code, 1, edit)
+            self.assertIn("ASSURANCE.md is not the rendering of assurance.json", out)
+        q = norm(held["quote"][: -len(" and more")])
+
+        def with_row(change):
+            doc = json.loads(json.dumps(adoc))
+            for part in doc["parts"]:
+                if "table" in part and part["table"]["header"][0] == "Claim":
+                    for r in part["table"]["rows"]:
+                        if q in norm(r[0]):
+                            change(part["table"]["rows"], r)
+                            return doc
+            raise AssertionError("the claim's row is in the data")
+
+        withdrawn = with_row(lambda rows, r: r.__setitem__(0, "`verify-release` does not check profiles"))
+        code, out = check(spec, claims, assurance_doc=withdrawn, write=True)  # rendered, so only the data speaks
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        twice = with_row(lambda rows, r: rows.append(list(r)))
+        code, out = check(spec, claims, assurance_doc=twice, write=True)
+        self.assertIn(f"{held['id']}: quote in 2 rows of ASSURANCE.md", out)
+        piped = with_row(lambda rows, r: r.__setitem__(1, "Not established | Tested, with mutants"))
+        code, out = check(spec, claims, assurance_doc=piped, write=True)
+        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Not established", out, "a | in a cell is cell text")
+        self.assertIn("\\|", (Path(self.tmp.name) / "assurance.md").read_text(), "and rendered escaped")
+        # a live row whose evidence cell no longer states the claim's status
+        code, out = check(spec, claims, assurance_doc=with_row(lambda rows, r: r.__setitem__(1, "Assumed")), write=True)
+        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
         # every spec block the checker cannot split is refused, never read into its neighbour's coverage (Codex r8 F2)
         item = "- `id(x) = SHA-256(bytes(x))`. Every object is addressed by its id."
         for extra in ("* R8: admission without a witness.", "+ R8: admission without a witness.",
@@ -2794,9 +2807,6 @@ class TestVars1Conformance(unittest.TestCase):
         # a line opening with `#` and no space is a paragraph, not a heading, and must be covered (Codex r7 F2)
         code, out = check(spec.replace(anchor, anchor + "\n\n#Admission without a witness is permitted.\n"), claims)
         self.assertIn("no claim or informative quote covers this block", out)
-        # a live row whose evidence column no longer states the claim's status
-        code, out = check(spec, claims, assurance.replace(row, row.replace("| Tested, with mutants |", "| Assumed |")))
-        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
         held["quote"], held["source"] = held["quote"][: -len(" and more")], "README.md"
         code, out = check(spec, moved)
         self.assertIn(f"{held['id']}: unknown source 'README.md'", out)

@@ -1,5 +1,8 @@
 # What is established about minds, and how
 
+This file is rendered from `assurance.json` (`tools/check_claims.py --write-assurance`): edit the data, not the
+file; CI refuses a file that is not exactly the rendering.
+
 The spec is checked against this, sentence by sentence: `claims.json` quotes every normative block of
 VARS-1-SPEC.md with its status and witnesses, and every tested or differential claim names mutants that
 `tools/run_mutants.py` must see killed. `python3 tools/check_claims.py` prints the debt: `assumed` claims (nothing
@@ -17,14 +20,14 @@ mutation tests. **Assumed** means nothing here checks it.
 |---|---|---|
 | Latches only grow; a commit's latches depend only on seals under its own scope | Proved | `proofs/Vars1/Fold.lean` |
 | At most one Active local binding per name; one Active local scope, the governing one | Proved (gate rules as hypotheses) | `Pass1.lean`, `Scope.lean` |
-| `Stale` is the least fixed point of a monotone operator, reached within `|cells|+1` rounds | Proved | `Pass2.lean`, `Lfp.lean` |
+| `Stale` is the least fixed point of a monotone operator, reached within `\|cells\|+1` rounds | Proved | `Pass2.lean`, `Lfp.lean` |
 | An executable Passes 1–2 equals the model | Proved | `Exec.lean`, `ExecProof.lean` |
 | `kernel/lens.wasm` Passes 1–2 equal that executable | Differential (I9) | `test_vars1_props.py` |
 | `kernel/lens.wasm` fold equals the model's own compiled fold | Differential (I10) | `test_vars1_props.py` |
 | On every two-cell log in three families (a genesis scope plus: an axiom relying on it; an acceptance of it; a foreign scope no acceptance admits), with symbolic threshold, origin, birth and one extra seal, the kernel does not panic or overflow, and refuses with a known code or answers with status bits that obey §4.2 (effective = not invalidated; active ⇒ effective, accepted, not retired, not superseded; stale ⇒ active; local ⇒ accepted; flags 0/1; the governing scope is a local scope) | Bounded (Kani 0.68, local: `kernel/assure.sh kani`, 4–7 min and 14–15 GB each; not in CI) | `kernel/src/lib.rs` `proofs` |
 | The same for families with supersedes, retires or invalidates edges, an INVALID verdict, a scope rotation, a contract | **Not established**: they need deeper unwinding or more than 16 GB on this machine | — |
 | The kernel does not panic, overflow or return an unknown code on arbitrary bytes whose commit count is at most 4096 | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`); larger counts are skipped, see the time limit below | `kernel/fuzz` |
-| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI | |
+| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI |  |
 
 ## Changing the rules (§4.3) and the v2 rules (RULES-V2.md)
 
@@ -90,8 +93,9 @@ mutation tests. **Assumed** means nothing here checks it.
 | `status` tells merged from Settled: for each release, as Pass 3 reads it (its evaluation policy, the release's or for an early release the scope's current admission policy), the evaluators whose endorsement counts, those with a live INVALID on it, and, while it is not Settled, those that have not answered; whether `main` is released and how many commits it is past its last release; and it writes nothing | Tested, with mutants: a verdict attesting nothing, a superseded ATTESTED or INVALID, and an early release after a roster replacement are read as Pass 3 reads them | `test_vars1.py` 77, 79; `tools/minds_chain.py status` |
 | A commit with a symlink or a submodule has no profile (their bytes are not in the commit) | Tested, with mutants | `test_vars1.py` 76 |
 | A release statement names its profile after its checks, so a reader of the earlier format still reads its commit, rules and pins | Tested (the earlier pattern, verbatim) | `test_vars1.py` 76 |
-| A claim quoting ASSURANCE.md is held only by the claim column of exactly one table row whose evidence column begins with the claim's status; the file may hold no HTML comment and no fenced block, nor any raw HTML outside code spans, and every line opening with a vertical bar must lie in a table (opened after a blank line or a heading, with header and delimiter rows): a form whose rows read the same to the checker and to a Markdown renderer, since telling hidden or quoted text from a live row is a parser's work (Codex review of PR #4, rounds 1–8) | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
-| Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5 holds the quote of a claim or of an informative passage; the checker splits blocks at blank lines, headings, `-` and `N.` items and ``` fences, and refuses any other block construct there (another list marker, a nested or indented item, indented code, a quote, HTML, a setext underline or a rule, another fence) rather than read it into a neighbour; a line opening with `#` without a space after the hashes is a paragraph, as CommonMark reads it | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| A claim quoting ASSURANCE.md is held only by the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status; ASSURANCE.md is exactly the rendering of assurance.json, so nothing in it is parsed and no hidden or quoted text can hold a quote (nine review rounds on hand-read Markdown, Codex review of PR #4, led here) | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5, as `tools/check_claims.py` splits them (blank lines, headings, `-` and `N.` items, ``` fences), holds the quote of a claim or of an informative passage; other block constructs it recognises there are refused, and a line opening with `#` without a space is a paragraph | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| Every block a CommonMark renderer shows in §0–§5 is split so | **Not established**: a tab after a list marker or a spaced thematic break is read into its neighbour (Codex review of PR #4, round 9). The fix planned is the spec as a projection of its parts, as ASSURANCE.md is of assurance.json | — |
 
 ## Who reads which rules
 
