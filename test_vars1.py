@@ -2722,12 +2722,19 @@ class TestVars1Conformance(unittest.TestCase):
         spec = (ROOT_DIR / "VARS-1-SPEC.md").read_text()
         claims = json.loads((ROOT_DIR / "claims.json").read_text())
 
-        def check(spec_text, claims_obj):
+        assurance = (ROOT_DIR / "ASSURANCE.md").read_text()
+        adoc = json.loads((ROOT_DIR / "assurance.json").read_text())
+        norm = lambda t: re.sub(r"\s+", " ", t).strip()
+
+        def check(spec_text, claims_obj, assurance_text=assurance, assurance_doc=adoc, write=False):
             d = Path(self.tmp.name)
             (d / "spec.md").write_text(spec_text)
             (d / "claims.json").write_text(json.dumps(claims_obj))
-            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json")],
-                                 capture_output=True, text=True)
+            (d / "assurance.md").write_text(assurance_text)
+            (d / "assurance.json").write_text(json.dumps(assurance_doc))
+            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json"),
+                                  "--assurance", str(d / "assurance.md"), "--assurance-data", str(d / "assurance.json"),
+                                  *(["--write-assurance"] if write else [])], capture_output=True, text=True)
             return out.returncode, out.stdout
 
         code, out = check(spec, claims)
@@ -2749,6 +2756,60 @@ class TestVars1Conformance(unittest.TestCase):
         tested["mutants"] = []
         code, out = check(spec, bare)
         self.assertIn(f"{tested['id']}: tested without a mutant", out)
+        # a claim on what the tools establish beyond the spec quotes ASSURANCE.md, and goes stale like any other
+        moved = json.loads(json.dumps(claims))
+        held = next(c for c in moved["claims"] if c.get("source") == "ASSURANCE.md")
+        held["quote"] += " and more"
+        code, out = check(spec, moved)
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        # ASSURANCE.md is the rendering of assurance.json and nothing else: no hand edit (a comment, a fence, a stray
+        # row, raw HTML, where Codex review of PR #4 found nine ways to hide a quote in parsed Markdown) is accepted,
+        # and rows are read from the data, so a withdrawn row's quote is held by nothing
+        for edit in ("<!--\n" + "| x | Tested | — |" + "\n-->\n", "```\n| x | Tested | — |\n```\n", "\n| x | Tested | — |\n"):
+            code, out = check(spec, claims, assurance + edit)
+            self.assertEqual(code, 1, edit)
+            self.assertIn("ASSURANCE.md is not the rendering of assurance.json", out)
+        q = norm(held["quote"][: -len(" and more")])
+
+        def with_row(change):
+            doc = json.loads(json.dumps(adoc))
+            for part in doc["parts"]:
+                if "table" in part and part["table"]["header"][0] == "Claim":
+                    for r in part["table"]["rows"]:
+                        if q in norm(r[0]):
+                            change(part["table"]["rows"], r)
+                            return doc
+            raise AssertionError("the claim's row is in the data")
+
+        withdrawn = with_row(lambda rows, r: r.__setitem__(0, "`verify-release` does not check profiles"))
+        code, out = check(spec, claims, assurance_doc=withdrawn, write=True)  # rendered, so only the data speaks
+        self.assertIn(f"{held['id']}: quote in 0 rows of ASSURANCE.md", out)
+        twice = with_row(lambda rows, r: rows.append(list(r)))
+        code, out = check(spec, claims, assurance_doc=twice, write=True)
+        self.assertIn(f"{held['id']}: quote in 2 rows of ASSURANCE.md", out)
+        piped = with_row(lambda rows, r: r.__setitem__(1, "Not established | Tested, with mutants"))
+        code, out = check(spec, claims, assurance_doc=piped, write=True)
+        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Not established", out, "a | in a cell is cell text")
+        self.assertIn("\\|", (Path(self.tmp.name) / "assurance.md").read_text(), "and rendered escaped")
+        # a live row whose evidence cell no longer states the claim's status
+        code, out = check(spec, claims, assurance_doc=with_row(lambda rows, r: r.__setitem__(1, "Assumed")), write=True)
+        self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
+        # every spec block the checker cannot split is refused, never read into its neighbour's coverage (Codex r8 F2)
+        item = "- `id(x) = SHA-256(bytes(x))`. Every object is addressed by its id."
+        for extra in ("* R8: admission without a witness.", "+ R8: admission without a witness.",
+                      "1) R8: admission without a witness.", "~~~\nR8: admission without a witness.\n~~~",
+                      "  - R8: admission without a witness.", "> R8: admission without a witness."):
+            code, out = check(spec.replace(item, item + "\n" + extra), claims)
+            self.assertEqual(code, 1, extra)
+            self.assertIn("a block construct this checker does not read", out, extra)
+        code, out = check(spec.replace(item, item + "\n- R8: admission without a witness."), claims)
+        self.assertIn("no claim or informative quote covers this block", out, "the control: a `-` item is its own block")
+        # a line opening with `#` and no space is a paragraph, not a heading, and must be covered (Codex r7 F2)
+        code, out = check(spec.replace(anchor, anchor + "\n\n#Admission without a witness is permitted.\n"), claims)
+        self.assertIn("no claim or informative quote covers this block", out)
+        held["quote"], held["source"] = held["quote"][: -len(" and more")], "README.md"
+        code, out = check(spec, moved)
+        self.assertIn(f"{held['id']}: unknown source 'README.md'", out)
 
     def test_46_latches_and_witnesses_need_their_quorum_and_kind(self) -> None:
         """Below its quorum an acceptance admits nothing and a custom schema is not Authorized; at the quorum both
@@ -4067,6 +4128,361 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertFalse(lens["settled"][k_nf.id], "a cycle witness answers only H_CYCLE_PROVEN")
         self.assertFalse(lens["settled"][k_other.id], "a cycle witness answers only for its own computation")
         self.assertTrue(lens["settled"][k_att.id], "without required_comp, Settled is an attestation (ASSURANCE.md)")
+
+    def _commit_files(self, files: dict[str, bytes], msg: str) -> str:
+        """Commit `files` on branch main of the scratch repository (beside its refs/vars) and return the commit."""
+        g = lambda *a: subprocess.run(["git", "-C", str(self.repo_path), *a], capture_output=True, check=True).stdout
+        g("checkout", "-q", "-B", "main")
+        for path, raw in files.items():
+            (self.repo_path / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo_path / path).write_bytes(raw)
+            g("add", path)
+        g("commit", "-q", "--allow-empty", "-m", msg)
+        return g("rev-parse", "HEAD").decode().strip()
+
+    def test_76_the_release_profile_names_the_gate_the_rules_hash_does_not(self) -> None:
+        """H_LENS_KERNEL names the fold and Passes 1–2, not the host's admission (ASSURANCE.md): two commits whose gate
+        differs carry the same rules hash and different release profiles. The profile is read from the commit's
+        objects; the offline verifier's rules are read from its own bytes; `verify-release` recomputes the profile a
+        release names and records INVALID when the commit's files are not those it names."""
+        mc = self._minds_chain()
+        wasm = V.KERNEL_ATOM
+        verifier = f'H_LENS_KERNEL = bytes.fromhex("{V.H_LENS_KERNEL.hex()}")\n'.encode()
+        a = self._commit_files({"vars1.py": b"gate one\n", "verify/minds_verify.py": verifier,
+                                "kernel/lens.wasm": wasm}, "one")
+        b = self._commit_files({"vars1.py": b"gate two\n"}, "two")
+        pa, pb = mc.profile_at(self.repo_path, a), mc.profile_at(self.repo_path, b)
+        self.assertEqual(pa["rules_carried"], {"v1": V.H_LENS_KERNEL.hex()})
+        self.assertEqual(pa["rules_carried"], pb["rules_carried"], "the rules hash does not see the gate change")
+        self.assertNotEqual(pa["id"], pb["id"], "the profile does")
+        self.assertNotEqual(pa["files"].get("vars1.py"), pb["files"].get("vars1.py"))
+        self.assertNotIn("meter.py", pa["files"], "the profile names the files the commit has")
+        self.assertEqual(pa["offline_reads"], {"v1": V.H_LENS_KERNEL.hex()})
+        c = self._commit_files({"verify/minds_verify.py": verifier.replace(V.H_LENS_KERNEL.hex().encode(), b"ab" * 32)},
+                               "three")
+        self.assertEqual(mc.profile_at(self.repo_path, c)["offline_reads"], {"other": "ab" * 32},
+                         "a verifier naming rules the commit does not carry reads none of them")
+        self.assertEqual(mc.profile_at(self.repo_path, a)["id"], pa["id"], "the profile is a function of the commit")
+        with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
+            mc.profile_at(self.repo_path, "main")
+
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
+        _, good = mc.release(self.repo_path, sk, b, ["test_vars1 OK"], profile=pb["id"])
+        _, wrong = mc.release(self.repo_path, sk, a, ["test_vars1 OK"], profile=pb["id"])  # names b's files
+        repo = V.GitVarsRepo(self.repo_path)
+        atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
+        stmt = V.parse_utf8(atoms[cells[good["decision"]].h_payload])
+        self.assertEqual(mc.parse_release_profile(stmt)[:3], (b, V.H_LENS_KERNEL, pb["id"]))
+        self.assertEqual(mc.parse_release(stmt), (b, V.H_LENS_KERNEL, None), "older readers still parse it")
+        fake = lambda repo_dir, sha, rules: (["test_vars1 OK"], True)
+        _, ok, lines = mc.verify_release(self.repo_path, sk2, good["decision"], "second", checks=fake)
+        self.assertTrue(ok)
+        self.assertIn(f"release profile {pb['id'][:12]} is the commit's OK", lines)
+        _, ok, lines = mc.verify_release(self.repo_path, sk2, wrong["decision"], "second", checks=fake)
+        self.assertFalse(ok, "every check passed, but the commit's files are not the ones the release names")
+        self.assertIn(f"release profile {pb['id'][:12]} is the commit's FAILED", lines)
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][good["decision"]])
+        self.assertFalse(lens["settled"][wrong["decision"]])
+
+        # The earlier reader (before profiles, main@21ffb48) matched this prefix only; it still reads a new statement
+        old = r"^minds release main@([0-9a-f]{40}) rules@([0-9a-f]{64})(?: sigma-glyph@([0-9a-f]{40}))?(?: primitives@([0-9a-f]{40}))?;"
+        self.assertEqual(re.match(old, stmt).groups()[:2], (b, V.H_LENS_KERNEL.hex()))
+        self.assertTrue(stmt.endswith(f"; profile@{pb['id']}"))
+        fresh = self._commit_files({"fresh": b"f"}, "a commit no release names yet")
+        for bad in (["a; b OK"], ["profile@" + "0" * 64]):  # without the guard, these would be recorded
+            with self.assertRaisesRegex(V.VarsError, "may not contain"):
+                mc.release(self.repo_path, sk, fresh, bad, profile=pb["id"])
+        with self.assertRaisesRegex(V.VarsError, "lowercase hex"):  # Codex PR #4 r2 F3
+            mc.release(self.repo_path, sk, fresh, ["x OK"], profile="0" * 64 + "; extra")
+        with self.assertRaisesRegex(V.VarsError, "malformed profile"):
+            mc.parse_release_profile(f"minds release main@{fresh} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK; "
+                                     f"profile@{'0' * 64}; extra")
+
+        # A symlink's blob is a name, not the bytes that run (Codex PR #4 r1 F1): a profile path must be a regular file
+        (self.repo_path / "kernel" / "body.mjs").write_bytes(b"// runner\n")
+        (self.repo_path / "kernel" / "run.mjs").symlink_to("body.mjs")
+        g = lambda *x: subprocess.run(["git", "-C", str(self.repo_path), *x], capture_output=True, check=True).stdout
+        g("add", "kernel/body.mjs", "kernel/run.mjs")
+        g("commit", "-q", "-m", "link")
+        link = g("rev-parse", "HEAD").decode().strip()
+        with self.assertRaisesRegex(V.VarsError, "kernel/run.mjs .* is not a regular file"):
+            mc.profile_at(self.repo_path, link)
+        # nor through a directory on the way (Codex PR #4 r2 F1): `kernel -> actual-kernel`
+        g("rm", "-q", "-r", "--cached", "kernel")
+        (self.repo_path / "kernel").rename(self.repo_path / "actual-kernel")
+        (self.repo_path / "actual-kernel" / "run.mjs").unlink()
+        (self.repo_path / "actual-kernel" / "run.mjs").write_bytes(b"// runner\n")
+        (self.repo_path / "kernel").symlink_to("actual-kernel")
+        g("add", "kernel", "actual-kernel")
+        g("commit", "-q", "-m", "linked directory")
+        with self.assertRaisesRegex(V.VarsError, "kernel at .* is not a regular file"):
+            mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
+
+        # Profiled code can load any file of the commit (Codex PR #4 r3–r6: a module shadowing the standard library's,
+        # bytecode, a package, a namespace module, a ZIP on its path), so every tracked file is profiled
+        g("rm", "-q", "--cached", "kernel")
+        (self.repo_path / "kernel").unlink()
+        g("commit", "-q", "-m", "no link")
+        base = g("rev-parse", "HEAD").decode().strip()
+        shadow = self._commit_files({"json.py": b"raise SystemExit\n"}, "a module named like the stdlib's")
+        self.assertIn("json.py", mc.profile_at(self.repo_path, shadow)["files"])
+        self.assertNotEqual(mc.profile_at(self.repo_path, shadow)["id"], mc.profile_at(self.repo_path, base)["id"])
+        g("rm", "-q", "json.py")
+        g("commit", "-q", "-m", "no shadow")
+        # a symlink anywhere has no profile: its blob names a target, not the bytes that run
+        (self.repo_path / "payload").mkdir()
+        (self.repo_path / "payload" / "shadow.txt").write_bytes(b"raise SystemExit\n")
+        (self.repo_path / "json.py").symlink_to("payload/shadow.txt")
+        g("add", "-A")
+        g("commit", "-q", "-m", "a linked module")
+        with self.assertRaisesRegex(V.VarsError, "json.py at .* is not a regular file"):
+            mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
+        g("rm", "-q", "json.py")
+        g("rm", "-q", "-r", "payload")
+        g("commit", "-q", "-m", "no link")
+        bare = mc.profile_at(self.repo_path, g("rev-parse", "HEAD").decode().strip())
+        for files in ({"tools/json/__init__.py": b"x = 1\n"}, {"payload/hook.py": b"x = 1\n"},
+                      {"verify/__pycache__/minds_verify.cpython-315.pyc": b"x = 1\n"}, {"verify/_fast.so": b"x = 1\n"},
+                      {"payload/hooks.zip": b"x = 1\n"}, {"notes/data.txt": b"x = 1\n"}):
+            one = self._commit_files(files, "a package or a namespace module")
+            p1 = mc.profile_at(self.repo_path, one)
+            self.assertIn(next(iter(files)), p1["files"])
+            two = self._commit_files({k: b"x = 2\n" for k in files}, "changed")
+            self.assertNotEqual(mc.profile_at(self.repo_path, two)["id"], p1["id"], next(iter(files)))
+            self.assertNotEqual(p1["id"], bare["id"])
+            g("rm", "-q", "-r", str(Path(next(iter(files))).parent))
+            g("commit", "-q", "-m", "removed")
+        _, linked = mc.release(self.repo_path, sk, link, ["test_vars1 OK"], profile=pb["id"])
+        _, ok, lines = mc.verify_release(self.repo_path, sk2, linked["decision"], "second", checks=fake)
+        self.assertFalse(ok)
+        self.assertIn(f"release profile {pb['id'][:12]} is the commit's FAILED", lines)
+
+    def test_80_the_profile_closes_over_what_the_gate_loads(self) -> None:
+        """The profile names every file this commit tracks, by the SHA-256 of the bytes git holds for it: whatever
+        the profiled code loads from the repository is among them (the interpreters come from the host,
+        ASSURANCE.md)."""
+        mc = self._minds_chain()
+        git = lambda *a: subprocess.run(["git", "-C", str(ROOT_DIR), *a], capture_output=True, check=True).stdout
+        head = git("rev-parse", "HEAD").decode().strip()
+        files = mc.profile_at(ROOT_DIR, head)["files"]
+        tracked = git("ls-tree", "-r", "-z", "--name-only", "--full-tree", head).decode().split("\0")
+        self.assertEqual(sorted(files), sorted(t for t in tracked if t))
+        for path in ("vars1.py", "kernel/run.mjs", "kernel/lens.wasm", "VARS-1-SPEC.md"):
+            self.assertEqual(files[path], V.sha256(git("cat-file", "blob", f"{head}:{path}")).hex(), path)
+
+    def test_77_status_tells_merged_from_settled(self) -> None:
+        """`status` reads the chain and main and writes nothing: whether main is released, how far main is past its
+        last release, and for each release who has attested it, contradicted it, or not yet answered — counted
+        against the evaluators the release itself names, so a release recorded before a join awaits no one."""
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        pk, pk2 = V.ed25519_pubkey(sk).hex(), V.ed25519_pubkey(sk2).hex()
+        one = self._commit_files({"claims.json": json.dumps({"claims": [{"status": "tested"}, {"status": "assumed"},
+                                                                      {"status": "tested"}]}).encode()}, "one")
+        mc.init(self.repo_path, sk)
+        _, r1 = mc.release(self.repo_path, sk, one, ["test_vars1 OK"])
+        mc.join(self.repo_path, sk, bytes.fromhex(pk2), "second")
+        two = self._commit_files({"x": b"x"}, "two")
+        three = self._commit_files({"y": b"y"}, "three")
+        _, r2 = mc.release(self.repo_path, sk, two, ["test_vars1 OK"])
+        _, r3 = mc.release(self.repo_path, sk, three, ["test_vars1 OK"])
+        waiting = mc.status(self.repo_path)["unwitnessed_projections"]
+        self.assertEqual({w["id"] for w in waiting}, {r2["projection"].hex(), r3["projection"].hex()})
+        self.assertTrue(all(w["unwitnessed_by"] == [pk2] for w in waiting))
+        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a: (["x FAILED"], False))
+        before = subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"], capture_output=True).stdout
+        st = mc.status(self.repo_path)
+        self.assertEqual(subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"],
+                                        capture_output=True).stdout, before, "status writes nothing")
+        rows = {r["commit"]: r for r in st["releases"]}
+        self.assertEqual((rows[one]["settled"], rows[one]["attested_by"], rows[one]["awaiting"]), (True, [pk], []),
+                         "a release before the join awaits no one")
+        self.assertEqual((rows[two]["settled"], rows[two]["attested_by"], rows[two]["awaiting"]), (False, [pk], [pk2]))
+        self.assertEqual((rows[three]["settled"], rows[three]["invalid_by"], rows[three]["awaiting"]),
+                         (False, [pk2], []), "an INVALID is an answer, and not a settlement")
+        self.assertEqual((st["main"], st["main_released"], st["last_released"], st["commits_since_release"]),
+                         (three, True, three, 0))
+        self.assertEqual(st["unsettled"], sorted([f"minds/release/{two[:12]}", f"minds/release/{three[:12]}"]))
+        self.assertEqual(st["claims_at_main"], {"assumed": 1, "tested": 2})
+        self.assertEqual(st["rules"], {"id": V.H_LENS_KERNEL.hex(), "name": "v1"})
+        self.assertEqual(st["unwitnessed_projections"], [], "a member's verdict also witnesses the chain")
+        self._commit_files({"z": b"z"}, "four")
+        self._commit_files({"w": b"w"}, "five")
+        st = mc.status(self.repo_path)
+        self.assertEqual((st["main_released"], st["last_released"], st["commits_since_release"]), (False, three, 2))
+
+    def test_79_status_reads_pass_3(self) -> None:
+        """`status` counts what Pass 3 counts, not every stored verdict (Codex PR #4 r1 F3, F4): a verdict that
+        attests nothing, an answer superseded by NOT_ASSESSED, and a superseded INVALID leave the member awaited;
+        an early release naming no evaluators is read under the scope's current admission policy, so after a
+        rotation that replaces the key that attested it, the new key is awaited."""
+        import dataclasses
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        pk2 = V.ed25519_pubkey(sk2).hex()
+        repo = V.GitVarsRepo(self.repo_path)
+
+        def add(atoms: dict, cells: list, signer: bytes) -> None:
+            s = mc.governing_scope(repo)
+            tip = repo.ref_commit("minds")
+            c = repo.build_candidate_commit("minds", atoms, cells, [V.Seal.sign(signer, x.id, s) for x in cells],
+                                            parent_commit=tip)
+            repo.admit_and_advance("minds", c, expected_old=tip)
+
+        def row(did: bytes) -> dict:
+            return next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == did.hex())
+
+        def answer(did: bytes, ok: bool) -> V.Cell:
+            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a: (["x OK"], ok))
+            atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
+            return next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == did
+                        and V.parse_utf8(atoms[c.slots[2]]) == "second")
+
+        def withdraw(w: V.Cell) -> None:
+            a: dict[bytes, bytes] = {}
+            add(a, [dataclasses.replace(w, h_supersedes=mc._put(a, V.atom_hvec([w.id])),
+                                        h_loss=mc._put(a, V.atom_utf8("withdrawn")),
+                                        slots=(V.H_EMPTY, V.H_NOT_ASSESSED, w.slots[2]))], sk2)
+
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, bytes.fromhex(pk2), "second")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        a: dict[bytes, bytes] = {}
+        add(a, [V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/no-attests")), r1["decision"],
+                       slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("second"))))], sk2)
+        r = row(r1["decision"])
+        self.assertEqual((r["settled"], r["awaiting"]), (False, [pk2]), "a verdict attesting nothing is no answer")
+
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        withdraw(answer(r2["decision"], True))
+        r = row(r2["decision"])
+        self.assertEqual((r["settled"], r["awaiting"], pk2 in r["attested_by"]), (False, [pk2], False),
+                         "a superseded ATTESTED is no answer")
+
+        _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["x OK"])
+        w = answer(r3["decision"], False)
+        self.assertEqual((row(r3["decision"])["invalid_by"], row(r3["decision"])["awaiting"]), ([pk2], []))
+        withdraw(w)
+        r = row(r3["decision"])
+        self.assertEqual((r["invalid_by"], r["awaiting"]), ([], [pk2]), "a superseded INVALID is no answer")
+
+        # a foreign INVALID, cross-sealed by an evaluator: the cross-seal is edge authority, not Pass 3's endorsement
+        # (Codex PR #4 r2 F2); the evaluator is still awaited, and its own attestation settles the release
+        _, r4 = mc.release(self.repo_path, sk, "e" * 40, ["x OK"])
+        key = b"\x09" * 32
+        a = {}
+        pol = mc._policy(a, 1, [V.ed25519_pubkey(key)])
+        peer = V.Cell(V.H_SCHEMA["scope"], mc._put(a, V.atom_utf8("peer/SCOPE")), mc._put(a, V.atom_utf8("peer")),
+                      slots=(pol, pol, V.H_LENS_KERNEL))
+        bad = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("peer/invalid")), r4["decision"],
+                     slots=(V.H_EMPTY, V.H_VERDICT_INVALID, mc._put(a, V.atom_utf8("second"))))
+        acc = V.Cell(V.H_SCHEMA["acceptance"], mc._put(a, V.atom_utf8("minds/import-invalid")), bad.id,
+                     slots=(mc._put(a, V.atom_utf8("peer")), peer.id))
+        s = mc.governing_scope(repo)
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", a, [peer, bad, acc],
+                                        [V.Seal.sign(key, peer.id, peer.id), V.Seal.sign(key, bad.id, peer.id),
+                                         V.Seal.sign(sk2, bad.id, s), V.Seal.sign(sk, acc.id, s)], parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        lens = repo.lens("minds")
+        self.assertTrue(lens["active"][bad.id] and not lens["stale"][bad.id])
+        r = row(r4["decision"])
+        self.assertEqual((r["settled"], r["invalid_by"], r["awaiting"]), (False, [], [pk2]))
+        answer(r4["decision"], True)
+        r = row(r4["decision"])
+        self.assertEqual((r["settled"], r["invalid_by"], pk2 in r["attested_by"]), (True, [], True))
+
+        # an early release, naming no evaluators: the scope's admission policy, current at the tip
+        a = {}
+        d = V.Cell(V.H_SCHEMA["decision"], mc._put(a, V.atom_utf8("minds/release/cccccccccccc")),
+                   mc._put(a, V.atom_utf8(f"minds release main@{'c' * 40} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK")),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        v = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/legacy")), d.id,
+                   h_attests=mc._put(a, V.atom_hvec([d.id])),
+                   slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("minds-maintainer"))))
+        add(a, [d, v], sk)
+        r = row(d.id)
+        self.assertEqual((r["settled"], r["threshold"], r["awaiting"]), (True, 1, []),
+                         "1-of-2 admission: the maintainer alone settles it, and a Settled release awaits no one")
+        a = {}
+        pol = mc._policy(a, 1, [bytes.fromhex(pk2)])
+        add(a, [V.Cell(V.H_SCHEMA["scope"], mc._put(a, V.atom_utf8("minds/SCOPE")), mc._put(a, V.atom_utf8("new roster")),
+                       h_supersedes=mc._put(a, V.atom_hvec([mc.governing_scope(repo)])),
+                       h_loss=mc._put(a, V.atom_utf8("replace the maintainer")), slots=(pol, pol, V.H_LENS_KERNEL))], sk)
+        r = row(d.id)
+        self.assertEqual((r["settled"], r["evaluators"], r["attested_by"], r["awaiting"]), (False, [pk2], [], [pk2]))
+
+    def test_78_each_structural_refusal_has_its_own_input(self) -> None:
+        """Each refusal below is reached by its own input (the claims' earlier witnesses never reached them, so a
+        mutant removing one survived): raw cell and seal bytes written to the CAS as a writer could, a seal on a cell
+        the commit lacks, a foreign cell without its scope, a schema cell with a payload. Without its check, the loss,
+        magic and schema inputs are admitted; the foreign cell is still refused by the kernel (twin divergence) and
+        the stray seal by the generic malformed-commit refusal, so only the reason changes there. A canonical
+        neighbour of each is admitted."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+
+        def raw_cell(path_raw: bytes, atoms: dict, seals: list, cells: tuple = ()) -> str:
+            h = V.sha256(path_raw).hex()
+            return self.repo.build_candidate_commit("core", atoms, list(cells), seals, parent_commit=c0,
+                                                    extra_tree_entries=[("100644", "blob", f"cas/cells/{h[:2]}/{h[2:]}",
+                                                                         path_raw)])
+
+        def refused(regex: str, cand: str) -> None:
+            with self.assertRaisesRegex(V.VarsError, regex):
+                self.repo.admit_and_advance("core", cand, expected_old=c0)
+
+        # §1.2 rule 1: an eviction without loss, as bytes (the encoder refuses to make it)
+        a: dict[bytes, bytes] = {}
+        old = self._axiom(a, "core/old", "old")
+        new = self._axiom(a, "core/old", "new", supersedes=[old.id])
+        raw = bytearray(new.encode())
+        raw[8 + 32 * 8: 8 + 32 * 9] = V.H_EMPTY
+        refused("eviction cell missing H_loss",
+                raw_cell(bytes(raw), a, [V.Seal.sign(self.sk1, V.sha256(bytes(raw)), s0.id),
+                                         V.Seal.sign(self.sk1, old.id, s0.id)], cells=(old,)))
+
+        # §1.1: the magic is part of the cell; a cell that differs only there is refused
+        ax = self._axiom(a, "core/ax", "ax")
+        bad = b"VARX" + ax.encode()[4:]
+        refused("missing VAR1 magic", raw_cell(bad, a, [V.Seal.sign(self.sk1, V.sha256(bad), s0.id)]))
+
+        # §1.3: a seal is "SEAL" ‖ …; one whose signature covers another magic is refused for the magic
+        pk = V.ed25519_pubkey(self.sk1)
+        body = b"SEAX" + ax.id + s0.id + pk
+        sx = body + V.ed25519_sign(self.sk1, body)
+        hx = V.sha256(sx).hex()
+        cand = self.repo.build_candidate_commit("core", a, [ax], [], parent_commit=c0,
+                                                extra_tree_entries=[("100644", "blob", f"cas/seals/{hx[:2]}/{hx[2:]}", sx)])
+        refused("invalid SEAL length or magic", cand)
+
+        # §3 check 4: a seal names a cell of the commit
+        stray = V.Seal.sign(self.sk1, b"\x42" * 32, s0.id)
+        refused("Seal target or scope_ctx missing",
+                self.repo.build_candidate_commit("core", a, [ax], [V.Seal.sign(self.sk1, ax.id, s0.id), stray],
+                                                 parent_commit=c0))
+
+        # §3 check 5: a foreign cell arrives with a self-sealed scope of its origin
+        fa: dict[bytes, bytes] = {}
+        fx = self._axiom(fa, "peerB/x", "a peerB fact")
+        refused("lacks self-sealed foreign SCOPE",
+                self.repo.build_candidate_commit("core", fa, [fx], [V.Seal.sign(self.sk_peer, fx.id, fx.id)],
+                                                 parent_commit=c0))
+
+        # §1.2 rule 4: a schema cell has an empty payload and no edges
+        sa: dict[bytes, bytes] = {}
+        schema = V.Cell(V.H_META_SCHEMA, self._put_atom(sa, V.atom_utf8("core/custom")),
+                        self._put_atom(sa, V.atom_utf8("a payload")), slots=(self._put_atom(sa, V.atom_utf8("n:u64")),))
+        refused("schema definition cell must have H_EMPTY payload",
+                self.repo.build_candidate_commit("core", sa, [schema], [V.Seal.sign(self.sk1, schema.id, s0.id)],
+                                                 parent_commit=c0))
+
+        # the neighbour: the same cells, canonical, admit
+        good = V.Cell(V.H_META_SCHEMA, schema.h_slot_name, V.H_EMPTY, slots=schema.slots)
+        self._admit({**a, **sa}, [ax, good], [V.Seal.sign(self.sk1, ax.id, s0.id),
+                                               V.Seal.sign(self.sk1, good.id, s0.id)], c0)
 
 
 if __name__ == "__main__":

@@ -2,14 +2,19 @@
 """The specification as a projection of what holds it (claims.json).
 
 Every block of VARS-1-SPEC.md §0–§5 (a paragraph, a list item, a table, a code block) must contain the exact quote
-of a claim or of an informative passage; every quote must still be in the spec; every witness must exist; a claim
+of a claim or of an informative passage; every quote must still be in the spec, or, for a claim with
+`"source": "ASSURANCE.md"` (what this repository's tools establish beyond the spec, such as the release checks), in
+the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status, and
+ASSURANCE.md must be exactly the rendering of assurance.json; every witness must exist; a claim
 that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
 exists. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
 mutant has shown that it bites). Exit 1 on any violation.
 
     python3 tools/check_claims.py            # check
     python3 tools/check_claims.py --table    # print claim -> status -> witnesses -> mutants
-    python3 tools/check_claims.py --spec FILE --claims FILE   # check other files (tests burn the checker so)
+    python3 tools/check_claims.py --write-assurance  # render ASSURANCE.md from assurance.json
+    python3 tools/check_claims.py --spec FILE --claims FILE [--assurance FILE] [--assurance-data FILE]
+                                             # check other files (tests burn the checker so)
 """
 from __future__ import annotations
 
@@ -23,12 +28,20 @@ STATUSES = {"proved", "bounded", "differential", "tested", "unburned", "assumed"
 DEBT = {"unburned", "assumed"}
 
 
+LINES = re.compile(r"\r\n|\r|\n")  # Markdown's line endings only: str.splitlines also breaks at U+2028, U+0085, ...
+
+
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+UNREAD = re.compile(r"^(?: {0,3}(?:[*+][ \t]|\d+\)[ \t]|~{3,}|>|<[A-Za-z!/?]|(?:=+|-{2,}|\*{3,}|_{3,})[ \t]*$)"
+                    r"| {1,3}`{3,}|[ \t]+(?:\d+[.)]|[-*+])[ \t])")
+
+
 def spec_blocks(spec: str) -> list[tuple[int, str]]:
-    """(line, text) of every block in §0–§5: paragraphs, list items, tables and code blocks; headings excluded."""
+    """(line, text) of every block in §0–§5: paragraphs, list items (`-` or `N.`), tables and code blocks (```);
+    headings excluded. Any other block construct in §0–§5 is refused (ValueError), never read into a neighbour."""
     blocks: list[tuple[int, str]] = []
     section = None
     cur: list[str] = []
@@ -41,7 +54,7 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
             blocks.append((start, norm(" ".join(cur))))
         cur = []
 
-    for n, line in enumerate(spec.splitlines(), 1):
+    for n, line in enumerate(LINES.split(spec), 1):
         if line.startswith("```"):
             if not fenced:
                 flush()
@@ -54,12 +67,17 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
         if fenced:
             cur.append(line)
             continue
+        if section is not None and section <= 5 and (UNREAD.match(line) or (line[:1] in (" ", "\t") and not cur and
+                                                                          line.strip())):
+            # a block this checker does not split (another list marker, a nested or indented item, indented code, a
+            # quote, HTML, a setext underline or a rule, another fence) would be read into its neighbour's coverage
+            raise ValueError(f"VARS-1-SPEC.md:{n}: a block construct this checker does not read: {line.strip()[:60]!r}")
         m = re.match(r"^## (\d+)\.", line)
         if m:
             flush()
             section = int(m.group(1))
             continue
-        if line.startswith("#"):
+        if re.match(r"^ {0,3}#{1,6}(?:[ \t]|$)", line):  # a heading; `#word` is a paragraph (CommonMark)
             flush()
             continue
         if not line.strip():
@@ -72,6 +90,32 @@ def spec_blocks(spec: str) -> list[tuple[int, str]]:
         cur.append(line)
     flush()
     return blocks
+
+
+EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Differential", "tested": "Tested",
+                 "assumed": "Assumed", "unburned": "Unburned"}
+
+
+def render_assurance(doc: dict) -> str:
+    """ASSURANCE.md is a projection of assurance.json: prose parts verbatim, tables rendered from their cells (a `|` in
+    a cell escaped). Nothing parses the Markdown; the file must be exactly this rendering. A table whose first header
+    is `Claim` holds claim rows."""
+    out = []
+    for part in doc["parts"]:
+        if "md" in part:
+            out.append(part["md"])
+            continue
+        t = part["table"]
+        cell = lambda c: c.replace("|", "\\|")
+        out.append("\n".join(["| " + " | ".join(map(cell, t["header"])) + " |", "|" + "---|" * len(t["header"])]
+                             + ["| " + " | ".join(map(cell, r)) + " |" for r in t["rows"]]) + "\n")
+    return "".join(out)
+
+
+def assurance_rows(doc: dict) -> list[tuple[str, str]]:
+    """(claim cell, evidence cell) of every row of every claim table of assurance.json: data, not parsed text."""
+    return [(norm(r[0]), norm(r[1])) for part in doc["parts"] if "table" in part
+            and part["table"]["header"][0] == "Claim" for r in part["table"]["rows"]]
 
 
 def witness_exists(w: str) -> bool:
@@ -101,15 +145,32 @@ def main(argv: list[str]) -> int:
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     flat = norm(spec)
+    assurance_doc = json.loads(arg("--assurance-data", ROOT / "assurance.json").read_text())
+    rendered = render_assurance(assurance_doc)
+    if "--write-assurance" in argv:
+        arg("--assurance", ROOT / "ASSURANCE.md").write_text(rendered)
+    if arg("--assurance", ROOT / "ASSURANCE.md").read_text() != rendered:
+        errors.append("ASSURANCE.md is not the rendering of assurance.json (tools/check_claims.py --write-assurance)")
+    sources = {"ASSURANCE.md": assurance_rows(assurance_doc)}
 
     ids = [c["id"] for c in claims]
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         errors.append(f"claim id used twice: {dup}")
-    quotes = [norm(c["quote"]) for c in claims] + [norm(q) for q in informative]
+    quotes = [norm(c["quote"]) for c in claims if "source" not in c] + [norm(q) for q in informative]
     for c in claims:
         q = norm(c["quote"])
-        if q not in flat:
+        source = c.get("source")
+        if source is not None and source not in sources:
+            errors.append(f"{c['id']}: unknown source {source!r}")
+        elif source is None and q not in flat:
             errors.append(f"{c['id']}: quote not in the spec: {q[:80]!r}")
+        elif source is not None:
+            # held by exactly one row's claim column, whose evidence column states the claim's own status
+            held = [ev for claim, ev in sources[source] if q in claim]
+            if len(held) != 1:
+                errors.append(f"{c['id']}: quote in {len(held)} rows of {source}, not one: {q[:80]!r}")
+            elif not held[0].startswith(EVIDENCE_WORD.get(c["status"], "?")):
+                errors.append(f"{c['id']}: {source} row says {held[0][:40]!r}, not {c['status']}")
         if c["status"] not in STATUSES:
             errors.append(f"{c['id']}: unknown status {c['status']!r}")
         if c["status"] != "assumed" and not c.get("witnesses"):
@@ -134,7 +195,12 @@ def main(argv: list[str]) -> int:
     for q in informative:
         if norm(q) not in flat:
             errors.append(f"informative quote not in the spec: {norm(q)[:80]!r}")
-    for line, block in spec_blocks(spec):
+    try:
+        blocks = spec_blocks(spec)
+    except ValueError as e:
+        errors.append(str(e))
+        blocks = []
+    for line, block in blocks:
         if not any(q in block for q in quotes):
             errors.append(f"VARS-1-SPEC.md:{line}: no claim or informative quote covers this block: {block[:90]!r}")
     used = {m for c in claims for m in c.get("mutants", [])}

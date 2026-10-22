@@ -19,6 +19,9 @@ the checks run the test suites with that same interpreter.
                                               # as a member: rerun the checks at the release's commit, record a
                                               # verdict, and witness the projections that name your key
     tools/minds_chain.py show                 # releases and projections with their status
+    tools/minds_chain.py status               # read only: is main released, who has not yet attested each
+                                              # release or witnessed each projection, rules, claims debt
+    tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -303,8 +306,59 @@ def replay_changes(repo_dir: Path, scope: str = SCOPE) -> List[Tuple[str, str]]:
     return out
 
 
+# What a release identifies beyond its rules hash. H_LENS_KERNEL names the fold and Passes 1–2 only; the host decides
+# canonical bytes, types, replay, bindings and rules-change admission (ASSURANCE.md, "Changing the rules"), so a fix
+# there changes no rules hash. The profile names the bytes of every file the released commit tracks: a list of the
+# files an admission depends on would be wider than anything that can check it, because profiled code can load any
+# other file (a module beside it, a package, a ZIP on its path, a file it reads), so nothing narrower is sound. It is
+# not the commit id: it is SHA-256 throughout (git's object ids are SHA-1 here) and leaves out the commit's metadata,
+# so two commits with the same bytes have one profile. Not named: the interpreters (Python, node, Lean, cargo),
+# which come from the host.
+PROFILE_FORMAT = "minds-profile/1"
+# The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
+# bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
+# gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
+RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kernel2/lens2.wasm", "v2"))
+
+
+def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
+    """The release profile of commit `sha`, read from git's objects, not from a checkout: `files` (every tracked path
+    -> SHA-256 of its bytes), `rules_carried`, `offline_reads` and `id`, SHA-256 over the canonical JSON of the rest.
+    A commit with a symlink or a submodule has none: their bytes are not in the commit."""
+    if not V.canonical_commit_id(Path(repo_dir), sha):  # a ref or a short id names no fixed set of files
+        raise V.VarsError(f"{sha[:80]!r} is not a full commit id of {repo_dir}")
+    listing = subprocess.run(["git", "-C", str(repo_dir), "ls-tree", "-r", "-z", "--full-tree", sha],
+                             capture_output=True, check=True).stdout.decode()
+    entries = []  # (path, object id), every entry of the tree with its mode: a symlink and a submodule appear too
+    for entry in filter(None, listing.split("\0")):
+        meta, _, path = entry.partition("\t")
+        mode, _, oid = meta.split(" ")
+        if mode not in ("100644", "100755"):
+            raise V.VarsError(f"{path} at {sha[:12]} is not a regular file (mode {mode}): its bytes are not in the commit")
+        entries.append((path, oid))
+    batch = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "--batch"], capture_output=True, check=True,
+                           input="".join(f"{oid}\n" for _, oid in entries).encode()).stdout
+    files: Dict[str, str] = {}
+    blobs: Dict[str, bytes] = {}
+    at = 0
+    for path, oid in entries:
+        header_end = batch.index(b"\n", at)
+        size = int(batch[at:header_end].split(b" ")[2])
+        raw = batch[header_end + 1: header_end + 1 + size]
+        at = header_end + 1 + size + 1
+        files[path], blobs[path] = V.sha256(raw).hex(), raw
+    carried = {name: files[path] for path, name in RULES_FILES if path in files}
+    m = re.search(rb'^H_LENS_KERNEL = bytes\.fromhex\("([0-9a-f]{64})"\)', blobs.get("verify/minds_verify.py", b""), re.M)
+    offline = {name: h for name, h in carried.items() if m and h == m.group(1).decode()}
+    if m and not offline:
+        offline = {"other": m.group(1).decode()}  # a rules identity this commit does not carry
+    doc: Dict[str, object] = {"format": PROFILE_FORMAT, "files": dict(sorted(files.items())), "rules_carried": carried,
+                              "offline_reads": offline}
+    return dict(doc, id=_digest(doc))
+
+
 def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
-            siblings: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, bytes]]:
+            siblings: Optional[Dict[str, str]] = None, profile: Optional[str] = None) -> Tuple[str, Dict[str, bytes]]:
     """Record a release of `main_sha`: a decision stating it and the checks, the maintainer's ATTESTED verdict on it,
     and a projection of the chain as it stood before this commit. The decision's evaluator policy and the
     projection's witness policy are every key on the roster: the release is settled when each member has attested
@@ -318,7 +372,14 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     keys = roster(repo)
     everyone = _policy(atoms, len(keys), keys)
     pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
-    statement = f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{pins}; checks: " + "; ".join(checks)
+    if profile is not None and not re.fullmatch(r"[0-9a-f]{64}", profile):
+        raise V.VarsError("a release profile is a SHA-256 in lowercase hex")
+    if any(";" in c or c.startswith("profile@") for c in checks):
+        raise V.VarsError("a check line may not contain ';' nor start with 'profile@': they mark the statement's parts")
+    # The profile goes last, after the checks: a reader of the earlier format matches only the prefix up to the
+    # first ';', so it still reads main, rules and pins from a statement that names a profile.
+    statement = (f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{pins}; checks: "
+                 + "; ".join(checks) + (f"; profile@{profile}" if profile else ""))
     tag = main_sha[:12]
     decision = V.Cell(
         h_schema=V.H_SCHEMA["decision"],
@@ -362,6 +423,79 @@ def show(repo_dir: Path) -> List[Dict[str, object]]:
             row["statement"] = V.parse_utf8(atoms[c.h_payload])
         out.append(row)
     return sorted(out, key=lambda r: r["name"])
+
+
+RULES_NAMES = {V.H_LENS_KERNEL: "v1", V.H_LENS_KERNEL_V1B: "v1b", V.H_LENS_KERNEL_V2: "v2"}
+
+
+def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
+    """Where the release process stands, read only: whether `main` is released, and for each release whether it is
+    Settled and, as Pass 3 reads it, which evaluators' endorsements count, which have a live INVALID on it, and which
+    have not yet answered; which projections await a witness; the governing rules; the rules changes on the chain;
+    and the claims debt at `main`. Nothing is signed or written. Merged is not Settled."""
+    git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True)
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    if tip is None:
+        raise V.VarsError("no chain: run `init` first")
+    atoms, cells, seals = repo.read_cas_tree(tip)
+    lens = repo.lens(SCOPE)
+    settled = lens["settled"]
+    keys = roster(repo)
+    sealers: Dict[bytes, set] = {}
+    for x in seals.values():
+        sealers.setdefault(x.h_target, set()).add(x.actor_pubkey)
+    main_sha = git("rev-parse", "--verify", f"{main}^{{commit}}").stdout.strip() or None
+    releases, projections = [], []
+    for cid, c in sorted(cells.items(), key=lambda kv: V.parse_utf8(atoms[kv[1].h_slot_name])):
+        name = V.parse_utf8(atoms[c.h_slot_name])
+        if c.h_schema == V.H_SCHEMA["projection"] and not settled.get(cid):
+            _, hv = V.parse_pol1(atoms[c.slots[4]])
+            missing = [k for k in V.parse_hvec(atoms[hv], require_sorted=True) if k not in sealers.get(cid, set())]
+            projections.append({"name": name, "id": cid.hex(), "unwitnessed_by": [k.hex() for k in missing]})
+        if c.h_schema != V.H_SCHEMA["decision"] or not name.startswith(f"{SCOPE}/release/"):
+            continue
+        sha, rules, profile, _ = parse_release_profile(V.parse_utf8(atoms[c.h_payload]))
+        row: Dict[str, object] = {"name": name, "id": cid.hex(), "commit": sha, "profile": profile,
+                                  "settled": bool(settled.get(cid))}
+        if cid not in lens["evaluators"]:  # not live, so Pass 3 does not evaluate it and no one is awaited
+            row.update(threshold=None, evaluators=None, attested_by=[], invalid_by=[], awaiting=[])
+        else:  # Pass 3's own reading: its evaluation policy (the release's, or the scope's for an early release
+            # naming none) and the endorsements it counts; an evaluator with a live INVALID has answered
+            thr, evaluators = lens["evaluators"][cid]
+            counted, invalid = lens["endorsers"][cid], lens["invalidators"][cid]
+            row.update(threshold=thr, evaluators=sorted(k.hex() for k in evaluators),
+                       attested_by=sorted(k.hex() for k in counted),
+                       invalid_by=sorted(k.hex() for k in invalid),
+                       awaiting=[] if row["settled"] else sorted(k.hex() for k in evaluators - counted - invalid))
+        releases.append(row)
+    released = {r["commit"] for r in releases}
+    last = None
+    if main_sha:  # the newest released commit on main's history, and how many commits main has beyond it
+        for line in git("rev-list", main_sha).stdout.split():
+            if line in released:
+                last = line
+                break
+    behind = None
+    if main_sha and last:
+        behind = int(git("rev-list", "--count", f"{last}..{main_sha}").stdout.strip() or 0)
+    claims = git("show", f"{main_sha}:claims.json").stdout if main_sha else ""
+    debt: Dict[str, int] = {}
+    if claims:
+        for x in json.loads(claims)["claims"]:
+            debt[x["status"]] = debt.get(x["status"], 0) + 1
+    rules = governing_rules(repo)
+    return {
+        "chain": tip, "main": main_sha, "main_released": main_sha in released, "last_released": last,
+        "commits_since_release": behind,
+        "rules": {"id": rules.hex(), "name": RULES_NAMES.get(rules, "unknown")},
+        "roster": sorted(k.hex() for k in keys),
+        "releases": releases,
+        "unsettled": [r["name"] for r in releases if not r["settled"]],
+        "unwitnessed_projections": projections,
+        "rules_changes": len(evidence(repo_dir)["changes"]),
+        "claims_at_main": dict(sorted(debt.items())),
+    }
 
 
 def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[bytes]:
@@ -446,12 +580,22 @@ def release_target(repo_dir: Path) -> Tuple[str, Optional[str]]:
 
 def parse_release(statement: str) -> Tuple[str, bytes, Optional[Dict[str, str]]]:
     """The commit, rules hash and (for releases that pin them) sibling commits a release statement names."""
+    sha, rules, _, pins = parse_release_profile(statement)
+    return sha, rules, pins
+
+
+def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Optional[Dict[str, str]]]:
+    """The commit, rules hash, release profile id (for releases that name one) and sibling pins (for releases that
+    pin them) a release statement names."""
     sib = "".join(rf"(?: {k}@([0-9a-f]{{40}}))" for k in SIBLINGS)
     m = re.match(rf"^minds release main@([0-9a-f]{{40}}) rules@([0-9a-f]{{64}})(?:{sib})?;", statement)
     if m is None:
         raise V.VarsError("not a release statement")
     pins = dict(zip(SIBLINGS, m.groups()[2:])) if m.group(3) else None
-    return m.group(1), bytes.fromhex(m.group(2)), pins
+    tail = re.search(r"; profile@([0-9a-f]{64})$", statement)
+    if tail is None and "; profile@" in statement:  # a marker that is not a profile is not "no profile"
+        raise V.VarsError("a release statement with a malformed profile")
+    return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 
 def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
@@ -522,8 +666,15 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     d = cells.get(decision_id)
     if d is None or d.h_schema != V.H_SCHEMA["decision"]:
         raise V.VarsError("not a decision of this chain")
-    sha, rules, pins = parse_release(V.parse_utf8(atoms[d.h_payload]))
+    sha, rules, profile, pins = parse_release_profile(V.parse_utf8(atoms[d.h_payload]))
     lines, ok = checks(repo_dir, sha, rules, siblings=pins) if pins else checks(repo_dir, sha, rules)
+    if profile is not None:  # the files the release names are the files at its commit, recomputed here
+        try:
+            same = profile_at(repo_dir, sha)["id"] == profile
+        except V.VarsError:
+            same = False
+        lines = lines + [f"release profile {profile[:12]} is the commit's {'OK' if same else 'FAILED'}"]
+        ok = ok and same
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     verdict = V.Cell(
@@ -573,7 +724,8 @@ def _main(argv: List[str]) -> int:
         if release_target(repo_dir) != (main_sha, None):
             print("refused: main, HEAD or the tree changed while the checks ran", file=sys.stderr)
             return 1
-        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks)
+        commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks,
+                              profile=profile_at(repo_dir, main_sha)["id"])
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
     if cmd == "join" and len(argv) == 3:
@@ -613,6 +765,12 @@ def _main(argv: List[str]) -> int:
         return 0 if all(r == "REPLAYED" for _, r in rows) else 1
     if cmd == "show":
         print(json.dumps(show(repo_dir), indent=2))
+        return 0
+    if cmd == "status":
+        print(json.dumps(status(repo_dir), indent=2))
+        return 0
+    if cmd == "profile" and len(argv) == 2:
+        print(json.dumps(profile_at(repo_dir, argv[1]), indent=2))
         return 0
     if cmd == "bundle" and len(argv) == 2:
         print(json.dumps(V.export_projection(V.GitVarsRepo(repo_dir), SCOPE, bytes.fromhex(argv[1])), indent=2))

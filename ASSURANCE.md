@@ -1,5 +1,8 @@
 # What is established about minds, and how
 
+This file is rendered from `assurance.json` (`tools/check_claims.py --write-assurance`): edit the data, not the
+file; CI refuses a file that is not exactly the rendering.
+
 The spec is checked against this, sentence by sentence: `claims.json` quotes every normative block of
 VARS-1-SPEC.md with its status and witnesses, and every tested or differential claim names mutants that
 `tools/run_mutants.py` must see killed. `python3 tools/check_claims.py` prints the debt: `assumed` claims (nothing
@@ -17,14 +20,14 @@ mutation tests. **Assumed** means nothing here checks it.
 |---|---|---|
 | Latches only grow; a commit's latches depend only on seals under its own scope | Proved | `proofs/Vars1/Fold.lean` |
 | At most one Active local binding per name; one Active local scope, the governing one | Proved (gate rules as hypotheses) | `Pass1.lean`, `Scope.lean` |
-| `Stale` is the least fixed point of a monotone operator, reached within `|cells|+1` rounds | Proved | `Pass2.lean`, `Lfp.lean` |
+| `Stale` is the least fixed point of a monotone operator, reached within `\|cells\|+1` rounds | Proved | `Pass2.lean`, `Lfp.lean` |
 | An executable Passes 1–2 equals the model | Proved | `Exec.lean`, `ExecProof.lean` |
 | `kernel/lens.wasm` Passes 1–2 equal that executable | Differential (I9) | `test_vars1_props.py` |
 | `kernel/lens.wasm` fold equals the model's own compiled fold | Differential (I10) | `test_vars1_props.py` |
 | On every two-cell log in three families (a genesis scope plus: an axiom relying on it; an acceptance of it; a foreign scope no acceptance admits), with symbolic threshold, origin, birth and one extra seal, the kernel does not panic or overflow, and refuses with a known code or answers with status bits that obey §4.2 (effective = not invalidated; active ⇒ effective, accepted, not retired, not superseded; stale ⇒ active; local ⇒ accepted; flags 0/1; the governing scope is a local scope) | Bounded (Kani 0.68, local: `kernel/assure.sh kani`, 4–7 min and 14–15 GB each; not in CI) | `kernel/src/lib.rs` `proofs` |
 | The same for families with supersedes, retires or invalidates edges, an INVALID verdict, a scope rotation, a contract | **Not established**: they need deeper unwinding or more than 16 GB on this machine | — |
 | The kernel does not panic, overflow or return an unknown code on arbitrary bytes whose commit count is at most 4096 | Tested (fuzzing: 13.9 M inputs in 10 min, seeded with real inputs; `kernel/assure.sh fuzz`); larger counts are skipped, see the time limit below | `kernel/fuzz` |
-| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI | |
+| `kernel/lens.wasm` rebuilds from source to `H_LENS_KERNEL` | Tested: on Linux in CI (`.github/workflows/check.yml`); on macOS in every release's checks (`tools/minds_chain.py`), not in CI |  |
 
 ## Changing the rules (§4.3) and the v2 rules (RULES-V2.md)
 
@@ -43,7 +46,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | The new rules agree with the old on inputs other than the chain so far, or refute them on inputs other than the counterexample | **Not established**: (a)–(c) compare two logs, not all inputs | — |
 | A rules change whose point is a controlled refusal (a resource bound, a crash or hang made a refusal, a validation tightened) can be admitted | Tested: the hardening and tightening classes above; the commit-count bound is carried as a hardening | `test_vars1.py` 62–65 |
 | A node holding the chain can replay a past rules change | Tested: the gate writes `refs/vars/evidence/<scope>/<decision>/<commit>` with the rotation for the counterexample and, transitively, every counterexample its chain's corrections name (a nested case included); a fresh clone fetching only the scope's ref and `refs/vars/evidence/*` replays it after the author's refs are deleted and gc'd; a hardening's input is an atom of the chain. Without the evidence (ref deleted and gc'd, a shallow fetch, a lost object) the replay reports `EvidenceMissing`, not a refusal. Radicle replicates the evidence refs with the chain (`tools/radicle-probe.sh`, two local nodes; not in CI) | `test_vars1.py` 69; `tools/minds_chain.py evidence`, `replay-changes` |
-| `H_LENS_KERNEL` identifies everything the gate decides | **Not established, and false**: the host decides canonical bytes, types, replay, rule-6 parsing and rules-change admission; the canonical-id fix of PR #1 changed the gate without changing `H_LENS_KERNEL`. A release names the host by its `main` commit | `tools/minds_chain.py` |
+| `H_LENS_KERNEL` identifies everything the gate decides | **Not established, and false**: the host decides canonical bytes, types, replay, rule-6 parsing and rules-change admission; the canonical-id fix of PR #1 changed the gate without changing `H_LENS_KERNEL`. A release names the host by its `main` commit and, from this release format on, by its release profile (below) | `tools/minds_chain.py` |
 | A rotation from v2 back to v1 is refused, with or without a decision | Differential (kernel E-25 and twin) and tested | `test_vars1.py` 52, 53 |
 | `kernel2/lens2.wasm` rebuilds to `H_LENS_KERNEL_V2` | Tested: in CI; in every release's checks when the released commit carries `kernel2/` | `tools/minds_chain.py` `kernel_checks`, `test_vars1.py` 58 |
 | v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
@@ -84,6 +87,41 @@ mutation tests. **Assumed** means nothing here checks it.
 | Every release on `refs/vars/heads/minds` was checked by both members in fresh worktrees | Recorded on the chain; each member's checks are its own claim | `tools/minds_chain.py` |
 | Members are independent | **Not established**: two AI agents (Claude; Gemini via antigravity) with keys on one machine and OS account | README |
 | A projection is current | **Not established**: acceptance is about its tip | spec §4.4 |
+| A release names its release profile: the SHA-256 of the bytes of every file the released commit tracks, read from git's objects (not the commit id: SHA-256 throughout, and without the commit's metadata); two commits whose gate differs have different profiles and may have the same rules hash. Not narrower: profiled code can load any file of the commit (a module shadowing the standard library's, bytecode, a package, a namespace module, a ZIP on its path, a file it reads; Codex review of PR #4, rounds 3–6), so a list of the files an admission depends on would be wider than anything that checks it | Tested, with mutants | `test_vars1.py` 76, 80; `tools/minds_chain.py profile` |
+| `verify-release` recomputes the profile a release names at its commit and records INVALID when the commit's files are not the ones named, even when every check passes | Tested, with mutants | `test_vars1.py` 76 |
+| The profile names the interpreters (Python, node, Lean, cargo) | **Not established**: they come from the host; a release's checks ran on one host's interpreters | — |
+| `status` tells merged from Settled: for each release, as Pass 3 reads it (its evaluation policy, the release's or for an early release the scope's current admission policy), the evaluators whose endorsement counts, those with a live INVALID on it, and, while it is not Settled, those that have not answered; whether `main` is released and how many commits it is past its last release; and it writes nothing | Tested, with mutants: a verdict attesting nothing, a superseded ATTESTED or INVALID, and an early release after a roster replacement are read as Pass 3 reads them | `test_vars1.py` 77, 79; `tools/minds_chain.py status` |
+| A commit with a symlink or a submodule has no profile (their bytes are not in the commit) | Tested, with mutants | `test_vars1.py` 76 |
+| A release statement names its profile after its checks, so a reader of the earlier format still reads its commit, rules and pins | Tested (the earlier pattern, verbatim) | `test_vars1.py` 76 |
+| A claim quoting ASSURANCE.md is held only by the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status; ASSURANCE.md is exactly the rendering of assurance.json, so nothing in it is parsed and no hidden or quoted text can hold a quote (nine review rounds on hand-read Markdown, Codex review of PR #4, led here) | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5, as `tools/check_claims.py` splits them (blank lines, headings, `-` and `N.` items, ``` fences), holds the quote of a claim or of an informative passage; other block constructs it recognises there are refused, and a line opening with `#` without a space is a paragraph | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| Every block a CommonMark renderer shows in §0–§5 is split so | **Not established**: a tab after a list marker or a spaced thematic break is read into its neighbour (Codex review of PR #4, round 9). The fix planned is the spec as a projection of its parts, as ASSURANCE.md is of assurance.json | — |
+
+## Who reads which rules
+
+What each reader of a chain interprets, at the commit a release names (`profile` lists the modules carried and the
+one the offline verifier reads, from their own bytes). "Refuses" means a controlled refusal or an `unsupported`
+result, never a reading.
+
+| Reader | v1 (`H_LENS_KERNEL`) | v1b (`H_LENS_KERNEL_V1B`) | v2 (`H_LENS_KERNEL_V2`) |
+|---|---|---|---|
+| The gate and lens (`vars1.py`) | Runs it; Python twin | Runs it; Python twin | Runs it; Python twin reading the typed references |
+| The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations | Unsupported: digests checked, nothing read or accepted | Unsupported, likewise |
+| The Lean model (`vars1exec`, `vars1fold`) | Compared with the kernel (I9, I10) | Not compared (v1 with one more refusal) | Not modelled on main |
+| Kani and the fuzzer | Bounded / fuzzed | Not run | Not run |
+
+So a chain moved to v1b or v2 keeps its gate and loses its offline readers until the verifier learns those rules; an
+activation has to name which readers it leaves behind (RULES-V2.md F42 is a further condition for v2).
+
+## What each result trusts
+
+| Result | Computed by | Trusted, not checked here |
+|---|---|---|
+| A commit is admitted | `vars1.py` gate, the kernel under node | Python, node and its wasm engine, git's object store, SHA-256, Ed25519 (`minds_verify.py`'s own implementation, 34 vectors), `sigma_resume` (bytes pinned at import) |
+| A status bit (Passes 1–2) | `kernel/lens.wasm` | As above; the kernel's equality with the Lean model is differential, not proved |
+| Settled (Pass 3) | `vars1.py` | Python replay of Book I (transcribed by hand from the abstract machine) |
+| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute |
+| A release is Settled | every member's `verify-release` | Each member's host: its interpreters, its checkout, and that it ran the checks it signs |
 
 ## Known limits of the bounded checks
 

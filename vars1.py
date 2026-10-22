@@ -2274,6 +2274,10 @@ class GitVarsRepo:
         lens_replay_memo: Dict[bytes, str] = {}
         settled: Dict[bytes, bool] = {}
         provisional: Dict[bytes, bool] = {}
+        # For each contract, decision and question Pass 3 evaluates: its evaluation policy and the keys it counts
+        evaluators: Dict[bytes, Tuple[int, Set[bytes]]] = {}
+        endorsers: Dict[bytes, Set[bytes]] = {}
+        invalidators: Dict[bytes, Set[bytes]] = {}  # evaluators that endorse a live INVALID verdict on the cell
 
         def witness_endorsers(wid: bytes) -> Set[bytes]:
             w_cell = cells[wid]
@@ -2380,6 +2384,13 @@ class GitVarsRepo:
                         continue
                 valid_endorsers |= (witness_endorsers(wid) & p_pks)
 
+            evaluators[cid], endorsers[cid] = (p_thr, set(p_pks)), set(valid_endorsers)
+            invalidators[cid] = set()
+            if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
+                for wid, w in cells.items():  # as the conflict check above reads them: by payload, not by edge
+                    if (active.get(wid, False) and not stale.get(wid, False) and w.h_schema == H_SCHEMA["verdict"]
+                            and w.h_payload == cid and w.slots[1] == H_VERDICT_INVALID):
+                        invalidators[cid] |= witness_endorsers(wid) & p_pks
             is_set = len(valid_endorsers) >= p_thr
             settled[cid] = is_set
             provisional[cid] = not is_set
@@ -2399,6 +2410,9 @@ class GitVarsRepo:
             "stale": stale,
             "settled": settled,
             "provisional": provisional,
+            "evaluators": evaluators,
+            "endorsers": endorsers,
+            "invalidators": invalidators,
         }
 
 
