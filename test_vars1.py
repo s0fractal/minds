@@ -52,6 +52,8 @@ class TestVars1Conformance(unittest.TestCase):
         subprocess.run(["git", "-C", str(self.repo_path), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(self.repo_path), "config", "user.name", "vars-test"], check=True)
         subprocess.run(["git", "-C", str(self.repo_path), "config", "user.email", "vars@test.local"], check=True)
+        # no background gc: a detached `gc --auto` writing objects races the directory's removal (CI, test 77)
+        subprocess.run(["git", "-C", str(self.repo_path), "config", "gc.auto", "0"], check=True)
         self.repo = KernelCheckedRepo(self.repo_path)
 
         # Deterministic Ed25519 keys for actors k1, k2, peerB
