@@ -56,6 +56,18 @@ records ATTESTED or INVALID under its own key, and witnesses the projections tha
 it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
 member's own ATTESTED.
 
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md) is generated from Warrant 2 records in `.warrant/store/` by warrant's own tool, as warrant's
+roadmap is: goals are open questions, obligations are duties that answer them, `requires` are prerequisites. The
+records are signed by the maintainer key (the chain's `dd5dd02d…`); an obligation counts as done only when its
+acceptor (`codex`) accepts it with its own key. With a warrant checkout beside this one:
+
+```
+python ../warrant/tools/roadmap.py --root . path G1      # what stands between here and goal G1
+python ../warrant/tools/roadmap.py --root . check        # ROADMAP.md is what the records say
+```
+
 ## Running
 
 minds needs `node` for the wasm kernel and Book I, [sigma-glyph](https://github.com/s0fractal/sigma-glyph) 0.8.0

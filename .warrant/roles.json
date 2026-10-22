@@ -1,0 +1,8 @@
+{
+  "roles": "warrant-claims/roles@1",
+  "actors": {
+    "claude": "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a",
+    "codex": "793e615ef5693cf6be7304aa284c6cc6f1fae9e3a2996cfafd23e1c160023b12",
+    "s0fractal": null
+  }
+}
