@@ -5,7 +5,8 @@ finite transition table, for differential checks against `sigma_resume.verify_cy
 
 One line in: `N`, then `N` table entries (`0` normal form, `1` blocked reference, `2 j c` fire to state `j` at cost
 `c ≥ 1`), then `start entry entry_spent cycle_actions cycle_cost max_atp`. States are `0…N-1`; any other index is a
-normal form. One line out: `P` (`CYCLE_PROVEN`), `N` (`NOT_ASSESSED`), `R` (refused), or `E` (a malformed line). -/
+normal form. One line out: two letters, `checkCycle`'s verdict then `gateCycle`'s, each `P` (`CYCLE_PROVEN`), `N`
+(`NOT_ASSESSED`) or `R` (refused); or `E` (a malformed line). -/
 
 open Vars1.Replay
 
@@ -41,10 +42,9 @@ def answer (line : String) : String :=
   | n :: rest =>
     match parseTable rest n #[] with
     | some (t, [start, entry, k, acts, cost, maxAtp]) =>
-      match checkCycle (tableMachine t) maxAtp start entry k acts cost with
-      | .proven => "P"
-      | .notAssessed => "N"
-      | .refused => "R"
+      let l : CycleStatus → String := fun | .proven => "P" | .notAssessed => "N" | .refused => "R"
+      l (checkCycle (tableMachine t) maxAtp start entry k acts cost) ++
+        l (gateCycle (tableMachine t) maxAtp start entry k acts cost)
     | _ => "E"
   | [] => "E"
 

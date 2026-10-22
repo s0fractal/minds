@@ -193,7 +193,8 @@ refusal is an error of the gate, never a crash.
    acceptance cell): a projection's outside witnesses sign it but do not write it. The evaluator policy of a local contract, decision or question
    has keys within the admission policy.
 4. **References and replay.** Every referenced hash is present (cells where §1.2 requires cells). Every
-   checkpoint replays as in §5; a cycle witness passes `sigma_resume.verify_cycle`.
+   checkpoint replays as in §5; a cycle witness passes `sigma_resume.verify_cycle`, except that one whose entry costs
+   more than the host ceiling is admitted on structure alone as `NOT_ASSESSED`, as any transition beyond it is (§5).
 5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope
    cell of its origin. Seals count for it only under that scope and its admission keys.
 

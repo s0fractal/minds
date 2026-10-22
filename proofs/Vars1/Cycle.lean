@@ -26,7 +26,11 @@ the abstract machine of `Vars1/Replay.lean`, and what its `CYCLE_PROVEN` establi
 * `steps M n s` — `n` fired actions from `s` regardless of budget: the final state and their total cost, or `none`
   when a normal form or a blocked reference comes first.
 
+* `gateCycle` — the gate's verdict: `checkCycle`, but a well-shaped witness whose entry is above the host ceiling is
+  `NOT_ASSESSED`, not refused (§5: a transition beyond the ceiling is admitted on structure alone).
+
 Theorems:
+* `gateCycle_proven_iff` — the gate proves exactly what `checkCycle` proves.
 * `checkCycle_sound` — `CYCLE_PROVEN` means: `adv` from the start by `entry_spent` reaches the entry, spending exactly
   `entry_spent`, and `n ≥ 1` actions from the entry return to it at `cost`.
 * `cycle_fires_forever` — then for every `m`, `m` actions fire from the start: the machine never stops.
@@ -88,6 +92,31 @@ def checkCycle (maxAtp : Nat) (start entry : M.S) (entrySpent n cost : Nat) : Cy
       let r := runN M p.1 cost n
       if r.2.2 = n ∧ r.2.1 = cost ∧ r.1 = p.1 then .proven else .refused
     else .refused
+
+/-- The gate's verdict on a cycle witness (§3 check 4, vars1.py `gate_cycle_witness`): `checkCycle`, except that a
+well-shaped witness whose entry costs more than the host ceiling is `NOT_ASSESSED` rather than refused, as any
+transition beyond the ceiling is (§5): replaying its prefix is beyond this host, not shown wrong. -/
+def gateCycle (maxAtp : Nat) (start entry : M.S) (entrySpent n cost : Nat) : CycleStatus :=
+  if n ≠ 0 ∧ n ≤ cost ∧ maxAtp < entrySpent then .notAssessed
+  else checkCycle M maxAtp start entry entrySpent n cost
+
+/-- The gate proves exactly what `verify_cycle` proves: the entry ceiling only turns refusals into `NOT_ASSESSED`. -/
+theorem gateCycle_proven_iff {maxAtp : Nat} {start entry : M.S} {entrySpent n cost : Nat} :
+    gateCycle M maxAtp start entry entrySpent n cost = .proven ↔ checkCycle M maxAtp start entry entrySpent n cost = .proven := by
+  unfold gateCycle
+  by_cases h : n ≠ 0 ∧ n ≤ cost ∧ maxAtp < entrySpent
+  · rw [if_pos h]
+    constructor
+    · intro h'; cases h'
+    · intro hc
+      have hz : ¬ (n = 0 ∨ cost = 0) := by omega
+      have hl : ¬ cost < n := by omega
+      unfold checkCycle at hc
+      rw [if_neg hz, if_neg hl] at hc
+      by_cases hca : maxAtp < cost
+      · rw [if_pos hca] at hc; cases hc
+      · rw [if_neg hca, if_pos h.2.2] at hc; cases hc
+  · rw [if_neg h]
 
 /-- A run of `runN` that did all `n` actions is `n` fired steps. -/
 theorem runN_steps : ∀ (n : Nat) (s : M.S) (b : Nat),

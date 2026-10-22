@@ -503,11 +503,17 @@ def verify_cycle_witness_replay(c: Cell, atoms: Dict[bytes, bytes], *, gate_mode
 
 def gate_cycle_witness(c: Cell, atoms: Dict[bytes, bytes]) -> str:
     """§3 check 4 for a `schema.cycle_witness` cell: `1 <= cycle_actions <= cycle_cost`, then `verify_cycle`.
-    Returns CYCLE_PROVEN or NOT_ASSESSED (the period above the host ceiling); anything else is a VarsError."""
+    Returns CYCLE_PROVEN or NOT_ASSESSED (the period or the entry above the host ceiling); anything else is a
+    VarsError."""
     actions = parse_u64(atom_of(c.slots[2], atoms, "Check #4 failed: atom for cycle_actions"))
     cost = parse_u64(atom_of(c.slots[3], atoms, "Check #4 failed: atom for cycle_cost"))
     if actions < 1 or cost < actions:
         raise VarsError("CYCLE_WITNESS requires actions >= 1 and cost >= actions")
+    # An entry beyond the host ceiling cannot be replayed here: like any transition beyond it (§5), the witness is
+    # admitted on structure alone as NOT_ASSESSED, not refused (`verify_cycle` reads it as PREFIX_MISMATCH).
+    # proofs/Vars1/Cycle.lean `gateCycle`; it never answers in Pass 3 (`cycle_witness_answers`).
+    if u64_of(c.slots[1], atoms) > SR.G.VERIFIER_LIMITS["max_atp"]:
+        return "NOT_ASSESSED"
     return verify_cycle_witness_replay(c, atoms, gate_mode=True)
 
 

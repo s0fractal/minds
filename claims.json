@@ -484,7 +484,7 @@
   },
   {
    "id": "gate.cycle-witness",
-   "quote": "a cycle witness passes `sigma_resume.verify_cycle`.",
+   "quote": "a cycle witness passes `sigma_resume.verify_cycle`",
    "status": "differential",
    "witnesses": [
     "lean:cycle_proven_no_normal_form",
@@ -1599,6 +1599,20 @@
     "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
    ],
    "mutants": []
+  },
+  {
+   "id": "gate.cycle-entry-ceiling",
+   "quote": "except that one whose entry costs more than the host ceiling is admitted on structure alone as `NOT_ASSESSED`, as any transition beyond it is (§5).",
+   "status": "tested",
+   "witnesses": [
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle",
+    "prop:I12",
+    "lean:gateCycle_proven_iff"
+   ],
+   "mutants": [
+    "m-cycle-entry-ceiling",
+    "m-cycle-entry-strict"
+   ]
   }
  ],
  "informative": [
