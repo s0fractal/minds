@@ -4584,6 +4584,46 @@ class TestVars1Conformance(unittest.TestCase):
             self.repo.what_if("core", *hypothesis("core/schema.suppose", [A.id]))
         self.assertEqual(self.repo.ref_commit("core"), c1)
 
+    def test_82_a_release_rests_on_its_checks(self) -> None:
+        """A release decision relies on one cell per check, and a member's verdict on that member's own checks, so
+        `what-if` on the chain says what a failed check takes with it: a member's check makes its verdict Stale and
+        the release loses Settled; the maintainer's check makes the release itself Stale. No ref moves."""
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
+        _, r = mc.release(self.repo_path, sk, "a" * 40, ["lake build OK", "test_vars1 OK"])
+        mc.verify_release(self.repo_path, sk2, r["decision"], "second",
+                          checks=lambda *a: (["kernel rebuild hashes to H_LENS_KERNEL OK", "test_vars1 OK"], True))
+        repo = V.GitVarsRepo(self.repo_path)
+        lens = repo.lens("minds")
+        atoms, cells = lens["atoms"], lens["cells"]
+        named = {V.parse_utf8(atoms[c.h_slot_name]): cid for cid, c in cells.items()}
+        tag = "minds/release/" + "a" * 12
+        self.assertTrue(lens["settled"][r["decision"]])
+        self.assertNotEqual(cells[r["decision"]].h_relies, V.H_EMPTY, "the release relies on its checks")
+        grounds = V.parse_hvec(atoms[cells[r["decision"]].h_relies], require_sorted=True)
+        self.assertEqual(sorted(grounds), sorted([named[f"{tag}/check/00"], named[f"{tag}/check/01"]]))
+        self.assertIn("at main@" + "a" * 40, V.parse_utf8(atoms[cells[grounds[0]].h_payload]))
+        mine = named[f"{tag}/second/attested/check/00"]
+        verdict = named[f"{tag}/second/attested"]
+        self.assertNotEqual(cells[verdict].h_relies, V.H_EMPTY, "the member's verdict relies on its own checks")
+        self.assertEqual(V.parse_hvec(atoms[cells[verdict].h_relies], require_sorted=True),
+                         sorted([mine, named[f"{tag}/second/attested/check/01"]]))
+        tip = repo.ref_commit("minds")
+
+        out = mc.what_if(self.repo_path, sk, [mine])  # the maintainer supposes the member's kernel rebuild was wrong
+        lost = {x["name"]: x for x in out["lost"]}
+        self.assertEqual(lost[f"{tag}/second/attested"]["after"].get("stale"), True)
+        self.assertEqual((lost[tag]["before"], lost[tag]["after"]), ({"settled": True}, {"settled": False}),
+                         "n-of-n: without the member's standing verdict the release is not Settled")
+        self.assertEqual(lost[tag]["path"][1:], [mine.hex(), verdict.hex(), r["decision"].hex()])
+
+        out = mc.what_if(self.repo_path, sk, [named[f"{tag}/check/01"]])
+        self.assertEqual(next(x for x in out["lost"] if x["name"] == tag)["after"].get("stale"), True,
+                         "the maintainer's own check failing makes the release Stale")
+        self.assertEqual(repo.ref_commit("minds"), tip, "no ref moves")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

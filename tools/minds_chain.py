@@ -22,6 +22,8 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
+    tools/minds_chain.py what-if CELL...      # read only: what would follow if CELL... (a release's check, say)
+                                              # were invalidated; checked by the gate, no ref moves
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -357,6 +359,16 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
     return dict(doc, id=_digest(doc))
 
 
+def check_cells(atoms: Dict[bytes, bytes], prefix: str, checks: List[str], sha: str,
+                profile: Optional[str] = None) -> List["V.Cell"]:
+    """One axiom per check line, named `<prefix>/check/<nn>`: what was run, its result, at which commit (and
+    profile). The author's seal on it is that author's claim that the check passed there."""
+    at = f" at main@{sha}" + (f" profile@{profile}" if profile else "")
+    return [V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=_put(atoms, V.atom_utf8(f"{prefix}/check/{i:02d}")),
+                   h_payload=_put(atoms, V.atom_utf8(line + at)))
+            for i, line in enumerate(checks)]
+
+
 def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
             siblings: Optional[Dict[str, str]] = None, profile: Optional[str] = None) -> Tuple[str, Dict[str, bytes]]:
     """Record a release of `main_sha`: a decision stating it and the checks, the maintainer's ATTESTED verdict on it,
@@ -381,10 +393,14 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     statement = (f"minds release main@{main_sha} rules@{governing_rules(repo).hex()}{pins}; checks: "
                  + "; ".join(checks) + (f"; profile@{profile}" if profile else ""))
     tag = main_sha[:12]
+    # Each check is a cell the decision relies on, so a check later shown wrong takes the release with it (Pass 2),
+    # and `what-if` can say so before anyone files it
+    grounds = check_cells(atoms, f"{SCOPE}/release/{tag}", checks, main_sha, profile)
     decision = V.Cell(
         h_schema=V.H_SCHEMA["decision"],
         h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/release/{tag}")),
         h_payload=_put(atoms, V.atom_utf8(statement)),
+        h_relies=_put(atoms, V.atom_hvec([g.id for g in grounds])),
         slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, everyone),
     )
     verdict = V.Cell(
@@ -402,7 +418,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
         h_payload=V.H_EMPTY,
         slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, everyone),
     )
-    cells = [decision, verdict, projection]
+    cells = [*grounds, decision, verdict, projection]
     c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, s) for x in cells], parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c, {"decision": decision.id, "verdict": verdict.id, "projection": projection.id}
@@ -677,12 +693,14 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
         ok = ok and same
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
+    base = f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/{'attested' if ok else 'invalid'}"
+    grounds = check_cells(new, base, lines, sha, profile)  # this member's own checks: its verdict rests on them
     verdict = V.Cell(
         h_schema=V.H_SCHEMA["verdict"],
-        h_slot_name=_put(new, V.atom_utf8(f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/"
-                                           f"{'attested' if ok else 'invalid'}")),
+        h_slot_name=_put(new, V.atom_utf8(base)),
         h_payload=decision_id,
         h_attests=_put(new, V.atom_hvec([decision_id])),
+        h_relies=_put(new, V.atom_hvec([g.id for g in grounds])),
         slots=(V.H_EMPTY, V.H_ATTESTED if ok else V.H_VERDICT_INVALID, _put(new, V.atom_utf8(name))),
     )
     if verdict.id in cells:
@@ -698,10 +716,23 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
         if repo.projection_digests(SCOPE, V.parse_utf8(atoms[c.slots[0]])) != (c.slots[2], c.slots[3]):
             raise V.VarsError(f"projection {cid.hex()[:12]} does not match this host's recomputation")
         witness.append(cid)
-    c = repo.build_candidate_commit(SCOPE, new, [verdict],
-                                    [V.Seal.sign(sk, x, s) for x in [verdict.id, *witness]], parent_commit=tip)
+    c = repo.build_candidate_commit(SCOPE, new, [*grounds, verdict],
+                                    [V.Seal.sign(sk, x, s) for x in [*(g.id for g in grounds), verdict.id, *witness]],
+                                    parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c, ok, lines
+
+
+def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "") -> Dict[str, object]:
+    """What would follow if `cells` were invalidated now: a hypothesis cell invalidating them, sealed by `sk`, run
+    through `GitVarsRepo.what_if` (checked by the gate, no ref moved). Nothing is written to the chain."""
+    repo = V.GitVarsRepo(repo_dir)
+    atoms: Dict[bytes, bytes] = {}
+    label = name or "-".join(c.hex()[:12] for c in cells)
+    hyp = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/what-if/{label}")),
+                 h_payload=_put(atoms, V.atom_utf8("suppose these fail")),
+                 h_invalidates=_put(atoms, V.atom_hvec(sorted(cells))))
+    return repo.what_if(SCOPE, atoms, [hyp], [V.Seal.sign(sk, hyp.id, governing_scope(repo))])
 
 
 def _main(argv: List[str]) -> int:
@@ -765,6 +796,9 @@ def _main(argv: List[str]) -> int:
         return 0 if all(r == "REPLAYED" for _, r in rows) else 1
     if cmd == "show":
         print(json.dumps(show(repo_dir), indent=2))
+        return 0
+    if cmd == "what-if" and len(argv) >= 2:
+        print(json.dumps(what_if(repo_dir, load_or_create_key(repo_dir), [bytes.fromhex(x) for x in argv[1:]]), indent=2))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))

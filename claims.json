@@ -1613,6 +1613,20 @@
     "m-cycle-entry-ceiling",
     "m-cycle-entry-strict"
    ]
+  },
+  {
+   "id": "assurance.release-grounds",
+   "source": "ASSURANCE.md",
+   "quote": "A release decision relies on one cell per check",
+   "status": "tested",
+   "witnesses": [
+    "test:test_82_a_release_rests_on_its_checks"
+   ],
+   "mutants": [
+    "m-grounds-decision",
+    "m-grounds-verdict",
+    "m-grounds-payload"
+   ]
   }
  ],
  "informative": [
