@@ -1243,7 +1243,8 @@ def gen_cycle_cases(rng: random.Random, n_tables: int) -> List[tuple]:
             cases.append((table, start, entry, k, acts, cost, cost - 1))
             cases.append((table, start, entry, k, acts, cost, max(cost, k - 1)))
             cases.append((table, start, entry, k, acts, cost, max(cost, k)))
-            # at the gate's own ceiling, an entry above it: refused by verify_cycle, NOT_ASSESSED by the gate (§5)
+            # at the gate's own ceiling, an entry exactly at it (replayed, as any other) and one above it: refused by
+            # verify_cycle, NOT_ASSESSED by the gate (§5)
             cases.append((table, start, entry, 10_000_000 + 1 + k, acts, cost, 10_000_000))
             cases.append((table, start, entry, 10_000_000 + 1 + k, 0, cost, 10_000_000))
             cases.append((table, start, entry, k, acts, ceil + 1, ceil))
@@ -1312,6 +1313,10 @@ def python_cycle(case: tuple) -> Tuple[str, Optional[str], Optional[str]]:
 def check_cycles(seed: int, n_tables: int) -> Tuple[List[str], Dict[str, int]]:
     """I12 violations and the count of each model verdict (so a run that only ever refuses is visible)."""
     cases = gen_cycle_cases(random.Random(seed), n_tables)
+    # the entry ceiling's boundary at the gate's own ceiling: one action costing the ceiling, entered at exactly the
+    # ceiling (proven) and one ATP above it (NOT_ASSESSED at the gate), with the period at and above it too
+    edge = [("fire", 0, 10_000_000)]
+    cases += [(edge, 0, 0, 10_000_000 + d, 1, 10_000_000 + p, 10_000_000) for d in (0, 1) for p in (0, 1)]
     model = model_cycle(cases)
     out, counts = [], {}
     for case, (m, mg) in zip(cases, model):

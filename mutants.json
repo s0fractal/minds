@@ -1340,5 +1340,13 @@
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
+ },
+ "m-cycle-entry-strict": {
+  "file": "vars1.py",
+  "find": "    if u64_of(c.slots[1], atoms) > SR.G.VERIFIER_LIMITS[\"max_atp\"]:",
+  "replace": "    if u64_of(c.slots[1], atoms) >= SR.G.VERIFIER_LIMITS[\"max_atp\"]:",
+  "kills": [
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
+  ]
  }
 }

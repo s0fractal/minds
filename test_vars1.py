@@ -4114,6 +4114,14 @@ class TestVars1Conformance(unittest.TestCase):
         except V.VarsError as e:
             self.fail(f"the gate refuses a witness only beyond the host ceiling: {e}")
         k_far, w_far = self._cycle_contract(atoms, "core/k.far", comp, V.H_CYCLE_PROVEN, far)
+        # the boundary (Codex PR #7 r1): an entry exactly at the ceiling is replayed and proven; one ATP above is not
+        from unittest import mock
+        for ceiling, want in ((3, "CYCLE_PROVEN"), (2, "NOT_ASSESSED")):  # cw's entry is 3, its period costs 2
+            with mock.patch.dict(SR.G.VERIFIER_LIMITS, {"max_atp": ceiling}):
+                try:
+                    self.assertEqual(V.gate_cycle_witness(cw, all_atoms), want, f"entry 3, ceiling {ceiling}")
+                except V.VarsError as e:
+                    self.fail(f"entry 3, ceiling {ceiling}: refused ({e})")
         k_ok, w_ok = self._cycle_contract(atoms, "core/k.cycle", comp, V.H_CYCLE_PROVEN, cw)
         k_big, w_big = self._cycle_contract(atoms, "core/k.big", comp, V.H_CYCLE_PROVEN, big)
         k_nf, w_nf = self._cycle_contract(atoms, "core/k.nf", comp, V.H_K, cw)

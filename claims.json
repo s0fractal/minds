@@ -1610,7 +1610,8 @@
     "lean:gateCycle_proven_iff"
    ],
    "mutants": [
-    "m-cycle-entry-ceiling"
+    "m-cycle-entry-ceiling",
+    "m-cycle-entry-strict"
    ]
   }
  ],
