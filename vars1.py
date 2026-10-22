@@ -2112,8 +2112,10 @@ class GitVarsRepo:
             "foreign_endorsers_by_scope": foreign_endorsers_by_scope,
         }
 
-    def lens(self, scope: str) -> Dict[str, object]:
-        tip = self.ref_commit(scope)
+    def lens(self, scope: str, at: Optional[str] = None) -> Dict[str, object]:
+        """The statuses of every cell at the scope's tip, or at commit `at` (a candidate the gate has checked, for
+        `what_if`; no ref names it)."""
+        tip = self.ref_commit(scope) if at is None else at
         if tip is None:
             raise VarsError(f"no ref refs/vars/heads/{scope}")
         fold = self._evaluate_commit_chain(scope, self.commit_chain(tip))
@@ -2413,7 +2415,90 @@ class GitVarsRepo:
             "evaluators": evaluators,
             "endorsers": endorsers,
             "invalidators": invalidators,
+            "parents_of": parents_of,  # the reference graph the rules read in this epoch (v2: typed references)
+            "children_of": children_of,
         }
+
+    def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"]
+                ) -> Dict[str, object]:
+        """What would follow if `cells` (a hypothesis: say a cell invalidating a ground, or an INVALID verdict) were
+        admitted now. The hypothesis is built as a candidate commit on the tip and checked by the gate exactly as an
+        admission would be, but no ref moves: the canonical chain is unchanged. The lens is computed at the tip and at
+        the candidate. `lost` is every cell of the chain whose statuses change (each with its bits before and after),
+        complete by construction; `held` is every cell of the hypothesis's region that keeps them (a decision still
+        Settled through other verdicts, say), the region being the cells it names closed under two steps: a cell
+        that relies on a region cell, and the cell a region verdict judges. Each row carries the shortest reference path from the
+        hypothesis in the whole reference graph as the rules read it in this epoch, empty only when none exists. `digest`
+        is SHA-256 over the canonical JSON of both lists: two readers who agree on the consequences agree on it."""
+        tip = self.ref_commit(scope)
+        if tip is None:
+            raise VarsError(f"no ref refs/vars/heads/{scope}")
+        candidate = self.build_candidate_commit(scope, atoms, cells, seals, parent_commit=tip)
+        try:
+            self._check_commit(scope, candidate, tip)
+        except VarsError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:
+            raise VarsError(f"malformed hypothesis refused ({type(e).__name__}: {e})") from None
+        before, after = self.lens(scope), self.lens(scope, at=candidate)
+        if self.ref_commit(scope) != tip:
+            raise RuntimeError("what_if moved the scope's ref")
+        hyp = {c.id for c in cells}
+        acells, aatoms = after["cells"], after["atoms"]
+        parents_of, children_of = after["parents_of"], after["children_of"]  # as the rules read references here
+
+        def relies_on(cid: bytes) -> List[bytes]:
+            h = acells[cid].h_relies
+            return [] if h == H_EMPTY else parse_hvec(aatoms[h], require_sorted=True)
+
+        relied_by: Dict[bytes, Set[bytes]] = {}
+        for cid in acells:
+            for v in relies_on(cid):
+                relied_by.setdefault(v, set()).add(cid)
+        targets = set().union(*(parents_of[h] for h in hyp)) - hyp
+        judged = lambda v: ({acells[v].h_payload} if acells[v].h_schema == H_SCHEMA["verdict"]
+                            and acells[v].h_payload in before["cells"] else set())
+        region, todo = set(targets), list(targets)
+        while todo:  # to a fixed point: what relies on a region cell, and what a region verdict judges
+            u = todo.pop()
+            for ch in relied_by.get(u, set()) | judged(u):
+                if ch not in region and ch not in hyp:
+                    region.add(ch)
+                    todo.append(ch)
+        bits = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled")
+        state = lambda lens, cid: {b: bool(lens[b].get(cid, False)) for b in bits}
+        # shortest path from the hypothesis in the whole reference graph, references followed either way
+        dist, prev, todo2 = {h: 0 for h in hyp}, {}, deque(sorted(hyp))
+        while todo2:
+            u = todo2.popleft()
+            for v in sorted(parents_of[u] | children_of[u]):
+                if v not in dist:
+                    dist[v], prev[v] = dist[u] + 1, u
+                    todo2.append(v)
+
+        def path(cid: bytes) -> List[str]:
+            if cid not in dist:
+                return []  # no chain of references connects it to the hypothesis
+            out = [cid]
+            while out[-1] in prev:
+                out.append(prev[out[-1]])
+            return [x.hex() for x in reversed(out)]
+
+        name = lambda cid: parse_utf8(aatoms[acells[cid].h_slot_name])
+        lost, held = [], []
+        for cid in sorted(before["cells"]):  # every changed cell is lost, inside the region or not: complete by construction
+            b, a = state(before, cid), state(after, cid)
+            if a == b and cid not in region:
+                continue
+            row = {"cell": cid.hex(), "name": name(cid), "path": path(cid)}
+            if a != b:
+                lost.append(dict(row, before={k: v for k, v in b.items() if v != a[k]},
+                                 after={k: v for k, v in a.items() if v != b[k]}))
+            else:
+                held.append(row)
+        body = {"lost": lost, "held": held}
+        return {"scope": scope, "tip": tip, "hypothesis": sorted(h.hex() for h in hyp), "candidate": candidate,
+                **body, "digest": sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hex()}
 
 
 # ---------------------------------------------------------------------------

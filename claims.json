@@ -1559,6 +1559,46 @@
     "m-spec-heading",
     "m-spec-unread"
    ]
+  },
+  {
+   "id": "assurance.whatif-gate",
+   "source": "ASSURANCE.md",
+   "quote": "`what_if` admits a hypothesis through the gate on a candidate commit and moves no ref",
+   "status": "tested",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+   ],
+   "mutants": [
+    "m-whatif-gate"
+   ]
+  },
+  {
+   "id": "assurance.whatif-report",
+   "source": "ASSURANCE.md",
+   "quote": "`what_if` reports the cells of the hypothesis's region",
+   "status": "tested",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+   ],
+   "mutants": [
+    "m-whatif-region",
+    "m-whatif-judged",
+    "m-whatif-held",
+    "m-whatif-path",
+    "m-whatif-settled",
+    "m-whatif-relies",
+    "m-whatif-shortest"
+   ]
+  },
+  {
+   "id": "assurance.whatif-complete",
+   "source": "ASSURANCE.md",
+   "quote": "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
+   "status": "unburned",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+   ],
+   "mutants": []
   }
  ],
  "informative": [
