@@ -1348,5 +1348,37 @@
   "kills": [
    "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
+ },
+ "m-grounds-decision": {
+  "file": "tools/minds_chain.py",
+  "find": "        h_relies=_put(atoms, V.atom_hvec([g.id for g in grounds])),\n        slots=(V.H_PROVISIONAL,",
+  "replace": "        slots=(V.H_PROVISIONAL,",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-grounds-verdict": {
+  "file": "tools/minds_chain.py",
+  "find": "        h_relies=_put(new, V.atom_hvec([g.id for g in grounds])),\n",
+  "replace": "",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-grounds-payload": {
+  "file": "tools/minds_chain.py",
+  "find": "    at = f\" at main@{sha}\" + (f\" profile@{profile}\" if profile else \"\")",
+  "replace": "    at = \"\"",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-whatif-key": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not key.is_file():\n        raise V.VarsError(f\"no key at {key}: pass --key FILE (a member's own seed)\")",
+  "replace": "    if not key.is_file():\n        key.parent.mkdir(parents=True, exist_ok=True); key.write_text(os.urandom(32).hex())",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
  }
 }
