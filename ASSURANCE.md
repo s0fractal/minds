@@ -123,6 +123,15 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute |
 | A release is Settled | every member's `verify-release` | Each member's host: its interpreters, its checkout, and that it ran the checks it signs |
 
+## What would follow (what-if)
+
+| Claim | Evidence | Where |
+|---|---|---|
+| `what_if` admits a hypothesis through the gate on a candidate commit and moves no ref; a hypothesis the gate refuses is refused, not evaluated | Tested, with mutants | `test_vars1.py` 81; `vars1.py` `what_if` |
+| `what_if` reports the cells of the hypothesis's region (the cells it names, every cell relying on them transitively, the cells their verdicts judge) that keep their statuses through other grounds, and every cell whose statuses change, with its bits before and after and its shortest reference path from the hypothesis; equal consequences give an equal digest | Tested, with mutants: a failed ground takes its transitive dependents with it; a decision stays Settled through a second verdict and loses it when both fail; a ground on another basis is outside the region | `test_vars1.py` 81 |
+| Every cell whose statuses a hypothesis changes is reported, inside its region or not | Unburned: `lost` is computed over every cell of the chain, by construction; no chain has been found where a change escapes the region (invalidating a custom schema leaves its instances unchanged), so no mutant can show the loop bites | `vars1.py` `what_if` |
+| `what_if` on refs/vars/heads/minds says what a release loses when one of its checks fails | **Not established**: a release decision relies on no cell (its checks are text in its statement); ROADMAP.md, goal G1, obligation "a release decision relies on each of its checks as a cell" | — |
+
 ## Known limits of the bounded checks
 
 One mutant has been run so far: making `Active` ignore `accepted` fails `two_cells_foreign_scope` on exactly that

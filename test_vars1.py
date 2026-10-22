@@ -34,8 +34,8 @@ class KernelCheckedRepo(V.GitVarsRepo):
 
     runners: "dict[bytes, V.KernelRunner]" = {}
 
-    def lens(self, scope: str):
-        out = super().lens(scope)
+    def lens(self, scope: str, at=None):
+        out = super().lens(scope, at=at)
         if out["rules"] not in KernelCheckedRepo.runners:
             KernelCheckedRepo.runners[out["rules"]] = V.KernelRunner(out["rules"])
         for cid, bits in KernelCheckedRepo.runners[out["rules"]].statuses(out).items():
@@ -4483,6 +4483,61 @@ class TestVars1Conformance(unittest.TestCase):
         good = V.Cell(V.H_META_SCHEMA, schema.h_slot_name, V.H_EMPTY, slots=schema.slots)
         self._admit({**a, **sa}, [ax, good], [V.Seal.sign(self.sk1, ax.id, s0.id),
                                                V.Seal.sign(self.sk1, good.id, s0.id)], c0)
+
+    def test_81_what_if_reports_what_a_failed_ground_takes_with_it(self) -> None:
+        """`what_if` admits a hypothesis through the gate on a candidate commit, moves no ref, and reports every cell
+        of its region: those whose statuses change (lost), with their bits before and after, and those that keep
+        them through other grounds (held), each with its path from the hypothesis; equal consequences, equal digest."""
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        A, B = self._axiom(a, "core/a", "ground A"), self._axiom(a, "core/b", "ground B")
+        X = self._axiom(a, "core/x", "rests on A", relies=[A.id])
+        Y = self._axiom(a, "core/y", "rests on X", relies=[X.id])
+        Z = self._axiom(a, "core/z", "rests on B", relies=[B.id])
+        pol = self._pol(a, 1, [self.pk1, self.pk2])
+        G = V.Cell(V.H_SCHEMA["decision"], self._put_atom(a, V.atom_utf8("core/g")), self._put_atom(a, V.atom_utf8("g")),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol))
+        verdict = lambda n: V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8(f"core/g.{n}")), G.id,
+                                   h_attests=self._hv(a, [G.id]),
+                                   slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8(n))))
+        V1, V2 = verdict("v1"), verdict("v2")
+        cells = [A, B, X, Y, Z, G, V1, V2]
+        seals = [V.Seal.sign(self.sk1, c.id, s0.id) for c in cells[:-1]] + [V.Seal.sign(self.sk2, V2.id, s0.id)]
+        c1 = self._admit(a, cells, seals, c0)
+        self.assertTrue(self.repo.lens("core")["settled"][G.id])
+
+        def hypothesis(name, targets):
+            h: dict[bytes, bytes] = {}
+            cell = self._axiom(h, name, "suppose it fails", invalidates=targets)
+            return h, [cell], [V.Seal.sign(self.sk1, cell.id, s0.id)]
+
+        r = self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))
+        self.assertEqual(self.repo.ref_commit("core"), c1, "no ref moves")
+        lost = {x["name"]: x for x in r["lost"]}
+        self.assertEqual(set(lost), {"core/a", "core/x", "core/y"})
+        self.assertEqual(lost["core/a"]["after"]["invalidated"], True)
+        self.assertEqual((lost["core/y"]["before"]["stale"], lost["core/y"]["after"]["stale"]), (False, True))
+        self.assertEqual(lost["core/y"]["path"][1:],
+                         [A.id.hex(), X.id.hex(), Y.id.hex()], "the path runs hypothesis, A, X, Y")
+        self.assertNotIn("core/z", {x["name"] for x in r["lost"] + r["held"]}, "Z rests on B, outside the region")
+        self.assertEqual(self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))["digest"], r["digest"])
+
+        one = self.repo.what_if("core", *hypothesis("core/suppose.v1", [V1.id]))
+        self.assertEqual({x["name"] for x in one["lost"]}, {"core/g.v1"})
+        self.assertEqual({x["name"] for x in one["held"]}, {"core/g"}, "G stays Settled through V2")
+        both = self.repo.what_if("core", *hypothesis("core/suppose.both", [V1.id, V2.id]))
+        self.assertIn("core/g", {x["name"] for x in both["lost"]}, "neither verdict stands: G loses Settled")
+        g = next(x for x in both["lost"] if x["name"] == "core/g")
+        self.assertEqual((g["before"], g["after"]), ({"settled": True}, {"settled": False}))
+        self.assertNotEqual(both["digest"], one["digest"])
+
+        h, cs, _ = hypothesis("core/suppose.unsigned", [A.id])
+        with self.assertRaises(V.VarsError):
+            self.repo.what_if("core", h, cs, [])
+        # a hypothesis only the gate refuses (a name reserved for standard schemas) is refused, not evaluated
+        with self.assertRaisesRegex(V.VarsError, "reserved for intrinsic standard schemas"):
+            self.repo.what_if("core", *hypothesis("core/schema.suppose", [A.id]))
+        self.assertEqual(self.repo.ref_commit("core"), c1)
 
 
 if __name__ == "__main__":

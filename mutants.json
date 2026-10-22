@@ -1268,5 +1268,53 @@
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
+ },
+ "m-whatif-gate": {
+  "file": "vars1.py",
+  "find": "            self._check_commit(scope, candidate, tip)\n        except VarsError:\n            raise\n        except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:\n            raise VarsError(f\"malformed hypothesis",
+  "replace": "            pass\n        except VarsError:\n            raise\n        except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:\n            raise VarsError(f\"malformed hypothesis",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-region": {
+  "file": "vars1.py",
+  "find": "                if ch not in region and ch not in hyp:\n                    region.add(ch)",
+  "replace": "                if False:\n                    region.add(ch)",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-judged": {
+  "file": "vars1.py",
+  "find": "        region |= {acells[v].h_payload for v in region | targets if acells[v].h_schema == H_SCHEMA[\"verdict\"]",
+  "replace": "        region |= {acells[v].h_payload for v in set() if acells[v].h_schema == H_SCHEMA[\"verdict\"]",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-held": {
+  "file": "vars1.py",
+  "find": "            else:\n                held.append(row)",
+  "replace": "            else:\n                pass",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-path": {
+  "file": "vars1.py",
+  "find": "                out.append(prev[out[-1]])",
+  "replace": "                break",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-settled": {
+  "file": "vars1.py",
+  "find": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\")",
+  "replace": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\")",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
  }
 }
