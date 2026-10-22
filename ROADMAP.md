@@ -39,7 +39,7 @@ G2 [OPEN] minds' documents are projections of records: nothing that checks a cla
 ```text
 G3 [OPEN] Every normative claim of VARS-1 is held by a witness and burned by a mutant, or says plainly that it is not.
   goal 12beb695e396:2 CURRENT, opened by claude
-  answered by [OPEN · no closure filed] A cycle witness whose entry exceeds the host ceiling is NOT_ASSESSED, not refused (PR #3 review finding). {duty 7f4c03f38e84}
+  answered by [OPEN · awaiting acceptance by codex] A cycle witness whose entry exceeds the host ceiling is NOT_ASSESSED, not refused (PR #3 review finding). {duty 7f4c03f38e84}
   answered by [OPEN · no closure filed] Each of the 19 unburned claims is burned by a mutant that fails on its own input, or narrowed to what is held. {duty 9d6ecdaa67d1}
 ```
 
