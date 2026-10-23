@@ -72,11 +72,13 @@
   {
    "id": "intrinsics.values",
    "quote": "| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_01_golden_test_vectors"
    ],
-   "mutants": []
+   "mutants": [
+    "m-intrinsic-empty"
+   ]
   },
   {
    "id": "intrinsics.unstored",
@@ -197,11 +199,14 @@
   {
    "id": "cells.dependencies",
    "quote": "5. **Dependencies.** A contract or decision with `required_comp ≠ H_EMPTY` relies on a computation cell whose payload is that `computation_id`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_05_signatures_names_dependencies_verdicts_acceptance"
+    "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+    "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-dependency"
+   ]
   },
   {
    "id": "cells.rule6",
@@ -242,11 +247,13 @@
   {
    "id": "schemas.table",
    "quote": "| checkpoint | `computation_id:root`, `credit_total:u64`, `spent_total:u64`, `peak_size:u64`, `kernel_outcome:utf8`, `actions:u64` |",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_01_golden_test_vectors"
    ],
-   "mutants": []
+   "mutants": [
+    "m-schema-descriptor"
+   ]
   },
   {
    "id": "types.closed",
@@ -917,12 +924,14 @@
   {
    "id": "rules.twin",
    "quote": "`vars1.py` keeps a Python fold and Passes 1–2 as a differential twin",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
     "prop:I0",
     "prop:I8"
    ],
-   "mutants": []
+   "mutants": [
+    "m-twin-edge-quorum"
+   ]
   },
   {
    "id": "proj.recomputed",
@@ -945,24 +954,6 @@
    "mutants": [
     "m-proj-witnessed"
    ]
-  },
-  {
-   "id": "proj.not-fresh",
-   "quote": "**Not freshness.** Nothing about commits after `tip`",
-   "status": "unburned",
-   "witnesses": [
-    "test:test_21_attestation_counts_what_the_lens_counts"
-   ],
-   "mutants": []
-  },
-  {
-   "id": "proj.not-pass3",
-   "quote": "**Not Pass 3, not the statuses themselves.**",
-   "status": "unburned",
-   "witnesses": [
-    "test:test_14_light_client_verifies_a_projection_bundle_without_the_repository"
-   ],
-   "mutants": []
   },
   {
    "id": "proj.bundle",
@@ -1415,11 +1406,13 @@
   {
    "id": "offline.alone",
    "quote": "**Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_36_offline_verifier_in_a_fresh_folder"
    ],
-   "mutants": []
+   "mutants": [
+    "m-offline-stdlib"
+   ]
   },
   {
    "id": "offline.explain",
@@ -1435,12 +1428,14 @@
   {
    "id": "replay.ids",
    "quote": "`computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_01_golden_test_vectors",
     "test:test_04_scope_epochs_forged_checkpoints_foreign_scopes"
    ],
-   "mutants": []
+   "mutants": [
+    "m-root-field"
+   ]
   },
   {
    "id": "replay.lineage",
@@ -1662,6 +1657,8 @@
   "Latches (never undone):",
   "Input, u32 little-endian words (`H` = 32 raw bytes):",
   "What a client without the history gets from a Settled projection, and what it does not:",
-  "The gate checks that the old rules disagree with the verdict the decision names right and the new rules agree; that it is right is the decision's claim, made by the quorum that seals it."
+  "The gate checks that the old rules disagree with the verdict the decision names right and the new rules agree; that it is right is the decision's claim, made by the quorum that seals it.",
+  "**Not freshness.** Nothing about commits after `tip`",
+  "**Not Pass 3, not the statuses themselves.**"
  ]
 }

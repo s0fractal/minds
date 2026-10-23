@@ -1165,7 +1165,7 @@
    "section": 4,
    "text": "- **Not freshness.** Nothing about commits after `tip`: a later commit may change any status. Knowing the current\n  head needs a separate statement about the head, which VARS-1 does not define.",
    "carries": [
-    "proj.not-fresh"
+    "informative:12"
    ]
   },
   {
@@ -1173,7 +1173,7 @@
    "section": 4,
    "text": "- **Not Pass 3, not the statuses themselves.** `state` commits to the kernel's output only: the governing scope,\n  the Authorized and edge bits of the fold, and the status bits of Passes 1–2. It says nothing about Settled for\n  contracts, decisions or questions, which the host computes (§4.2 Pass 3). To read a status the client needs the\n  output bytes themselves and checks them against `state`.",
    "carries": [
-    "proj.not-pass3"
+    "informative:13"
    ]
   },
   {
