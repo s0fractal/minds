@@ -402,8 +402,28 @@ class TestVars1Conformance(unittest.TestCase):
             parent_commit=c0,
             extra_tree_entries=[("120000", "blob", f"cas/cells/{hx[:2]}/{hx[2:]}", b"/etc/passwd")],
         )
-        with self.assertRaisesRegex(V.VarsError, "Check #2 failed"):
+        # a typechange breaks append-only, the mode rule and the content hash at once: any layer may refuse it
+        with self.assertRaisesRegex(V.VarsError, "Check #2 failed|a chain commit only adds objects|non-100644 mode|CAS SHA-256 mismatch"):
             self.repo.admit_and_advance("core", c_symlink, expected_old=c0)
+
+        # A commit that only deletes an orphan atom breaks no rule but append-only. Five layers refuse it (Check #2,
+        # the delta reader's status and mode checks, then the read of the deleted entry itself), so no mutant of one
+        # guard, or of all three guards, admits it: append-only is held by how a chain is read (gate.append-only)
+        orphan: dict[bytes, bytes] = {}
+        h_orphan = self._put_atom(orphan, V.atom_utf8("an atom nothing names"))
+        c_orphan = self.repo.build_candidate_commit("core", orphan, [], [], parent_commit=c0)
+        self.repo.admit_and_advance("core", c_orphan, expected_old=c0)
+        git = lambda *a, **k: subprocess.run(["git", "-C", str(self.repo_path), *a], check=True, capture_output=True,
+                                             text=True, **k).stdout.strip()
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, GIT_INDEX_FILE=os.path.join(d, "index"))
+            git("read-tree", c_orphan, env=env)
+            git("rm", "--cached", "-q", f"cas/atoms/{h_orphan.hex()[:2]}/{h_orphan.hex()[2:]}", env=env)
+            c_deleted = git("commit-tree", git("write-tree", env=env), "-p", c_orphan, "-m", "delete an atom")
+        with self.assertRaises(V.VarsError):
+            self.repo.admit_and_advance("core", c_deleted, expected_old=c_orphan)
+        self.assertEqual(self.repo.ref_commit("core"), c_orphan)
+        c0 = c_orphan  # the cases below build on the chain as it stands
 
         # Mutant : Add a cell referencing a non-existent payload atom hash
         atoms_m2: dict[bytes, bytes] = {}
