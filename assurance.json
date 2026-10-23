@@ -455,8 +455,18 @@
       "`test_vars1.py` 81; `vars1.py` `what_if`"
      ],
      [
-      "`what_if` reports the cells of the hypothesis's region (the cells it names, closed under two steps: a cell relying on a region cell, and the cell a region verdict judges) that keep their statuses through other grounds, and every cell whose statuses change, with its bits before and after and its shortest path from the hypothesis in the reference graph the rules read in that epoch, empty only when none exists; equal consequences give an equal digest",
-      "Tested, with mutants: a failed ground takes its transitive dependents with it; a decision stays Settled through a second verdict and loses it when both fail; a ground on another basis is outside the region",
+      "`what_if` reports the cells of the hypothesis's region (the cells it names, closed under two steps: a cell relying on a region cell, and the cell a region verdict judges) that keep their statuses through other grounds, and every cell whose statuses change, with its bits before and after and its shortest dependency path: from a hypothesis cell, or an earlier cell a hypothesis seal newly seals, through what a hypothesis cell names, then only to a cell that relies on the last or to the cell a verdict judges, never back through a shared ground; empty when no such route exists. A path is a route of dependence, not a sufficient explanation; equal consequences give an equal digest",
+      "Tested, with mutants: a failed ground takes its transitive dependents with it; a decision stays Settled through a second verdict and loses it when both fail; a ground on another basis is outside the region; the path to a dependent of two grounds runs down its own chain, not back through the other ground; a decision settled by a new seal is reached from the sealed verdict",
+      "`test_vars1.py` 81"
+     ],
+     [
+      "A held decision whose counted endorsements change carries its threshold and its counts before and after: Settled kept on a thinner margin is reported though no status bit changes",
+      "Tested, with mutants",
+      "`test_vars1.py` 81"
+     ],
+     [
+      "`transcript` binds the consequence lists to their context (scope, tip, the rules at the tip and at the candidate, the hypothesis cells, and the cell and key of every hypothesis seal); `digest` binds the lists alone, so two signers of one hypothesis share the digest and not the transcript",
+      "Tested, with mutants: a second signer gives the same digest and another transcript",
       "`test_vars1.py` 81"
      ],
      [

@@ -2436,11 +2436,20 @@ class GitVarsRepo:
         the candidate. `lost` is every cell of the chain whose statuses change (each with its bits before and after),
         complete by construction; `held` is every cell of the hypothesis's region that keeps them (a decision still
         Settled through other verdicts, say), the region being the cells it names closed under two steps: a cell
-        that relies on a region cell, and the cell a region verdict judges. Each row carries the shortest reference path from the
-        hypothesis in the whole reference graph as the rules read it in this epoch, empty only when none exists.
+        that relies on a region cell, and the cell a region verdict judges. Each row carries the shortest dependency
+        path to it: from a hypothesis cell, or from an earlier cell a hypothesis seal newly seals, through the cells
+        a hypothesis cell names, then only from a cell to one that relies on it or to the cell a verdict judges, as
+        the rules read references in this epoch. Every step runs from a cell to one whose status may read it, never
+        back through a shared ground; the path is a route of dependence, not a sufficient explanation, and it is
+        empty when no such route exists (a change the hypothesis causes only through the fold, say).
         A lost row also carries `needs`: the grounds it relies on that no longer stand, and for a decision that lost
-        Settled, its threshold, the endorsements still counted and those that fell away. `digest`
-        is SHA-256 over the canonical JSON of both lists: two readers who agree on the consequences agree on it."""
+        Settled, its threshold, the endorsements still counted and those that fell away. A held row of a decision
+        whose counted endorsements change carries them (threshold, before, after): Settled kept with a thinner
+        margin is a consequence no status bit shows. `digest` is SHA-256 over the canonical JSON of both lists:
+        two readers who agree on the consequences agree on it, whatever chain or hypothesis produced them.
+        `transcript` binds the same lists to their context, the scope, tip, rules at the tip and at the candidate,
+        hypothesis cells, and the (cell, key) of every hypothesis seal: equal transcripts, equal question and
+        equal answer."""
         tip = self.ref_commit(scope)
         if tip is None:
             raise VarsError(f"no ref refs/vars/heads/{scope}")
@@ -2478,11 +2487,16 @@ class GitVarsRepo:
                     todo.append(ch)
         bits = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled")
         state = lambda lens, cid: {b: bool(lens[b].get(cid, False)) for b in bits}
-        # shortest path from the hypothesis in the whole reference graph, references followed either way
-        dist, prev, todo2 = {h: 0 for h in hyp}, {}, deque(sorted(hyp))
+        # shortest dependency path: a hypothesis cell to what it names, any cell to what relies on it or to what its
+        # verdict judges; never backwards through a shared ground (a reference path either way is not a route of
+        # dependence: Gemini review of the 2026-10-23 paper draft, §4.2)
+        sealed = {x.h_target for x in seals if x.h_target not in hyp and x.h_target in before["cells"]}
+        sources = hyp | sealed
+        step = lambda u: (parents_of[u] if u in hyp else set()) | relied_by.get(u, set()) | judged(u)
+        dist, prev, todo2 = {h: 0 for h in sources}, {}, deque(sorted(sources))
         while todo2:
             u = todo2.popleft()
-            for v in sorted(parents_of[u] | children_of[u]):
+            for v in sorted(step(u)):
                 if v not in dist:
                     dist[v], prev[v] = dist[u] + 1, u
                     todo2.append(v)
@@ -2523,10 +2537,20 @@ class GitVarsRepo:
                 lost.append(dict(row, before={k: v for k, v in b.items() if v != a[k]},
                                  after={k: v for k, v in a.items() if v != b[k]}, needs=needs(cid, b, a)))
             else:
+                thr_keys = after["evaluators"].get(cid)
+                now, then = after["endorsers"].get(cid, set()), before["endorsers"].get(cid, set())
+                if thr_keys is not None and now != then:
+                    row["endorsements"] = {"threshold": thr_keys[0], "before": len(then), "after": len(now)}
                 held.append(row)
         body = {"lost": lost, "held": held}
+        canon = lambda o: json.dumps(o, sort_keys=True, separators=(",", ":")).encode()  # noqa: E731
+        digest = sha256(canon(body)).hex()
+        context = {"scope": scope, "tip": tip, "rules": [before["rules"].hex(), after["rules"].hex()],
+                   "hypothesis": sorted(h.hex() for h in hyp),
+                   "seals": sorted([x.h_target.hex(), x.actor_pubkey.hex()] for x in seals)}
         return {"scope": scope, "tip": tip, "hypothesis": sorted(h.hex() for h in hyp), "candidate": candidate,
-                **body, "digest": sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hex()}
+                **body, "digest": digest, "context": context,
+                "transcript": sha256(b"minds.what-if.transcript@1\x00" + canon({"context": context, "digest": digest})).hex()}
 
 
 # ---------------------------------------------------------------------------

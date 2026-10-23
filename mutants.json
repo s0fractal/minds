@@ -1279,8 +1279,8 @@
  },
  "m-whatif-held": {
   "file": "vars1.py",
-  "find": "            else:\n                held.append(row)",
-  "replace": "            else:\n                pass",
+  "find": "                held.append(row)",
+  "replace": "                pass",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
@@ -1492,6 +1492,46 @@
   "replace": "import hashlib\nimport json\nimport sigma_resume  # noqa: F401\n",
   "kills": [
    "test_36_offline_verifier_in_a_fresh_folder"
+  ]
+ },
+ "m-whatif-backwards": {
+  "file": "vars1.py",
+  "find": "        step = lambda u: (parents_of[u] if u in hyp else set()) | relied_by.get(u, set()) | judged(u)",
+  "replace": "        step = lambda u: parents_of[u] | children_of[u]",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-sealed": {
+  "file": "vars1.py",
+  "find": "        sources = hyp | sealed",
+  "replace": "        sources = hyp",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-margin": {
+  "file": "vars1.py",
+  "find": "                if thr_keys is not None and now != then:",
+  "replace": "                if False:",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-transcript-seals": {
+  "file": "vars1.py",
+  "find": "                   \"seals\": sorted([x.h_target.hex(), x.actor_pubkey.hex()] for x in seals)}",
+  "replace": "                   \"seals\": sorted([x.h_target.hex()] for x in seals)}",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-whatif-transcript-tip": {
+  "file": "vars1.py",
+  "find": "        context = {\"scope\": scope, \"tip\": tip,",
+  "replace": "        context = {\"scope\": scope, \"tip\": None,",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
  }
 }
