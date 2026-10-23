@@ -3,7 +3,7 @@
 on an assertion, or on a TwinDivergence (the rules kernel and its Python twin disagree: the differential witness
 caught the mutant). An import error or any other crash proves nothing. The file is restored after every mutant.
 A mutant of kernel/src/ or kernel2/src/ is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
-default .git/kernel-mutants-target) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
+default kernel-mutants-target in the checkout's git directory) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
 
     .venv/bin/python tools/run_mutants.py            # all
     .venv/bin/python tools/run_mutants.py ID...      # some
@@ -24,6 +24,12 @@ KERNELS = {"kernel": ("vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm")
            "kernel2": ("vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
 
 
+def git_dir() -> Path:
+    # the checkout's own git directory: in a linked worktree .git is a file naming it
+    return Path(subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=ROOT, check=True,
+                               capture_output=True, text=True).stdout.strip())
+
+
 def run(mid: str, m: dict) -> tuple[bool, str]:
     path = ROOT / m["file"]
     original = path.read_text()
@@ -40,7 +46,7 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             wasm, var, pinned = KERNELS[crate]
             # a fresh target per mutant: cargo decides what to rebuild by modification time, so a mutant written in the
             # same second as the previous one could be served the previous mutant's build
-            base = Path(os.environ.get("MINDS_KERNEL_TARGET", ROOT / ".git" / "kernel-mutants-target"))
+            base = Path(os.environ.get("MINDS_KERNEL_TARGET") or git_dir() / "kernel-mutants-target")
             base.mkdir(parents=True, exist_ok=True)
             target = Path(tempfile.mkdtemp(prefix=f"{mid}-", dir=base))
             cleanup.append(target)
