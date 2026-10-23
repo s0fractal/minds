@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Run the mutants of mutants.json: each replaces one exact string in one file, then the tests it names must fail
 on an assertion, or on a TwinDivergence (the rules kernel and its Python twin disagree: the differential witness
-caught the mutant). An import error or any other crash proves nothing. The file is restored after every mutant.
+caught the mutant). An import error or any other crash proves nothing, and neither does a test whose only failure
+is assertRaisesRegex meeting the expected refusal in other words: the input is still refused (by another layer, or
+by the gate's net for crashes), so the mutant took nothing away. The file is restored after every mutant.
 A mutant of kernel/src/ or kernel2/src/ is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
 default kernel-mutants-target in the checkout's git directory) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
 
@@ -13,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +23,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# assertRaisesRegex's failure when the expected refusal comes with another message: a kill by wording alone
+WORDING = re.compile(r'AssertionError: ".*" does not match ".*"\Z')
+
 KERNELS = {"kernel": ("vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
            "kernel2": ("vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
 
@@ -59,6 +65,7 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             if hashlib.sha256(built.read_bytes()).digest() == hashlib.sha256((ROOT / pinned).read_bytes()).digest():
                 return False, "the mutant builds to the unmutated kernel (an equivalent mutant)"
             env_extra[var] = str(built)
+        wording = ""
         for t in m["kills"]:
             # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same
             # second would otherwise be loaded in place of this one's source
@@ -68,11 +75,16 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
                                       f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True,
                                      env=env)
             text = out.stdout + out.stderr
-            if out.returncode != 0 and "AssertionError" in text:
+            failures = [x for x in text.splitlines() if x.startswith("AssertionError")]
+            if out.returncode != 0 and failures and all(WORDING.fullmatch(x) for x in failures):
+                # the refusal is still there under another message: the mutant took nothing a test can see
+                wording = f"refused only in other words by {t}: {failures[0][len('AssertionError: '):][:300]}"
+                continue
+            if out.returncode != 0 and failures:
                 return True, f"killed by {t}"
             if out.returncode != 0 and "TwinDivergence" in text:
                 return True, f"killed by {t} (kernel and twin diverge)"
-        return False, f"survived {', '.join(m['kills'])}"
+        return False, wording or f"survived {', '.join(m['kills'])}"
     finally:
         path.write_text(original)
         for d in cleanup:
