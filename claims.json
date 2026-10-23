@@ -75,7 +75,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_01_golden_test_vectors"
-   ]
+   ],
+   "reason": "Checked at import: vars1.py asserts that every intrinsic atom hashes to its listed id, so a mutant of the value stops the module loading before any test runs, and an import failure is no kill."
   },
   {
    "id": "intrinsics.unstored",
@@ -96,7 +97,8 @@
     "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
     "test:test_01_golden_test_vectors"
    ],
-   "mutants": []
+   "mutants": [],
+   "reason": "Checked at import (vars1.py refuses a kernel/lens.wasm that does not hash to H_LENS_KERNEL) and by CI's rebuild of the kernel; a mutant of the value stops the module loading, which is no kill."
   },
   {
    "id": "rules.v2-hash",
@@ -118,7 +120,8 @@
    "witnesses": [
     "test:test_57_rules_v2_from_genesis",
     "test:test_48_rules_change_needs_its_decision"
-   ]
+   ],
+   "reason": "v1 stays the default because a rotation to other rules needs its rules-change decision; without that guard the gate's replay raises IndexError, which its net still turns into a refusal, so the mutant changes only the message."
   },
   {
    "id": "cells.layout",
@@ -344,7 +347,8 @@
    "witnesses": [
     "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
    ],
-   "mutants": []
+   "mutants": [],
+   "reason": "Held by two layers: the gate's bound check and Book I's verify_cycle, which refuses the same witness (\"a cycle needs at least one priced action\", \"more actions than cost\"); with the gate's check removed, test 75 meets the refusal in other words."
   },
   {
    "id": "payloads.projection",
@@ -364,7 +368,8 @@
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits",
     "test:test_38_caches_never_stand_in_for_new_bytes"
-   ]
+   ],
+   "reason": "Held by layers: a CAS entry whose bytes do not hash to its path is also refused as a missing referenced object (Check #4); removing the hash check alone changes only the message."
   },
   {
    "id": "store.radicle",
@@ -409,7 +414,8 @@
    "witnesses": [
     "prop:I0"
    ],
-   "mutants": []
+   "mutants": [],
+   "reason": "Held by the gate's net, which turns every exception into a refusal: removing a named guard falls into the net (still a refusal), and removing the net crashes, which run_mutants counts as nothing. I0 checks it on generated sequences."
   },
   {
    "id": "gate.chain",
@@ -426,11 +432,15 @@
   {
    "id": "gate.roster-rotation",
    "quote": "That quorum alone may set the new roster, removing keys as well as adding them; no key has a veto over its own removal",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
-    "test:test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds"
+    "test:test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds",
+    "test:test_83_a_kernel_build_answers_what_the_rules_answer"
    ],
-   "mutants": []
+   "mutants": [
+    "m-roster-veto-twin",
+    "m-roster-veto-kernel"
+   ]
   },
   {
    "id": "gate.append-only",
@@ -438,7 +448,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits"
-   ]
+   ],
+   "reason": "Held by several layers: Check #2, the delta reader's status and mode checks, then the read of a deleted entry itself (and, for a changed entry, the CAS hash check). Test 03 deletes an orphan atom; a mutant removing all three guards still refuses it."
   },
   {
    "id": "gate.scope-rules",
@@ -446,7 +457,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis"
-   ]
+   ],
+   "reason": "Held by two layers: the host refuses rules it does not implement, and the pinned kernel refuses the same genesis (E-10). The gate always runs the pinned kernel, so no mutant removes both."
   },
   {
    "id": "gate.seals",
@@ -456,7 +468,8 @@
     "test:test_02_local_loop_rebinding_rollback_import_rotation",
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
     "prop:I10"
-   ]
+   ],
+   "reason": "Held by two layers: the host's seal check and the pinned kernel's E-13 refuse the same seal. The gate always runs the pinned kernel, so no mutant removes both."
   },
   {
    "id": "gate.references",
@@ -467,7 +480,8 @@
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
     "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [],
+   "reason": "Held by more than one layer: an input whose referenced hash is missing is refused by Check #4 and, with that guard removed, by a later reading of the same object; each case of test 78 has its own input, none passes one layer and not the next."
   },
   {
    "id": "gate.cycle-witness",
@@ -1130,7 +1144,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
-   ]
+   ],
+   "reason": "Held by two layers: the gate's check_chain of the counterexample and the old rules' pinned kernel over it (E-15 on an unsealed cell) refuse the same input."
   },
   {
    "id": "rules.change.counterexample-id",
@@ -1150,7 +1165,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
-   ]
+   ],
+   "reason": "Its guard falls through to the gate's net: without it the replay raises IndexError, which the gate still turns into a refusal."
   },
   {
    "id": "rules.change.a",
@@ -1258,7 +1274,8 @@
    "status": "unburned",
    "witnesses": [
     "test:test_64_a_resource_hardening_needs_each_piece"
-   ]
+   ],
+   "reason": "Held by two layers: an atom of another type in a kin1 slot is refused by the type check and again by the replay's digest comparison, which the wrong bytes cannot reproduce."
   },
   {
    "id": "rules.v1b-code",
@@ -1635,6 +1652,20 @@
    ]
   },
   {
+   "id": "assurance.unburned-reasons",
+   "source": "ASSURANCE.md",
+   "quote": "An unburned claim says in `reason` why no mutant burns it, and only an unburned claim carries one",
+   "status": "tested",
+   "witnesses": [
+    "test:test_45_the_spec_is_a_projection_of_its_witnesses"
+   ],
+   "mutants": [
+    "m-claims-reason-required",
+    "m-claims-reason-only-debt",
+    "m-claims-debt-table"
+   ]
+  },
+  {
    "id": "assurance.whatif-gate",
    "source": "ASSURANCE.md",
    "quote": "`what_if` admits a hypothesis through the gate on a candidate commit and moves no ref",
@@ -1717,7 +1748,8 @@
    "witnesses": [
     "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
    ],
-   "mutants": []
+   "mutants": [],
+   "reason": "No input can show the loop bites: `lost` is computed over every cell of the chain by construction, and no chain is known where a change escapes the region (invalidating a custom schema leaves its instances unchanged)."
   },
   {
    "id": "gate.cycle-entry-ceiling",

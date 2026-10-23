@@ -95,6 +95,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | A release statement names its profile after its checks, so a reader of the earlier format still reads its commit, rules and pins | Tested (the earlier pattern, verbatim) | `test_vars1.py` 76 |
 | A claim quoting ASSURANCE.md is held only by the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status; ASSURANCE.md is exactly the rendering of assurance.json, so nothing in it is parsed and no hidden or quoted text can hold a quote (nine review rounds on hand-read Markdown, Codex review of PR #4, led here) | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
 | Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5 is a part of spec.json that carries a claim or an informative passage whose quote is in its own text; VARS-1-SPEC.md is exactly the rendering of spec.json, a part's section is counted from the headings and never read from the part, a heading part is one heading line and a gap one blank line, and every claim and informative passage is carried by some part. Nothing parses the Markdown | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| An unburned claim says in `reason` why no mutant burns it, and only an unburned claim carries one; the debt table of ASSURANCE.md is the rendering of those reasons | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
 | Every normative character of a §0–§5 part is covered by the quotes it carries | **Not established**: a part may say more than its carriers' quotes, as a block did before; block boundaries are now declared in spec.json, not inferred (closing Codex review of PR #4, round 9, F4), but what a part says beyond its quotes is held by nothing | — |
 
 ## Who reads which rules
@@ -142,6 +143,29 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | Claim | Evidence | Where |
 |---|---|---|
 | A mutant counts as killed only when an assertion fails on what the code does (an expected exception not raised, values that differ); an expected exception met with another message, on one line or several, with a custom `msg` or not, is a survival (the input is still refused), and so is any other error. `tools/mutant_test.py` decides where assertRaises checks, not from the printed text | Tested, with mutants: a fixture of eleven tests, each with its expected verdict | `test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict` |
+
+## Not burned, and why
+
+Rendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim
+without one. Most are refusals held by more than one layer, where a mutant of one guard only changes the message
+(`tools/mutant_test.py` counts that as nothing).
+
+| Unburned claim | Why no mutant burns it |
+|---|---|
+| `intrinsics.values` | Checked at import: vars1.py asserts that every intrinsic atom hashes to its listed id, so a mutant of the value stops the module loading before any test runs, and an import failure is no kill. |
+| `rules.hash` | Checked at import (vars1.py refuses a kernel/lens.wasm that does not hash to H_LENS_KERNEL) and by CI's rebuild of the kernel; a mutant of the value stops the module loading, which is no kill. |
+| `rules.v2-default` | v1 stays the default because a rotation to other rules needs its rules-change decision; without that guard the gate's replay raises IndexError, which its net still turns into a refusal, so the mutant changes only the message. |
+| `payloads.cycle-witness` | Held by two layers: the gate's bound check and Book I's verify_cycle, which refuses the same witness ("a cycle needs at least one priced action", "more actions than cost"); with the gate's check removed, test 75 meets the refusal in other words. |
+| `store.paths` | Held by layers: a CAS entry whose bytes do not hash to its path is also refused as a missing referenced object (Check #4); removing the hash check alone changes only the message. |
+| `gate.no-crash` | Held by the gate's net, which turns every exception into a refusal: removing a named guard falls into the net (still a refusal), and removing the net crashes, which run_mutants counts as nothing. I0 checks it on generated sequences. |
+| `gate.append-only` | Held by several layers: Check #2, the delta reader's status and mode checks, then the read of a deleted entry itself (and, for a changed entry, the CAS hash check). Test 03 deletes an orphan atom; a mutant removing all three guards still refuses it. |
+| `gate.scope-rules` | Held by two layers: the host refuses rules it does not implement, and the pinned kernel refuses the same genesis (E-10). The gate always runs the pinned kernel, so no mutant removes both. |
+| `gate.seals` | Held by two layers: the host's seal check and the pinned kernel's E-13 refuse the same seal. The gate always runs the pinned kernel, so no mutant removes both. |
+| `gate.references` | Held by more than one layer: an input whose referenced hash is missing is refused by Check #4 and, with that guard removed, by a later reading of the same object; each case of test 78 has its own input, none passes one layer and not the next. |
+| `rules.change.counterexample-admitted` | Held by two layers: the gate's check_chain of the counterexample and the old rules' pinned kernel over it (E-15 on an unsealed cell) refuse the same input. |
+| `rules.change.refusal` | Its guard falls through to the gate's net: without it the replay raises IndexError, which the gate still turns into a refusal. |
+| `types.kin1` | Held by two layers: an atom of another type in a kin1 slot is refused by the type check and again by the replay's digest comparison, which the wrong bytes cannot reproduce. |
+| `assurance.whatif-complete` | No input can show the loop bites: `lost` is computed over every cell of the chain by construction, and no chain is known where a change escapes the region (invalidating a custom schema leaves its instances unchanged). |
 
 ## Known limits of the bounded checks
 

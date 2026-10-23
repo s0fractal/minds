@@ -2806,6 +2806,19 @@ class TestVars1Conformance(unittest.TestCase):
         tested["mutants"] = []
         code, out = check(spec, bare)
         self.assertIn(f"{tested['id']}: tested without a mutant", out)
+        # an unburned claim says why no mutant burns it, and only an unburned claim does; ASSURANCE.md's debt table is
+        # the rendering of those reasons
+        silent = json.loads(json.dumps(claims))
+        debt = next(c for c in silent["claims"] if c["status"] == "unburned")
+        self.assertIn(debt["reason"], assurance, "the debt table renders every reason")
+        del debt["reason"]
+        code, out = check(spec, silent)
+        self.assertIn(f"{debt['id']}: unburned without a reason", out)
+        excused = json.loads(json.dumps(claims))
+        tested = next(c for c in excused["claims"] if c["status"] == "tested")
+        tested["reason"] = "a reason it does not need"
+        code, out = check(spec, excused)
+        self.assertIn(f"{tested['id']}: tested, yet it gives a reason for not being burned", out)
         # a claim on what the tools establish beyond the spec quotes ASSURANCE.md, and goes stale like any other
         moved = json.loads(json.dumps(claims))
         held = next(c for c in moved["claims"] if c.get("source") == "ASSURANCE.md")
@@ -5057,8 +5070,13 @@ class TestVars1Conformance(unittest.TestCase):
                           V.Seal.sign(self.sk1, acc.id, s0.id), V.Seal.sign(self.sk2, acc.id, s0.id),
                           V.Seal.sign(self.sk1, B2.id, s0.id), V.Seal.sign(self.sk1, R.id, s0.id),
                           V.Seal.sign(self.sk1, I.id, s0.id)], c1)
+        # one member rotates the other out, alone: v1 asks only the admission quorum (§3 check 1)
+        r: dict[bytes, bytes] = {}
+        s1 = self._scope_cell(r, "core", "pk1 alone", (1, [self.pk1]), h_supersedes=self._hv(r, [s0.id]),
+                              h_loss=self._put_atom(r, V.atom_utf8("pk2 removed")))
+        c3 = self._admit(r, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c2)
         try:
-            for tip in (c0, c1, c2):
+            for tip in (c0, c1, c2, c3):
                 lens = self.repo.lens("core", at=tip)
                 try:
                     got = built.statuses(lens)

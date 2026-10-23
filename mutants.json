@@ -1628,5 +1628,45 @@
   "kills": [
    "test_85_a_rotation_that_removes_keys_without_consent_waits"
   ]
+ },
+ "m-roster-veto-twin": {
+  "file": "vars1.py",
+  "find": "                    if len(signers(s_next_id, s_base_id, adm_pks)) < adm_thr:",
+  "replace": "                    if len(signers(s_next_id, s_base_id, adm_pks)) < adm_thr or not (\n                            adm_pks - pol_quorum(s_next.slots[0])[1]) <= signers(s_next_id, s_base_id, adm_pks):",
+  "kills": [
+   "test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds"
+  ]
+ },
+ "m-roster-veto-kernel": {
+  "file": "kernel/src/lib.rs",
+  "find": "                g.endorsers(s, base, at, Some(adm), ends);\n                if g.sets.count(ends) < adm_thr {",
+  "replace": "                g.endorsers(s, base, at, Some(adm), ends);\n                let kept = g.pol(g.slot(s, 0)?)?.1;\n                if g.sets.count(ends) < adm_thr || (0..g.sets.kw).any(|w| adm[w] & !kept[w] & !ends[w] != 0) {",
+  "kills": [
+   "test_83_a_kernel_build_answers_what_the_rules_answer"
+  ]
+ },
+ "m-claims-reason-required": {
+  "file": "tools/check_claims.py",
+  "find": "        if c[\"status\"] == \"unburned\" and not c.get(\"reason\", \"\").strip():",
+  "replace": "        if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-claims-reason-only-debt": {
+  "file": "tools/check_claims.py",
+  "find": "        if c[\"status\"] != \"unburned\" and \"reason\" in c:",
+  "replace": "        if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-claims-debt-table": {
+  "file": "tools/check_claims.py",
+  "find": "                              \"rows\": [[f\"`{c['id']}`\", c.get(\"reason\", \"\")] for c in claims",
+  "replace": "                              \"rows\": [[f\"`{c['id']}`\", \"\"] for c in claims",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
  }
 }
