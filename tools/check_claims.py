@@ -7,7 +7,7 @@ of a claim or of an informative passage; every quote must still be in the spec, 
 the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status, and
 ASSURANCE.md must be exactly the rendering of assurance.json; every witness must exist; a claim
 that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
-exists. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
+exists, and finds its line exactly once. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
 mutant has shown that it bites). Exit 1 on any violation.
 
     python3 tools/check_claims.py            # check
@@ -203,6 +203,11 @@ def main(argv: list[str]) -> int:
     for line, block in blocks:
         if not any(q in block for q in quotes):
             errors.append(f"VARS-1-SPEC.md:{line}: no claim or informative quote covers this block: {block[:90]!r}")
+    for mid, mu in sorted(mutants.items()):  # a mutant whose line was edited away runs nothing (PR #9: CI caught it late)
+        target = ROOT / mu["file"]
+        n = target.read_text().count(mu["find"]) if target.is_file() else 0
+        if n != 1:
+            errors.append(f"mutant {mid}: its find string occurs {n} times in {mu['file']}, not once")
     used = {m for c in claims for m in c.get("mutants", [])}
     for m in sorted(set(mutants) - used):
         errors.append(f"mutant not named by any claim: {m}")

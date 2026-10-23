@@ -342,8 +342,8 @@
  },
  "m-pass3-threshold": {
   "file": "vars1.py",
-  "find": "            is_set = len(valid_endorsers) >= p_thr",
-  "replace": "            is_set = len(valid_endorsers) >= 0",
+  "find": "            is_set = live and len(valid_endorsers) >= p_thr",
+  "replace": "            is_set = live and len(valid_endorsers) >= 0",
   "kills": [
    "test_16_light_client_verifies_a_release_attestation",
    "test_21_attestation_counts_what_the_lens_counts",
