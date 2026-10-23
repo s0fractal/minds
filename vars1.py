@@ -2298,7 +2298,10 @@ class GitVarsRepo:
 
         for cid in forward_order:
             c = cells[cid]
-            if not active[cid] or stale[cid]:
+            live = active[cid] and not stale[cid]
+            # a contract, decision or question that is not live is never Settled, but its endorsements are still
+            # counted below, for what-if to say what it would need (`evaluators`, `endorsers`)
+            if not live and c.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]):
                 settled[cid] = False
                 provisional[cid] = False
                 continue
@@ -2399,7 +2402,7 @@ class GitVarsRepo:
                     if (active.get(wid, False) and not stale.get(wid, False) and w.h_schema == H_SCHEMA["verdict"]
                             and w.h_payload == cid and w.slots[1] == H_VERDICT_INVALID):
                         invalidators[cid] |= witness_endorsers(wid) & p_pks
-            is_set = len(valid_endorsers) >= p_thr
+            is_set = live and len(valid_endorsers) >= p_thr
             settled[cid] = is_set
             provisional[cid] = not is_set
 

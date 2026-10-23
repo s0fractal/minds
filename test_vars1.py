@@ -4633,8 +4633,14 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(not_mine["digest"], out["digest"], "restore adds nothing the signer cannot seal")
 
         out = mc.what_if(self.repo_path, sk, [named[f"{tag}/check/01"]])
-        self.assertEqual(next(x for x in out["lost"] if x["name"] == tag)["after"].get("stale"), True,
-                         "the maintainer's own check failing makes the release Stale")
+        rel = next(x for x in out["lost"] if x["name"] == tag)
+        self.assertEqual(rel["after"].get("stale"), True, "the maintainer's own check failing makes the release Stale")
+        self.assertEqual(rel["needs"].get("grounds"), [named[f"{tag}/check/01"].hex()])
+        self.assertEqual(rel["needs"].get("endorsements"), {"threshold": 2, "standing": sorted([pk, pk2]), "fell_away": []},
+                         "a Stale release still says its endorsements stand (Codex PR #9 r1)")
+        both = mc.what_if(self.repo_path, sk, [named[f"{tag}/check/01"], mine])
+        rel = next(x for x in both["lost"] if x["name"] == tag)
+        self.assertEqual(rel["needs"].get("endorsements"), {"threshold": 2, "standing": [pk], "fell_away": [pk2]})
         self.assertEqual(repo.ref_commit("minds"), tip, "no ref moves")
 
         # the command line: a member's own key, never a maintainer key created on the way (Codex PR #8 r1)

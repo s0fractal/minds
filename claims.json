@@ -1640,7 +1640,9 @@
    "mutants": [
     "m-needs-grounds",
     "m-needs-endorse",
-    "m-restore"
+    "m-restore",
+    "m-needs-stale",
+    "m-settled-live"
    ]
   }
  ],
