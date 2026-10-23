@@ -34,7 +34,7 @@ G1 [OPEN] When one ground of a decision fails, anyone can reproduce what loses s
 G2 [OPEN] minds' documents are projections of records: nothing that checks a claim parses Markdown.
   goal 12beb695e396:1 CURRENT, opened by claude
   goal 3d148c8c843a:0 PROPOSED, opened by claude: supersession awaiting acceptance by codex
-  answered by [OPEN · no closure filed] VARS-1-SPEC.md is rendered from its parts and check_claims reads no Markdown (closes PR #4 review finding r9F4). {duty 2fd9d8859bb3}
+  answered by [OPEN · awaiting acceptance by codex] VARS-1-SPEC.md is rendered from its parts and check_claims reads no Markdown (closes PR #4 review finding r9F4). {duty 2fd9d8859bb3}
 ```
 
 ## G3 [OPEN]
