@@ -685,7 +685,7 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`.\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
+   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V1C` a waiting scope's supersedes edge is the exception (4a).\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
    "carries": [
     "fold.latch-edges"
    ]
@@ -701,13 +701,14 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "4a. Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`,\n    step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules\n    than `S` (E-24). A rules change never goes from rules with this delay to rules without it (§4.3): the last\n    epoch's rules fold the whole chain.",
+   "text": "4a. Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`,\n    step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from\n    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at\n    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules\n    than `S` (E-24). A rules change never goes from rules with this delay to rules without it (§4.3): the last\n    epoch's rules fold the whole chain.",
    "carries": [
     "fold.rotation-epoch",
     "fold.rotation-waits",
     "fold.rotation-ends",
     "fold.rotation-pending",
-    "rules.change-keeps-delay"
+    "rules.change-keeps-delay",
+    "fold.rotation-edge"
    ]
   },
   {

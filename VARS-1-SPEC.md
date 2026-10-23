@@ -247,13 +247,15 @@ Latches (never undone):
    acceptance and schema cells are never Authorized in `<scope>`.
 3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind
    supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets
-   `InitialEndorsers(v)`.
+   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V1C` a waiting scope's supersedes edge is the exception (4a).
 3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.
 4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.
 4a. Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`,
     step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of
     `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`
-    under `S`, the rotation **waits** and `S` stays governing. `S'` becomes governing after the commit in which
+    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from
+    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at
+    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which
     every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A
     key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a
     rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules

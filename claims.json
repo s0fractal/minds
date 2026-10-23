@@ -656,7 +656,18 @@
    ],
    "mutants": [
     "m-v1c-kernel-removed",
-    "m-v1c-twin-removed",
+    "m-v1c-twin-removed"
+   ]
+  },
+  {
+   "id": "fold.rotation-edge",
+   "quote": "Its supersedes edge to `S` is withheld from latch 3 while it waits and is authorized when `S'` becomes governing",
+   "status": "differential",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+   ],
+   "mutants": [
     "m-v1c-kernel-defer",
     "m-v1c-kernel-activate",
     "m-v1c-twin-defer",
