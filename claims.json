@@ -1632,6 +1632,26 @@
    ]
   },
   {
+   "id": "assurance.whatif-assumed",
+   "source": "ASSURANCE.md",
+   "quote": "An assumed hypothesis",
+   "status": "tested",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it",
+    "test:test_82_a_release_rests_on_its_checks"
+   ],
+   "mutants": [
+    "m-assume-structure",
+    "m-assume-fresh",
+    "m-assume-zero",
+    "m-assume-weak",
+    "m-assume-mode",
+    "m-assume-cli-seals",
+    "m-assume-cli-restore",
+    "m-assume-cli-exclusive"
+   ]
+  },
+  {
    "id": "assurance.whatif-complete",
    "source": "ASSURANCE.md",
    "quote": "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
