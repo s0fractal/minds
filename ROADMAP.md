@@ -19,6 +19,7 @@ DISCHARGED · accepted by the acceptor.
 ```text
 G1 [OPEN] When one ground of a decision fails, anyone can reproduce what loses standing, what still holds through other grounds, and the path to each.
   goal 12beb695e396:0 CURRENT, opened by claude
+  pending: met in 3d148c8c843a, awaiting acceptance by codex
   answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] A release decision relies on each of its checks as a cell of the chain, so invalidating one check reaches every release that rests on it. {duty 012742f1540d}
   answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] what-if on refs/vars/heads/minds: one check of a real release invalidated, its consequences shown, then restored by a replacement; two independent readers agree on the consequence set. {duty 22ba46310cf8}
     requires [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] what-if on a test scope: a hypothetical invalidation, admitted by the gate but never advancing a ref, yields the cells that lose standing, those that hold through other grounds, and the path to each. {duty a98f1daa5be1}
@@ -32,6 +33,7 @@ G1 [OPEN] When one ground of a decision fails, anyone can reproduce what loses s
 ```text
 G2 [OPEN] minds' documents are projections of records: nothing that checks a claim parses Markdown.
   goal 12beb695e396:1 CURRENT, opened by claude
+  goal 3d148c8c843a:0 PROPOSED, opened by claude: supersession awaiting acceptance by codex
   answered by [OPEN · no closure filed] VARS-1-SPEC.md is rendered from its parts and check_claims reads no Markdown (closes PR #4 review finding r9F4). {duty 2fd9d8859bb3}
 ```
 
@@ -40,6 +42,7 @@ G2 [OPEN] minds' documents are projections of records: nothing that checks a cla
 ```text
 G3 [OPEN] Every normative claim of VARS-1 is held by a witness and burned by a mutant, or says plainly that it is not.
   goal 12beb695e396:2 CURRENT, opened by claude
+  goal 3d148c8c843a:1 PROPOSED, opened by claude: supersession awaiting acceptance by codex
   answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] A cycle witness whose entry exceeds the host ceiling is NOT_ASSESSED, not refused (PR #3 review finding). {duty 7f4c03f38e84}
   answered by [OPEN · no closure filed] Each of the 19 unburned claims is burned by a mutant that fails on its own input, or narrowed to what is held. {duty 9d6ecdaa67d1}
 ```
@@ -49,6 +52,7 @@ G3 [OPEN] Every normative claim of VARS-1 is held by a witness and burned by a m
 ```text
 G4 [OPEN] The live chain changes its rules under evidence, verified on more than one host.
   goal 12beb695e396:3 CURRENT, opened by claude
+  goal 3d148c8c843a:2 PROPOSED, opened by claude: supersession awaiting acceptance by codex
   answered by [OPEN · no closure filed] refs/vars/heads/minds activates the v1b rules (commit-count bound) by a resource-hardening decision; the owner decides. {duty 212f527f68db}
     requires [OPEN · no closure filed] A rules change waits one epoch between decision and activation, and an INVALID verdict in that epoch blocks it. {duty 57676c21fcde}
   answered by [OPEN · no closure filed] A rules change waits one epoch between decision and activation, and an INVALID verdict in that epoch blocks it. {duty 57676c21fcde}
@@ -60,6 +64,7 @@ G4 [OPEN] The live chain changes its rules under evidence, verified on more than
 ```text
 G5 [OPEN] Rules v2 can be activated without leaving a reader or a reference unaccounted for.
   goal 12beb695e396:4 CURRENT, opened by claude
+  goal 3d148c8c843a:3 PROPOSED, opened by claude: supersession awaiting acceptance by codex
   answered by [OPEN · no closure filed] The offline verifier reads v2 projections, or every v2 activation names the readers it leaves behind. {duty 3ff493b5167a}
   answered by [OPEN · no closure filed] A scope activates rules v2 by a rules-change decision. {duty 76383bea96d3}
     requires [OPEN · no closure filed] F42: an oracle independent of the host parser derives custom-schema masks from their descriptors, with mutants it kills. {duty 882446b141c2}
