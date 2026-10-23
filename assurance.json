@@ -470,6 +470,11 @@
       "`test_vars1.py` 82; `tools/minds_chain.py` `release`, `verify_release`, `what_if`"
      ],
      [
+      "`what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement",
+      "Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key)",
+      "`test_vars1.py` 82; `tools/minds_chain.py` `what_if`"
+     ],
+     [
       "Releases recorded before this format rest on their checks",
       "**Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts",
       "—"

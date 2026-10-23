@@ -1380,5 +1380,29 @@
   "kills": [
    "test_82_a_release_rests_on_its_checks"
   ]
+ },
+ "m-needs-grounds": {
+  "file": "vars1.py",
+  "find": "            fallen = [g.hex() for g in relies_on(cid) if not standing(g)]",
+  "replace": "            fallen = []",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-needs-endorse": {
+  "file": "vars1.py",
+  "find": "            if b.get(\"settled\") and not a.get(\"settled\") and cid in after[\"evaluators\"]:",
+  "replace": "            if False:",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-restore": {
+  "file": "tools/minds_chain.py",
+  "find": "    new = [hyp]\n    if restore:",
+  "replace": "    new = [hyp]\n    if False:",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
  }
 }

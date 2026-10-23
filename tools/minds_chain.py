@@ -22,10 +22,11 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
-    tools/minds_chain.py what-if CELL... [--key FILE]
+    tools/minds_chain.py what-if CELL... [--key FILE] [--restore]
                                               # what would follow if CELL... (a release's check, say) were
                                               # invalidated: checked by the gate, sealed by FILE or the maintainer
-                                              # key (never created), no ref moves, nothing filed on the chain
+                                              # key (never created), no ref moves, nothing filed on the chain;
+                                              # --restore: the signer's own replacement checks and verdicts too
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -726,8 +727,10 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
 
 
 def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], bytes]:
-    """`what-if CELL... [--key FILE]`: the cells, and the seed that seals the hypothesis: FILE (a member's own key),
-    else the maintainer key if it exists. Nothing is created: a missing key is a refusal."""
+    """`what-if CELL... [--key FILE] [--restore]`: the cells, and the seed that seals the hypothesis: FILE (a
+    member's own key), else the maintainer key if it exists. Nothing is created: a missing key is a refusal.
+    `--restore` is read by the caller."""
+    args = [x for x in args if x != "--restore"]
     if "--key" in args:
         i = args.index("--key")
         if i + 1 >= len(args):
@@ -747,17 +750,52 @@ def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], bytes]:
     return cells, bytes.fromhex(key.read_text().strip())
 
 
-def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "") -> Dict[str, object]:
+def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "", restore: bool = False) -> Dict[str, object]:
     """What would follow if `cells` were invalidated now: a hypothesis cell invalidating them, sealed by `sk` (a key
     on the roster), run through `GitVarsRepo.what_if`: checked by the gate, no ref moved, nothing filed on the chain.
-    The candidate commit's objects stay in the object store, unreachable, until git's gc removes them."""
+    The candidate commit's objects stay in the object store, unreachable, until git's gc removes them.
+
+    With `restore`, the signer also supposes it re-ran each of its own checks that the hypothesis invalidates: for
+    every verdict sealed by `sk` that relies on one, a replacement check (`<check>/again`) and a replacement verdict
+    (`<verdict>/again`) relying on its other grounds and the replacement, both sealed by `sk`. Only the signer's own
+    verdicts are replaced; that nobody's standing is restored with another's key is Pass 3's, which counts the key
+    that seals a verdict, not its name."""
     repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    t_atoms, t_cells, t_seals = repo.read_cas_tree(tip)
     atoms: Dict[bytes, bytes] = {}
     label = name or "-".join(c.hex()[:12] for c in cells)
     hyp = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/what-if/{label}")),
                  h_payload=_put(atoms, V.atom_utf8("suppose these fail")),
                  h_invalidates=_put(atoms, V.atom_hvec(sorted(cells))))
-    return repo.what_if(SCOPE, atoms, [hyp], [V.Seal.sign(sk, hyp.id, governing_scope(repo))])
+    new = [hyp]
+    if restore:
+        pk = V.ed25519_pubkey(sk)
+        mine = {x.h_target for x in t_seals.values() if x.actor_pubkey == pk}
+        relies = lambda c: [] if c.h_relies == V.H_EMPTY else V.parse_hvec(t_atoms[c.h_relies], require_sorted=True)
+        for vid, v in sorted(t_cells.items()):
+            if v.h_schema != V.H_SCHEMA["verdict"] or vid not in mine or not set(relies(v)) & set(cells):
+                continue
+            grounds = []
+            for g in relies(v):
+                if g not in cells:
+                    grounds.append(g)
+                    continue
+                again = V.Cell(h_schema=V.H_SCHEMA["axiom"],
+                               h_slot_name=_put(atoms, V.atom_utf8(V.parse_utf8(t_atoms[t_cells[g].h_slot_name]) + "/again")),
+                               h_payload=_put(atoms, V.atom_utf8(V.parse_utf8(t_atoms[t_cells[g].h_payload]) + " (run again)")))
+                new.append(again)
+                grounds.append(again.id)
+            new.append(V.Cell(h_schema=V.H_SCHEMA["verdict"],
+                              h_slot_name=_put(atoms, V.atom_utf8(V.parse_utf8(t_atoms[v.h_slot_name]) + "/again")),
+                              h_payload=v.h_payload, h_attests=v.h_attests,
+                              h_relies=_put(atoms, V.atom_hvec(sorted(grounds))), slots=v.slots))
+    for c in new:  # the atoms the replacements reuse from the chain travel with them
+        for h in (c.h_payload, c.h_attests, *c.slots):
+            if h in t_atoms:
+                atoms.setdefault(h, t_atoms[h])
+    s = governing_scope(repo)
+    return repo.what_if(SCOPE, atoms, new, [V.Seal.sign(sk, c.id, s) for c in new])
 
 
 def _main(argv: List[str]) -> int:
@@ -824,7 +862,7 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "what-if" and len(argv) >= 2:
         cells, sk = what_if_args(repo_dir, argv[1:])
-        print(json.dumps(what_if(repo_dir, sk, cells), indent=2))
+        print(json.dumps(what_if(repo_dir, sk, cells, restore="--restore" in argv), indent=2))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))
