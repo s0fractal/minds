@@ -56,6 +56,13 @@ records ATTESTED or INVALID under its own key, and witnesses the projections tha
 it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
 member's own ATTESTED.
 
+## The spec and the assurance map are renderings
+
+`VARS-1-SPEC.md` is rendered from `spec.json` and `ASSURANCE.md` from `assurance.json`; edit the data, then
+`python3 tools/check_claims.py --write-spec --write-assurance`. CI refuses either file when it is not exactly the
+rendering. Each normative block of the spec is a part that names the claims it carries (`claims.json`), so coverage
+is read from the data and nothing parses Markdown.
+
 ## Roadmap
 
 [ROADMAP.md](ROADMAP.md) is generated from Warrant 2 records in `.warrant/store/` by warrant's own tool, as warrant's

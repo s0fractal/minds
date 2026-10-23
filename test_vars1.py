@@ -2728,26 +2728,54 @@ class TestVars1Conformance(unittest.TestCase):
         adoc = json.loads((ROOT_DIR / "assurance.json").read_text())
         norm = lambda t: re.sub(r"\s+", " ", t).strip()
 
-        def check(spec_text, claims_obj, assurance_text=assurance, assurance_doc=adoc, write=False):
+        sdoc = json.loads((ROOT_DIR / "spec.json").read_text())
+
+        def check(spec_text, claims_obj, assurance_text=assurance, assurance_doc=adoc, write=False, spec_doc=sdoc,
+                  write_spec=False):
             d = Path(self.tmp.name)
             (d / "spec.md").write_text(spec_text)
+            (d / "spec.json").write_text(json.dumps(spec_doc))
             (d / "claims.json").write_text(json.dumps(claims_obj))
             (d / "assurance.md").write_text(assurance_text)
             (d / "assurance.json").write_text(json.dumps(assurance_doc))
-            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--claims", str(d / "claims.json"),
+            out = subprocess.run([sys.executable, str(tool), "--spec", str(d / "spec.md"), "--spec-data", str(d / "spec.json"),
+                                  "--claims", str(d / "claims.json"),
                                   "--assurance", str(d / "assurance.md"), "--assurance-data", str(d / "assurance.json"),
-                                  *(["--write-assurance"] if write else [])], capture_output=True, text=True)
+                                  *(["--write-assurance"] if write else []), *(["--write-spec"] if write_spec else [])],
+                                 capture_output=True, text=True)
             return out.returncode, out.stdout
 
         code, out = check(spec, claims)
         self.assertEqual(code, 0, out)
-        anchor = "### 4.3 Rules object"
-        code, out = check(spec.replace(anchor, anchor + "\n\nA new rule nobody holds to anything.\n"), claims)
+        # VARS-1-SPEC.md is the rendering of spec.json: a hand edit is refused, whatever it says
+        code, out = check(spec + "\nA new rule nobody holds to anything.\n", claims)
         self.assertEqual(code, 1)
-        self.assertIn("no claim or informative quote covers this block", out)
-        code, out = check(spec.replace("Non-canonical bytes are refused, never normalized.",
-                                       "Non-canonical bytes are refused, sometimes normalized."), claims)
-        self.assertIn("atoms.canonical: quote not in the spec", out)
+        self.assertIn("VARS-1-SPEC.md is not the rendering of spec.json", out)
+
+        def parts(change):
+            doc = json.loads(json.dumps(sdoc))
+            change(doc["parts"])
+            return doc
+
+        at = next(i for i, x in enumerate(sdoc["parts"]) if x["text"] == "### 4.3 Rules object")
+        # a block of §0–§5 that carries nothing; and the section is counted from the headings, never read from the part
+        for extra in ({"kind": "block", "text": "A new rule nobody holds to anything."},
+                      {"kind": "block", "section": 6, "text": "A new rule that says it lives in §6."}):
+            code, out = check(spec, claims, spec_doc=parts(lambda ps: ps.insert(at + 1, extra)), write_spec=True)
+            self.assertIn("carries no claim or informative passage", out, extra)
+        # a carried quote must be in the carrier's own text
+        canon = next(i for i, x in enumerate(sdoc["parts"]) if "atoms.canonical" in x.get("carries", []))
+        edited = parts(lambda ps: ps[canon].__setitem__("text", ps[canon]["text"].replace("never normalized", "sometimes normalized")))
+        code, out = check(spec, claims, spec_doc=edited, write_spec=True)
+        self.assertIn(f"spec.json part {canon}: carries atoms.canonical, whose quote is not in its text", out)
+        # a claim no part carries; and a "heading" that hides a paragraph
+        code, out = check(spec, claims, write_spec=True,
+                          spec_doc=parts(lambda ps: ps[canon].__setitem__("carries", [c for c in ps[canon]["carries"]
+                                                                                    if c != "atoms.canonical"])))
+        self.assertIn("atoms.canonical: carried by no part of spec.json", out)
+        hidden = parts(lambda ps: ps.insert(at + 1, {"kind": "heading", "text": "## A rule\nnobody holds to anything."}))
+        code, out = check(spec, claims, spec_doc=hidden, write_spec=True)
+        self.assertIn("a heading is one heading line", out)
         weak = json.loads(json.dumps(claims))
         tested = next(c for c in weak["claims"] if c["status"] == "tested")
         tested["witnesses"] = ["test:test_99_does_not_exist"]
@@ -2796,19 +2824,6 @@ class TestVars1Conformance(unittest.TestCase):
         # a live row whose evidence cell no longer states the claim's status
         code, out = check(spec, claims, assurance_doc=with_row(lambda rows, r: r.__setitem__(1, "Assumed")), write=True)
         self.assertIn(f"{held['id']}: ASSURANCE.md row says 'Assumed'", out)
-        # every spec block the checker cannot split is refused, never read into its neighbour's coverage (Codex r8 F2)
-        item = "- `id(x) = SHA-256(bytes(x))`. Every object is addressed by its id."
-        for extra in ("* R8: admission without a witness.", "+ R8: admission without a witness.",
-                      "1) R8: admission without a witness.", "~~~\nR8: admission without a witness.\n~~~",
-                      "  - R8: admission without a witness.", "> R8: admission without a witness."):
-            code, out = check(spec.replace(item, item + "\n" + extra), claims)
-            self.assertEqual(code, 1, extra)
-            self.assertIn("a block construct this checker does not read", out, extra)
-        code, out = check(spec.replace(item, item + "\n- R8: admission without a witness."), claims)
-        self.assertIn("no claim or informative quote covers this block", out, "the control: a `-` item is its own block")
-        # a line opening with `#` and no space is a paragraph, not a heading, and must be covered (Codex r7 F2)
-        code, out = check(spec.replace(anchor, anchor + "\n\n#Admission without a witness is permitted.\n"), claims)
-        self.assertIn("no claim or informative quote covers this block", out)
         held["quote"], held["source"] = held["quote"][: -len(" and more")], "README.md"
         code, out = check(spec, moved)
         self.assertIn(f"{held['id']}: unknown source 'README.md'", out)

@@ -1550,14 +1550,18 @@
   {
    "id": "assurance.spec-coverage",
    "source": "ASSURANCE.md",
-   "quote": "Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5, as `tools/check_claims.py` splits them",
+   "quote": "Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5 is a part of spec.json that carries a claim or an informative passage whose quote is in its own text",
    "status": "tested",
    "witnesses": [
     "test:test_45_the_spec_is_a_projection_of_its_witnesses"
    ],
    "mutants": [
-    "m-spec-heading",
-    "m-spec-unread"
+    "m-spec-render",
+    "m-spec-carries",
+    "m-spec-quote-in-part",
+    "m-spec-section",
+    "m-spec-heading-shape",
+    "m-spec-carried-claim"
    ]
   },
   {

@@ -9,6 +9,7 @@ caught the mutant). An import error or any other crash proves nothing. The file 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,8 +29,10 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same
             # second would otherwise be loaded in place of this one's source
             with tempfile.TemporaryDirectory() as cache:
+                env = dict(os.environ, MINDS_MUTANT=mid)  # check_claims does not count the applied mutant as lost
                 out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", "-m", "unittest",
-                                      f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True)
+                                      f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True,
+                                     env=env)
             text = out.stdout + out.stderr
             if out.returncode != 0 and "AssertionError" in text:
                 return True, f"killed by {t}"
