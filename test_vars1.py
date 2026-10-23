@@ -4515,6 +4515,18 @@ class TestVars1Conformance(unittest.TestCase):
                 self.repo.build_candidate_commit("core", sa, [schema], [V.Seal.sign(self.sk1, schema.id, s0.id)],
                                                  parent_commit=c0))
 
+        # §1.2 rule 5: a decision requiring a computation relies on that computation's cell
+        da: dict[bytes, bytes] = {}
+        needy = V.Cell(V.H_SCHEMA["decision"], self._put_atom(da, V.atom_utf8("core/needy")),
+                       self._put_atom(da, V.atom_utf8("needs a computation")),
+                       slots=(V.H_PROVISIONAL,
+                              self._put_atom(da, V.atom_computation_root(
+                                  V.sha256(b"term"), self._put_atom(da, V.atom_environment([])))),
+                              V.H_K, V.H_EMPTY))
+        refused("must rely on a matching computation cell",
+                self.repo.build_candidate_commit("core", da, [needy], [V.Seal.sign(self.sk1, needy.id, s0.id)],
+                                                 parent_commit=c0))
+
         # the neighbour: the same cells, canonical, admit
         good = V.Cell(V.H_META_SCHEMA, schema.h_slot_name, V.H_EMPTY, slots=schema.slots)
         self._admit({**a, **sa}, [ax, good], [V.Seal.sign(self.sk1, ax.id, s0.id),

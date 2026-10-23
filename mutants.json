@@ -1453,5 +1453,45 @@
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
+ },
+ "m-intrinsic-empty": {
+  "file": "verify/minds_verify.py",
+  "find": "H_EMPTY = sha256(b\"HVEC\")",
+  "replace": "H_EMPTY = sha256(b\"HVEC \")",
+  "kills": [
+   "test_01_golden_test_vectors"
+  ]
+ },
+ "m-schema-descriptor": {
+  "file": "verify/minds_verify.py",
+  "find": "\"kernel_outcome:utf8\", \"actions:u64\"],",
+  "replace": "\"kernel_outcome:utf8\", \"action:u64\"],",
+  "kills": [
+   "test_01_golden_test_vectors"
+  ]
+ },
+ "m-root-field": {
+  "file": "vars1.py",
+  "find": "        \"runtime_semantics_id\": runtime_id,",
+  "replace": "        \"runtime_id\": runtime_id,",
+  "kills": [
+   "test_01_golden_test_vectors"
+  ]
+ },
+ "m-dependency": {
+  "file": "vars1.py",
+  "find": "                    if not any(\n                        cells[r].h_schema == H_SCHEMA[\"computation\"] and cells[r].h_payload == c.slots[1]\n                        for r in relies_ids\n                    ):",
+  "replace": "                    if False:",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-offline-stdlib": {
+  "file": "verify/minds_verify.py",
+  "find": "import hashlib\nimport json\n",
+  "replace": "import hashlib\nimport json\nimport sigma_resume  # noqa: F401\n",
+  "kills": [
+   "test_36_offline_verifier_in_a_fresh_folder"
+  ]
  }
 }
