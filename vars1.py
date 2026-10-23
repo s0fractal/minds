@@ -919,6 +919,11 @@ def canonical_commit_id(repo_dir: Path | str, name: str) -> bool:
 # ---------------------------------------------------------------------------
 # §3 Git Plumbing Store & Mandatory 5-Check Admission Gate
 # ---------------------------------------------------------------------------
+# the signature of an assumed seal (`what_if(assume=True)`): R encodes a point of order 4 and S = 0, so under a key
+# that is not weak it verifies only if the challenge is 0 mod L (probability ~2^-252); Seal.decode refuses it
+ZERO_SIGNATURE = bytes(64)
+
+
 class GitVarsRepo:
     def __init__(self, repo_dir: Path | str):
         self.repo_dir = Path(repo_dir)
@@ -929,6 +934,9 @@ class GitVarsRepo:
         self._fold_memo: Dict[Tuple[str, str], Dict[str, object]] = {}
         self._gate_checked: Set[Tuple[str, str]] = set()  # (scope, commit): every gate check passed for that chain
         self._commit_ids: Set[str] = set()  # names checked to be canonical commit ids (an id never changes meaning)
+        # seal ids taken as signed without checking: only ever set on a throwaway instance `what_if` makes for an
+        # assumed hypothesis, whose seals carry a zero signature no real check accepts
+        self._assumed: frozenset = frozenset()
 
     def _git(self, *args: str, input_bytes: Optional[bytes] = None) -> bytes:
         res = subprocess.run(
@@ -974,6 +982,10 @@ class GitVarsRepo:
     def _checked_object(self, kind: str, h: bytes, raw: bytes, path: str) -> object:
         if sha256(raw) != h:
             raise VarsError(f"CAS SHA-256 mismatch at {path}")
+        if kind == "seals" and h in self._assumed:  # structure only, never cached
+            if len(raw) != 164 or raw[:4] != b"SEAL" or weak_public_key(raw[68:100]):
+                raise VarsError("an assumed seal is SEAL, target, context and a key that is not weak")
+            return Seal(h_target=raw[4:36], h_scope_ctx=raw[36:68], actor_pubkey=raw[68:100], signature=raw[100:])
         hit = self._checked.get((kind, h))
         if hit is not None:
             return hit
@@ -2430,8 +2442,23 @@ class GitVarsRepo:
             "children_of": children_of,
         }
 
-    def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"]
-                ) -> Dict[str, object]:
+    def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"],
+                assume: bool = False) -> Dict[str, object]:
+        """See `_what_if`. With `assume`, the hypothesis's seals are supposed, not signed: each names a key and carries
+        a zero signature, so a reader holding no key of the roster can ask what would follow if those keys sealed it.
+        The gate checks everything else as for an admission (keys of the policy, references, replay); the run uses a
+        throwaway instance, so no cache of this one ever holds an assumed seal, and its candidate can never be
+        admitted, since a zero signature fails every real check. The report says `mode: assumed` in its context."""
+        if not assume:
+            return self._what_if(scope, atoms, cells, seals, "sealed")
+        if not seals or any(x.signature != ZERO_SIGNATURE for x in seals):
+            raise VarsError("an assumed hypothesis carries only seals with a zero signature")
+        sim = GitVarsRepo(self.repo_dir)
+        sim._assumed = frozenset(x.id for x in seals)
+        return sim._what_if(scope, atoms, cells, seals, "assumed")
+
+    def _what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"], mode: str
+                 ) -> Dict[str, object]:
         """What would follow if `cells` (a hypothesis: say a cell invalidating a ground, or an INVALID verdict) were
         admitted now. The hypothesis is built as a candidate commit on the tip and checked by the gate exactly as an
         admission would be, but no ref moves: the canonical chain is unchanged. The lens is computed at the tip and at
@@ -2449,7 +2476,8 @@ class GitVarsRepo:
         whose counted endorsements change carries them (threshold, before, after): Settled kept with a thinner
         margin is a consequence no status bit shows. `digest` is SHA-256 over the canonical JSON of both lists:
         two readers who agree on the consequences agree on it, whatever chain or hypothesis produced them.
-        `transcript` binds the same lists to their context, the scope, tip, rules at the tip and at the candidate,
+        `transcript` binds the same lists to their context, the mode (`sealed`, or `assumed`: see `what_if`), the
+        scope, tip, rules at the tip and at the candidate,
         hypothesis cells, and the (cell, key) of every hypothesis seal: equal transcripts, equal question and
         equal answer."""
         tip = self.ref_commit(scope)
@@ -2547,7 +2575,7 @@ class GitVarsRepo:
         body = {"lost": lost, "held": held}
         canon = lambda o: json.dumps(o, sort_keys=True, separators=(",", ":")).encode()  # noqa: E731
         digest = sha256(canon(body)).hex()
-        context = {"scope": scope, "tip": tip, "rules": [before["rules"].hex(), after["rules"].hex()],
+        context = {"mode": mode, "scope": scope, "tip": tip, "rules": [before["rules"].hex(), after["rules"].hex()],
                    "hypothesis": sorted(h.hex() for h in hyp),
                    "seals": sorted([x.h_target.hex(), x.actor_pubkey.hex()] for x in seals)}
         return {"scope": scope, "tip": tip, "hypothesis": sorted(h.hex() for h in hyp), "candidate": candidate,

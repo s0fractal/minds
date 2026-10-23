@@ -465,9 +465,14 @@
       "`test_vars1.py` 81"
      ],
      [
-      "`transcript` binds the consequence lists to their context (scope, tip, the rules at the tip and at the candidate, the hypothesis cells, and the cell and key of every hypothesis seal); `digest` binds the lists alone, so two signers of one hypothesis share the digest and not the transcript",
+      "`transcript` binds the consequence lists to their context (mode, scope, tip, the rules at the tip and at the candidate, the hypothesis cells, and the cell and key of every hypothesis seal); `digest` binds the lists alone, so two signers of one hypothesis share the digest and not the transcript",
       "Tested, with mutants: a second signer gives the same digest and another transcript",
       "`test_vars1.py` 81"
+     ],
+     [
+      "An assumed hypothesis (`what_if(..., assume=True)`, `minds_chain.py what-if CELL... --assume PUBKEY`) needs no key: its seals name a key and carry a zero signature, the gate checks everything else as for an admission (the key against the policy, references, replay), the run uses a throwaway instance whose caches the caller never shares, and its candidate is refused by any real check; the report carries `mode: assumed`, the digest of the sealed run and another transcript",
+      "Tested, with mutants: a reader without keys gets a member's consequences, restoration included; a real signature, a weak key and a key outside the policy are refused; the caller's caches hold no assumed seal and its candidate cannot be admitted",
+      "`test_vars1.py` 81, 82; `vars1.py` `what_if`, `_checked_object`; `tools/minds_chain.py` `what_if`"
      ],
      [
       "Every cell whose statuses a hypothesis changes is reported, inside its region or not",

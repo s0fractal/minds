@@ -22,10 +22,12 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
-    tools/minds_chain.py what-if CELL... [--key FILE] [--restore]
+    tools/minds_chain.py what-if CELL... [--key FILE | --assume PUBKEY] [--restore]
                                               # what would follow if CELL... (a release's check, say) were
                                               # invalidated: checked by the gate, sealed by FILE or the maintainer
                                               # key (never created), no ref moves, nothing filed on the chain;
+                                              # --assume: no key at all, the seals of roster key PUBKEY supposed
+                                              # (zero signatures, `mode: assumed` in the report);
                                               # --restore: the signer's own replacement checks and verdicts too
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
@@ -726,11 +728,20 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     return c, ok, lines
 
 
-def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], bytes]:
-    """`what-if CELL... [--key FILE] [--restore]`: the cells, and the seed that seals the hypothesis: FILE (a
-    member's own key), else the maintainer key if it exists. Nothing is created: a missing key is a refusal.
-    `--restore` is read by the caller."""
+def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], Optional[bytes], Optional[bytes]]:
+    """`what-if CELL... [--key FILE | --assume PUBKEY] [--restore]`: the cells, the seed that seals the hypothesis
+    (FILE, a member's own key, else the maintainer key if it exists) and, with `--assume`, no seed but the public
+    key whose seals are supposed. Nothing is created: a missing key is a refusal. `--restore` is read by the
+    caller."""
     args = [x for x in args if x != "--restore"]
+    if "--assume" in args:
+        i = args.index("--assume")
+        if "--key" in args:
+            raise V.VarsError("--assume and --key exclude each other: an assumed hypothesis is sealed by no key")
+        if i + 1 >= len(args) or not re.fullmatch(r"[0-9a-f]{64}\Z", args[i + 1]):
+            raise V.VarsError("--assume needs a public key (64 lowercase hex digits)")
+        pk, args = bytes.fromhex(args[i + 1]), args[:i] + args[i + 2:]
+        return _cell_args(args), None, pk
     if "--key" in args:
         i = args.index("--key")
         if i + 1 >= len(args):
@@ -739,18 +750,23 @@ def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], bytes]:
     else:
         key = key_path(repo_dir)
     if not key.is_file():
-        raise V.VarsError(f"no key at {key}: pass --key FILE (a member's own seed)")
+        raise V.VarsError(f"no key at {key}: pass --key FILE (a member's own seed) or --assume PUBKEY")
+    return _cell_args(args), bytes.fromhex(key.read_text().strip()), None
+
+
+def _cell_args(args: List[str]) -> List[bytes]:
     if not args:
         raise V.VarsError("what-if needs at least one cell id")
     cells = []
     for a in args:
-        if not re.fullmatch(r"[0-9a-f]{64}", a):
+        if not re.fullmatch(r"[0-9a-f]{64}\Z", a):
             raise V.VarsError(f"{a[:80]!r} is not a cell id (64 lowercase hex digits)")
         cells.append(bytes.fromhex(a))
-    return cells, bytes.fromhex(key.read_text().strip())
+    return cells
 
 
-def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "", restore: bool = False) -> Dict[str, object]:
+def what_if(repo_dir: Path, sk: Optional[bytes], cells: List[bytes], name: str = "", restore: bool = False,
+            assume: Optional[bytes] = None) -> Dict[str, object]:
     """What would follow if `cells` were invalidated now: a hypothesis cell invalidating them, sealed by `sk` (a key
     on the roster), run through `GitVarsRepo.what_if`: checked by the gate, no ref moved, nothing filed on the chain.
     The candidate commit's objects stay in the object store, unreachable, until git's gc removes them.
@@ -759,7 +775,10 @@ def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "", resto
     every verdict sealed by `sk` that relies on one, a replacement check (`<check>/again`) and a replacement verdict
     (`<verdict>/again`) relying on its other grounds and the replacement, both sealed by `sk`. Only the signer's own
     verdicts are replaced; that nobody's standing is restored with another's key is Pass 3's, which counts the key
-    that seals a verdict, not its name."""
+    that seals a verdict, not its name.
+
+    With `assume` (a public key) in place of `sk`, nothing is signed: every seal names `assume` and carries a zero
+    signature, and `GitVarsRepo.what_if` checks the hypothesis as if that key had sealed it (`mode: assumed`)."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     t_atoms, t_cells, t_seals = repo.read_cas_tree(tip)
@@ -770,7 +789,7 @@ def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "", resto
                  h_invalidates=_put(atoms, V.atom_hvec(sorted(cells))))
     new = [hyp]
     if restore:
-        pk = V.ed25519_pubkey(sk)
+        pk = assume if assume is not None else V.ed25519_pubkey(sk)
         mine = {x.h_target for x in t_seals.values() if x.actor_pubkey == pk}
         relies = lambda c: [] if c.h_relies == V.H_EMPTY else V.parse_hvec(t_atoms[c.h_relies], require_sorted=True)
         for vid, v in sorted(t_cells.items()):
@@ -795,6 +814,9 @@ def what_if(repo_dir: Path, sk: bytes, cells: List[bytes], name: str = "", resto
             if h in t_atoms:
                 atoms.setdefault(h, t_atoms[h])
     s = governing_scope(repo)
+    if assume is not None:
+        return repo.what_if(SCOPE, atoms, new, [V.Seal(h_target=c.id, h_scope_ctx=s, actor_pubkey=assume,
+                                                       signature=V.ZERO_SIGNATURE) for c in new], assume=True)
     return repo.what_if(SCOPE, atoms, new, [V.Seal.sign(sk, c.id, s) for c in new])
 
 
@@ -861,8 +883,8 @@ def _main(argv: List[str]) -> int:
         print(json.dumps(show(repo_dir), indent=2))
         return 0
     if cmd == "what-if" and len(argv) >= 2:
-        cells, sk = what_if_args(repo_dir, argv[1:])
-        print(json.dumps(what_if(repo_dir, sk, cells, restore="--restore" in argv), indent=2))
+        cells, sk, pk = what_if_args(repo_dir, argv[1:])
+        print(json.dumps(what_if(repo_dir, sk, cells, restore="--restore" in argv, assume=pk), indent=2))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))

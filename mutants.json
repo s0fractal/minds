@@ -1359,7 +1359,7 @@
  },
  "m-whatif-key": {
   "file": "tools/minds_chain.py",
-  "find": "    if not key.is_file():\n        raise V.VarsError(f\"no key at {key}: pass --key FILE (a member's own seed)\")",
+  "find": "    if not key.is_file():\n        raise V.VarsError(f\"no key at {key}: pass --key FILE (a member's own seed) or --assume PUBKEY\")",
   "replace": "    if not key.is_file():\n        key.parent.mkdir(parents=True, exist_ok=True); key.write_text(os.urandom(32).hex())",
   "kills": [
    "test_82_a_release_rests_on_its_checks"
@@ -1576,10 +1576,74 @@
  },
  "m-whatif-transcript-tip": {
   "file": "vars1.py",
-  "find": "        context = {\"scope\": scope, \"tip\": tip,",
-  "replace": "        context = {\"scope\": scope, \"tip\": None,",
+  "find": "        context = {\"mode\": mode, \"scope\": scope, \"tip\": tip,",
+  "replace": "        context = {\"mode\": mode, \"scope\": scope, \"tip\": None,",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-structure": {
+  "file": "vars1.py",
+  "find": "        if kind == \"seals\" and h in self._assumed:  # structure only, never cached",
+  "replace": "        if False:",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-fresh": {
+  "file": "vars1.py",
+  "find": "        sim = GitVarsRepo(self.repo_dir)\n",
+  "replace": "        sim = self\n",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-zero": {
+  "file": "vars1.py",
+  "find": "        if not seals or any(x.signature != ZERO_SIGNATURE for x in seals):",
+  "replace": "        if not seals:",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-weak": {
+  "file": "vars1.py",
+  "find": "            if len(raw) != 164 or raw[:4] != b\"SEAL\" or weak_public_key(raw[68:100]):",
+  "replace": "            if len(raw) != 164 or raw[:4] != b\"SEAL\":",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-mode": {
+  "file": "vars1.py",
+  "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\")",
+  "replace": "        return sim._what_if(scope, atoms, cells, seals, \"sealed\")",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-assume-cli-seals": {
+  "file": "tools/minds_chain.py",
+  "find": "                                                       signature=V.ZERO_SIGNATURE) for c in new], assume=True)",
+  "replace": "                                                       signature=V.ZERO_SIGNATURE) for c in new[:1]], assume=True)",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-assume-cli-restore": {
+  "file": "tools/minds_chain.py",
+  "find": "        pk = assume if assume is not None else V.ed25519_pubkey(sk)",
+  "replace": "        pk = V.ed25519_pubkey(sk or bytes(32))",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-assume-cli-exclusive": {
+  "file": "tools/minds_chain.py",
+  "find": "        if \"--key\" in args:\n            raise V.VarsError(\"--assume and --key",
+  "replace": "        if False:\n            raise V.VarsError(\"--assume and --key",
+  "kills": [
+   "test_82_a_release_rests_on_its_checks"
   ]
  }
 }

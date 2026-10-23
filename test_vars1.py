@@ -4637,6 +4637,31 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(by2["digest"], one["digest"], "a second signer, the same consequences")
         self.assertNotEqual(by2["transcript"], one["transcript"], "but not the same question: the seal key is bound")
         self.assertEqual(by2["context"]["seals"], [[c1_[0].id.hex(), self.pk2.hex()]])
+        # assumed: a reader with no key asks what would follow if pk2 sealed it; same consequences, another question
+        zero = lambda cid, pk: V.Seal(h_target=cid, h_scope_ctx=s0.id, actor_pubkey=pk, signature=V.ZERO_SIGNATURE)
+        before_checked = set(self.repo._checked)
+        try:
+            sim = self.repo.what_if("core", h1, c1_, [zero(c1_[0].id, self.pk2)], assume=True)
+        except V.VarsError as e:
+            self.fail(f"an assumed hypothesis by a policy key was refused: {e}")
+        self.assertEqual(sim["context"].get("mode"), "assumed")
+        self.assertEqual(one["context"].get("mode"), "sealed")
+        self.assertEqual(sim["digest"], by2["digest"])
+        self.assertEqual(sim["context"]["seals"], by2["context"]["seals"])
+        self.assertNotEqual(sim["transcript"], by2["transcript"], "the mode is bound")
+        self.assertEqual(set(self.repo._checked), before_checked, "no assumed seal enters this instance's caches")
+        with self.assertRaisesRegex(V.VarsError, "Ed25519"):  # its candidate can never be admitted
+            self.repo.admit_and_advance("core", sim["candidate"], expected_old=c1)
+        with self.assertRaisesRegex(V.VarsError, "Ed25519"):  # nor read as a sealed hypothesis
+            self.repo.what_if("core", h1, c1_, [zero(c1_[0].id, self.pk2)])
+        with self.assertRaisesRegex(V.VarsError, "zero signature"):  # a real signature is not assumed
+            self.repo.what_if("core", h1, c1_, [V.Seal.sign(self.sk2, c1_[0].id, s0.id)], assume=True)
+        with self.assertRaisesRegex(V.VarsError, "not weak"):  # the identity point is no key
+            self.repo.what_if("core", h1, c1_, [zero(c1_[0].id, b"\x01" + bytes(31))], assume=True)
+        outsider = V.ed25519_pubkey(b"\x09" * 32)
+        with self.assertRaises(V.VarsError):  # the gate still checks the key against the policy
+            self.repo.what_if("core", h1, c1_, [zero(c1_[0].id, outsider)], assume=True)
+        self.assertEqual(self.repo.ref_commit("core"), c1)
         # a quorum kept with a thinner margin: G held, its counted endorsements 2 -> 1
         gh = next(x for x in one["held"] if x["name"] == "core/g")
         self.assertEqual(gh.get("endorsements"), {"threshold": 1, "before": 2, "after": 1})
@@ -4722,15 +4747,35 @@ class TestVars1Conformance(unittest.TestCase):
         k2.write_text(sk2.hex())
         absent = mc.key_path(self.repo_path)
         self.assertFalse(absent.exists())
-        cells_, seed = mc.what_if_args(self.repo_path, [mine.hex(), "--key", str(k2)])
-        self.assertEqual((cells_, seed), ([mine], sk2))
+        cells_, seed, none = mc.what_if_args(self.repo_path, [mine.hex(), "--key", str(k2)])
+        self.assertEqual((cells_, seed, none), ([mine], sk2, None))
         self.assertEqual(next(x for x in mc.what_if(self.repo_path, seed, cells_)["lost"] if x["name"] == tag)["after"],
                          {"settled": False}, "the member's own key seals the hypothesis")
         for args, why in (([mine.hex()], "no key at"), ([mine.hex(), "--key"], "needs a file"),
-                          (["--key", str(k2)], "at least one cell"), (["zz", "--key", str(k2)], "not a cell id")):
+                          (["--key", str(k2)], "at least one cell"), (["zz", "--key", str(k2)], "not a cell id"),
+                          ([mine.hex(), "--assume"], "needs a public key"),
+                          ([mine.hex(), "--assume", V.ed25519_pubkey(sk2).hex() + "\n"], "needs a public key"),
+                          ([mine.hex() + "\n", "--key", str(k2)], "not a cell id"),
+                          ([mine.hex(), "--assume", V.ed25519_pubkey(sk2).hex(), "--key", str(k2)], "exclude")):
             with self.assertRaisesRegex(V.VarsError, why):
                 mc.what_if_args(self.repo_path, args)
         self.assertFalse(absent.exists(), "no key was created")
+        # no key at all: the member's seals supposed give the member's consequences, under another mode
+        cells_, none, pk2 = mc.what_if_args(self.repo_path, [mine.hex(), "--assume", V.ed25519_pubkey(sk2).hex()])
+        self.assertEqual((cells_, none, pk2), ([mine], None, V.ed25519_pubkey(sk2)))
+        real = mc.what_if(self.repo_path, sk2, [mine])
+        try:
+            sup = mc.what_if(self.repo_path, None, [mine], assume=pk2)
+        except V.VarsError as e:
+            self.fail(f"the assumed member's hypothesis was refused: {e}")
+        self.assertEqual((sup["context"].get("mode"), sup["digest"]), ("assumed", real["digest"]))
+        self.assertNotEqual(sup["transcript"], real["transcript"])
+        try:
+            sup_back = mc.what_if(self.repo_path, None, [mine], restore=True, assume=pk2)
+        except V.VarsError as e:
+            self.fail(f"the assumed member's restoration was refused: {e}")
+        self.assertEqual(sup_back["digest"], mc.what_if(self.repo_path, sk2, [mine], restore=True)["digest"],
+                         "restore follows the assumed key")
 
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
