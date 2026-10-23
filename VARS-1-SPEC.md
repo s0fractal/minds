@@ -70,6 +70,11 @@ reaches them by a rules change (§4.3); v1 stays the default.
 `kernel/lens1b.wasm`, the v1 rules built with the feature `commit-bound`: they refuse an input claiming more commits
 than it has bytes (E-7), and are otherwise v1. A scope reaches them by a resource hardening (§4.3).
 
+`H_LENS_KERNEL_V1C = db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017` is the id of
+`kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`: a rotation that removes keys
+without their consent waits (§4.1, latch 4a), and they are otherwise v1b. A scope reaches them by a validation
+tightening (§4.3).
+
 ### 1.2 Cells (`cas/cells/`)
 
 Unsigned, `296 + 32·K` bytes:
@@ -182,10 +187,11 @@ refusal is an error of the gate, never a crash.
    admission quorum. Any later commit has exactly the parent `T_old` and at most one new local scope cell, which
    supersedes exactly the governing scope and is sealed by its admission quorum. That quorum alone may set the
    new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the
-   reader's pin).
+   reader's pin; under `H_LENS_KERNEL_V1C` a removal without consent waits, §4.1 latch 4a).
 2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.
 3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell names
-   rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
+   rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or
+   `H_LENS_KERNEL_V1C`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of
    `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its
    `witness_policy`, roster or not). A **cross-seal** — a seal on a
    foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a
@@ -241,9 +247,20 @@ Latches (never undone):
    acceptance and schema cells are never Authorized in `<scope>`.
 3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind
    supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets
-   `InitialEndorsers(v)`.
+   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V1C` a waiting scope's supersedes edge is the exception (4a).
 3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.
 4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.
+4a. Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`,
+    step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of
+    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`
+    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from
+    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at
+    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which
+    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A
+    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a
+    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules
+    than `S` (E-24). A rules change never goes from rules with this delay to rules without it (§4.3): the last
+    epoch's rules fold the whole chain.
 
 ### 4.2 Lens (status at the tip)
 
@@ -317,7 +334,8 @@ retired, superseded, active, stale), one Authorized byte per cell (scope, accept
 invalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input
 (−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,
 unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).
-`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes.
+`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V1C` adds −24 as
+well: a new scope while a rotation waits, or a waiting rotation to other rules.
 
 **Epochs and the v2 rules.** A commit is in the epoch of the rules its governing scope names, and a cell in that of
 its birth commit; a rotation commit is still in the old epoch. The host runs the rules of the last commit's epoch
@@ -509,7 +527,9 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
-  (`proofs/Vars1/Cycle.lean`, compiled) (I12).
+  (`proofs/Vars1/Cycle.lean`, compiled) (I12). The generator writes chains under the v1 rules, whose rotations
+  take effect at once: for a rotation that waits under `H_LENS_KERNEL_V1C` (§4.1 latch 4a) I7 is test 85's, and
+  the model fold of I10 has no delay.
 - `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and
   run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
   INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an

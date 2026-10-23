@@ -84,26 +84,35 @@ H_LENS_KERNEL_V1B = bytes.fromhex("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7b
 KERNEL1B_ATOM = (KERNEL_DIR / "lens1b.wasm").read_bytes()
 if sha256(KERNEL1B_ATOM) != H_LENS_KERNEL_V1B:
     raise RuntimeError("kernel/lens1b.wasm does not hash to H_LENS_KERNEL_V1B")
+# v1b with a rotation that removes keys without their consent delayed (`kernel/`, built with `--features
+# commit-bound,rotation-delay`; §4.1). Dormant like v1b: a scope reaches it only by a rules change (§4.3).
+H_LENS_KERNEL_V1C = bytes.fromhex("db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017")
+KERNEL1C_ATOM = (KERNEL_DIR / "lens1c.wasm").read_bytes()
+if sha256(KERNEL1C_ATOM) != H_LENS_KERNEL_V1C:
+    raise RuntimeError("kernel/lens1c.wasm does not hash to H_LENS_KERNEL_V1C")
 
 
 @dataclass(frozen=True)
 class Rules:
     """A rules module this host implements: its file, the input encoding it reads (`v1`, or `v2` with typed
-    references, RULES-V2.md), and its resource refusals: the negative codes by which it refuses an input for its
-    size, not its meaning (§4.3, a resource hardening)."""
+    references, RULES-V2.md), its resource refusals: the negative codes by which it refuses an input for its
+    size, not its meaning (§4.3, a resource hardening), and the commits a rotation that removes keys without their
+    consent waits under it before its scope governs (0: at once; §4.1)."""
     path: Path
     encoding: str
     resource_codes: FrozenSet[int] = frozenset()
+    rotation_delay: int = 0
 
 
 RULES: Dict[bytes, Rules] = {
     H_LENS_KERNEL: Rules(KERNEL_DIR / "lens.wasm", "v1"),
     H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / "lens2.wasm", "v2"),
     H_LENS_KERNEL_V1B: Rules(KERNEL_DIR / "lens1b.wasm", "v1", frozenset({-7})),
+    H_LENS_KERNEL_V1C: Rules(KERNEL_DIR / "lens1c.wasm", "v1", frozenset({-7}), rotation_delay=16),
 }
 RULES_MODULES: Dict[bytes, Path] = {h: r.path for h, r in RULES.items()}
 RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM,
-                                   H_LENS_KERNEL_V1B: KERNEL1B_ATOM}
+                                   H_LENS_KERNEL_V1B: KERNEL1B_ATOM, H_LENS_KERNEL_V1C: KERNEL1C_ATOM}
 KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 INTRINSIC_HASHES: Set[bytes] = {
@@ -539,6 +548,7 @@ KERNEL_CODES = {
     -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
     -6: "reference list differs from the rules' reading", -25: "rotation back to the v1 rules",
     -7: "more commits than input bytes (a resource bound)",
+    -24: "a new scope while a rotation waits, or a waiting rotation to other rules",
 }
 
 
@@ -673,8 +683,9 @@ def schema_cell_mask(c: "Cell", atoms: Dict[bytes, bytes]) -> int:
 
 def commit_rules(scope: str, deltas: List["Delta"]) -> List[bytes]:
     """The rules of each commit's epoch: those named by the scope governing it (fixed at its start, §0). Parsed: the
-    genesis scope, then the newest local scope born in an earlier commit (§3 check 1 makes it the governing one; the
-    kernel recomputes it). A commit log the gate would refuse may get any answer here; the kernel refuses it."""
+    genesis scope, then the newest local scope born in an earlier commit (§3 check 1 makes it the governing one, or,
+    under rules with a rotation delay, the one waiting to govern, which names the same rules (§4.1); the kernel
+    recomputes it). A commit log the gate would refuse may get any answer here; the kernel refuses it."""
     out: List[bytes] = []
     cur: Optional[Cell] = None
     name = b"UTF8" + f"{scope}/SCOPE".encode()
@@ -1446,6 +1457,10 @@ class GitVarsRepo:
         old, new_rules = base.slots[2], rotation[0].slots[2]
         if RULES[old].encoding == "v2" and RULES[new_rules].encoding == "v1":
             raise VarsError("rules that read references as v1 does cannot read a v2 epoch: no rotation goes there")
+        if RULES[old].rotation_delay and not RULES[new_rules].rotation_delay:
+            # the kernel of the last epoch folds the whole chain: rules without the delay would let an earlier
+            # waiting rotation govern at once
+            raise VarsError("rules that delay a rotation are never left for rules without the delay (§4.1)")
         if RULES[new_rules].encoding == "v2" and any(
                 RULES[r].encoding == "v1" and r != H_LENS_KERNEL
                 for r in {old, *commit_rules(scope, self.chain_deltas(prior_chain))}):
@@ -1792,6 +1807,19 @@ class GitVarsRepo:
         latched_sup: Dict[bytes, Set[bytes]] = {}
         any_sup: Dict[bytes, Set[bytes]] = {}
         prev_base: Optional[bytes] = None
+        waiting: Optional[Tuple[bytes, int]] = None  # a rotation admitted at commit idx whose scope does not govern yet
+
+        def waits(base_id: bytes, s_id: bytes) -> bool:
+            """Must the rotation from `base_id` to `s_id` wait (§4.1, delayed rotation)? Only under rules with a delay,
+            while some key of the base's admission or acceptance policy that the new scope's same policy lacks has
+            not sealed the new scope under the base."""
+            base_c, s_c = cells[base_id], cells[s_id]
+            if len(base_c.slots) < 3 or not RULES[base_c.slots[2]].rotation_delay:
+                return False
+            removed = set()
+            for i in (0, 1):
+                removed |= pol_quorum(base_c.slots[i])[1] - pol_quorum(s_c.slots[i])[1]
+            return not removed <= signers(s_id, base_id, removed)
 
         def pol_quorum(pol_hash: bytes) -> Tuple[int, Set[bytes]]:
             thr, hvec_h = parse_pol1(atoms[pol_hash])
@@ -1977,6 +2005,7 @@ class GitVarsRepo:
 
             # At most one new local schema.scope cell in any transition commit
             pending_next_scope: Optional[bytes] = None
+            pending_waits = False
             if idx >= 1:
                 new_local_scopes = [
                     cid for cid in new_cids if cells[cid].h_schema == H_SCHEMA["scope"] and cell_origin(cells[cid]) == scope
@@ -1998,6 +2027,11 @@ class GitVarsRepo:
                         raise VarsError("new schema.scope cell lacks admission quorum under active SCOPE")
                     if RULES[s_base.slots[2]].encoding == "v2" and s_next.slots[2] == H_LENS_KERNEL:
                         raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
+                    if waiting is not None:
+                        raise VarsError("a new scope while a rotation waits (§4.1)")
+                    pending_waits = waits(s_base_id, s_next_id)
+                    if pending_waits and s_next.slots[2] != s_base.slots[2]:
+                        raise VarsError("a rotation that waits names the rules of the scope it supersedes (§4.1)")
                     pending_next_scope = s_next_id
 
             # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells. An open
@@ -2030,7 +2064,14 @@ class GitVarsRepo:
                                                       ("supersedes", w.h_supersedes)) for vid in hvec_items(mh)]
                 if edges:
                     open_edges[wid] = edges
+            # a waiting scope supersedes nothing yet: its edge latches when it starts to govern (latch 4a), so the
+            # Active local scope stays the governing one
+            deferred = {waiting[0]} if waiting is not None else set()
+            if pending_next_scope is not None and pending_waits:
+                deferred.add(pending_next_scope)
             for wid in list(open_edges if base_changed else (open_edges.keys() & (new_cids | touched))):
+                if wid in deferred:
+                    continue
                 w_ends_adm = signers(wid, s_base_id, adm_pks)
                 w_ends_acc = signers(wid, s_base_id, acc_pks)
                 still_open: List[Tuple[str, bytes]] = []
@@ -2112,10 +2153,19 @@ class GitVarsRepo:
                         )
                     raise VarsError(f"duplicate unlinked binding for slot {slot!r}")
 
-            # End-of-commit scope transition
+            # End-of-commit scope transition: the new scope governs the next commit, unless it removes keys without
+            # their consent under rules with a delay; then it governs after that many more commits, or once every
+            # removed key has sealed it (§4.1)
             if pending_next_scope is not None:
                 latched_scope_auth.add(pending_next_scope)
-                active_scope_id = pending_next_scope
+                waiting = (pending_next_scope, idx)
+            if waiting is not None:
+                w_id, w_at = waiting
+                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay or not waits(s_base_id, w_id):
+                    latched_edge_auth.add((w_id, s_base_id, "supersedes"))  # its quorum was checked at admission
+                    latched_sup.setdefault(w_id, set()).add(s_base_id)
+                    open_edges.pop(w_id, None)
+                    active_scope_id, waiting = w_id, None
             prev_base = s_base_id
 
         return {

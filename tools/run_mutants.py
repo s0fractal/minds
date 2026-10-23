@@ -22,8 +22,13 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-KERNELS = {"kernel": ("vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
-           "kernel2": ("vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
+# A kernel build a mutant may need: its crate, cargo's features, the wasm, the variable that hands it to the tests,
+# and the pinned module it must differ from. A mutant of kernel/src or kernel2/src gets its crate's default build;
+# `"build": "kernel1c"` asks for the v1c one (both features) instead.
+KERNELS = {"kernel": ("kernel", (), "vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
+           "kernel2": ("kernel2", (), "vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm"),
+           "kernel1c": ("kernel", ("--features", "commit-bound,rotation-delay"), "vars_lens.wasm",
+                        "MINDS_KERNEL1C_WASM", "kernel/lens1c.wasm")}
 
 
 def git_dir() -> Path:
@@ -61,18 +66,18 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
     cleanup: list = []
     try:
         path.write_text(original.replace(m["find"], m["replace"]))
-        crate = next((k for k in KERNELS if m["file"].startswith(f"{k}/src/")), None)
-        if crate:
+        build = m.get("build") or next((k for k in ("kernel", "kernel2") if m["file"].startswith(f"{k}/src/")), None)
+        if build:
             # a mutant of a rules kernel: build it beside the real one (its own target directory, never the crate's)
             # and hand the build to the tests; the kernel the gate runs is untouched
-            wasm, var, pinned = KERNELS[crate]
+            crate, features, wasm, var, pinned = KERNELS[build]
             # a fresh target per mutant: cargo decides what to rebuild by modification time, so a mutant written in the
             # same second as the previous one could be served the previous mutant's build
             base = Path(os.environ.get("MINDS_KERNEL_TARGET") or git_dir() / "kernel-mutants-target")
             base.mkdir(parents=True, exist_ok=True)
             target = Path(tempfile.mkdtemp(prefix=f"{mid}-", dir=base))
             cleanup.append(target)
-            b = subprocess.run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown"],
+            b = subprocess.run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", *features],
                                cwd=ROOT / crate, capture_output=True, text=True,
                                env=dict(os.environ, CARGO_TARGET_DIR=str(target)))
             if b.returncode != 0:

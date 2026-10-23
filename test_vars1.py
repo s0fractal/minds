@@ -3307,13 +3307,14 @@ class TestVars1Conformance(unittest.TestCase):
         and the rules the release names must be among them (an older commit without kernel2/ checks kernel/)."""
         mc = self._minds_chain()
         root = Path(self.tmp.name) / "wt"
-        built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM, "commit-bound": V.KERNEL1B_ATOM}
+        built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM, "commit-bound": V.KERNEL1B_ATOM,
+                 "commit-bound,rotation-delay": V.KERNEL1C_ATOM}
 
         def fake_cargo(cmd, cwd):
             out = cwd / "target" / "wasm32-unknown-unknown" / "release"
             out.mkdir(parents=True, exist_ok=True)
             (out / ("vars_lens.wasm" if cwd.name == "kernel" else "vars_lens2.wasm")).write_bytes(
-                built["commit-bound" if "commit-bound" in cmd else cwd.name])
+                built[next((a for a in cmd if a.startswith("commit-bound")), cwd.name)])
             return True
 
         (root / "kernel").mkdir(parents=True)
@@ -3337,6 +3338,13 @@ class TestVars1Conformance(unittest.TestCase):
                           ("the released rules are rebuilt here", True)])
         built["commit-bound"] = V.KERNEL_ATOM
         self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V1B, fake_cargo)[-2][1])
+        # and kernel/lens1c.wasm with both features
+        (root / "kernel" / "lens1c.wasm").write_bytes(V.KERNEL1C_ATOM)
+        checks = mc.kernel_checks(root, V.H_LENS_KERNEL_V1C, fake_cargo)
+        self.assertEqual(checks[-2:], [("kernel/lens1c.wasm rebuild hashes to H_LENS_KERNEL_V1C", True),
+                                       ("the released rules are rebuilt here", True)])
+        built["commit-bound,rotation-delay"] = V.KERNEL1B_ATOM
+        self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V1C, fake_cargo)[-2][1])
 
     def test_59_a_counterexample_is_named_by_its_full_commit_id(self) -> None:
         """Review AMEND P1 on 2b82da8: the counterexample field must hold a full commit id, never a ref, an
@@ -4847,6 +4855,174 @@ class TestVars1Conformance(unittest.TestCase):
             "test_other_words_msg": "wording", "test_callable_form": "wording",
             "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
             "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
+
+    def _v1c_genesis(self) -> tuple[str, V.Cell, bytes]:
+        """A scope under the rules with a rotation delay (v1c) from genesis: roster {pk1, pk2}, threshold 1."""
+        atoms = {**V.STD_SCHEMA_ATOMS, V.H_LENS_KERNEL_V1C: V.KERNEL1C_ATOM}
+        pol = self._pol(atoms, 1, [self.pk1, self.pk2])
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(atoms, V.atom_utf8("core/SCOPE")),
+                    self._put_atom(atoms, V.atom_utf8("core")), slots=(pol, pol, V.H_LENS_KERNEL_V1C))
+        c0 = self.repo.build_candidate_commit("core", atoms, [*V.STD_SCHEMAS.values(), s0],
+                                              [V.Seal.sign(self.sk1, s0.id, s0.id)], parent_commit=None)
+        self.repo.admit_and_advance("core", c0, expected_old=None)
+        return c0, s0, pol
+
+    def _governing(self, tip: str) -> bytes:
+        return self.repo._evaluate_commit_chain("core", self.repo.commit_chain(tip))["active_scope_id"]
+
+    def _rotation(self, s_base: V.Cell, keys: list[bytes], label: str, rules: bytes = V.H_LENS_KERNEL_V1C):
+        a: dict[bytes, bytes] = {}
+        pol = self._pol(a, 1, keys)
+        s = V.Cell(V.H_SCHEMA["scope"], self._put_atom(a, V.atom_utf8("core/SCOPE")),
+                   self._put_atom(a, V.atom_utf8(label)), h_supersedes=self._hv(a, [s_base.id]),
+                   h_loss=self._put_atom(a, V.atom_utf8(f"loss: {label}")), slots=(pol, pol, rules))
+        return a, s
+
+    def _tick(self, tip: str, ctx: V.Cell, n: int, sk: bytes | None = None) -> str:
+        """`n` commits of one axiom each, sealed under `ctx` by `sk` (sk1 by default)."""
+        for _ in range(n):
+            a: dict[bytes, bytes] = {}
+            x = self._axiom(a, f"core/tick.{tip[:8]}", "a commit")
+            tip = self._admit(a, [x], [V.Seal.sign(sk or self.sk1, x.id, ctx.id)], tip)
+        return tip
+
+    def test_85_a_rotation_that_removes_keys_without_consent_waits(self) -> None:
+        """Under v1c (§4.1, delayed rotation) a rotation that removes a key the removed key has not sealed waits:
+        the old scope governs the next 16 commits, the removed key's seals count meanwhile, and a second rotation
+        is refused (E-24); the new scope governs from the 17th commit after its admission, or from the commit after
+        every removed key has sealed it. A rotation that removes nothing, or whose removed keys sealed it, governs
+        the next commit, as under v1."""
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "drop pk2")
+        t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+        self.assertEqual(self._governing(t), s0.id, "pk2 has not consented: the rotation waits")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (True, False),
+                         "while it waits the Active local scope is the governing one (Codex PR #16 r1 P2)")
+        t = self._tick(t, s0, 1, self.sk2)  # pk2 still seals under S0
+        a2, s2 = self._rotation(s0, [self.pk1], "a second rotation")
+        self._refused(-24, a2, [s2], [V.Seal.sign(self.sk1, s2.id, s0.id)], t)
+        t = self._tick(t, s0, 14)
+        self.assertEqual(self._governing(t), s0.id, "15 commits after admission: still waiting")
+        t = self._tick(t, s0, 1)
+        self.assertEqual(self._governing(t), s1.id, "the 16th commit after admission ends the wait")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (False, True))
+        a3: dict[bytes, bytes] = {}
+        x = self._axiom(a3, "core/late", "pk2 after its removal")
+        self._refused(-13, a3, [x], [V.Seal.sign(self.sk2, x.id, s1.id)], t)
+
+        # consent at admission: the removed key sealed the new scope too
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "pk2 agrees")
+        t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id), V.Seal.sign(self.sk2, s1.id, s0.id)], c0)
+        self.assertEqual(self._governing(t), s1.id)
+
+        # late consent: the removed key seals the waiting scope three commits later
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "pk2 agrees later")
+        t = self._tick(self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0), s0, 2)
+        self.assertEqual(self._governing(t), s0.id)
+        t = self._admit({}, [], [V.Seal.sign(self.sk2, s1.id, s0.id)], t)
+        self.assertEqual(self._governing(t), s1.id, "every removed key has sealed it")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (False, True))
+
+        # a rotation that removes no key governs the next commit
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1, self.pk2], "same roster")
+        t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+        self.assertEqual(self._governing(t), s1.id)
+
+        # a rotation that would wait names the rules it supersedes: no new rules ride in on a removal (E-24)
+        a, s2 = self._rotation(s1, [self.pk1], "drop pk2, other rules", rules=V.H_LENS_KERNEL_V1B)
+        a[V.H_LENS_KERNEL_V1B] = V.KERNEL1B_ATOM
+        self._refused(-24, a, [s2], [V.Seal.sign(self.sk1, s2.id, s1.id)], t)
+        # and a rules change never leaves the delay behind: the last epoch's kernel folds the whole chain
+        cand, _, _ = self._change("equivalent", "core", t, s1, V.H_LENS_KERNEL_V1B, label="v1b-back")
+        self._gate_refuses("never left for rules without the delay", "core", cand, t)
+
+        # under v1 nothing waits: a removal that also names other rules passes the fold (the gate then asks for
+        # its rules-change decision, a separate step)
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a, s1 = self._rotation(s0, [self.pk1], "drop pk2 under v1, other rules", rules=V.H_LENS_KERNEL_V1B)
+        a[V.H_LENS_KERNEL_V1B] = V.KERNEL1B_ATOM
+        cand = self.repo.build_candidate_commit("core", a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], parent_commit=c0)
+        try:
+            self.repo._fold_twin("core", self.repo.chain_deltas(self.repo.commit_chain(cand)))
+        except V.VarsError as e:
+            self.fail(f"the fold refuses a v1 rotation for a rule only v1c has: {e}")
+
+    def test_86_a_v1c_build_answers_what_the_v1c_rules_answer(self) -> None:
+        """A build of the rules with a rotation delay (`kernel/` with both features: the pinned one, or, with
+        MINDS_KERNEL1C_WASM, a mutant built by tools/run_mutants.py) gives the pinned v1c kernel's output, byte for
+        byte, on chains that wait, end their wait, consent at once or late, remove nothing, and on the candidates
+        v1c refuses (a second rotation while one waits, a waiting rotation to other rules): the same code."""
+        module = os.environ.get("MINDS_KERNEL1C_WASM")
+        built = V.KernelRunner(V.H_LENS_KERNEL_V1C, Path(module) if module else None)
+        real = V.KernelRunner(V.H_LENS_KERNEL_V1C)
+        self.addCleanup(built.close)
+        self.addCleanup(real.close)
+        inputs: list[bytes] = []
+        at = lambda tip: inputs.append(self.repo.lens("core", at=tip)["kernel_input"])  # noqa: E731
+
+        def candidate(a, cells, seals, parent):
+            c = self.repo.build_candidate_commit("core", a, cells, seals, parent_commit=parent)
+            inputs.append(V.kernel_facts("core", self.repo.chain_deltas(self.repo.commit_chain(c)))[0])
+
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "drop pk2")
+        t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+        at(t)
+        a2, s2 = self._rotation(s0, [self.pk1], "a second rotation")
+        candidate(a2, [s2], [V.Seal.sign(self.sk1, s2.id, s0.id)], t)
+        t = self._tick(t, s0, 15)
+        at(t)
+        t = self._tick(t, s0, 1)
+        at(t)
+        t = self._tick(t, s1, 1)
+        at(t)
+        for keys, sks, label in (([self.pk1], [self.sk1, self.sk2], "pk2 agrees"),
+                                 ([self.pk1, self.pk2], [self.sk1], "same roster")):
+            self.tmp.cleanup(); self.setUp()
+            c0, s0, _ = self._v1c_genesis()
+            a, s1 = self._rotation(s0, keys, label)
+            t = self._admit(a, [s1], [V.Seal.sign(k, s1.id, s0.id) for k in sks], c0)
+            at(self._tick(t, s1, 1))
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "pk2 agrees later")
+        t = self._tick(self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0), s0, 2)
+        at(t)
+        t = self._tick(self._admit({}, [], [V.Seal.sign(self.sk2, s1.id, s0.id)], t), s1, 1)
+        at(t)
+        a, s2 = self._rotation(s1, [self.pk1], "drop pk2 again")  # pk2 is already gone: nothing removed
+        at(self._admit(a, [s2], [V.Seal.sign(self.sk1, s2.id, s1.id)], t))
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._v1c_genesis()
+        a, s1 = self._rotation(s0, [self.pk1], "drop pk2, other rules", rules=V.H_LENS_KERNEL_V1B)
+        a[V.H_LENS_KERNEL_V1B] = V.KERNEL1B_ATOM
+        candidate(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+
+        # under v1 the same removal takes effect at once, and the v1c rules read a v1 epoch as v1 does
+        self.tmp.cleanup(); self.setUp()
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a, s1 = self._rotation(s0, [self.pk1], "drop pk2 under v1", rules=V.H_LENS_KERNEL)
+        t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
+        at(self._tick(t, s1, 1))
+
+        def outcome(runner, ki):
+            try:
+                return runner.run(ki).hex()
+            except V.KernelRefusal as e:
+                return f"E{e.code}"
+        got = [(outcome(real, ki), outcome(built, ki)) for ki in inputs]
+        self.assertEqual([b for _, b in got], [r for r, _ in got])
+        self.assertEqual([r for r, _ in got if r.startswith("E")], ["E-24", "E-24"], "both candidates are refused")
 
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
