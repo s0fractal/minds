@@ -1,0 +1,1333 @@
+{
+ "spec": "minds-spec/1",
+ "parts": [
+  {
+   "kind": "heading",
+   "section": null,
+   "text": "# VARS-1"
+  },
+  {
+   "kind": "gap",
+   "section": null,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": null,
+   "text": "A hash-native graph of claims, computations and verdicts, stored in git, evaluated by a compiled lens."
+  },
+  {
+   "kind": "gap",
+   "section": null,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": null,
+   "text": "Reference implementation `vars1.py`; lens kernel `kernel/lens.wasm`; proofs `proofs/`. Depends on\n`sigma-glyph` at `c864d3e` (Book I, `impl/sigma_resume.py`), installed as sigma-glyph 0.8.0 from PyPI, whose modules\nare byte-identical to that revision."
+  },
+  {
+   "kind": "gap",
+   "section": null,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 0,
+   "text": "## 0. Terms"
+  },
+  {
+   "kind": "gap",
+   "section": 0,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 0,
+   "text": "- **scope**: an authority domain. Its history is the ref `refs/vars/heads/<scope>`.",
+   "carries": [
+    "informative:0"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 0,
+   "text": "- **origin(c)**: the text before the first `/` in the UTF-8 preimage of `c.H_slot_name`. A cell is **local** in\n  `<scope>` iff `origin(c) = <scope>`, otherwise **foreign**.",
+   "carries": [
+    "informative:1"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 0,
+   "text": "- **S_i**: the scope cell governing commit `T_i` (fixed at the start of `T_i`).",
+   "carries": [
+    "informative:2"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 0,
+   "text": "- `id(x) = SHA-256(bytes(x))`. Every object is addressed by its id.",
+   "carries": [
+    "id.sha256"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 0,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 1,
+   "text": "## 1. Objects"
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 1,
+   "text": "### 1.1 Atoms (`cas/atoms/`)"
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "Non-canonical bytes are refused, never normalized.",
+   "carries": [
+    "atoms.canonical"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "| Family | Prefix | Rule |\n|---|---|---|\n| SigmaNodeV2 | `0x00`/`0x01`/`0x02`/`0xff` | Book I node: 34 or 66 bytes |\n| Environment | `{\"schema\":\"sigma-resume.environment@draft-1\",…}` | canonical JSON of `sigma_resume.py` |\n| ComputationRoot | `{\"schema\":\"sigma-resume.root@draft-1\",…}` | canonical JSON of `sigma_resume.py`; its id is `computation_id` |\n| MachineState | `SGS1` | `SGS1 ‖ computation_id ‖ preorder tree`, at most 64 MiB |\n| U64 | `U64\\0` | 8 bytes big-endian, value ≤ 2^53−1 |\n| HVEC | `HVEC` | `n ≤ 65535` hashes; strictly ascending where it is a set |\n| POL1 | `POL1` | `threshold:u16be ‖ id(HVEC of Ed25519 keys)`; keys strong (§1.3); `1 ≤ threshold ≤ n` |\n| UTF8 | `UTF8` | valid UTF-8, no NUL or CR, no leading/trailing space, tab or newline; ≤ 64 KiB |\n| Wasm module | `\\0asm\\1\\0\\0\\0` | identity is its hash; a host executes only the rules it implements (§4.3) |\n| Rules input | `KIN1` | any bytes, at most 1 MiB: an input of rules, the counterexample of a rules change (§4.3) |",
+   "carries": [
+    "atoms.node",
+    "atoms.root",
+    "atoms.environment",
+    "atoms.state",
+    "atoms.kin1"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "**Intrinsic constants** (known without reading the store):",
+   "carries": [
+    "informative:3"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "| Name | Preimage | SHA-256 |\n|---|---|---|\n| `H_I` | Book I `I` | `2f33694d09810641fa5b8c47a7c0dc42e1b99eb8c9784a00aaee9a66330f4162` |\n| `H_K` | Book I `K` | `bc0c2fe26e44e2aed8ce500a74963bc270fd4a49ec0c2e4837ce7a64bb0a486c` |\n| `H_S` | Book I `S` | `887045bc22935aec5cba2dc11400d4e4357bc34d06681a6e92f06e7795b1f8a6` |\n| `H_FALSE` | Book I `APPLY(K, I)` | `65cd957fee7ec9fb310bc9d9712cec1726c78f8026fda679ac8f237938a32098` |\n| `H_INVALID` | Book I invalid | `af69b5176c7ac3855c2eac3d1f6159c74d5328e92aac0a33cdba68bbaeba4507` |\n| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |\n| `H_META_SCHEMA` | `VARS-META-SCHEMA-V1` | `7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e` |\n| `H_ZERO` | `U64\\0` + 8 zero bytes | `bd8ce1f0a5c552141dc052a9b66a200003a1b34dbf947dea1c1e32b9969cfe3c` |\n| `H_NORMAL_FORM` | `UTF8NORMAL_FORM` | `90d5b63c645ec4891cbe37c649b606e6b55ef03c3a04d3d00a7145f83fc4b1b7` |\n| `H_PAUSED` | `UTF8PAUSED` | `26e65e29da47e4aa37d009f91ba64992b6dea96b633057fb433237c0622314e4` |\n| `H_BLOCKED_REF` | `UTF8BLOCKED_REFERENCE` | `f092fc6a2f96c160648da203ac2e9e4a98a3c4bc3ea99fd8ae811120f4ccc9f5` |\n| `H_CYCLE_PROVEN` | `UTF8CYCLE_PROVEN` | `55e3031a9afc06976f2769dfc44a08437ee892bf2f91116a86a05f8b1494e20e` |\n| `H_REPLAYED` | `UTF8REPLAYED` | `4412ca4ade087a21844e613975a7c6db1e581deeb870219b48cf093003f05063` |\n| `H_ATTESTED` | `UTF8ATTESTED` | `7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c` |\n| `H_VERDICT_INVALID` | `UTF8INVALID` | `b3966965c112d6d2613255fc018e34774dbc17c8517705b95946ea925b95096d` |\n| `H_NOT_ASSESSED` | `UTF8NOT_ASSESSED` | `801ad348011ddbb757f8a1f1d2210451f7ac5945e77aec8d53cafbd87f8861ad` |\n| `H_PROVISIONAL` | `UTF8provisional` | `b9d665ebd73a6d287e1e40b8c29cf2839d973b461511bfc7b0dd5623b9fe41e5` |\n| `H_OWNER` | `UTF8owner` | `4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e` |",
+   "carries": [
+    "intrinsics.values"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "An intrinsic is known without reading the store: every consumer reads the same value whether or not its bytes\nare stored, and storing them changes no result.",
+   "carries": [
+    "intrinsics.unstored"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "`H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the\nid of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).",
+   "carries": [
+    "rules.hash"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f` is the id of\n`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md). A scope names them from its genesis or\nreaches them by a rules change (§4.3); v1 stays the default.",
+   "carries": [
+    "rules.v2-hash",
+    "rules.v2-default"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "`H_LENS_KERNEL_V1B = 2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd` is the id of\n`kernel/lens1b.wasm`, the v1 rules built with the feature `commit-bound`: they refuse an input claiming more commits\nthan it has bytes (E-7), and are otherwise v1. A scope reaches them by a resource hardening (§4.3).",
+   "carries": [
+    "rules.v1b-hash",
+    "rules.v1b-bound"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 1,
+   "text": "### 1.2 Cells (`cas/cells/`)"
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "Unsigned, `296 + 32·K` bytes:",
+   "carries": [
+    "informative:4"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "```\n0..4      \"VAR1\"\n4..7      000000\n7..8      K (arity, 0..64)\n8..40     H_schema       schema cell id (H_META_SCHEMA for a schema cell)\n40..72    H_slot_name    id(UTF8 \"<scope>/<name>\")\n72..104   H_payload\n104..136  H_relies       id(HVEC of cell ids) or H_EMPTY\n136..168  H_attests      \"\n168..200  H_supersedes   \"\n200..232  H_retires      \"\n232..264  H_invalidates  \"\n264..296  H_loss         id(UTF8, 1..4096 bytes) or H_EMPTY\n296..     slots[0..K]\n```",
+   "carries": [
+    "cells.layout"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "1. **Loss.** `H_supersedes ≠ H_EMPTY` or `H_retires ≠ H_EMPTY` requires `H_loss ≠ H_EMPTY`.",
+   "carries": [
+    "cells.loss"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "2. **Edges.** Every element of the five edge vectors is a cell id, never the cell itself, and never a projection. `supersedes` joins\n   cells of the same schema. `attests` targets a contract, decision or question. A scope cell appears only in\n   `supersedes` of a scope cell of the same origin.",
+   "carries": [
+    "cells.edges.projection",
+    "cells.edges.supersedes-schema"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "3. **Names.** `<scope>/<name>`, at most 128 bytes, segments `[A-Za-z0-9][A-Za-z0-9_.-]*` (scope:\n   `[A-Za-z0-9][A-Za-z0-9_-]{0,31}`), no `..`, no segment ending in `.` or `.lock`. `core/schema.*` is reserved\n   for the standard schemas. A name is `<origin>/SCOPE` iff the cell is a scope cell.",
+   "carries": [
+    "cells.names"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "4. **Schemas.** A schema cell has `H_payload = H_EMPTY`, all edges and loss `H_EMPTY`, and `slots` = ids of\n   `UTF8 \"field:type\"` descriptors. Any other cell's `H_schema` is a schema cell with the same arity.",
+   "carries": [
+    "cells.schemas"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "5. **Dependencies.** A contract or decision with `required_comp ≠ H_EMPTY` relies on a computation cell whose\n   payload is that `computation_id`. A verdict with `ckpt_or_witness ≠ H_EMPTY` relies on that cell.",
+   "carries": [
+    "cells.dependencies"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "6. **One binding per name.** A newly admitted local non-scope cell `c` must reach every other local cell with\n   its name along `supersedes` edges: the first hop is any element of `supersedes(c)`, every later hop is an\n   edge already authorized (§4.1) by the end of `c`'s commit. In one commit it suffices that one cell of each\n   same-name pair reaches the other.",
+   "carries": [
+    "cells.rule6"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 1,
+   "text": "### 1.3 Seals (`cas/seals/`)"
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "164 bytes: `\"SEAL\" ‖ H_target ‖ H_scope_ctx ‖ actor_pubkey ‖ signature`, the Ed25519 signature over the first\n100 bytes. A seal binds an endorsement to one cell and one scope epoch.",
+   "carries": [
+    "seals.layout"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 1,
+   "text": "Verification is strict and cofactorless: `actor_pubkey` and `R` are canonical (`y < 2^255−19`), not one of the\nten small-order or torsion encodings rejected by warrant's `weak_public_key`, and decode to curve points;\n`S < L`; and `[S]B = R + [k]A` with `k = SHA-512(R ‖ A ‖ msg) mod L`.",
+   "carries": [
+    "seals.strict"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 1,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 2,
+   "text": "## 2. Standard schemas"
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 2,
+   "text": "Each is a schema cell named `core/schema.<name>` with the descriptors below.",
+   "carries": [
+    "informative:5"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 2,
+   "text": "| Schema | Descriptors | Id |\n|---|---|---|\n| axiom | — | `aaf70509e078bf1f833492eb82a116e4122232d424cf1668c05a9dd25855dcda` |\n| contract | `tier:utf8`, `required_comp:root`, `expected_outcome:hash`, `evaluator_policy:pol1` | `391bbd2090d93f580fe033df9109cff948d46a07db24b9db05d55dc84e84277b` |\n| computation | — | `1c97bc0b74ffc978ade540c55592b294b0d9f2502b94b969f89ef00d99dd10bb` |\n| checkpoint | `computation_id:root`, `credit_total:u64`, `spent_total:u64`, `peak_size:u64`, `kernel_outcome:utf8`, `actions:u64` | `77655a8f5ca5b1c6347634e9a5848fdacee6efefd58569242d39f43410747639` |\n| cycle_witness | `computation_id:root`, `entry_spent:u64`, `cycle_actions:u64`, `cycle_cost:u64` | `065f1b5b54fa199d65fb7f3e185e6f024d7523e829af1ad98269de018a8fb548` |\n| decision | as contract | `5a48e9c69afc5c3cebb3ca2980052151f2aaa539052702e0e23f7ba5504eb6fb` |\n| question | `expected_schema:cell`, `evaluator_policy:pol1` | `1293a1513baa6e0e1edfdcf8c8f4b992efa1391ddbc0889efe9698d59c9b0cdf` |\n| acceptance | `source_scope:utf8`, `foreign_scope_cell:cell` | `c661936c020c0d817b8516b93454af5a30fe4282d854c1b0f628731c80f95d66` |\n| scope | `admission_policy:pol1`, `acceptance_policy:pol1`, `rules:wasm` | `9aab50548f8fc7c5e2090fa89a73440af7de5e92d800b928261f13f20a4bd2a9` |\n| verdict | `ckpt_or_witness:cell`, `verdict_code:utf8`, `verifier_id:utf8` | `ad702699d5fc7b3d94138c38643c9889f1520a6e1c20760aa6b11a8e273dfdae` |\n| projection | `tip:utf8`, `rules:wasm`, `input:digest`, `state:digest`, `witness_policy:pol1` | `8029ae880cb62a8034f47ec44e8f5c5982ebc14a14be2c6893a3ab8f968aa818` |",
+   "carries": [
+    "schemas.table"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 2,
+   "text": "**Types.** `utf8`: a UTF8 atom or intrinsic UTF8 constant. `u64`: a U64 atom or `H_ZERO`. `pol1`: a POL1 atom\nwhose key vector is present. `root`: a ComputationRoot whose Environment is present. `wasm`: a wasm atom.\n`kin1`: a KIN1 atom.\n`cell`: a cell. `hash`: anything present or intrinsic. `digest`: any 32 bytes, not required to be stored. These\nare all the types: a schema cell whose descriptor is not `name:type` of one of them is refused. `H_EMPTY` is\nallowed only in `required_comp`,\n`expected_outcome`, `evaluator_policy` and `ckpt_or_witness`.",
+   "carries": [
+    "types.closed",
+    "types.kin1"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 2,
+   "text": "**Payloads and meaning.** axiom, contract, decision, question: `id(UTF8 statement)`. computation:\n`computation_id`. checkpoint: `id(SGS1 state)`, with `slots[0]` equal to the state's `computation_id`;\n`kernel_outcome` ∈ {`H_NORMAL_FORM`, `H_PAUSED`, `H_BLOCKED_REF`}; a checkpoint chains to its parent through\n`relies`, never `supersedes`. cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`. tier ∈\n{`H_PROVISIONAL`, `H_OWNER`}. A nonempty `H_loss` is a UTF8 atom. checkpoint `actions`: the number of actions of\nthe transition from its parent checkpoint (or from the root), which replay must reproduce. acceptance: the foreign cell it admits; `source_scope = origin(target)`, and\n`foreign_scope_cell` is a self-sealed scope cell of that origin. scope: `id(UTF8 label)`, free text that nothing\nevaluates (the scope's origin is in its name, its authority in its slots). verdict: the\ncontract, decision or question it judges, or, for an `H_VERDICT_INVALID` verdict, any cell it refutes; `verdict_code` ∈ {`H_REPLAYED`, `H_ATTESTED`, `H_VERDICT_INVALID`,\n`H_NOT_ASSESSED`}; `H_ATTESTED` has `ckpt_or_witness = H_EMPTY`, `H_REPLAYED` names a checkpoint or cycle witness,\nand `H_VERDICT_INVALID` and `H_NOT_ASSESSED` may do either; a nonempty `ckpt_or_witness` is always a checkpoint or\ncycle witness. projection: `H_EMPTY`, with every edge and the loss `H_EMPTY` (§4.4).",
+   "carries": [
+    "payloads.tier",
+    "payloads.actions",
+    "payloads.scope-label",
+    "payloads.verdict-target",
+    "payloads.verdict-code",
+    "payloads.attested-empty",
+    "payloads.witness-kind",
+    "payloads.cycle-witness",
+    "payloads.projection"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 2,
+   "text": "**Personal data.** No atom carries data about a person in the clear, nor a bare hash of it (low-entropy data is\nrecovered from its hash by enumeration). A cell that refers to such data names a salted commitment,\n`SHA-256(salt ‖ data)`, with a salt of at least 32 random bytes held by the person or their custodian and never\nstored in any chain. Deleting the salt is how such data is forgotten: the chain stays append-only, and the commitment\nno longer binds to anything anyone can show. Organizations hold scopes and refer to data by commitment; the person\nholds the salt. This host does not yet check this.",
+   "carries": [
+    "privacy.commitments"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 2,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 3,
+   "text": "## 3. Store and gate"
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "`refs/vars/heads/<scope>` is a linear chain; peers are fetched to `refs/vars/peers/<peer>/<scope>`. A commit is\nnamed by its canonical id, the full lowercase hex id of the repository's object format that Git resolves to itself,\nnever by a ref, an abbreviation or a revision expression: by the gate and the chain reader, in a rules-change decision,\nand in a release's checks and sibling pins. Each commit's\ntree is `cas/{atoms,cells,seals}/<2 hex>/<62 hex>`, every entry a regular file (`100644`) whose bytes hash to\nits path.",
+   "carries": [
+    "store.paths",
+    "store.commit-ids"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "**Radicle.** A node's `refs/vars/heads/<scope>` replicates as `refs/namespaces/<nid>/refs/vars/heads/<scope>`,\ncovered by that node's signed refs (`rad/sigrefs`), with its history; a peer maps it to\n`refs/vars/peers/<nid>/<scope>`. `tools/radicle-probe.sh` checks this with two local nodes (rad 1.10.3).",
+   "carries": [
+    "store.radicle"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "A commit `T_new` on top of `T_old` is admitted iff all checks pass, then the ref moves by compare-and-swap\n(`git update-ref <ref> T_new T_old`), in one transaction with the evidence refs of a rules change (§4.3). Every\nrefusal is an error of the gate, never a crash.",
+   "carries": [
+    "gate.cas",
+    "gate.no-crash"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "1. **Chain.** Genesis has no parent and exactly one local scope cell `S_0`, with empty edges, self-sealed to its\n   admission quorum. Any later commit has exactly the parent `T_old` and at most one new local scope cell, which\n   supersedes exactly the governing scope and is sealed by its admission quorum. That quorum alone may set the\n   new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the\n   reader's pin).",
+   "carries": [
+    "gate.chain",
+    "gate.roster-rotation"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.",
+   "carries": [
+    "gate.append-only"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell names\n   rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of\n   `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its\n   `witness_policy`, roster or not). A **cross-seal** — a seal on a\n   foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a\n   standard schema has at least one such seal by a key of the admission policy (acceptance policy for an\n   acceptance cell): a projection's outside witnesses sign it but do not write it. The evaluator policy of a local contract, decision or question\n   has keys within the admission policy.",
+   "carries": [
+    "gate.scope-rules",
+    "gate.seals"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "4. **References and replay.** Every referenced hash is present (cells where §1.2 requires cells). Every\n   checkpoint replays as in §5; a cycle witness passes `sigma_resume.verify_cycle`, except that one whose entry costs\n   more than the host ceiling is admitted on structure alone as `NOT_ASSESSED`, as any transition beyond it is (§5).",
+   "carries": [
+    "gate.references",
+    "gate.cycle-witness",
+    "gate.cycle-entry-ceiling"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "5. **Foreign cells.** A foreign cell arrives with its closure (cells, atoms, seals) and with a self-sealed scope\n   cell of its origin. Seals count for it only under that scope and its admission keys.",
+   "carries": [
+    "gate.foreign"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "6. **Projections.** For every new projection cell, `tip` is the hex id of an earlier commit of this chain,\n   `rules` are the rules of `tip`'s epoch (§4.3), and `(input, state)` equal the gate's own recomputation at `tip`\n   with them (§4.4); otherwise the commit is refused.",
+   "carries": [
+    "gate.projections"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "7. **Rules change.** A new local scope cell that names other rules than the governing scope comes with exactly one\n   rules-change decision in its commit, of one class, whose computations the gate replays, and a rules-change\n   decision comes only with such a rotation (§4.3).",
+   "carries": [
+    "gate.rules-change"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 3,
+   "text": "The fold (§4.1) then runs over the whole chain, including step 3b. The seal and authority rules of step 3 (seal\ncontexts and keys, cross-seals, a seal on every new cell, evaluator policies within the roster, foreign scopes)\nand the fold itself are decided by the rules object (§4.3); the host contributes parsing, hashing and signature\nverification.",
+   "carries": [
+    "gate.rules-object"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 3,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 4,
+   "text": "## 4. Fold and lens"
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 4,
+   "text": "### 4.1 Fold (authority, non-retroactive)"
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "For each commit `T_i` with governing scope `S_i`:",
+   "carries": [
+    "informative:6"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Endorsers_i(u)`: keys of seals on `u` with `H_scope_ctx = id(S_i)` and a key of `S_i` (admission policy;\n  acceptance policy for an acceptance cell). For a foreign `u` these are its cross-seals. For an edge `w → v`,\n  `Endorsers_i(w)` is counted with `S_i`'s acceptance keys when `v` is an acceptance cell, else its admission keys.",
+   "carries": [
+    "fold.endorsers"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `InitialEndorsers(v)`: `Endorsers_birth(v)(v)` for a local `v`; fixed at birth.",
+   "carries": [
+    "fold.initial"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `CumulativeEndorsers(v)`: every admitted seal on a local `v`, each checked under its own commit's scope. For a\n  foreign `v`, `ForeignEndorsers(v, S_f)` counts seals under a self-sealed scope `S_f` of its origin.",
+   "carries": [
+    "fold.cumulative"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Governing policy and author rights of a target `v`:",
+   "carries": [
+    "informative:7"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "| `v` | `Pol_i(v)` | `AuthorCanEvict(v)` |\n|---|---|---|\n| scope, or contract/decision with tier owner | `S_i` admission | no |\n| acceptance | `S_i` acceptance | no |\n| contract/decision with tier provisional | its evaluator policy, else `S_i` admission | yes |\n| question | its evaluator policy, else `S_i` admission | yes |\n| anything else | `S_i` admission | yes |",
+   "carries": [
+    "fold.policy-table"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Latches (never undone):",
+   "carries": [
+    "informative:8"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "1. A local acceptance cell pinned to a self-sealed foreign scope whose `Endorsers_i` meet `S_i`'s acceptance\n   policy is **Authorized**. A local acceptance whose `foreign_scope_cell` is not self-sealed refuses `T_i`.",
+   "carries": [
+    "fold.latch-acceptance"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "2. A local custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**. Foreign\n   acceptance and schema cells are never Authorized in `<scope>`.",
+   "carries": [
+    "fold.latch-schema"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`.\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
+   "carries": [
+    "fold.latch-edges"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.",
+   "carries": [
+    "fold.latches-grow"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 4,
+   "text": "### 4.2 Lens (status at the tip)"
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Edges point from newer to older cells. **Pass 1**, newest first:",
+   "carries": [
+    "lens.order"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Accepted(x)`: `x` is local or a standard schema; or an Active, Authorized acceptance has payload `x`; or an\n  Accepted cell of the same foreign origin references `x`.",
+   "carries": [
+    "lens.accepted"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Invalidated(v)`: an Effective, Accepted `w` has an authorized invalidates edge to `v` (and, if `w` is a\n  verdict, its code is `H_VERDICT_INVALID`). `Effective = ¬Invalidated`.",
+   "carries": [
+    "lens.invalidated"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Retired(v)`: an Effective, Accepted `w` has an authorized retires edge to `v`.",
+   "carries": [
+    "lens.retired"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Superseded(v)`: some `w` has an authorized supersedes edge to `v` and is Effective and Accepted, or is itself\n  Superseded.",
+   "carries": [
+    "lens.superseded"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- `Active(v)`: Effective, Accepted, not Retired, not Superseded, and every supersedes edge of `v` is authorized.",
+   "carries": [
+    "lens.active"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Pass 2.** `Live(x)` for a foreign `x`: an Active, non-Stale, Authorized acceptance has payload `x`, or a Live\ncell of the same origin references `x`. `Stale` is the least fixed point of",
+   "carries": [
+    "lens.live"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "`Stale(v) ⇔ Active(v) ∧ ((∃ d ∈ relies(v): ¬Active(d) ∨ Stale(d)) ∨ (v foreign ∧ ¬Live(v)))`.",
+   "carries": [
+    "lens.stale-lfp"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "It is computed by rounds from `Stale = ∅`: recompute `Live` newest first, then update `Stale` oldest first in\nplace; stop when a round changes nothing. The operator is monotone, so at most `|cells| + 1` rounds are needed;\na round that removes a cell from `Stale` is a fault.",
+   "carries": [
+    "lens.rounds"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Pass 3.** For an Active, non-Stale contract, decision or question `v`: `EvalPol(v)` is its evaluator policy,\nelse the tip scope's admission policy. A witness `w` is Active, non-Stale, attests `v`, and:",
+   "carries": [
+    "lens.pass3"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- contract/decision without `required_comp`: a verdict on `v` with `H_ATTESTED`;",
+   "carries": [
+    "lens.pass3-attested"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- contract/decision with `required_comp = r` and `expected_outcome = e`: a verdict on `v` with `H_REPLAYED`\n  whose `ckpt_or_witness` is an Active, non-Stale checkpoint of `r` claiming `H_NORMAL_FORM`, replay-verified\n  over its lineage (§5), whose state's term hash is `e`; or a cycle witness of `r` when `e = H_CYCLE_PROVEN`;",
+   "carries": [
+    "lens.pass3-replayed",
+    "lens.pass3-cycle"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- question: a cell of the expected schema.",
+   "carries": [
+    "lens.pass3-question"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with\n`H_VERDICT_INVALID` and the same `verifier_id`, endorsed by a key of `EvalPol(v)`, exists. A question has no\nexclusion: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`\nfor a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the union of witness\nendorsers meets `EvalPol(v)`; otherwise **Provisional**. Scope and custom schema cells are Settled iff\nAuthorized; a projection is Settled iff its `CumulativeEndorsers` meet its `witness_policy`; every other Active,\nnon-Stale cell is Settled.",
+   "carries": [
+    "lens.pass3-exclusion"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 4,
+   "text": "### 4.3 Rules object"
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "The fold of §4.1 (with the seal rules of §3 step 3) and Passes 1–2 of §4.2 are compiled to `kernel/lens.wasm`\n(`kernel/src/lib.rs`, Rust → wasm32, built reproducibly from `kernel/`). A scope names them in `slots[2]` by\n`H_LENS_KERNEL`, or names the v2 rules by `H_LENS_KERNEL_V2` (`kernel2/`, built the same way); the gate refuses any\nother value, and every genesis stores the module it names as an atom. The host runs\nthe module on every admission and every lens: it decides admission authority and the statuses of Passes 1–2.\nThe host parses bytes, hashes, verifies Ed25519 signatures and orders cells; Pass 3 (replay, witnesses, Settled)\nstays in the host.",
+   "carries": [
+    "rules.module"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Input, u32 little-endian words (`H` = 32 raw bytes):",
+   "carries": [
+    "informative:9"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "```\nC N NK P                                     commits, cells, interned keys, policies\nP × (H id, threshold, m, key[m])             every POL1 atom with strong keys and threshold ≤ m\nN × (H id, H schema, H payload, H name, H loss, origin, birth, K, K × H slot,\n     5 × (count, index[count]))              relies, attests, supersedes, retires, invalidates\nS, S × (target, ctx, key, commit)            seals whose signatures the host verified\n```",
+   "carries": [
+    "rules.input"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Cells are in forward topological order: every edge, and every payload or slot that is a cell id, names an older\nindex born no later. These rules (v1) read a payload or slot as a reference whenever it equals a cell id, whatever\nits field type, so the gate refuses a new cell whose id an older cell born in a v1 epoch already names in a payload\nor slot: an opaque `digest` never turns into a reference to a later-born cell. A cell born in a v2 epoch keeps its\nopaque values opaque and vetoes nothing. `origin` 0 is the evaluated scope; `birth` and `commit` are the first commit holding the\nobject. The module embeds the standard schema ids, `H_META_SCHEMA`, `H_EMPTY`, `H_OWNER`, `H_PROVISIONAL` and\n`H_VERDICT_INVALID`, and reads kinds, tiers, policy slots and verdict codes from the cell hashes itself.",
+   "carries": [
+    "rules.forward-refs"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,\nretired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per\ninvalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input\n(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,\nunsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).\n`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes.",
+   "carries": [
+    "rules.output",
+    "rules.v1b-code"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Epochs and the v2 rules.** A commit is in the epoch of the rules its governing scope names, and a cell in that of\nits birth commit; a rotation commit is still in the old epoch. The host runs the rules of the last commit's epoch\nover the whole log. The v2 rules read a cell born in a v1 epoch as v1 does and a cell born in a v2 epoch by type:\nthe payload of a verdict or acceptance, and every slot its schema declares `cell`. Their input begins with the word\n`0x32524156` (\"VAR2\") and adds, for each cell, after its slots a schema cell's mask of `cell`-typed descriptors\n(`mask_lo, mask_hi`) and after its edges the list `R, R × (pos, index)` of its references (`pos` 0 the payload, 1 + s\nslot s). They refuse a reference list other than their own reading (−6) and a rotation back to v1 (−25). Over a log\nwholly in v1 epochs they give v1's output byte for byte.",
+   "carries": [
+    "rules.epochs",
+    "rules.v2-reading",
+    "rules.v2-input",
+    "rules.v2-refs-checked",
+    "rules.v2-reads-v1-logs"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "`vars1.py` keeps a Python fold and Passes 1–2 as a differential twin: a refusal by one and not the other, or any\ndiffering latch, scope or status bit, is a host fault (`TwinDivergence`), never a gate refusal.",
+   "carries": [
+    "rules.twin"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them, admitted together\nwith exactly one decision of one class of change that names the new rules' hash and carries, as computations the gate\nreplays, the evidence its class needs. A **semantic correction** shows that the new rules reproduce every status the\nold rules give over the chain so far, a counterexample on which the old rules give a wrong verdict, which is the reason\nfor the change, and that latches only grow under the new rules. A **resource hardening** shows an input on which the\nold rules exhaust a budget or trap and the new rules refuse it in a controlled way; a **validation tightening**, one\nthe old rules give an output for and the new rules refuse; an **implementation-equivalent** change, other bytes with\nthe same output over the chain so far. What each class needs is fixed by this text and the host's code, outside the\ngraph: no cell changes it (AMENDMENTS.md).",
+   "carries": [
+    "rules.change",
+    "rules.change.classes"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Results.** Rules run on an input give an output or a refusal (a negative code). Run under a budget of steps they may\ninstead exhaust it, or trap: a fault, a defect of the module and never a verdict. A step is an entry into a function\nbody or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module\n(`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for\nthe run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it\nimplements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B`.",
+   "carries": [
+    "rules.results",
+    "rules.steps",
+    "rules.registry"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "The semantic correction is a local cell of the schema `<scope>/rules-change/schema`, whose descriptors are, in order,\n`old_rules:wasm`, `new_rules:wasm`, `basis:utf8`, `reproduce:digest`, `counterexample_scope:utf8`,\n`counterexample:utf8`, `cell:u64`, `status:u64`, `right:u64`, `refutes:digest`, `latches:digest`; the gate\nrecognises it by that schema's id. It names the governing scope's rules and the new scope's, its `basis` is the hex\nid of the rotation's parent, and the governing scope's admission quorum seals it.",
+   "carries": [
+    "rules.change.decision"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "The gate runs the old and the new rules over the chain up to `basis` and over the counterexample, the chain of\nscope `counterexample_scope` up to commit `counterexample`, which must pass every check of this gate;\n`counterexample` is that commit's canonical id (§3), never a ref, an abbreviation or a revision expression, so what the decision names cannot move after admission; each log is\nencoded for the rules that read it, and either rules refusing either log refuses the rotation. Then (a) `reproduce`\nis SHA-256 over the SHA-256 of the old and of the new output over the chain so far, and the two give the same\ngoverning scope and the same status byte for every cell; (b) `refutes` is that digest over the counterexample, and\nstatus bit `status` of the cell at index `cell` of the new rules' input is `right` under the new rules and not under\nthe old; (c) `latches` is SHA-256 over the SHA-256 of all four outputs, and on both logs every cell Authorized and\nevery edge authorized under the old rules is so under the new. Otherwise the rotation is refused.",
+   "carries": [
+    "rules.change.counterexample-admitted",
+    "rules.change.counterexample-id",
+    "rules.change.refusal",
+    "rules.change.a",
+    "rules.change.b",
+    "rules.change.c"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "A resource hardening or a validation tightening is a local cell of the schema `<scope>/rules-change/hardening/schema`\nor `<scope>/rules-change/tightening/schema`, whose descriptors are, in order, `old_rules:wasm`, `new_rules:wasm`,\n`basis:utf8`, `reproduce:digest`, `input:kin1`, `budget:u64`, `refusal:u64`, `refutes:digest`; an\nimplementation-equivalent change, of `<scope>/rules-change/equivalent/schema` with the first four. Its rules, `basis`\nand seals are those of a correction. Both rules read one input encoding; `reproduce` is SHA-256 over the SHA-256 of the\nold and of the new output over the chain so far, and the two outputs are equal byte for byte.",
+   "carries": [
+    "rules.change.refusal-schema",
+    "rules.change.basis-bytes"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "For a hardening or a tightening, each rules runs on `input`, the bytes of its KIN1 atom after the prefix, under\n`budget` steps, at most 2^30; `refutes` is SHA-256 over the SHA-256 of each result's encoding, the old rules' first\n(`O` and the output bytes, `E` and the code as a little-endian i32, `X` for exhaustion, `T` for a fault), and the new\nrules refuse with the code −`refusal`. For a hardening that code is a resource refusal of the new rules and the old\nrules exhaust the budget or trap; for a tightening it is not, and the old rules give an output. Otherwise the rotation\nis refused.",
+   "carries": [
+    "rules.change.refusal-run",
+    "rules.change.hardening"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "(d) Every rules change keeps the earlier ones: on every rules-change decision earlier in the chain, the new rules\ngive the result it established. A correction's status bit `status` of its cell, found by id, is still `right` on its\ncounterexample; a hardening's or a tightening's input is still refused with its code within its budget, which needs\nrules that read its encoding. A rotation from v2 to rules that read references as v1 does is refused, and so is a\nrotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only\nthe cells born under `H_LENS_KERNEL`.",
+   "carries": [
+    "rules.change.d",
+    "rules.change.v2-to-v1-reading"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Evidence.** In the transaction that moves the scope's ref, the gate writes `refs/vars/evidence/<scope>/<decision>/<commit>`\nfor a correction's counterexample commit and for every counterexample the corrections on its chain name, transitively,\nso that history is reachable from `refs/vars/*` wherever the chain goes; a\nhardening's or a tightening's input is an atom of the rotation commit, and the rules modules are atoms of the chain. A\nreplay that lacks a commit a decision names, or part of its history (an absent object, a shallow boundary), reports\nthe evidence missing, which is not a refusal of the decision.",
+   "carries": [
+    "rules.change.evidence",
+    "rules.change.evidence-missing"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "The gate checks that the old rules disagree with the verdict the decision names right and the new rules agree; that\nit is right is the decision's claim, made by the quorum that seals it. A rotation from v2 back to v1 is refused\nwhatever decision comes with it: v1 cannot read a v2 epoch. The specification's text changes in that same decision;\nnothing checks the text.",
+   "carries": [
+    "rules.no-downgrade",
+    "rules.change-text",
+    "informative:11"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Before a rotation is recorded, `tools/minds_chain.py shadow` replays every historical tip under the rules of its epoch\nand under the new rules and lists every difference (commit, cell, bit, old, new); `change-rules` records the rotation\nonly with a manifest equal to that replay, on the tip it replayed, with no difference for a hardening or an equivalent\nchange and with its digest accepted by name otherwise. This is a release condition, not a check of the gate.",
+   "carries": [
+    "rules.change.shadow"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Contradictions.** Two rules that give one input two verdicts are recorded as a cell holding that input and both\nverdicts, not resolved by editing text; what depends on them is left to the lens (Stale) until a decision under the\nrule above replaces one of them. This host does not yet implement this.",
+   "carries": [
+    "rules.contradiction"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 4,
+   "text": "### 4.4 Projections"
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "A projection `Π = (tip, rules, input, state)` is a historical statement: at commit `tip`, the rules `rules` give\n`input = SHA-256(kernel input for the chain up to tip)` and `state = SHA-256(kernel output)` (§4.3). The gate\nrecomputes both before admitting it (§3 check 6), so a chain never holds a false projection. A projection has no\nedges and no edge may name it, so it never becomes Superseded, Retired, Invalidated or Stale: it is Settled\nexactly when its witness seals meet `witness_policy`. Its witnesses may sign it from outside the scope's roster;\nwriting it into the chain still takes a roster seal, because each projection costs the gate a recomputation.",
+   "carries": [
+    "proj.recomputed"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "What a client without the history gets from a Settled projection, and what it does not:",
+   "carries": [
+    "informative:10"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- **History.** That the witness quorum named by `witness_policy` vouches for the result at `tip`. This is trust in\n  those witnesses, not a proof; anyone holding the chain can recompute `input` and `state`, and the rules are\n  deterministic and named by hash, so a false projection signed outside a chain is refuted by recomputation.",
+   "carries": [
+    "proj.history"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- **Not freshness.** Nothing about commits after `tip`: a later commit may change any status. Knowing the current\n  head needs a separate statement about the head, which VARS-1 does not define.",
+   "carries": [
+    "proj.not-fresh"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "- **Not Pass 3, not the statuses themselves.** `state` commits to the kernel's output only: the governing scope,\n  the Authorized and edge bits of the fold, and the status bits of Passes 1–2. It says nothing about Settled for\n  contracts, decisions or questions, which the host computes (§4.2 Pass 3). To read a status the client needs the\n  output bytes themselves and checks them against `state`.",
+   "carries": [
+    "proj.not-pass3"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Bundle.** A client receives a projection as JSON `{\"format\": \"vars-1.projection-bundle@1\", \"cell\", \"atoms\",\n\"seals\", \"input\"?, \"output\"?}` (hex strings): the cell, the atoms of its `tip` and `witness_policy` (with the key\nvector), every seal on it, and optionally the kernel's input and output at `tip`. It checks, with no repository:\nevery seal is a valid Ed25519 seal on this cell; distinct keys of `witness_policy` meet its threshold; and, given\n`input` and `output`, both hash to the projection's digests, after which the status bits are read by cell id (the\noutput indexes cells in the input's order). Any inconsistency is a refusal; too few witnesses is a negative answer,\nnot an error. A projection's `witness_policy` is its own, chosen by whoever made it, so it is no trust anchor:\na reader trusts a projection only if keys it pinned beforehand are among its witnesses.\n`vars1.py verify-projection BUNDLE.json --require PUBKEY...` exits 0 only then, with `input` and `output` present\nand matching, and known rules; `inspect-projection` checks the bundle against its own policy and claims no trust.\n`export_projection` builds a bundle from a chain.",
+   "carries": [
+    "proj.bundle"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Attestation bundle.** For a contract or decision without `required_comp`, a client recomputes Pass 3 from\n`{\"format\": \"vars-1.attestation-bundle@1\", \"cell\", \"scope\", \"atoms\", \"verdicts\", \"seals\", \"projection\"?}`: the cell,\nthe governing scope cell (its admission policy is the fallback `EvalPol`), the policy, statement, attests and\nverifier atoms, every verdict on the cell, every seal on the cell and on those verdicts, and optionally a projection\nbundle. Over the supplied verdicts it is *attested* when ATTESTED verdicts sealed by distinct keys of `EvalPol`\nmeet its threshold, excluding verdicts contradicted by an INVALID verdict of the same verifier sealed by a policy key\n(§4.2 Pass 3). A supplier can omit verdicts and seals, so alone this is evidence as supplied, never acceptance.",
+   "carries": [
+    "att.supplied"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "With a projection whose tip holds the cell, the projection's kernel input is the evidence: it holds every cell and\nevery verified seal at `tip`, and its digest is what the witnesses signed. The client parses it (key indices map to\n`EvalPol`'s keys, both in byte order), refuses a bundle that omits any verdict on the cell held at `tip`, and\nrecomputes Pass 3 from the input and the kernel's output alone, exactly as the lens does: endorsers of a local\nverdict are its seals; of a foreign verdict, seals under a scope of its origin named by a live acceptance of it or\nof a newer cell of its origin that references it, by that scope's admission keys. The cell is *accepted* when that\nrecomputation settles it, the projection is witnessed, and no supplied verdict from after `tip` contradicts it by\na policy key. Acceptance is about `tip`: the release recorded last is accepted only once a later projection\ncovers it. Because the admission quorum may rotate a key out (§3), and releases after that need it no longer, a\nreader who wants certain keys to have a veto pins them: each pinned key must also endorse the cell at `tip` and\nwitness the projection. A verdict or seal about another\ncell is a refusal. A decision that requires a computation needs replay, hence the repository.\nThe bundled scope's policy is likewise self-declared: `vars1.py verify-attestation BUNDLE.json --require PUBKEY...`\nneeds at least one pinned key and exits 0 only on acceptance with every pinned key endorsing and witnessing;\n`inspect-attestation` reports acceptance under the bundle's own policies and claims no trust. `export_attestation`\nbuilds a bundle.",
+   "carries": [
+    "att.complete",
+    "att.later",
+    "att.scope-epoch"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "**Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of\n`sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies\nthat file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require\nPUBKEY...` or `inspect-projection|inspect-attestation BUNDLE.json` (same arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;\nno bundle check reads one. Only `rules = H_LENS_KERNEL` is interpreted: a projection naming other rules is reported\n`rules_status: \"unsupported\"` — its seals and digests are checked, but its input and output are not read as\nstatuses, scope or Pass 3, and nothing is accepted on it (`verify-projection` exits 1).",
+   "carries": [
+    "offline.alone"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "Every result carries `explain`, derived from the bundle by the same computation as the verdict fields; it is a\nreading aid, not authority, and a doubting reader recomputes. For a projection: the rules identity and its status,\nthe witness policy, each seal with its key, context and whether it counted, the policy keys that did not witness,\nand the scope epoch (the governing scope cell at `tip`). For an attestation: the evaluator policy, whether it is\nthe cell's own or the scope's admission policy, its threshold and keys; the counted verdicts with their verifier\nids and the policy keys endorsing each, over the supplied verdicts and at `tip`; the verifiers blocked by INVALID\nverdicts at `tip` and those blocked by INVALID verdicts supplied from after it, with the endorsers so withdrawn;\nthe scope epoch; and, for each pinned key, why it is missing (no endorsement at `tip`, an endorsement withdrawn\nafter `tip`, no witness seal on the projection, or no readable tip at all).",
+   "carries": [
+    "offline.explain"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 5,
+   "text": "## 5. Replay against Book I"
+  },
+  {
+   "kind": "gap",
+   "section": 5,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 5,
+   "text": "`computation_id`, `environment_id` and SGS1 state ids are bit-identical with `sigma_resume.py`. A checkpoint\nreplays from its highest-spent same-computation parent in `relies`, or from `ComputationRoot`, through\n`sigma_resume.advance`, which must reproduce its state, `spent_total`, `peak_size` and claimed outcome.",
+   "carries": [
+    "replay.ids"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 5,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 5,
+   "text": "The parent's state is trusted only if the parent is itself replay-verified: status is computed over the whole\nlineage, oldest first. A transition costing more than the host ceiling (10,000,000 ATP; also 64 MiB of state,\nterm depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is every descendant. A\n`NOT_ASSESSED` checkpoint never serves as a `REPLAYED` witness.",
+   "carries": [
+    "replay.lineage"
+   ]
+  },
+  {
+   "kind": "gap",
+   "section": 5,
+   "text": ""
+  },
+  {
+   "kind": "heading",
+   "section": 6,
+   "text": "## 6. Conformance"
+  },
+  {
+   "kind": "gap",
+   "section": 6,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `test_vars1.py`: golden vectors, gate refusals, the scenarios of §§3–5, every Ed25519 vector of\n  `vectors/verify-sig.json` (copied from primitives), and the schema table above. Every fold and `lens()` runs the kernel and\n  its Python twin, and every `lens()` is re-run on the kernel."
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `test_vars1_props.py`: seeded random admission sequences; on each admitted tip, gate refusals and the lens\n  never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed\n  point (I2), latched edges equal a spec oracle (I3), acceptance, custom-schema and scope latches equal a spec\n  oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed\n  independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces\n  the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status\n  bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,\n  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3\n  recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled\n  for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle\n  witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker\n  (`proofs/Vars1/Cycle.lean`, compiled) (I12)."
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and\n  run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted\n  INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an\n  unsupported rules identity, with the `explain` trace checked in each case."
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `test_vars1.py` tests 47–58: rules changes (§4.3), each computation of a rules-change decision missing or wrong,\n  no rotation back to v1, v1 bundles after a change, and the v2 rules (RULES-V2.md)."
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `test_vars1.py` tests 62–74: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count\n  bound as a resource hardening on the fuzzer's input, (d), a past change replayed in a fresh clone and its evidence\n  missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md)."
+  },
+  {
+   "kind": "block",
+   "section": 6,
+   "text": "- `proofs/`: the theorems listed in `proofs/README.md`."
+  },
+  {
+   "kind": "gap",
+   "section": 6,
+   "text": ""
+  }
+ ]
+}

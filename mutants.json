@@ -1237,22 +1237,6 @@
    "test_80_the_profile_closes_over_what_the_gate_loads"
   ]
  },
- "m-spec-heading": {
-  "file": "tools/check_claims.py",
-  "find": "        if re.match(r\"^ {0,3}#{1,6}(?:[ \\t]|$)\", line):",
-  "replace": "        if line.startswith(\"#\"):",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
- "m-spec-unread": {
-  "file": "tools/check_claims.py",
-  "find": "        if section is not None and section <= 5 and (UNREAD.match(line) or",
-  "replace": "        if False and (UNREAD.match(line) or",
-  "kills": [
-   "test_45_the_spec_is_a_projection_of_its_witnesses"
-  ]
- },
  "m-assurance-render": {
   "file": "tools/check_claims.py",
   "find": "    if arg(\"--assurance\", ROOT / \"ASSURANCE.md\").read_text() != rendered:",
@@ -1420,6 +1404,54 @@
   "kills": [
    "test_82_a_release_rests_on_its_checks",
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
+ },
+ "m-spec-render": {
+  "file": "tools/check_claims.py",
+  "find": "    if arg(\"--spec\", ROOT / \"VARS-1-SPEC.md\").read_text() != spec_text:",
+  "replace": "    if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-carries": {
+  "file": "tools/check_claims.py",
+  "find": "        if not carried:\n            errs.append(",
+  "replace": "        if False:\n            errs.append(",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-quote-in-part": {
+  "file": "tools/check_claims.py",
+  "find": "            elif carriers[cid] not in norm(text):",
+  "replace": "            elif False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-section": {
+  "file": "tools/check_claims.py",
+  "find": "        if section is None or section > 5:\n            continue",
+  "replace": "        if part.get(\"section\", section) is None or part.get(\"section\", section) > 5:\n            continue",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-heading-shape": {
+  "file": "tools/check_claims.py",
+  "find": "            if \"\\n\" in text or not re.match(r\"^#{1,6} \\S\", text):",
+  "replace": "            if False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-spec-carried-claim": {
+  "file": "tools/check_claims.py",
+  "find": "        elif source is None and c[\"id\"] not in carried:",
+  "replace": "        elif False:",
+  "kills": [
+   "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  }
 }

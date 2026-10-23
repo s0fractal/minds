@@ -19,6 +19,7 @@ mutant has shown that it bites). Exit 1 on any violation.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,68 +29,51 @@ STATUSES = {"proved", "bounded", "differential", "tested", "unburned", "assumed"
 DEBT = {"unburned", "assumed"}
 
 
-LINES = re.compile(r"\r\n|\r|\n")  # Markdown's line endings only: str.splitlines also breaks at U+2028, U+0085, ...
-
-
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-UNREAD = re.compile(r"^(?: {0,3}(?:[*+][ \t]|\d+\)[ \t]|~{3,}|>|<[A-Za-z!/?]|(?:=+|-{2,}|\*{3,}|_{3,})[ \t]*$)"
-                    r"| {1,3}`{3,}|[ \t]+(?:\d+[.)]|[-*+])[ \t])")
+def render_spec(doc: dict) -> str:
+    """VARS-1-SPEC.md is a projection of spec.json: its parts' texts, each a run of whole lines, joined by newlines."""
+    return "\n".join(part["text"] for part in doc["parts"])
 
 
-def spec_blocks(spec: str) -> list[tuple[int, str]]:
-    """(line, text) of every block in §0–§5: paragraphs, list items (`-` or `N.`), tables and code blocks (```);
-    headings excluded. Any other block construct in §0–§5 is refused (ValueError), never read into a neighbour."""
-    blocks: list[tuple[int, str]] = []
+def spec_problems(doc: dict, carriers: dict) -> list[str]:
+    """What spec.json gets wrong: a part of an unknown kind; a heading that is not one heading line; a gap that is not
+    one blank line; a block of §0–§5 (the section counted from the `## N.` headings, never read from the part) that
+    carries nothing, or carries something whose quote is not in its own text. `carriers` maps each claim id and
+    `informative:N` to its normalized quote."""
+    errs: list[str] = []
     section = None
-    cur: list[str] = []
-    start = 0
-    fenced = False
-
-    def flush() -> None:
-        nonlocal cur
-        if cur and section is not None and section <= 5:
-            blocks.append((start, norm(" ".join(cur))))
-        cur = []
-
-    for n, line in enumerate(LINES.split(spec), 1):
-        if line.startswith("```"):
-            if not fenced:
-                flush()
-                start = n
-            cur.append(line)
-            fenced = not fenced
-            if not fenced:
-                flush()
+    for i, part in enumerate(doc["parts"]):
+        kind, text = part.get("kind"), part.get("text", "")
+        if kind == "heading":
+            if "\n" in text or not re.match(r"^#{1,6} \S", text):
+                errs.append(f"spec.json part {i}: a heading is one heading line: {text[:60]!r}")
+            m = re.match(r"^## (\d+)\.", text)
+            if m:
+                section = int(m.group(1))
+            elif text.startswith("## "):
+                section = None  # a section without a number is outside §0–§5 by name, so it must say why: none here
             continue
-        if fenced:
-            cur.append(line)
+        if kind == "gap":
+            if text.strip():
+                errs.append(f"spec.json part {i}: a gap is a blank line: {text[:60]!r}")
             continue
-        if section is not None and section <= 5 and (UNREAD.match(line) or (line[:1] in (" ", "\t") and not cur and
-                                                                          line.strip())):
-            # a block this checker does not split (another list marker, a nested or indented item, indented code, a
-            # quote, HTML, a setext underline or a rule, another fence) would be read into its neighbour's coverage
-            raise ValueError(f"VARS-1-SPEC.md:{n}: a block construct this checker does not read: {line.strip()[:60]!r}")
-        m = re.match(r"^## (\d+)\.", line)
-        if m:
-            flush()
-            section = int(m.group(1))
+        if kind != "block":
+            errs.append(f"spec.json part {i}: unknown kind {kind!r}")
             continue
-        if re.match(r"^ {0,3}#{1,6}(?:[ \t]|$)", line):  # a heading; `#word` is a paragraph (CommonMark)
-            flush()
+        if section is None or section > 5:
             continue
-        if not line.strip():
-            flush()
-            continue
-        if re.match(r"^(\d+\.|-) ", line):
-            flush()
-        if not cur:
-            start = n
-        cur.append(line)
-    flush()
-    return blocks
+        carried = part.get("carries", [])
+        if not carried:
+            errs.append(f"spec.json part {i} (§{section}): carries no claim or informative passage: {norm(text)[:80]!r}")
+        for cid in carried:
+            if cid not in carriers:
+                errs.append(f"spec.json part {i}: carries unknown {cid!r}")
+            elif carriers[cid] not in norm(text):
+                errs.append(f"spec.json part {i}: carries {cid}, whose quote is not in its text")
+    return errs
 
 
 EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Differential", "tested": "Tested",
@@ -139,12 +123,20 @@ def main(argv: list[str]) -> int:
     def arg(name: str, default: Path) -> Path:
         return Path(argv[argv.index(name) + 1]) if name in argv else default
 
-    spec = arg("--spec", ROOT / "VARS-1-SPEC.md").read_text()
+    spec_doc = json.loads(arg("--spec-data", ROOT / "spec.json").read_text())
     data = json.loads(arg("--claims", ROOT / "claims.json").read_text())
     mutants = json.loads((ROOT / "mutants.json").read_text())
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
-    flat = norm(spec)
+    spec_text = render_spec(spec_doc)
+    if "--write-spec" in argv:
+        arg("--spec", ROOT / "VARS-1-SPEC.md").write_text(spec_text)
+    if arg("--spec", ROOT / "VARS-1-SPEC.md").read_text() != spec_text:
+        errors.append("VARS-1-SPEC.md is not the rendering of spec.json (tools/check_claims.py --write-spec)")
+    carriers = {c["id"]: norm(c["quote"]) for c in claims if "source" not in c}
+    carriers.update({f"informative:{i}": norm(q) for i, q in enumerate(informative)})
+    errors += spec_problems(spec_doc, carriers)
+    carried = {cid for part in spec_doc["parts"] for cid in part.get("carries", [])}
     assurance_doc = json.loads(arg("--assurance-data", ROOT / "assurance.json").read_text())
     rendered = render_assurance(assurance_doc)
     if "--write-assurance" in argv:
@@ -156,14 +148,13 @@ def main(argv: list[str]) -> int:
     ids = [c["id"] for c in claims]
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         errors.append(f"claim id used twice: {dup}")
-    quotes = [norm(c["quote"]) for c in claims if "source" not in c] + [norm(q) for q in informative]
     for c in claims:
         q = norm(c["quote"])
         source = c.get("source")
         if source is not None and source not in sources:
             errors.append(f"{c['id']}: unknown source {source!r}")
-        elif source is None and q not in flat:
-            errors.append(f"{c['id']}: quote not in the spec: {q[:80]!r}")
+        elif source is None and c["id"] not in carried:
+            errors.append(f"{c['id']}: carried by no part of spec.json (its quote is not in the spec): {q[:80]!r}")
         elif source is not None:
             # held by exactly one row's claim column, whose evidence column states the claim's own status
             held = [ev for claim, ev in sources[source] if q in claim]
@@ -192,18 +183,12 @@ def main(argv: list[str]) -> int:
         for m in c.get("mutants", []):
             if m not in mutants:
                 errors.append(f"{c['id']}: mutant does not exist: {m}")
-    for q in informative:
-        if norm(q) not in flat:
-            errors.append(f"informative quote not in the spec: {norm(q)[:80]!r}")
-    try:
-        blocks = spec_blocks(spec)
-    except ValueError as e:
-        errors.append(str(e))
-        blocks = []
-    for line, block in blocks:
-        if not any(q in block for q in quotes):
-            errors.append(f"VARS-1-SPEC.md:{line}: no claim or informative quote covers this block: {block[:90]!r}")
+    for i, q in enumerate(informative):
+        if f"informative:{i}" not in carried:
+            errors.append(f"informative passage {i} is carried by no part of spec.json: {norm(q)[:80]!r}")
     for mid, mu in sorted(mutants.items()):  # a mutant whose line was edited away runs nothing (PR #9: CI caught it late)
+        if mid == os.environ.get("MINDS_MUTANT"):
+            continue  # the mutant being applied by tools/run_mutants.py: its line is replaced on purpose
         target = ROOT / mu["file"]
         n = target.read_text().count(mu["find"]) if target.is_file() else 0
         if n != 1:
