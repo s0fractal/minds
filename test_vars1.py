@@ -402,8 +402,28 @@ class TestVars1Conformance(unittest.TestCase):
             parent_commit=c0,
             extra_tree_entries=[("120000", "blob", f"cas/cells/{hx[:2]}/{hx[2:]}", b"/etc/passwd")],
         )
-        with self.assertRaisesRegex(V.VarsError, "Check #2 failed"):
+        # a typechange breaks append-only, the mode rule and the content hash at once: any layer may refuse it
+        with self.assertRaisesRegex(V.VarsError, "Check #2 failed|a chain commit only adds objects|non-100644 mode|CAS SHA-256 mismatch"):
             self.repo.admit_and_advance("core", c_symlink, expected_old=c0)
+
+        # A commit that only deletes an orphan atom breaks no rule but append-only. Five layers refuse it (Check #2,
+        # the delta reader's status and mode checks, then the read of the deleted entry itself), so no mutant of one
+        # guard, or of all three guards, admits it: append-only is held by how a chain is read (gate.append-only)
+        orphan: dict[bytes, bytes] = {}
+        h_orphan = self._put_atom(orphan, V.atom_utf8("an atom nothing names"))
+        c_orphan = self.repo.build_candidate_commit("core", orphan, [], [], parent_commit=c0)
+        self.repo.admit_and_advance("core", c_orphan, expected_old=c0)
+        git = lambda *a, **k: subprocess.run(["git", "-C", str(self.repo_path), *a], check=True, capture_output=True,
+                                             text=True, **k).stdout.strip()
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, GIT_INDEX_FILE=os.path.join(d, "index"))
+            git("read-tree", c_orphan, env=env)
+            git("rm", "--cached", "-q", f"cas/atoms/{h_orphan.hex()[:2]}/{h_orphan.hex()[2:]}", env=env)
+            c_deleted = git("commit-tree", git("write-tree", env=env), "-p", c_orphan, "-m", "delete an atom")
+        with self.assertRaises(V.VarsError):
+            self.repo.admit_and_advance("core", c_deleted, expected_old=c_orphan)
+        self.assertEqual(self.repo.ref_commit("core"), c_orphan)
+        c0 = c_orphan  # the cases below build on the chain as it stands
 
         # Mutant : Add a cell referencing a non-existent payload atom hash
         atoms_m2: dict[bytes, bytes] = {}
@@ -4776,6 +4796,57 @@ class TestVars1Conformance(unittest.TestCase):
             self.fail(f"the assumed member's restoration was refused: {e}")
         self.assertEqual(sup_back["digest"], mc.what_if(self.repo_path, sk2, [mine], restore=True)["digest"],
                          "restore follows the assumed key")
+
+    def test_84_the_mutant_runner_counts_only_lost_behaviour(self) -> None:
+        """tools/run_mutants.py counts a test as a kill only when an assertion fails on what the code does: an
+        expected exception not raised, or values that differ. An expected exception raised with another message,
+        on one line or several, with a custom `msg` or not, is `wording` (the input is still refused); any other
+        error proves nothing. Decided where assertRaises checks, not from the printed text (Codex PR #15 r1)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("run_mutants", ROOT_DIR / "tools" / "run_mutants.py")
+        rm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rm)
+        fixture = Path(self.tmp.name) / "fixture"
+        fixture.mkdir()
+        (fixture / "fx.py").write_text(
+            "import unittest\n"
+            "def refuse(msg): raise ValueError(msg)\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_pass(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('expected')\n"
+            "    def test_other_words(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual')\n"
+            "    def test_other_lines(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual\\ncontinued')\n"
+            "    def test_other_words_msg(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected', msg='why'): refuse('actual')\n"
+            "    def test_callable_form(self):\n"
+            "        self.assertRaisesRegex(ValueError, 'expected', refuse, 'actual\\nmore')\n"
+            "    def test_not_raised(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): pass\n"
+            "    def test_not_raised_plain(self):\n"
+            "        with self.assertRaises(ValueError): pass\n"
+            "    def test_other_exception(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): raise KeyError('x')\n"
+            "    def test_values(self):\n"
+            "        self.assertEqual(1, 2)\n"
+            "    def test_words_then_values(self):\n"
+            "        with self.subTest(1):\n"
+            "            with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual')\n"
+            "        with self.subTest(2):\n"
+            "            self.assertEqual(1, 2)\n"
+            "    def test_message_is_a_lookalike(self):\n"
+            "        self.fail('\"a\" does not match \"b\"')\n")
+        env = dict(os.environ)
+        got = {t: rm.verdict(f"fx.T.{t}", fixture, env)[0] for t in (
+            "test_pass", "test_other_words", "test_other_lines", "test_other_words_msg", "test_callable_form",
+            "test_not_raised", "test_not_raised_plain", "test_other_exception", "test_values",
+            "test_words_then_values", "test_message_is_a_lookalike")}
+        self.assertEqual(got, {
+            "test_pass": "none", "test_other_words": "wording", "test_other_lines": "wording",
+            "test_other_words_msg": "wording", "test_callable_form": "wording",
+            "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
+            "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
 
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with

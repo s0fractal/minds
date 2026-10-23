@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Run the mutants of mutants.json: each replaces one exact string in one file, then the tests it names must fail
 on an assertion, or on a TwinDivergence (the rules kernel and its Python twin disagree: the differential witness
-caught the mutant). An import error or any other crash proves nothing. The file is restored after every mutant.
+caught the mutant). An import error or any other crash proves nothing, and neither does a test whose only failure
+is assertRaisesRegex meeting the expected refusal in other words: the input is still refused (by another layer, or
+by the gate's net for crashes), so the mutant took nothing away. The file is restored after every mutant.
 A mutant of kernel/src/ or kernel2/src/ is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
 default kernel-mutants-target in the checkout's git directory) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
 
@@ -28,6 +30,26 @@ def git_dir() -> Path:
     # the checkout's own git directory: in a linked worktree .git is a file naming it
     return Path(subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=ROOT, check=True,
                                capture_output=True, text=True).stdout.strip())
+
+
+def verdict(test: str, cwd: Path, env: dict) -> tuple[str, str]:
+    """How one test ended under a mutant (tools/mutant_test.py): `kill` or `twin` if any failure says so, else
+    `wording` if one does, else `none` (passed, or only crashed); with the first message of that kind."""
+    # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same second
+    # would otherwise be loaded in place of this one's source
+    with tempfile.TemporaryDirectory() as cache:
+        harness = Path(__file__).resolve().parent / "mutant_test.py"
+        out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", str(harness), test],
+                             cwd=cwd, capture_output=True, text=True, env=env)
+    try:
+        doc = json.loads(out.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        return "none", (out.stderr.strip().splitlines() or [""])[-1]
+    for how in ("kill", "twin", "wording"):
+        for kind, message in doc["outcomes"]:
+            if kind == how:
+                return how, message
+    return "none", next((message for _, message in doc["outcomes"]), "passed")
 
 
 def run(mid: str, m: dict) -> tuple[bool, str]:
@@ -59,20 +81,18 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             if hashlib.sha256(built.read_bytes()).digest() == hashlib.sha256((ROOT / pinned).read_bytes()).digest():
                 return False, "the mutant builds to the unmutated kernel (an equivalent mutant)"
             env_extra[var] = str(built)
+        wording = ""
         for t in m["kills"]:
-            # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same
-            # second would otherwise be loaded in place of this one's source
-            with tempfile.TemporaryDirectory() as cache:
-                env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
-                out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", "-m", "unittest",
-                                      f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True,
-                                     env=env)
-            text = out.stdout + out.stderr
-            if out.returncode != 0 and "AssertionError" in text:
+            env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
+            how, message = verdict(f"test_vars1.TestVars1Conformance.{t}", ROOT, env)
+            if how == "kill":
                 return True, f"killed by {t}"
-            if out.returncode != 0 and "TwinDivergence" in text:
+            if how == "twin":
                 return True, f"killed by {t} (kernel and twin diverge)"
-        return False, f"survived {', '.join(m['kills'])}"
+            if how == "wording":
+                # the refusal is still there under another message: the mutant took nothing a test can see
+                wording = f"refused only in other words by {t}: {message[:300]}"
+        return False, wording or f"survived {', '.join(m['kills'])}"
     finally:
         path.write_text(original)
         for d in cleanup:

@@ -1,29 +1,4 @@
 {
- "m-cas-path": {
-  "file": "vars1.py",
-  "find": "        if sha256(raw) != h:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
-  "replace": "        if False:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
-  "kills": [
-   "test_03_gate_rejects_malformed_commits",
-   "test_38_caches_never_stand_in_for_new_bytes"
-  ]
- },
- "m-cas-ref": {
-  "file": "vars1.py",
-  "find": "        if actual_old != expected_old:\n            raise VarsError(f\"CAS ref mismatch",
-  "replace": "        if False:\n            raise VarsError(f\"CAS ref mismatch",
-  "kills": [
-   "test_03_gate_rejects_malformed_commits"
-  ]
- },
- "m-append-only": {
-  "file": "vars1.py",
-  "find": "            if diff_out.strip():\n                raise VarsError(f\"Check #2 failed",
-  "replace": "            if False:\n                raise VarsError(f\"Check #2 failed",
-  "kills": [
-   "test_03_gate_rejects_malformed_commits"
-  ]
- },
  "m-reserved-scope-name": {
   "file": "vars1.py",
   "find": "            if (c.h_schema == H_SCHEMA[\"scope\"]) != is_scope_name:",
@@ -54,14 +29,6 @@
   "replace": "                    pass",
   "kills": [
    "test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness"
-  ]
- },
- "m-seal-signer": {
-  "file": "vars1.py",
-  "find": "                        raise VarsError(\"Local seal signer not in active SCOPE policy\")",
-  "replace": "                        pass",
-  "kills": [
-   "test_02_local_loop_rebinding_rollback_import_rotation"
   ]
  },
  "m-binding": {
@@ -376,14 +343,6 @@
    "test_21_attestation_counts_what_the_lens_counts"
   ]
  },
- "m-rc-needs-decision": {
-  "file": "vars1.py",
-  "find": "        if len(decisions) != 1:\n",
-  "replace": "        if False:\n",
-  "kills": [
-   "test_48_rules_change_needs_its_decision"
-  ]
- },
  "m-rc-stray-decision": {
   "file": "vars1.py",
   "find": "            if decisions:\n                raise VarsError(\"a rules-change decision comes only",
@@ -416,14 +375,6 @@
    "test_48_rules_change_needs_its_decision"
   ]
  },
- "m-rc-cx-admitted": {
-  "file": "vars1.py",
-  "find": "        self.check_chain(cx_scope, cx_tip)\n",
-  "replace": "",
-  "kills": [
-   "test_50_rules_change_b_refutes_the_old_rules"
-  ]
- },
  "m-rc-a-digest": {
   "file": "vars1.py",
   "find": "        if f[\"reproduce\"] != ev[\"reproduce\"]:\n            raise VarsError(\"rules change (a)",
@@ -444,22 +395,6 @@
   "file": "vars1.py",
   "find": "        if f[\"refutes\"] != ev[\"refutes\"]:\n            raise VarsError(\"rules change (b)",
   "replace": "        if False:\n            raise VarsError(\"rules change (b)",
-  "kills": [
-   "test_50_rules_change_b_refutes_the_old_rules"
-  ]
- },
- "m-rc-b-range": {
-  "file": "vars1.py",
-  "find": "        if i >= len(n[\"order\"]) or bit >= len(KERNEL_BITS) or right > 1:",
-  "replace": "        if False:",
-  "kills": [
-   "test_50_rules_change_b_refutes_the_old_rules"
-  ]
- },
- "m-rc-b-new": {
-  "file": "vars1.py",
-  "find": "        if (n[\"status\"][cid] >> bit & 1) != right:",
-  "replace": "        if False:",
   "kills": [
    "test_50_rules_change_b_refutes_the_old_rules"
   ]
@@ -561,22 +496,6 @@
    "test_58_release_checks_rebuild_every_rules_module"
   ]
  },
- "m-rc-refusal": {
-  "file": "vars1.py",
-  "find": "                raise VarsError(f\"rules change: {what}: {e}\") from None",
-  "replace": "                continue",
-  "kills": [
-   "test_50_rules_change_b_refutes_the_old_rules"
-  ]
- },
- "m-gate-scope-rules": {
-  "file": "vars1.py",
-  "find": "            if c.h_schema == H_SCHEMA[\"scope\"] and len(c.slots) == 3 and c.slots[2] not in RULES:",
-  "replace": "            if False:",
-  "kills": [
-   "test_57_rules_v2_from_genesis"
-  ]
- },
  "m-v2-epoch-start": {
   "file": "vars1.py",
   "find": "        if i == 0 and len(new) == 1:\n            cur = new[0]",
@@ -617,14 +536,6 @@
    "test_61_release_checks_name_commits_by_canonical_id"
   ]
  },
- "m-release-sibling-id": {
-  "file": "tools/minds_chain.py",
-  "find": "        if not V.canonical_commit_id(parent / sib, pin):",
-  "replace": "        if False:",
-  "kills": [
-   "test_61_release_checks_name_commits_by_canonical_id"
-  ]
- },
  "m-release-book-pin": {
   "file": "tools/minds_chain.py",
   "find": "    if siblings is not None and not V.canonical_commit_id(parent / \"sigma-glyph\", SIGMA_PIN):",
@@ -647,14 +558,6 @@
   "replace": "    for kind in (\"correction\",):\n        if rules_change_schema(scope, kind)[0].id == schema_id:",
   "kills": [
    "test_62_a_resource_hardening_bounds_the_commit_count"
-  ]
- },
- "m-amend-v2-to-v1-encoding": {
-  "file": "vars1.py",
-  "find": "        if RULES[old].encoding == \"v2\" and RULES[new_rules].encoding == \"v1\":",
-  "replace": "        if False:",
-  "kills": [
-   "test_68_no_rotation_from_v2_to_rules_that_read_as_v1"
   ]
  },
  "m-amend-same-encoding": {
@@ -688,22 +591,6 @@
   "file": "vars1.py",
   "find": "        if f[\"refutes\"] != ev[\"refutes\"]:\n            raise VarsError(f\"rules change ({kind})",
   "replace": "        if False:\n            raise VarsError(f\"rules change ({kind})",
-  "kills": [
-   "test_64_a_resource_hardening_needs_each_piece"
-  ]
- },
- "m-amend-new-refuses": {
-  "file": "vars1.py",
-  "find": "        if n != RulesResult(\"refusal\", code=code):",
-  "replace": "        if False:",
-  "kills": [
-   "test_64_a_resource_hardening_needs_each_piece"
-  ]
- },
- "m-amend-resource": {
-  "file": "vars1.py",
-  "find": "            if not resource:",
-  "replace": "            if False:",
   "kills": [
    "test_64_a_resource_hardening_needs_each_piece"
   ]
@@ -788,14 +675,6 @@
    "test_67_earlier_counterexamples_stay_decided"
   ]
  },
- "m-amend-d-encoding": {
-  "file": "vars1.py",
-  "find": "                    if RULES[then].encoding != RULES[new_rules].encoding:",
-  "replace": "                    if False:",
-  "kills": [
-   "test_67_earlier_counterexamples_stay_decided"
-  ]
- },
  "m-amend-evidence-ref": {
   "file": "vars1.py",
   "find": "        lines += [f\"update {ref} {commit}\" for ref, commit in evidence]",
@@ -845,14 +724,6 @@
    "test_63_the_bound_refuses_a_chain_of_empty_commits"
   ]
  },
- "m-amend-kin1-type": {
-  "file": "vars1.py",
-  "find": "        atom(b\"KIN1\")",
-  "replace": "        atom(b\"\")",
-  "kills": [
-   "test_64_a_resource_hardening_needs_each_piece"
-  ]
- },
  "m-amend-shadow-bits": {
   "file": "tools/minds_chain.py",
   "find": "                if ob != nb:",
@@ -865,14 +736,6 @@
   "file": "tools/minds_chain.py",
   "find": "    if manifest != shadow(repo_dir, new_rules):",
   "replace": "    if False:",
-  "kills": [
-   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
-  ]
- },
- "m-amend-shadow-history": {
-  "file": "tools/minds_chain.py",
-  "find": "        if kind in (\"hardening\", \"equivalent\"):",
-  "replace": "        if False:",
   "kills": [
    "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
   ]
@@ -917,22 +780,6 @@
    "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
   ]
  },
- "m-amend-shadow-equivalent": {
-  "file": "tools/minds_chain.py",
-  "find": "        if kind in (\"hardening\", \"equivalent\"):",
-  "replace": "        if kind in (\"hardening\",):",
-  "kills": [
-   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
-  ]
- },
- "m-amend-shadow-pin": {
-  "file": "tools/minds_chain.py",
-  "find": "    if repo.ref_commit(SCOPE) != tip:",
-  "replace": "    if False:",
-  "kills": [
-   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay"
-  ]
- },
  "m-amend-decision-name": {
   "file": "tools/minds_chain.py",
   "find": "put(V.atom_utf8(f\"{SCOPE}/rules-change/{tip}\"))",
@@ -963,22 +810,6 @@
   "replace": "(globalThis.reused ??= await WebAssembly.instantiate(module, {})).exports;",
   "kills": [
    "test_74_a_metered_run_does_not_depend_on_earlier_runs"
-  ]
- },
- "m-cycle-fields": {
-  "file": "vars1.py",
-  "find": "        \"cycle_action_count\": u64_of(c.slots[2], atoms),\n        \"cycle_cost\": u64_of(c.slots[3], atoms),",
-  "replace": "        \"cycle_action_count\": u64_of(c.slots[3], atoms),\n        \"cycle_cost\": u64_of(c.slots[2], atoms),",
-  "kills": [
-   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
-  ]
- },
- "m-cycle-entry-spent": {
-  "file": "vars1.py",
-  "find": "        \"entry_spent_total\": u64_of(c.slots[1], atoms),",
-  "replace": "        \"entry_spent_total\": 0,",
-  "kills": [
-   "test_75_a_cycle_witness_is_checked_by_verify_cycle"
   ]
  },
  "m-cycle-verdict": {
@@ -1454,14 +1285,6 @@
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-intrinsic-empty": {
-  "file": "verify/minds_verify.py",
-  "find": "H_EMPTY = sha256(b\"HVEC\")",
-  "replace": "H_EMPTY = sha256(b\"HVEC \")",
-  "kills": [
-   "test_01_golden_test_vectors"
-  ]
- },
  "m-schema-descriptor": {
   "file": "verify/minds_verify.py",
   "find": "\"kernel_outcome:utf8\", \"actions:u64\"],",
@@ -1606,14 +1429,6 @@
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
  },
- "m-assume-weak": {
-  "file": "vars1.py",
-  "find": "            if len(raw) != 164 or raw[:4] != b\"SEAL\" or weak_public_key(raw[68:100]):",
-  "replace": "            if len(raw) != 164 or raw[:4] != b\"SEAL\":",
-  "kills": [
-   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
-  ]
- },
  "m-assume-mode": {
   "file": "vars1.py",
   "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\")",
@@ -1638,12 +1453,28 @@
    "test_82_a_release_rests_on_its_checks"
   ]
  },
- "m-assume-cli-exclusive": {
-  "file": "tools/minds_chain.py",
-  "find": "        if \"--key\" in args:\n            raise V.VarsError(\"--assume and --key",
-  "replace": "        if False:\n            raise V.VarsError(\"--assume and --key",
+ "m-runner-wording": {
+  "file": "tools/mutant_test.py",
+  "find": "        if raised:  # the only failure left once the exception matched is its message",
+  "replace": "        if False:",
   "kills": [
-   "test_82_a_release_rests_on_its_checks"
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
+  ]
+ },
+ "m-runner-priority": {
+  "file": "tools/run_mutants.py",
+  "find": "    for how in (\"kill\", \"twin\", \"wording\"):",
+  "replace": "    for how in (\"wording\", \"kill\", \"twin\"):",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
+  ]
+ },
+ "m-runner-assertion": {
+  "file": "tools/mutant_test.py",
+  "find": "        elif issubclass(kind, AssertionError):\n            self.outcomes.append((\"kill\", str(value)))",
+  "replace": "        elif issubclass(kind, AssertionError) and \"does not match\" not in str(value):\n            self.outcomes.append((\"kill\", str(value)))",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
  }
 }

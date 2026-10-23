@@ -137,6 +137,12 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | `what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement | Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key) | `test_vars1.py` 82; `tools/minds_chain.py` `what_if` |
 | Releases recorded before this format rest on their checks | **Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts | — |
 
+## How a mutant counts
+
+| Claim | Evidence | Where |
+|---|---|---|
+| A mutant counts as killed only when an assertion fails on what the code does (an expected exception not raised, values that differ); an expected exception met with another message, on one line or several, with a custom `msg` or not, is a survival (the input is still refused), and so is any other error. `tools/mutant_test.py` decides where assertRaises checks, not from the printed text | Tested, with mutants: a fixture of eleven tests, each with its expected verdict | `test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict` |
+
 ## Known limits of the bounded checks
 
 One mutant has been run so far: making `Active` ignore `accepted` fails `two_cells_foreign_scope` on exactly that

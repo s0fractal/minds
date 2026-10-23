@@ -72,12 +72,9 @@
   {
    "id": "intrinsics.values",
    "quote": "| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_01_golden_test_vectors"
-   ],
-   "mutants": [
-    "m-intrinsic-empty"
    ]
   },
   {
@@ -117,13 +114,10 @@
   {
    "id": "rules.v2-default",
    "quote": "A scope names them from its genesis or reaches them by a rules change (§4.3); v1 stays the default.",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis",
     "test:test_48_rules_change_needs_its_decision"
-   ],
-   "mutants": [
-    "m-rc-needs-decision"
    ]
   },
   {
@@ -366,13 +360,10 @@
   {
    "id": "store.paths",
    "quote": "every entry a regular file (`100644`) whose bytes hash to its path.",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits",
     "test:test_38_caches_never_stand_in_for_new_bytes"
-   ],
-   "mutants": [
-    "m-cas-path"
    ]
   },
   {
@@ -395,7 +386,6 @@
     "m-chain-commit-id",
     "m-commit-id-canonical",
     "m-release-commit-id",
-    "m-release-sibling-id",
     "m-release-book-pin",
     "m-release-book-pin-full"
    ]
@@ -409,7 +399,6 @@
     "test:test_69_a_fresh_clone_replays_a_past_rules_change"
    ],
    "mutants": [
-    "m-cas-ref",
     "m-amend-evidence-ref"
    ]
   },
@@ -446,36 +435,27 @@
   {
    "id": "gate.append-only",
    "quote": "2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits"
-   ],
-   "mutants": [
-    "m-append-only"
    ]
   },
   {
    "id": "gate.scope-rules",
    "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis"
-   ],
-   "mutants": [
-    "m-gate-scope-rules"
    ]
   },
   {
    "id": "gate.seals",
    "quote": "Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of `S_base`'s admission policy",
-   "status": "differential",
+   "status": "unburned",
    "witnesses": [
     "test:test_02_local_loop_rebinding_rollback_import_rotation",
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
     "prop:I10"
-   ],
-   "mutants": [
-    "m-seal-signer"
    ]
   },
   {
@@ -499,8 +479,6 @@
     "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
    ],
    "mutants": [
-    "m-cycle-fields",
-    "m-cycle-entry-spent",
     "m-cycle-verdict",
     "m-cycle-not-assessed"
    ]
@@ -540,7 +518,6 @@
     "test:test_48_rules_change_needs_its_decision"
    ],
    "mutants": [
-    "m-rc-needs-decision",
     "m-rc-stray-decision"
    ]
   },
@@ -1046,7 +1023,6 @@
     "test:test_66_an_implementation_equivalent_change"
    ],
    "mutants": [
-    "m-rc-needs-decision",
     "m-rc-a-status",
     "m-rc-b-old",
     "m-rc-c-lost",
@@ -1071,12 +1047,9 @@
   {
    "id": "rules.change.counterexample-admitted",
    "quote": "which must pass every check of this gate",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
-   ],
-   "mutants": [
-    "m-rc-cx-admitted"
    ]
   },
   {
@@ -1094,12 +1067,9 @@
   {
    "id": "rules.change.refusal",
    "quote": "either rules refusing either log refuses the rotation",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
-   ],
-   "mutants": [
-    "m-rc-refusal"
    ]
   },
   {
@@ -1125,8 +1095,6 @@
    ],
    "mutants": [
     "m-rc-b-digest",
-    "m-rc-b-range",
-    "m-rc-b-new",
     "m-rc-b-old"
    ]
   },
@@ -1176,19 +1144,15 @@
     "test:test_64_a_resource_hardening_needs_each_piece"
    ],
    "mutants": [
-    "m-amend-kin1-type",
     "m-amend-kin1-size"
    ]
   },
   {
    "id": "types.kin1",
    "quote": "`kin1`: a KIN1 atom.",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_64_a_resource_hardening_needs_each_piece"
-   ],
-   "mutants": [
-    "m-amend-kin1-type"
    ]
   },
   {
@@ -1200,8 +1164,7 @@
     "test:test_63_the_bound_refuses_a_chain_of_empty_commits"
    ],
    "mutants": [
-    "m-amend-twin-bound",
-    "m-amend-resource"
+    "m-amend-twin-bound"
    ]
   },
   {
@@ -1259,7 +1222,6 @@
    ],
    "mutants": [
     "m-amend-same-encoding",
-    "m-amend-resource",
     "m-amend-tight-resource"
    ]
   },
@@ -1298,8 +1260,7 @@
    "mutants": [
     "m-amend-budget-max",
     "m-amend-budget-passed",
-    "m-amend-refutes",
-    "m-amend-new-refuses"
+    "m-amend-refutes"
    ]
   },
   {
@@ -1312,7 +1273,6 @@
     "test:test_71_a_trap_is_a_fault_not_exhaustion"
    ],
    "mutants": [
-    "m-amend-resource",
     "m-amend-old-unbounded",
     "m-amend-tight-resource",
     "m-amend-tight-output",
@@ -1329,8 +1289,7 @@
    "mutants": [
     "m-amend-d-skip",
     "m-amend-d-correction",
-    "m-amend-d-refusal",
-    "m-amend-d-encoding"
+    "m-amend-d-refusal"
    ]
   },
   {
@@ -1341,7 +1300,6 @@
     "test:test_68_no_rotation_from_v2_to_rules_that_read_as_v1"
    ],
    "mutants": [
-    "m-amend-v2-to-v1-encoding",
     "m-amend-v1b-to-v2"
    ]
   },
@@ -1384,10 +1342,7 @@
    "mutants": [
     "m-amend-shadow-bits",
     "m-amend-shadow-check",
-    "m-amend-shadow-history",
     "m-amend-shadow-accept",
-    "m-amend-shadow-equivalent",
-    "m-amend-shadow-pin",
     "m-amend-decision-name"
    ]
   },
@@ -1644,11 +1599,9 @@
     "m-assume-structure",
     "m-assume-fresh",
     "m-assume-zero",
-    "m-assume-weak",
     "m-assume-mode",
     "m-assume-cli-seals",
-    "m-assume-cli-restore",
-    "m-assume-cli-exclusive"
+    "m-assume-cli-restore"
    ]
   },
   {
@@ -1704,6 +1657,20 @@
     "m-restore",
     "m-needs-stale",
     "m-settled-live"
+   ]
+  },
+  {
+   "id": "assurance.mutant-kills",
+   "source": "ASSURANCE.md",
+   "quote": "A mutant counts as killed only when an assertion fails on what the code does",
+   "status": "tested",
+   "witnesses": [
+    "test:test_84_the_mutant_runner_counts_only_lost_behaviour"
+   ],
+   "mutants": [
+    "m-runner-wording",
+    "m-runner-priority",
+    "m-runner-assertion"
    ]
   }
  ],
