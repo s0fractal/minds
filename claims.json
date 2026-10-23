@@ -442,7 +442,7 @@
   },
   {
    "id": "gate.scope-rules",
-   "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`",
+   "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or `H_LENS_KERNEL_V1C`",
    "status": "unburned",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis"
@@ -632,6 +632,71 @@
     "prop:I7"
    ],
    "mutants": []
+  },
+  {
+   "id": "fold.rotation-epoch",
+   "quote": "Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`, step 4 holds for a rotation that does not wait",
+   "status": "differential",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+   ],
+   "mutants": [
+    "m-v1c-kernel-v1",
+    "m-v1c-twin-v1"
+   ]
+  },
+  {
+   "id": "fold.rotation-waits",
+   "quote": "while a removed key has not sealed `S'` under `S`, the rotation **waits** and `S` stays governing",
+   "status": "differential",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+   ],
+   "mutants": [
+    "m-v1c-kernel-removed",
+    "m-v1c-twin-removed"
+   ]
+  },
+  {
+   "id": "fold.rotation-ends",
+   "quote": "`S'` becomes governing after the commit in which every removed key has sealed it, or after the 16th commit following its admission, whichever comes first",
+   "status": "differential",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+   ],
+   "mutants": [
+    "m-v1c-kernel-consent",
+    "m-v1c-kernel-delay",
+    "m-v1c-twin-consent",
+    "m-v1c-twin-delay"
+   ]
+  },
+  {
+   "id": "fold.rotation-pending",
+   "quote": "While a rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules than `S` (E-24)",
+   "status": "differential",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+   ],
+   "mutants": [
+    "m-v1c-twin-pending",
+    "m-v1c-twin-rules"
+   ]
+  },
+  {
+   "id": "rules.change-keeps-delay",
+   "quote": "A rules change never goes from rules with this delay to rules without it (§4.3)",
+   "status": "tested",
+   "witnesses": [
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits"
+   ],
+   "mutants": [
+    "m-v1c-leave"
+   ]
   },
   {
    "id": "lens.order",
@@ -1134,6 +1199,31 @@
    ],
    "mutants": [
     "m-amend-twin-bound"
+   ]
+  },
+  {
+   "id": "rules.v1c-hash",
+   "quote": "`H_LENS_KERNEL_V1C = 69e7eebbb09f3c8e2bfd2b6a45b25e873bf0c9bacae2271eb0c9eeb421334313` is the id of `kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`",
+   "status": "tested",
+   "witnesses": [
+    "ci:Rebuild the v1c rules kernel; it must hash to H_LENS_KERNEL_V1C",
+    "test:test_58_release_checks_rebuild_every_rules_module"
+   ],
+   "mutants": [
+    "m-v1c-release"
+   ]
+  },
+  {
+   "id": "rules.v1c-code",
+   "quote": "`H_LENS_KERNEL_V1C` adds −24 as well",
+   "status": "differential",
+   "witnesses": [
+    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer",
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits"
+   ],
+   "mutants": [
+    "m-v1c-kernel-pending",
+    "m-v1c-kernel-rules"
    ]
   },
   {

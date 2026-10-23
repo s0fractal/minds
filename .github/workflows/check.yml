@@ -59,6 +59,15 @@ jobs:
           echo "built $built pinned $pinned"
           test "$built" = "$pinned"
 
+      - name: Rebuild the v1c rules kernel; it must hash to H_LENS_KERNEL_V1C
+        working-directory: kernel
+        run: |
+          cargo build --release --target wasm32-unknown-unknown --features commit-bound,rotation-delay
+          built=$(sha256sum target/wasm32-unknown-unknown/release/vars_lens.wasm | cut -d' ' -f1)
+          pinned=$(python -c "import sys; sys.path.insert(0, '..'); import vars1; print(vars1.H_LENS_KERNEL_V1C.hex())")
+          echo "built $built pinned $pinned"
+          test "$built" = "$pinned"
+
       - name: Install elan (Lean toolchain from proofs/lean-toolchain)
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \

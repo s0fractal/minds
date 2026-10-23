@@ -325,7 +325,8 @@ PROFILE_FORMAT = "minds-profile/1"
 # The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
 # bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
 # gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
-RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kernel2/lens2.wasm", "v2"))
+RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kernel/lens1c.wasm", "v1c"),
+               ("kernel2/lens2.wasm", "v2"))
 
 
 def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
@@ -446,7 +447,8 @@ def show(repo_dir: Path) -> List[Dict[str, object]]:
     return sorted(out, key=lambda r: r["name"])
 
 
-RULES_NAMES = {V.H_LENS_KERNEL: "v1", V.H_LENS_KERNEL_V1B: "v1b", V.H_LENS_KERNEL_V2: "v2"}
+RULES_NAMES = {V.H_LENS_KERNEL: "v1", V.H_LENS_KERNEL_V1B: "v1b", V.H_LENS_KERNEL_V1C: "v1c",
+               V.H_LENS_KERNEL_V2: "v2"}
 
 
 def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
@@ -538,12 +540,14 @@ def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[byt
 
 
 # Every rules module a commit may carry: the path whose presence says it carries it, the crate directory, cargo's
-# extra arguments, the wasm cargo builds, and the identity it must hash to. Built one after another: the v1b build
-# overwrites the v1 wasm in kernel/target, after it was hashed.
+# extra arguments, the wasm cargo builds, and the identity it must hash to. Built one after another: the v1b and v1c
+# builds overwrite the v1 wasm in kernel/target, each after the previous one was hashed.
 KERNELS = (("kernel", "kernel", (), "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_KERNEL"),
            ("kernel2", "kernel2", (), "vars_lens2.wasm", V.H_LENS_KERNEL_V2, "H_LENS_KERNEL_V2"),
            ("kernel/lens1b.wasm", "kernel", ("--features", "commit-bound"), "vars_lens.wasm", V.H_LENS_KERNEL_V1B,
-            "H_LENS_KERNEL_V1B"))
+            "H_LENS_KERNEL_V1B"),
+           ("kernel/lens1c.wasm", "kernel", ("--features", "commit-bound,rotation-delay"), "vars_lens.wasm",
+            V.H_LENS_KERNEL_V1C, "H_LENS_KERNEL_V1C"))
 
 
 def _run(cmd: List[str], cwd: Path) -> bool:
@@ -551,8 +555,9 @@ def _run(cmd: List[str], cwd: Path) -> bool:
 
 
 def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
-    """Rebuild every rules module `root` carries (kernel/, kernel2/ and kernel/lens1b.wasm where present); each must
-    hash to its pinned identity, and the rules the release names must be one of those rebuilt here."""
+    """Rebuild every rules module `root` carries (kernel/, kernel2/, kernel/lens1b.wasm and kernel/lens1c.wasm where
+    present); each must hash to its pinned identity, and the rules the release names must be one of those rebuilt
+    here."""
     results: List[Tuple[str, bool]] = []
     rebuilt = set()
     for marker, d, extra, wasm_name, pinned, label in KERNELS:

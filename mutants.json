@@ -1476,5 +1476,123 @@
   "kills": [
    "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
+ },
+ "m-v1c-kernel-consent": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "            if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {",
+  "replace": "            if at >= t + ROTATION_DELAY {",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-delay": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "const ROTATION_DELAY: u32 = 16;",
+  "replace": "const ROTATION_DELAY: u32 = 15;",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-pending": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "                if waiting.is_some() || (g.waits(",
+  "replace": "                if false || (g.waits(",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-rules": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": " && g.slot(s, 2)? != g.slot(base, 2)?) {",
+  "replace": " && false) {",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-v1": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "        if rules == &H_LENS_KERNEL_V1 || rules == &H_LENS_KERNEL_V1B {",
+  "replace": "        if rules == &H_LENS_KERNEL_V1B {",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-removed": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "            if (0..self.sets.kw).any(|w| old[w] & !new[w] & !ends[w] != 0) {",
+  "replace": "            if (0..self.sets.kw).any(|w| old[w] & !ends[w] != 0) {",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-twin-consent": {
+  "file": "vars1.py",
+  "find": "                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay or not waits(s_base_id, w_id):",
+  "replace": "                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay:",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-delay": {
+  "file": "vars1.py",
+  "find": "    H_LENS_KERNEL_V1C: Rules(KERNEL_DIR / \"lens1c.wasm\", \"v1\", frozenset({-7}), rotation_delay=16),",
+  "replace": "    H_LENS_KERNEL_V1C: Rules(KERNEL_DIR / \"lens1c.wasm\", \"v1\", frozenset({-7}), rotation_delay=15),",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-pending": {
+  "file": "vars1.py",
+  "find": "                    if waiting is not None:\n                        raise VarsError(\"a new scope while a rotation waits (§4.1)\")",
+  "replace": "                    if False:\n                        raise VarsError(\"a new scope while a rotation waits (§4.1)\")",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-rules": {
+  "file": "vars1.py",
+  "find": "                    if waits(s_base_id, s_next_id) and s_next.slots[2] != s_base.slots[2]:",
+  "replace": "                    if False:",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-v1": {
+  "file": "vars1.py",
+  "find": "            if len(base_c.slots) < 3 or not RULES[base_c.slots[2]].rotation_delay:",
+  "replace": "            if len(base_c.slots) < 3:",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-removed": {
+  "file": "vars1.py",
+  "find": "                removed |= pol_quorum(base_c.slots[i])[1] - pol_quorum(s_c.slots[i])[1]",
+  "replace": "                removed |= pol_quorum(base_c.slots[i])[1]",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-leave": {
+  "file": "vars1.py",
+  "find": "        if RULES[old].rotation_delay and not RULES[new_rules].rotation_delay:",
+  "replace": "        if False:",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-release": {
+  "file": "tools/minds_chain.py",
+  "find": "           (\"kernel/lens1c.wasm\", \"kernel\", (\"--features\", \"commit-bound,rotation-delay\"),",
+  "replace": "           (\"kernel/lens1c.wasm\", \"kernel\", (\"--features\", \"commit-bound\"),",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
  }
 }

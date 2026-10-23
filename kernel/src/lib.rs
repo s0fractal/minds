@@ -97,6 +97,18 @@ const SCOPE_QUORUM: i32 = -20; // a new scope lacks the governing admission quor
 const ACCEPTANCE_PIN: i32 = -21; // an acceptance names a foreign scope cell that is not self-sealed
 const BINDING: i32 = -22; // §1.2 rule 6: a new local binding does not reach a prior binding of its name
 const UNKNOWN_POLICY: i32 = -23; // a policy slot the fold needs is not a well-formed POL1
+// Delayed rotation (feature `rotation-delay`, the rules H_LENS_KERNEL_V1C): a new scope while another waits, or a
+// rotation that would wait and names other rules.
+#[cfg(feature = "rotation-delay")]
+const SCOPE_PENDING: i32 = -24;
+// How many commits a rotation that removes keys without their consent waits before its scope governs.
+#[cfg(feature = "rotation-delay")]
+const ROTATION_DELAY: u32 = 16;
+// Rotations under these rules take effect at once, as v1 has them do: the delay is a rule of the epoch it governs.
+#[cfg(feature = "rotation-delay")]
+const H_LENS_KERNEL_V1: H = h("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb");
+#[cfg(feature = "rotation-delay")]
+const H_LENS_KERNEL_V1B: H = h("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd");
 
 type H = [u8; 32];
 
@@ -294,6 +306,28 @@ impl Graph<'_> {
             return Err(MALFORMED);
         }
         Ok(self.input[c.slots + 32 * s..c.slots + 32 * s + 32].try_into().unwrap())
+    }
+    /// Must the rotation from `base` to `s` wait (§4.1, delayed rotation)? Only under rules with the delay (a scope
+    /// naming v1 or v1b rotates at once), and only while some key of `base`'s admission or acceptance policy that
+    /// `s`'s same policy lacks has not sealed `s` under `base` by commit `at`.
+    #[cfg(feature = "rotation-delay")]
+    fn waits(&self, base: usize, s: usize, at: u32, ends: &mut [u32]) -> Result<bool, i32> {
+        if (self.c(base).k as usize) < 3 {
+            return Ok(false);
+        }
+        let rules = self.slot(base, 2)?;
+        if rules == &H_LENS_KERNEL_V1 || rules == &H_LENS_KERNEL_V1B {
+            return Ok(false);
+        }
+        self.endorsers(s, base, at, None, ends);
+        for p in 0..2 {
+            let (_, old) = self.pol(self.slot(base, p)?)?;
+            let (_, new) = self.pol(self.slot(s, p)?)?;
+            if (0..self.sets.kw).any(|w| old[w] & !new[w] & !ends[w] != 0) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
     fn edge_count(&self, i: usize, k: usize) -> usize {
         self.c(i).edges[k].1 as usize
@@ -532,6 +566,9 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
         auth[cur] = 1;
     }
 
+    // A rotation admitted at commit `t` whose scope does not govern yet (feature `rotation-delay`).
+    #[cfg(feature = "rotation-delay")]
+    let mut waiting: Option<(usize, u32)> = None;
     for at in 0..commits {
         let present = |i: usize| g.c(i).birth <= at;
         let new = |i: usize| g.c(i).birth == at;
@@ -627,6 +664,10 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
                 if g.sets.count(ends) < adm_thr {
                     return Err(SCOPE_QUORUM);
                 }
+                #[cfg(feature = "rotation-delay")]
+                if waiting.is_some() || (g.waits(base, s, at, ends)? && g.slot(s, 2)? != g.slot(base, 2)?) {
+                    return Err(SCOPE_PENDING);
+                }
                 pending = Some(s);
             }
         }
@@ -716,10 +757,25 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
             }
         }
 
-        // Latch 4: the new scope governs the next commit.
+        // Latch 4: the new scope governs the next commit; under the delay, a rotation that removes keys without
+        // their consent waits, and governs after ROTATION_DELAY more commits or once every removed key has sealed it.
         if let Some(s) = pending {
             auth[s] = 1;
-            cur = s;
+            #[cfg(feature = "rotation-delay")]
+            {
+                waiting = Some((s, at));
+            }
+            #[cfg(not(feature = "rotation-delay"))]
+            {
+                cur = s;
+            }
+        }
+        #[cfg(feature = "rotation-delay")]
+        if let Some((s, t)) = waiting {
+            if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {
+                cur = s;
+                waiting = None;
+            }
         }
     }
     Ok(cur)
