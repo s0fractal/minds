@@ -15,7 +15,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -23,9 +22,6 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# assertRaisesRegex's failure when the expected refusal comes with another message: a kill by wording alone
-WORDING = re.compile(r'AssertionError: ".*" does not match ".*"\Z')
-
 KERNELS = {"kernel": ("vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
            "kernel2": ("vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
 
@@ -34,6 +30,26 @@ def git_dir() -> Path:
     # the checkout's own git directory: in a linked worktree .git is a file naming it
     return Path(subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=ROOT, check=True,
                                capture_output=True, text=True).stdout.strip())
+
+
+def verdict(test: str, cwd: Path, env: dict) -> tuple[str, str]:
+    """How one test ended under a mutant (tools/mutant_test.py): `kill` or `twin` if any failure says so, else
+    `wording` if one does, else `none` (passed, or only crashed); with the first message of that kind."""
+    # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same second
+    # would otherwise be loaded in place of this one's source
+    with tempfile.TemporaryDirectory() as cache:
+        harness = Path(__file__).resolve().parent / "mutant_test.py"
+        out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", str(harness), test],
+                             cwd=cwd, capture_output=True, text=True, env=env)
+    try:
+        doc = json.loads(out.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        return "none", (out.stderr.strip().splitlines() or [""])[-1]
+    for how in ("kill", "twin", "wording"):
+        for kind, message in doc["outcomes"]:
+            if kind == how:
+                return how, message
+    return "none", next((message for _, message in doc["outcomes"]), "passed")
 
 
 def run(mid: str, m: dict) -> tuple[bool, str]:
@@ -67,23 +83,15 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             env_extra[var] = str(built)
         wording = ""
         for t in m["kills"]:
-            # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same
-            # second would otherwise be loaded in place of this one's source
-            with tempfile.TemporaryDirectory() as cache:
-                env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
-                out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", "-m", "unittest",
-                                      f"test_vars1.TestVars1Conformance.{t}"], cwd=ROOT, capture_output=True, text=True,
-                                     env=env)
-            text = out.stdout + out.stderr
-            failures = [x for x in text.splitlines() if x.startswith("AssertionError")]
-            if out.returncode != 0 and failures and all(WORDING.fullmatch(x) for x in failures):
-                # the refusal is still there under another message: the mutant took nothing a test can see
-                wording = f"refused only in other words by {t}: {failures[0][len('AssertionError: '):][:300]}"
-                continue
-            if out.returncode != 0 and failures:
+            env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
+            how, message = verdict(f"test_vars1.TestVars1Conformance.{t}", ROOT, env)
+            if how == "kill":
                 return True, f"killed by {t}"
-            if out.returncode != 0 and "TwinDivergence" in text:
+            if how == "twin":
                 return True, f"killed by {t} (kernel and twin diverge)"
+            if how == "wording":
+                # the refusal is still there under another message: the mutant took nothing a test can see
+                wording = f"refused only in other words by {t}: {message[:300]}"
         return False, wording or f"survived {', '.join(m['kills'])}"
     finally:
         path.write_text(original)

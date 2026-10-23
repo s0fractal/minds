@@ -1285,14 +1285,6 @@
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
  },
- "m-intrinsic-empty": {
-  "file": "verify/minds_verify.py",
-  "find": "H_EMPTY = sha256(b\"HVEC\")",
-  "replace": "H_EMPTY = sha256(b\"HVEC \")",
-  "kills": [
-   "test_01_golden_test_vectors"
-  ]
- },
  "m-schema-descriptor": {
   "file": "verify/minds_verify.py",
   "find": "\"kernel_outcome:utf8\", \"actions:u64\"],",
@@ -1459,6 +1451,30 @@
   "replace": "        pk = V.ed25519_pubkey(sk or bytes(32))",
   "kills": [
    "test_82_a_release_rests_on_its_checks"
+  ]
+ },
+ "m-runner-wording": {
+  "file": "tools/mutant_test.py",
+  "find": "        if raised:  # the only failure left once the exception matched is its message",
+  "replace": "        if False:",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
+  ]
+ },
+ "m-runner-priority": {
+  "file": "tools/run_mutants.py",
+  "find": "    for how in (\"kill\", \"twin\", \"wording\"):",
+  "replace": "    for how in (\"wording\", \"kill\", \"twin\"):",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
+  ]
+ },
+ "m-runner-assertion": {
+  "file": "tools/mutant_test.py",
+  "find": "        elif issubclass(kind, AssertionError):\n            self.outcomes.append((\"kill\", str(value)))",
+  "replace": "        elif issubclass(kind, AssertionError) and \"does not match\" not in str(value):\n            self.outcomes.append((\"kill\", str(value)))",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
  }
 }

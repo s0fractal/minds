@@ -4797,6 +4797,57 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(sup_back["digest"], mc.what_if(self.repo_path, sk2, [mine], restore=True)["digest"],
                          "restore follows the assumed key")
 
+    def test_84_the_mutant_runner_counts_only_lost_behaviour(self) -> None:
+        """tools/run_mutants.py counts a test as a kill only when an assertion fails on what the code does: an
+        expected exception not raised, or values that differ. An expected exception raised with another message,
+        on one line or several, with a custom `msg` or not, is `wording` (the input is still refused); any other
+        error proves nothing. Decided where assertRaises checks, not from the printed text (Codex PR #15 r1)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("run_mutants", ROOT_DIR / "tools" / "run_mutants.py")
+        rm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rm)
+        fixture = Path(self.tmp.name) / "fixture"
+        fixture.mkdir()
+        (fixture / "fx.py").write_text(
+            "import unittest\n"
+            "def refuse(msg): raise ValueError(msg)\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_pass(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('expected')\n"
+            "    def test_other_words(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual')\n"
+            "    def test_other_lines(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual\\ncontinued')\n"
+            "    def test_other_words_msg(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected', msg='why'): refuse('actual')\n"
+            "    def test_callable_form(self):\n"
+            "        self.assertRaisesRegex(ValueError, 'expected', refuse, 'actual\\nmore')\n"
+            "    def test_not_raised(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): pass\n"
+            "    def test_not_raised_plain(self):\n"
+            "        with self.assertRaises(ValueError): pass\n"
+            "    def test_other_exception(self):\n"
+            "        with self.assertRaisesRegex(ValueError, 'expected'): raise KeyError('x')\n"
+            "    def test_values(self):\n"
+            "        self.assertEqual(1, 2)\n"
+            "    def test_words_then_values(self):\n"
+            "        with self.subTest(1):\n"
+            "            with self.assertRaisesRegex(ValueError, 'expected'): refuse('actual')\n"
+            "        with self.subTest(2):\n"
+            "            self.assertEqual(1, 2)\n"
+            "    def test_message_is_a_lookalike(self):\n"
+            "        self.fail('\"a\" does not match \"b\"')\n")
+        env = dict(os.environ)
+        got = {t: rm.verdict(f"fx.T.{t}", fixture, env)[0] for t in (
+            "test_pass", "test_other_words", "test_other_lines", "test_other_words_msg", "test_callable_form",
+            "test_not_raised", "test_not_raised_plain", "test_other_exception", "test_values",
+            "test_words_then_values", "test_message_is_a_lookalike")}
+        self.assertEqual(got, {
+            "test_pass": "none", "test_other_words": "wording", "test_other_lines": "wording",
+            "test_other_words_msg": "wording", "test_callable_form": "wording",
+            "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
+            "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
+
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
         MINDS_KERNEL_WASM, a mutant built by tools/run_mutants.py) gives every status the twin gives on a corpus of
