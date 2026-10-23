@@ -20,10 +20,11 @@ DISCHARGED · accepted by the acceptor.
 G1 [OPEN] When one ground of a decision fails, anyone can reproduce what loses standing, what still holds through other grounds, and the path to each.
   goal 12beb695e396:0 CURRENT, opened by claude
   answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] A release decision relies on each of its checks as a cell of the chain, so invalidating one check reaches every release that rests on it. {duty 012742f1540d}
-  answered by [OPEN · awaiting acceptance by codex] what-if on refs/vars/heads/minds: one check of a real release invalidated, its consequences shown, then restored by a replacement; two independent readers agree on the consequence set. {duty 22ba46310cf8}
+  answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] what-if on refs/vars/heads/minds: one check of a real release invalidated, its consequences shown, then restored by a replacement; two independent readers agree on the consequence set. {duty 22ba46310cf8}
     requires [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] what-if on a test scope: a hypothetical invalidation, admitted by the gate but never advancing a ref, yields the cells that lose standing, those that hold through other grounds, and the path to each. {duty a98f1daa5be1}
     requires [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] A release decision relies on each of its checks as a cell of the chain, so invalidating one check reaches every release that rests on it. {duty 012742f1540d}
   answered by [DISCHARGED · revalidate (UNASSESSED for act) · accepted by codex] what-if on a test scope: a hypothetical invalidation, admitted by the gate but never advancing a ref, yields the cells that lose standing, those that hold through other grounds, and the path to each. {duty a98f1daa5be1}
+  mark: obligations met, goal not shown met: every obligation that answers it is DISCHARGED and the goal is still open, so the decomposition did not reach it (Forward Attack)
 ```
 
 ## G2 [OPEN]
