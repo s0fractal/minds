@@ -1601,7 +1601,34 @@
     "m-whatif-path",
     "m-whatif-settled",
     "m-whatif-relies",
-    "m-whatif-shortest"
+    "m-whatif-shortest",
+    "m-whatif-backwards",
+    "m-whatif-sealed"
+   ]
+  },
+  {
+   "id": "assurance.whatif-margin",
+   "source": "ASSURANCE.md",
+   "quote": "A held decision whose counted endorsements change carries its threshold",
+   "status": "tested",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+   ],
+   "mutants": [
+    "m-whatif-margin"
+   ]
+  },
+  {
+   "id": "assurance.whatif-transcript",
+   "source": "ASSURANCE.md",
+   "quote": "`transcript` binds the consequence lists to their context",
+   "status": "tested",
+   "witnesses": [
+    "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+   ],
+   "mutants": [
+    "m-whatif-transcript-seals",
+    "m-whatif-transcript-tip"
    ]
   },
   {

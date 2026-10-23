@@ -4598,9 +4598,18 @@ class TestVars1Conformance(unittest.TestCase):
                          [A.id.hex(), X.id.hex(), Y.id.hex()], "the path runs hypothesis, A, X, Y")
         self.assertNotIn("core/z", {x["name"] for x in r["lost"] + r["held"]}, "Z rests on B, outside the region")
         self.assertIn("core/y2", lost)
-        self.assertEqual(lost["core/y2"]["path"][1:], [A.id.hex(), X1.id.hex(), B.id.hex(), Y2.id.hex()],
-                         "the shortest reference path, through B outside the region (Codex PR #6 r1 F2)")
-        self.assertEqual(self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))["digest"], r["digest"])
+        self.assertEqual(lost["core/y2"]["path"][1:], [A.id.hex(), X1.id.hex(), X2.id.hex(), X3.id.hex(), Y2.id.hex()],
+                         "the route of dependence, not the shorter one back through the shared ground B (Gemini §4.2)")
+        again = self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))
+        self.assertEqual((again["digest"], again["transcript"]), (r["digest"], r["transcript"]))
+        tl = self.repo.lens("core")
+        relies = lambda cid: (set() if tl["cells"][cid].h_relies == V.H_EMPTY
+                              else set(V.parse_hvec(tl["atoms"][tl["cells"][cid].h_relies], require_sorted=True)))
+        for x in r["lost"] + r["held"]:  # after the hypothesis's own step, each step is relied on or judged
+            p = [bytes.fromhex(c) for c in x["path"]]
+            self.assertEqual(p[1], A.id, "the hypothesis names A")
+            for u, v in zip(p[1:], p[2:]):
+                self.assertTrue(u in relies(v) or tl["cells"][u].h_payload == v, (x["name"], u.hex(), v.hex()))
 
         one = self.repo.what_if("core", *hypothesis("core/suppose.v1", [V1.id]))
         self.assertEqual({x["name"] for x in one["lost"]}, {"core/g.v1"})
@@ -4612,12 +4621,26 @@ class TestVars1Conformance(unittest.TestCase):
         g2 = next((x for x in out["lost"] if x["name"] == "core/g2"), None)
         self.assertIsNotNone(g2, "the second seal settles G2")
         self.assertEqual((g2["before"], g2["after"]), ({"settled": False}, {"settled": True}))
-        self.assertEqual(g2["path"][1:], [A2.id.hex(), C.id.hex(), G2.id.hex()])
+        self.assertEqual(g2["path"], [U1.id.hex(), G2.id.hex()],
+                         "G2 settles through the new seal on its verdict, not back through the ground C it shares with A2")
         both = self.repo.what_if("core", *hypothesis("core/suppose.both", [V1.id, V2.id]))
         self.assertIn("core/g", {x["name"] for x in both["lost"]}, "neither verdict stands: G loses Settled")
         g = next(x for x in both["lost"] if x["name"] == "core/g")
         self.assertEqual((g["before"], g["after"]), ({"settled": True}, {"settled": False}))
         self.assertNotEqual(both["digest"], one["digest"])
+        # equal consequences from a different question share the digest, never the transcript
+        self.assertEqual(one["context"]["hypothesis"], one["hypothesis"])
+        other = self.repo.what_if("core", h, hc, hs)
+        self.assertEqual([x["name"] for x in other["lost"]], [x["name"] for x in out["lost"] if x["name"] != "core/g2"])
+        h1, c1_, s1_ = hypothesis("core/suppose.v1", [V1.id])
+        by2 = self.repo.what_if("core", h1, c1_, [V.Seal.sign(self.sk2, c1_[0].id, s0.id)])
+        self.assertEqual(by2["digest"], one["digest"], "a second signer, the same consequences")
+        self.assertNotEqual(by2["transcript"], one["transcript"], "but not the same question: the seal key is bound")
+        self.assertEqual(by2["context"]["seals"], [[c1_[0].id.hex(), self.pk2.hex()]])
+        # a quorum kept with a thinner margin: G held, its counted endorsements 2 -> 1
+        gh = next(x for x in one["held"] if x["name"] == "core/g")
+        self.assertEqual(gh.get("endorsements"), {"threshold": 1, "before": 2, "after": 1})
+        self.assertNotIn("endorsements", next(x for x in one["held"] if x["name"] == "core/w"))
 
         h, cs, _ = hypothesis("core/suppose.unsigned", [A.id])
         with self.assertRaises(V.VarsError):
@@ -4626,6 +4649,14 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "reserved for intrinsic standard schemas"):
             self.repo.what_if("core", *hypothesis("core/schema.suppose", [A.id]))
         self.assertEqual(self.repo.ref_commit("core"), c1)
+        # the same question one commit later: the same consequences, another tip, another transcript
+        q: dict[bytes, bytes] = {}
+        Q = self._axiom(q, "core/q", "an unrelated ground")
+        self._admit(q, [Q], [V.Seal.sign(self.sk1, Q.id, s0.id)], c1)
+        later = self.repo.what_if("core", *hypothesis("core/suppose.a", [A.id]))
+        self.assertEqual(later["digest"], r["digest"])
+        self.assertNotEqual(later["context"]["tip"], r["context"]["tip"])
+        self.assertNotEqual(later["transcript"], r["transcript"], "the tip is bound")
 
     def test_82_a_release_rests_on_its_checks(self) -> None:
         """A release decision relies on one cell per check, and a member's verdict on that member's own checks, so
