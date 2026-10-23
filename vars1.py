@@ -86,7 +86,7 @@ if sha256(KERNEL1B_ATOM) != H_LENS_KERNEL_V1B:
     raise RuntimeError("kernel/lens1b.wasm does not hash to H_LENS_KERNEL_V1B")
 # v1b with a rotation that removes keys without their consent delayed (`kernel/`, built with `--features
 # commit-bound,rotation-delay`; §4.1). Dormant like v1b: a scope reaches it only by a rules change (§4.3).
-H_LENS_KERNEL_V1C = bytes.fromhex("69e7eebbb09f3c8e2bfd2b6a45b25e873bf0c9bacae2271eb0c9eeb421334313")
+H_LENS_KERNEL_V1C = bytes.fromhex("db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017")
 KERNEL1C_ATOM = (KERNEL_DIR / "lens1c.wasm").read_bytes()
 if sha256(KERNEL1C_ATOM) != H_LENS_KERNEL_V1C:
     raise RuntimeError("kernel/lens1c.wasm does not hash to H_LENS_KERNEL_V1C")
@@ -2005,6 +2005,7 @@ class GitVarsRepo:
 
             # At most one new local schema.scope cell in any transition commit
             pending_next_scope: Optional[bytes] = None
+            pending_waits = False
             if idx >= 1:
                 new_local_scopes = [
                     cid for cid in new_cids if cells[cid].h_schema == H_SCHEMA["scope"] and cell_origin(cells[cid]) == scope
@@ -2028,7 +2029,8 @@ class GitVarsRepo:
                         raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
                     if waiting is not None:
                         raise VarsError("a new scope while a rotation waits (§4.1)")
-                    if waits(s_base_id, s_next_id) and s_next.slots[2] != s_base.slots[2]:
+                    pending_waits = waits(s_base_id, s_next_id)
+                    if pending_waits and s_next.slots[2] != s_base.slots[2]:
                         raise VarsError("a rotation that waits names the rules of the scope it supersedes (§4.1)")
                     pending_next_scope = s_next_id
 
@@ -2062,7 +2064,14 @@ class GitVarsRepo:
                                                       ("supersedes", w.h_supersedes)) for vid in hvec_items(mh)]
                 if edges:
                     open_edges[wid] = edges
+            # a waiting scope supersedes nothing yet: its edge latches when it starts to govern (latch 4a), so the
+            # Active local scope stays the governing one
+            deferred = {waiting[0]} if waiting is not None else set()
+            if pending_next_scope is not None and pending_waits:
+                deferred.add(pending_next_scope)
             for wid in list(open_edges if base_changed else (open_edges.keys() & (new_cids | touched))):
+                if wid in deferred:
+                    continue
                 w_ends_adm = signers(wid, s_base_id, adm_pks)
                 w_ends_acc = signers(wid, s_base_id, acc_pks)
                 still_open: List[Tuple[str, bytes]] = []
@@ -2153,6 +2162,9 @@ class GitVarsRepo:
             if waiting is not None:
                 w_id, w_at = waiting
                 if idx >= w_at + RULES[s_base.slots[2]].rotation_delay or not waits(s_base_id, w_id):
+                    latched_edge_auth.add((w_id, s_base_id, "supersedes"))  # its quorum was checked at admission
+                    latched_sup.setdefault(w_id, set()).add(s_base_id)
+                    open_edges.pop(w_id, None)
                     active_scope_id, waiting = w_id, None
             prev_base = s_base_id
 

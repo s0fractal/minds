@@ -656,7 +656,11 @@
    ],
    "mutants": [
     "m-v1c-kernel-removed",
-    "m-v1c-twin-removed"
+    "m-v1c-twin-removed",
+    "m-v1c-kernel-defer",
+    "m-v1c-kernel-activate",
+    "m-v1c-twin-defer",
+    "m-v1c-twin-activate"
    ]
   },
   {
@@ -1203,7 +1207,7 @@
   },
   {
    "id": "rules.v1c-hash",
-   "quote": "`H_LENS_KERNEL_V1C = 69e7eebbb09f3c8e2bfd2b6a45b25e873bf0c9bacae2271eb0c9eeb421334313` is the id of `kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`",
+   "quote": "`H_LENS_KERNEL_V1C = db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017` is the id of `kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`",
    "status": "tested",
    "witnesses": [
     "ci:Rebuild the v1c rules kernel; it must hash to H_LENS_KERNEL_V1C",

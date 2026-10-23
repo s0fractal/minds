@@ -1498,8 +1498,8 @@
  "m-v1c-kernel-pending": {
   "file": "kernel/src/lib.rs",
   "build": "kernel1c",
-  "find": "                if waiting.is_some() || (g.waits(",
-  "replace": "                if false || (g.waits(",
+  "find": "                    if waiting.is_some() || (pending_waits &&",
+  "replace": "                    if false || (pending_waits &&",
   "kills": [
    "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
   ]
@@ -1557,7 +1557,7 @@
  },
  "m-v1c-twin-rules": {
   "file": "vars1.py",
-  "find": "                    if waits(s_base_id, s_next_id) and s_next.slots[2] != s_base.slots[2]:",
+  "find": "                    if pending_waits and s_next.slots[2] != s_base.slots[2]:",
   "replace": "                    if False:",
   "kills": [
    "test_85_a_rotation_that_removes_keys_without_consent_waits"
@@ -1593,6 +1593,40 @@
   "replace": "           (\"kernel/lens1c.wasm\", \"kernel\", (\"--features\", \"commit-bound\"),",
   "kills": [
    "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-v1c-kernel-defer": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "            if waiting.map_or(false, |(x, _)| x == w) || (pending == Some(w) && pending_waits) {\n                continue;\n            }",
+  "replace": "            if false {\n                continue;\n            }",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-kernel-activate": {
+  "file": "kernel/src/lib.rs",
+  "build": "kernel1c",
+  "find": "                    latched[g.lat(s, SUP, j)] = 1; // its quorum",
+  "replace": "                    let _ = g.lat(s, SUP, j); // its quorum",
+  "kills": [
+   "test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+  ]
+ },
+ "m-v1c-twin-defer": {
+  "file": "vars1.py",
+  "find": "                if wid in deferred:\n                    continue\n",
+  "replace": "",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
+  ]
+ },
+ "m-v1c-twin-activate": {
+  "file": "vars1.py",
+  "find": "                    latched_edge_auth.add((w_id, s_base_id, \"supersedes\"))  # its quorum was checked at admission",
+  "replace": "                    pass",
+  "kills": [
+   "test_85_a_rotation_that_removes_keys_without_consent_waits"
   ]
  }
 }

@@ -70,7 +70,7 @@ reaches them by a rules change (§4.3); v1 stays the default.
 `kernel/lens1b.wasm`, the v1 rules built with the feature `commit-bound`: they refuse an input claiming more commits
 than it has bytes (E-7), and are otherwise v1. A scope reaches them by a resource hardening (§4.3).
 
-`H_LENS_KERNEL_V1C = 69e7eebbb09f3c8e2bfd2b6a45b25e873bf0c9bacae2271eb0c9eeb421334313` is the id of
+`H_LENS_KERNEL_V1C = db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017` is the id of
 `kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`: a rotation that removes keys
 without their consent waits (§4.1, latch 4a), and they are otherwise v1b. A scope reaches them by a validation
 tightening (§4.3).
@@ -525,7 +525,9 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
-  (`proofs/Vars1/Cycle.lean`, compiled) (I12).
+  (`proofs/Vars1/Cycle.lean`, compiled) (I12). The generator writes chains under the v1 rules, whose rotations
+  take effect at once: for a rotation that waits under `H_LENS_KERNEL_V1C` (§4.1 latch 4a) I7 is test 85's, and
+  the model fold of I10 has no delay.
 - `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and
   run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
   INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an

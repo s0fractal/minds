@@ -643,6 +643,8 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
 
         // At most one new local scope, superseding exactly S_base, sealed by S_base's admission quorum.
         let mut pending = None;
+        #[cfg(feature = "rotation-delay")]
+        let mut pending_waits = false;
         if at > 0 {
             for s in 0..n {
                 if !new(s) || !local_scope(s) {
@@ -665,8 +667,11 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
                     return Err(SCOPE_QUORUM);
                 }
                 #[cfg(feature = "rotation-delay")]
-                if waiting.is_some() || (g.waits(base, s, at, ends)? && g.slot(s, 2)? != g.slot(base, 2)?) {
-                    return Err(SCOPE_PENDING);
+                {
+                    pending_waits = g.waits(base, s, at, ends)?;
+                    if waiting.is_some() || (pending_waits && g.slot(s, 2)? != g.slot(base, 2)?) {
+                        return Err(SCOPE_PENDING);
+                    }
                 }
                 pending = Some(s);
             }
@@ -697,6 +702,12 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
         // Latch 3: edges w -> v under Pol_i(v), or by an author of a local v.
         for w in 0..n {
             if !present(w) || g.is(w, &H_META_SCHEMA) {
+                continue;
+            }
+            // a waiting scope supersedes nothing yet: its edge latches when it starts to govern (latch 4a), so the
+            // Active local scope stays the governing one
+            #[cfg(feature = "rotation-delay")]
+            if waiting.map_or(false, |(x, _)| x == w) || (pending == Some(w) && pending_waits) {
                 continue;
             }
             g.endorsers(w, base, at, Some(adm), ends);
@@ -773,6 +784,9 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
         #[cfg(feature = "rotation-delay")]
         if let Some((s, t)) = waiting {
             if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {
+                for j in 0..g.edge_count(s, SUP) {
+                    latched[g.lat(s, SUP, j)] = 1; // its quorum under `base` was checked at admission (E-20)
+                }
                 cur = s;
                 waiting = None;
             }

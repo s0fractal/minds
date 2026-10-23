@@ -4896,6 +4896,9 @@ class TestVars1Conformance(unittest.TestCase):
         a, s1 = self._rotation(s0, [self.pk1], "drop pk2")
         t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
         self.assertEqual(self._governing(t), s0.id, "pk2 has not consented: the rotation waits")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (True, False),
+                         "while it waits the Active local scope is the governing one (Codex PR #16 r1 P2)")
         t = self._tick(t, s0, 1, self.sk2)  # pk2 still seals under S0
         a2, s2 = self._rotation(s0, [self.pk1], "a second rotation")
         self._refused(-24, a2, [s2], [V.Seal.sign(self.sk1, s2.id, s0.id)], t)
@@ -4903,6 +4906,8 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(self._governing(t), s0.id, "15 commits after admission: still waiting")
         t = self._tick(t, s0, 1)
         self.assertEqual(self._governing(t), s1.id, "the 16th commit after admission ends the wait")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (False, True))
         a3: dict[bytes, bytes] = {}
         x = self._axiom(a3, "core/late", "pk2 after its removal")
         self._refused(-13, a3, [x], [V.Seal.sign(self.sk2, x.id, s1.id)], t)
@@ -4922,6 +4927,8 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(self._governing(t), s0.id)
         t = self._admit({}, [], [V.Seal.sign(self.sk2, s1.id, s0.id)], t)
         self.assertEqual(self._governing(t), s1.id, "every removed key has sealed it")
+        lens = self.repo.lens("core")
+        self.assertEqual((lens["active"].get(s0.id), lens["active"].get(s1.id)), (False, True))
 
         # a rotation that removes no key governs the next commit
         self.tmp.cleanup(); self.setUp()

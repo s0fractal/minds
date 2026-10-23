@@ -18,7 +18,7 @@
      ],
      [
       "At most one Active local binding per name; one Active local scope, the governing one",
-      "Proved (gate rules as hypotheses)",
+      "Proved (gate rules as hypotheses) for rules whose rotations take effect at once (v1, v1b); for a rotation that waits under v1c (§4.1 latch 4a), whose scope has not governed yet, tested: the waiting scope is not Active until it governs (test 85)",
       "`Pass1.lean`, `Scope.lean`"
      ],
      [
