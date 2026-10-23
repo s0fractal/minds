@@ -547,13 +547,16 @@
   {
    "id": "gate.rules-object",
    "quote": "and the fold itself are decided by the rules object (§4.3)",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
     "prop:I8",
-    "prop:I10"
+    "prop:I10",
+    "test:test_83_a_kernel_build_answers_what_the_rules_answer"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel-latch"
+   ]
   },
   {
    "id": "fold.endorsers",
@@ -826,23 +829,29 @@
   {
    "id": "rules.module",
    "quote": "are compiled to `kernel/lens.wasm`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
-    "prop:I8"
+    "prop:I8",
+    "test:test_83_a_kernel_build_answers_what_the_rules_answer"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel-pass2"
+   ]
   },
   {
    "id": "rules.input",
    "quote": "C N NK P",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "prop:I9",
     "prop:I10",
-    "kani:two_cells_axiom_relies"
+    "kani:two_cells_axiom_relies",
+    "test:test_83_a_kernel_build_answers_what_the_rules_answer"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel-header"
+   ]
   },
   {
    "id": "rules.forward-refs",
@@ -896,30 +905,36 @@
   {
    "id": "rules.v2-input",
    "quote": "Their input begins with the word `0x32524156` (\"VAR2\")",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_56_rules_v2_kernel_checks_the_reference_list",
     "test:test_47_rules_change_admits_a_rotation_whose_decision_replays"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel2-magic"
+   ]
   },
   {
    "id": "rules.v2-refs-checked",
    "quote": "They refuse a reference list other than their own reading (−6)",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_56_rules_v2_kernel_checks_the_reference_list"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel2-refs"
+   ]
   },
   {
    "id": "rules.v2-reads-v1-logs",
    "quote": "Over a log wholly in v1 epochs they give v1's output byte for byte.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_56_rules_v2_kernel_checks_the_reference_list"
    ],
-   "mutants": []
+   "mutants": [
+    "m-kernel2-v1"
+   ]
   },
   {
    "id": "rules.twin",

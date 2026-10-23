@@ -3212,10 +3212,23 @@ class TestVars1Conformance(unittest.TestCase):
         schema = V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/link-schema")), V.H_EMPTY,
                         slots=(self._put_atom(a, V.atom_utf8("link:cell")), self._put_atom(a, V.atom_utf8("d:digest"))))
         c2 = self._commit("core", c1, s0, a, [target, schema])
+        # a v1-born cell that v1 and typed v2 read differently: its digest slot holds a cell's id
+        av: dict[bytes, bytes] = {}
+        older = V.Cell(schema.id, self._put_atom(av, V.atom_utf8("core/older")), self._put_atom(av, V.atom_utf8("v1")),
+                       slots=(target.id, target.id))
+        c2 = self._commit("core", c2, s0, av, [older])
         v1_deltas = self.repo.chain_deltas(self.repo.commit_chain(c2))
-        run1, run2 = V.kernel_runner(V.H_LENS_KERNEL).run, V.kernel_runner(V.H_LENS_KERNEL_V2).run
-        self.assertEqual(run2(V.kernel_facts("core", v1_deltas, V.H_LENS_KERNEL_V2)[0]),
-                         run1(V.kernel_facts("core", v1_deltas)[0]))
+        module2 = os.environ.get("MINDS_KERNEL2_WASM")  # a mutant of kernel2/ built by tools/run_mutants.py
+        run1 = V.kernel_runner(V.H_LENS_KERNEL).run
+        runner2 = V.KernelRunner(V.H_LENS_KERNEL_V2, Path(module2)) if module2 else V.kernel_runner(V.H_LENS_KERNEL_V2)
+        if module2:
+            self.addCleanup(runner2.close)
+        run2 = runner2.run
+        try:
+            self.assertEqual(run2(V.kernel_facts("core", v1_deltas, V.H_LENS_KERNEL_V2)[0]),
+                             run1(V.kernel_facts("core", v1_deltas)[0]))
+        except V.KernelRefusal as e:
+            self.fail(f"v2 refuses a log wholly in v1 epochs: {e}")
         with self.assertRaisesRegex(V.KernelRefusal, "E-1:"):
             run2(V.kernel_facts("core", v1_deltas)[0])
         cand, s1, _ = self._change_rules("core", c2, s0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
@@ -3225,7 +3238,10 @@ class TestVars1Conformance(unittest.TestCase):
                         slots=(target.id, target.id))
         c3 = self._commit("core", cand, s1, a3, [linker])
         deltas = self.repo.chain_deltas(self.repo.commit_chain(c3))
-        run2(V.kernel_facts("core", deltas)[0])  # the honest encoding is accepted
+        try:
+            run2(V.kernel_facts("core", deltas)[0])  # the honest encoding is accepted
+        except V.KernelRefusal as e:
+            self.fail(f"v2 refuses the honest encoding: {e}")
         real = V.cell_refs
         try:
             for fake, why in ((lambda c, cells, atoms, v1: [], "dropped"),
@@ -4715,6 +4731,63 @@ class TestVars1Conformance(unittest.TestCase):
             with self.assertRaisesRegex(V.VarsError, why):
                 mc.what_if_args(self.repo_path, args)
         self.assertFalse(absent.exists(), "no key was created")
+
+    def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
+        """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
+        MINDS_KERNEL_WASM, a mutant built by tools/run_mutants.py) gives every status the twin gives on a corpus of
+        chains — relies, invalidation, supersession with loss, retirement, a decision with verdicts, a foreign scope
+        admitted by an acceptance that needs its quorum — at every tip, and the real kernel's refusal codes on
+        malformed inputs."""
+        module = os.environ.get("MINDS_KERNEL_WASM")
+        built = V.KernelRunner(V.H_LENS_KERNEL, Path(module) if module else None)
+        real = V.KernelRunner(V.H_LENS_KERNEL)
+        c0, s0 = self._genesis([self.pk1, self.pk2], 1, [self.pk1, self.pk2], 2, [self.sk1, self.sk2])
+        a: dict[bytes, bytes] = {}
+        A, B = self._axiom(a, "core/a", "A"), self._axiom(a, "core/b", "B")
+        X = self._axiom(a, "core/x", "rests on A", relies=[A.id])
+        Y = self._axiom(a, "core/y", "rests on X", relies=[X.id])
+        G = V.Cell(V.H_SCHEMA["decision"], self._put_atom(a, V.atom_utf8("core/g")), self._put_atom(a, V.atom_utf8("g")),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, self._pol(a, 1, [self.pk1])))  # policies ≠ keys
+        W = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8("core/g.w")), G.id, h_attests=self._hv(a, [G.id]),
+                   slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8("w"))))
+        cells = [A, B, X, Y, G, W]
+        c1 = self._admit(a, cells, [V.Seal.sign(self.sk1, x.id, s0.id) for x in cells], c0)
+        b: dict[bytes, bytes] = {}
+        fb = self._scope_cell(b, "peerB", "peerB", (1, [self.pk_peer]))
+        fx = self._axiom(b, "peerB/x", "a peerB fact")
+        acc = V.Cell(h_schema=V.H_SCHEMA["acceptance"], h_slot_name=self._put_atom(b, V.atom_utf8("core/acc")),
+                     h_payload=fx.id, slots=(self._put_atom(b, V.atom_utf8("peerB")), fb.id))
+        B2 = self._axiom(b, "core/b", "B, superseded", supersedes=[B.id])
+        R = self._axiom(b, "core/retire.y", "retires Y", retires=[Y.id])
+        I = self._axiom(b, "core/invalidate.a", "invalidates A", invalidates=[A.id])
+        c2 = self._admit(b, [fb, fx, acc, B2, R, I],
+                         [V.Seal.sign(self.sk_peer, fb.id, fb.id), V.Seal.sign(self.sk_peer, fx.id, fb.id),
+                          V.Seal.sign(self.sk1, acc.id, s0.id), V.Seal.sign(self.sk2, acc.id, s0.id),
+                          V.Seal.sign(self.sk1, B2.id, s0.id), V.Seal.sign(self.sk1, R.id, s0.id),
+                          V.Seal.sign(self.sk1, I.id, s0.id)], c1)
+        try:
+            for tip in (c0, c1, c2):
+                lens = self.repo.lens("core", at=tip)
+                try:
+                    got = built.statuses(lens)
+                except V.KernelRefusal as e:
+                    self.fail(f"the build refuses the chain at {tip[:12]}: {e}")
+                for cid, bits in got.items():
+                    for name, val in bits.items():
+                        self.assertEqual(val, lens[name][cid], f"{name} of {cid.hex()[:12]} at {tip[:12]}")
+            ki = self.repo.lens("core", at=c2)["kernel_input"]
+            for bad in (b"", ki[:3], b"\0\0\0\0" + ki[4:], ki[:-1], ki + b"\0"):
+                outcome = []
+                for runner in (real, built):
+                    try:
+                        outcome.append(runner.run(bad).hex())
+                    except V.KernelRefusal as e:
+                        outcome.append(f"E{e.code}")
+                self.assertEqual(outcome[1], outcome[0], f"on {len(bad)} malformed bytes")
+            self.assertTrue(self.repo.lens("core", at=c2)["accepted"][fx.id], "the corpus reaches an acceptance quorum")
+        finally:
+            built.close()
+            real.close()
 
 
 if __name__ == "__main__":

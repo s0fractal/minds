@@ -1494,6 +1494,54 @@
    "test_36_offline_verifier_in_a_fresh_folder"
   ]
  },
+ "m-kernel-header": {
+  "file": "kernel/src/lib.rs",
+  "find": "    let nk = r.u32()? as usize;\n    let np = r.u32()? as usize;",
+  "replace": "    let np = r.u32()? as usize;\n    let nk = r.u32()? as usize;",
+  "kills": [
+   "test_83_a_kernel_build_answers_what_the_rules_answer"
+  ]
+ },
+ "m-kernel-pass2": {
+  "file": "kernel/src/lib.rs",
+  "find": ".any(|&d| !has(out, d as usize, active) || has(out, d as usize, stale))",
+  "replace": ".any(|&d| has(out, d as usize, stale))",
+  "kills": [
+   "test_83_a_kernel_build_answers_what_the_rules_answer"
+  ]
+ },
+ "m-kernel-latch": {
+  "file": "kernel/src/lib.rs",
+  "find": "                    if quorum || by_author {\n                        latched[e] = 1;",
+  "replace": "                    if by_author {\n                        latched[e] = 1;",
+  "kills": [
+   "test_83_a_kernel_build_answers_what_the_rules_answer"
+  ]
+ },
+ "m-kernel2-magic": {
+  "file": "kernel2/src/lib.rs",
+  "find": "    if r.u32()? != MAGIC {",
+  "replace": "    if r.u32()? == MAGIC {",
+  "kills": [
+   "test_56_rules_v2_kernel_checks_the_reference_list"
+  ]
+ },
+ "m-kernel2-refs": {
+  "file": "kernel2/src/lib.rs",
+  "find": "            if expected != listed {\n                return Err(REFS);",
+  "replace": "            if false {\n                return Err(REFS);",
+  "kills": [
+   "test_56_rules_v2_kernel_checks_the_reference_list"
+  ]
+ },
+ "m-kernel2-v1": {
+  "file": "kernel2/src/lib.rs",
+  "find": "        let v1 = v1_epoch[c.birth as usize] != 0;",
+  "replace": "        let v1 = false;",
+  "kills": [
+   "test_56_rules_v2_kernel_checks_the_reference_list"
+  ]
+ },
  "m-whatif-backwards": {
   "file": "vars1.py",
   "find": "        step = lambda u: (parents_of[u] if u in hyp else set()) | relied_by.get(u, set()) | judged(u)",

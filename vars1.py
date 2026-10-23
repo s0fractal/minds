@@ -563,10 +563,12 @@ class KernelRunner:
     """Runs a rules module (`kernel/lens.wasm`, or `kernel2/lens2.wasm` for v2) under Node (WebAssembly, no other
     dependency): the rules object of §4.3."""
 
-    def __init__(self, rules: bytes = H_LENS_KERNEL) -> None:
+    def __init__(self, rules: bytes = H_LENS_KERNEL, module: Optional[Path] = None) -> None:
+        """`module` runs another build in place of the one `rules` names (a mutant of the kernel, in tests): it is
+        never admitted as rules, only compared."""
         self.rules = rules
         self.proc = subprocess.Popen(
-            ["node", str(KERNEL_DIR / "run.mjs"), str(RULES_MODULES[rules])],
+            ["node", str(KERNEL_DIR / "run.mjs"), str(module or RULES_MODULES[rules])],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
         )
 
