@@ -2298,7 +2298,10 @@ class GitVarsRepo:
 
         for cid in forward_order:
             c = cells[cid]
-            if not active[cid] or stale[cid]:
+            live = active[cid] and not stale[cid]
+            # a contract, decision or question that is not live is never Settled, but its endorsements are still
+            # counted below, for what-if to say what it would need (`evaluators`, `endorsers`)
+            if not live and c.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]):
                 settled[cid] = False
                 provisional[cid] = False
                 continue
@@ -2399,7 +2402,7 @@ class GitVarsRepo:
                     if (active.get(wid, False) and not stale.get(wid, False) and w.h_schema == H_SCHEMA["verdict"]
                             and w.h_payload == cid and w.slots[1] == H_VERDICT_INVALID):
                         invalidators[cid] |= witness_endorsers(wid) & p_pks
-            is_set = len(valid_endorsers) >= p_thr
+            is_set = live and len(valid_endorsers) >= p_thr
             settled[cid] = is_set
             provisional[cid] = not is_set
 
@@ -2434,7 +2437,9 @@ class GitVarsRepo:
         complete by construction; `held` is every cell of the hypothesis's region that keeps them (a decision still
         Settled through other verdicts, say), the region being the cells it names closed under two steps: a cell
         that relies on a region cell, and the cell a region verdict judges. Each row carries the shortest reference path from the
-        hypothesis in the whole reference graph as the rules read it in this epoch, empty only when none exists. `digest`
+        hypothesis in the whole reference graph as the rules read it in this epoch, empty only when none exists.
+        A lost row also carries `needs`: the grounds it relies on that no longer stand, and for a decision that lost
+        Settled, its threshold, the endorsements still counted and those that fell away. `digest`
         is SHA-256 over the canonical JSON of both lists: two readers who agree on the consequences agree on it."""
         tip = self.ref_commit(scope)
         if tip is None:
@@ -2491,6 +2496,23 @@ class GitVarsRepo:
             return [x.hex() for x in reversed(out)]
 
         name = lambda cid: parse_utf8(aatoms[acells[cid].h_slot_name])
+        standing = lambda cid: (after["active"].get(cid, False) and not after["stale"].get(cid, False)
+                                and not after["invalidated"].get(cid, False))
+
+        def needs(cid: bytes, b: Dict[str, bool], a: Dict[str, bool]) -> Dict[str, object]:
+            """What the cell would need to regain what it lost: the grounds it relies on that no longer stand (to
+            be replaced), and, for a Settled decision, the evaluators whose counted endorsement fell away."""
+            out: Dict[str, object] = {}
+            fallen = [g.hex() for g in relies_on(cid) if not standing(g)]
+            if fallen:
+                out["grounds"] = fallen
+            if b.get("settled") and not a.get("settled") and cid in after["evaluators"]:
+                thr, keys = after["evaluators"][cid]
+                now, then = after["endorsers"][cid], before["endorsers"].get(cid, set())
+                out["endorsements"] = {"threshold": thr, "standing": sorted(k.hex() for k in now),
+                                       "fell_away": sorted(k.hex() for k in then - now)}
+            return out
+
         lost, held = [], []
         for cid in sorted(before["cells"]):  # every changed cell is lost, inside the region or not: complete by construction
             b, a = state(before, cid), state(after, cid)
@@ -2499,7 +2521,7 @@ class GitVarsRepo:
             row = {"cell": cid.hex(), "name": name(cid), "path": path(cid)}
             if a != b:
                 lost.append(dict(row, before={k: v for k, v in b.items() if v != a[k]},
-                                 after={k: v for k, v in a.items() if v != b[k]}))
+                                 after={k: v for k, v in a.items() if v != b[k]}, needs=needs(cid, b, a)))
             else:
                 held.append(row)
         body = {"lost": lost, "held": held}

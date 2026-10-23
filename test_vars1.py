@@ -4618,10 +4618,29 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((lost[tag]["before"], lost[tag]["after"]), ({"settled": True}, {"settled": False}),
                          "n-of-n: without the member's standing verdict the release is not Settled")
         self.assertEqual(lost[tag]["path"][1:], [mine.hex(), verdict.hex(), r["decision"].hex()])
+        # what each would need: the member's verdict a replacement for its fallen check, the release a standing
+        # endorsement from that member (its threshold is both keys)
+        self.assertEqual(lost[f"{tag}/second/attested"]["needs"].get("grounds"), [mine.hex()])
+        pk, pk2 = V.ed25519_pubkey(sk).hex(), V.ed25519_pubkey(sk2).hex()
+        self.assertEqual(lost[tag]["needs"].get("endorsements"), {"threshold": 2, "standing": [pk], "fell_away": [pk2]})
+        # restored: the member supposes it ran the check again; its replacement verdict stands and the release keeps
+        # Settled. The maintainer cannot restore another member's standing with its own key.
+        back = mc.what_if(self.repo_path, sk2, [mine], restore=True)
+        self.assertIn(tag, {x["name"] for x in back["held"]}, "the release holds through the replacement")
+        self.assertIn(f"{tag}/second/attested", {x["name"] for x in back["lost"]}, "the old verdict is still Stale")
+        not_mine = mc.what_if(self.repo_path, sk, [mine], restore=True)
+        self.assertIn(tag, {x["name"] for x in not_mine["lost"]}, "no replacement is made with another's key")
+        self.assertEqual(not_mine["digest"], out["digest"], "restore adds nothing the signer cannot seal")
 
         out = mc.what_if(self.repo_path, sk, [named[f"{tag}/check/01"]])
-        self.assertEqual(next(x for x in out["lost"] if x["name"] == tag)["after"].get("stale"), True,
-                         "the maintainer's own check failing makes the release Stale")
+        rel = next(x for x in out["lost"] if x["name"] == tag)
+        self.assertEqual(rel["after"].get("stale"), True, "the maintainer's own check failing makes the release Stale")
+        self.assertEqual(rel["needs"].get("grounds"), [named[f"{tag}/check/01"].hex()])
+        self.assertEqual(rel["needs"].get("endorsements"), {"threshold": 2, "standing": sorted([pk, pk2]), "fell_away": []},
+                         "a Stale release still says its endorsements stand (Codex PR #9 r1)")
+        both = mc.what_if(self.repo_path, sk, [named[f"{tag}/check/01"], mine])
+        rel = next(x for x in both["lost"] if x["name"] == tag)
+        self.assertEqual(rel["needs"].get("endorsements"), {"threshold": 2, "standing": [pk], "fell_away": [pk2]})
         self.assertEqual(repo.ref_commit("minds"), tip, "no ref moves")
 
         # the command line: a member's own key, never a maintainer key created on the way (Codex PR #8 r1)

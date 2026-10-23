@@ -1628,6 +1628,22 @@
     "m-grounds-payload",
     "m-whatif-key"
    ]
+  },
+  {
+   "id": "assurance.whatif-needs",
+   "source": "ASSURANCE.md",
+   "quote": "`what-if` says what each lost cell would need to regain what it lost",
+   "status": "tested",
+   "witnesses": [
+    "test:test_82_a_release_rests_on_its_checks"
+   ],
+   "mutants": [
+    "m-needs-grounds",
+    "m-needs-endorse",
+    "m-restore",
+    "m-needs-stale",
+    "m-settled-live"
+   ]
   }
  ],
  "informative": [
