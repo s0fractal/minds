@@ -1668,5 +1668,177 @@
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
   ]
+ },
+ "m-seal-signer-twin": {
+  "file": "vars1.py",
+  "find": "                        raise VarsError(\"Local seal signer not in active SCOPE policy\")",
+  "replace": "                        pass",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-seal-key-kernel": {
+  "file": "kernel/src/lib.rs",
+  "find": "                    return Err(SEAL_KEY);",
+  "replace": "                    let _ = SEAL_KEY;",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-scope-rules-host": {
+  "file": "vars1.py",
+  "find": "    if c.h_schema == H_SCHEMA[\"scope\"] and len(c.slots) == 3 and c.slots[2] not in RULES:",
+  "replace": "    if False:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-cycle-bound-gate": {
+  "file": "vars1.py",
+  "find": "    if actions < 1 or cost < actions:",
+  "replace": "    if False:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-cycle-bound-low": {
+  "file": "vars1.py",
+  "find": "    if actions < 1 or cost < actions:",
+  "replace": "    if cost < actions:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-cycle-bound-high": {
+  "file": "vars1.py",
+  "find": "    if actions < 1 or cost < actions:",
+  "replace": "    if actions < 1:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-rc-refusal": {
+  "file": "vars1.py",
+  "find": "                raise VarsError(f\"rules change: {what}: {e}\") from None",
+  "replace": "                continue",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-rc-needs-decision": {
+  "file": "vars1.py",
+  "find": "        if len(decisions) != 1:\n",
+  "replace": "        if False:\n",
+  "kills": [
+   "test_48_rules_change_needs_its_decision"
+  ]
+ },
+ "m-rc-b-range": {
+  "file": "vars1.py",
+  "find": "        if i >= len(n[\"order\"]) or bit >= len(KERNEL_BITS) or right > 1:",
+  "replace": "        if False:",
+  "kills": [
+   "test_50_rules_change_b_refutes_the_old_rules"
+  ]
+ },
+ "m-intrinsic-empty": {
+  "file": "verify/minds_verify.py",
+  "find": "H_EMPTY = sha256(b\"HVEC\")",
+  "replace": "H_EMPTY = sha256(b\"HVEC \")",
+  "refused_at_import": [
+   "vars1",
+   "an intrinsic atom does not hash to an intrinsic id"
+  ],
+  "kills": []
+ },
+ "m-rules-hash": {
+  "file": "verify/minds_verify.py",
+  "find": "H_LENS_KERNEL = bytes.fromhex(\"874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb\")",
+  "replace": "H_LENS_KERNEL = bytes.fromhex(\"974e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb\")",
+  "refused_at_import": [
+   "vars1",
+   "kernel/lens.wasm does not hash to H_LENS_KERNEL"
+  ],
+  "kills": []
+ },
+ "m-runner-import-check": {
+  "file": "tools/run_mutants.py",
+  "find": "    return out.returncode != 0 and check in last, last or \"imported cleanly\"",
+  "replace": "    return out.returncode != 0, last or \"imported cleanly\"",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
+  ]
+ },
+ "m-cas-path": {
+  "file": "vars1.py",
+  "find": "        if sha256(raw) != h:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
+  "replace": "        if False:\n            raise VarsError(f\"CAS SHA-256 mismatch at {path}\")",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-store-mode": {
+  "file": "vars1.py",
+  "find": "            if mode != \"100644\":\n                raise VarsError(f\"non-100644 mode {mode} at {path}\")",
+  "replace": "            if False:\n                raise VarsError(f\"non-100644 mode {mode} at {path}\")",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-amend-kin1-type": {
+  "file": "vars1.py",
+  "find": "        atom(b\"KIN1\")",
+  "replace": "        atom(b\"\")",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-refs-seal": {
+  "file": "vars1.py",
+  "find": "            if s.h_target not in cells or s.h_scope_ctx not in cells:\n                raise VarsError(\"Check #4 failed: Seal target",
+  "replace": "            if False:\n                raise VarsError(\"Check #4 failed: Seal target",
+  "kills": [
+   "test_78_each_structural_refusal_has_its_own_input"
+  ]
+ },
+ "m-append-reader": {
+  "file": "vars1.py",
+  "find": "            if status != \"A\":\n                raise VarsError(f\"non-A tree change",
+  "replace": "            if False:\n                raise VarsError(f\"non-A tree change",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-rc-cx-admitted": {
+  "file": "vars1.py",
+  "find": "        self.check_chain(cx_scope, cx_tip)\n",
+  "replace": "",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-net-admit": {
+  "file": "vars1.py",
+  "find": "        try:\n            self._admit_and_advance(scope, candidate_commit, expected_old)\n        except VarsError:\n            raise\n        except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:",
+  "replace": "        try:\n            self._admit_and_advance(scope, candidate_commit, expected_old)\n        except VarsError:\n            raise\n        except (IndexError, TypeError, ValueError, UnicodeDecodeError) as e:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-net-chain": {
+  "file": "vars1.py",
+  "find": "                    self._check_commit(scope, commit, parent)\n                except VarsError:\n                    raise\n                except (KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError) as e:",
+  "replace": "                    self._check_commit(scope, commit, parent)\n                except VarsError:\n                    raise\n                except (KeyError, IndexError, ValueError, UnicodeDecodeError) as e:",
+  "kills": [
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+  ]
+ },
+ "m-whatif-escapes": {
+  "file": "vars1.py",
+  "find": "            if a == b and cid not in region:",
+  "replace": "            if cid not in region:",
+  "kills": [
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
+  ]
  }
 }

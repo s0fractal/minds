@@ -112,6 +112,8 @@ def witness_exists(w: str) -> bool:
     kind, _, name = w.partition(":")
     if kind == "test":
         return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "test_vars1.py").read_text(), re.M) is not None
+    if kind == "import":  # a check vars1.py makes as it loads, named by its message
+        return name in (ROOT / "vars1.py").read_text()
     if kind == "prop":
         return re.search(rf"\b{re.escape(name)}\b", (ROOT / "test_vars1_props.py").read_text()) is not None
     if kind == "lean":

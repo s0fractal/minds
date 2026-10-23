@@ -481,7 +481,7 @@
      ],
      [
       "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
-      "Unburned: `lost` is computed over every cell of the chain, by construction; no chain has been found where a change escapes the region (invalidating a custom schema leaves its instances unchanged), so no mutant can show the loop bites",
+      "Tested, with mutants: a decision a hypothesis's new seal settles lies outside its region and is still reported (test 81); a `lost` confined to the region drops it",
       "`vars1.py` `what_if`"
      ],
      [
@@ -522,7 +522,7 @@
    }
   },
   {
-   "md": "\n## Not burned, and why\n\nRendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim\nwithout one. Most are refusals held by more than one layer, where a mutant of one guard only changes the message\n(`tools/mutant_test.py` counts that as nothing).\n\n"
+   "md": "\n## Not burned, and why\n\nRendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim\nwithout one, and a reason on any other. A refusal more than one layer holds is burned layer by layer, each layer\nasked alone on an input only its rule refuses (test 87); a value checked as the module loads, by a mutant that\nnames that check; a guard whose absence falls into the gate's net for crashes, by a test that asks for the named\nrefusal (`_gate_refuses`). None is unburned at present.\n\n"
   },
   {
    "unburned": true

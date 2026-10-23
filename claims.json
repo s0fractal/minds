@@ -72,11 +72,14 @@
   {
    "id": "intrinsics.values",
    "quote": "| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_01_golden_test_vectors"
+    "test:test_01_golden_test_vectors",
+    "import:an intrinsic atom does not hash to an intrinsic id"
    ],
-   "reason": "Checked at import: vars1.py asserts that every intrinsic atom hashes to its listed id, so a mutant of the value stops the module loading before any test runs, and an import failure is no kill."
+   "mutants": [
+    "m-intrinsic-empty"
+   ]
   },
   {
    "id": "intrinsics.unstored",
@@ -92,13 +95,15 @@
   {
    "id": "rules.hash",
    "quote": "`H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
-    "test:test_01_golden_test_vectors"
+    "test:test_01_golden_test_vectors",
+    "import:kernel/lens.wasm does not hash to H_LENS_KERNEL"
    ],
-   "mutants": [],
-   "reason": "Checked at import (vars1.py refuses a kernel/lens.wasm that does not hash to H_LENS_KERNEL) and by CI's rebuild of the kernel; a mutant of the value stops the module loading, which is no kill."
+   "mutants": [
+    "m-rules-hash"
+   ]
   },
   {
    "id": "rules.v2-hash",
@@ -116,12 +121,14 @@
   {
    "id": "rules.v2-default",
    "quote": "A scope names them from its genesis or reaches them by a rules change (§4.3); v1 stays the default.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis",
     "test:test_48_rules_change_needs_its_decision"
    ],
-   "reason": "v1 stays the default because a rotation to other rules needs its rules-change decision; without that guard the gate's replay raises IndexError, which its net still turns into a refusal, so the mutant changes only the message."
+   "mutants": [
+    "m-rc-needs-decision"
+   ]
   },
   {
    "id": "cells.layout",
@@ -343,12 +350,16 @@
   {
    "id": "payloads.cycle-witness",
    "quote": "cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "mutants": [],
-   "reason": "Held by two layers: the gate's bound check and Book I's verify_cycle, which refuses the same witness (\"a cycle needs at least one priced action\", \"more actions than cost\"); with the gate's check removed, test 75 meets the refusal in other words."
+   "mutants": [
+    "m-cycle-bound-gate",
+    "m-cycle-bound-low",
+    "m-cycle-bound-high"
+   ]
   },
   {
    "id": "payloads.projection",
@@ -364,12 +375,16 @@
   {
    "id": "store.paths",
    "quote": "every entry a regular file (`100644`) whose bytes hash to its path.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits",
-    "test:test_38_caches_never_stand_in_for_new_bytes"
+    "test:test_38_caches_never_stand_in_for_new_bytes",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by layers: a CAS entry whose bytes do not hash to its path is also refused as a missing referenced object (Check #4); removing the hash check alone changes only the message."
+   "mutants": [
+    "m-cas-path",
+    "m-store-mode"
+   ]
   },
   {
    "id": "store.radicle",
@@ -410,12 +425,15 @@
   {
    "id": "gate.no-crash",
    "quote": "Every refusal is an error of the gate, never a crash.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "prop:I0"
+    "prop:I0",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "mutants": [],
-   "reason": "Held by the gate's net, which turns every exception into a refusal: removing a named guard falls into the net (still a refusal), and removing the net crashes, which run_mutants counts as nothing. I0 checks it on generated sequences."
+   "mutants": [
+    "m-net-admit",
+    "m-net-chain"
+   ]
   },
   {
    "id": "gate.chain",
@@ -445,43 +463,54 @@
   {
    "id": "gate.append-only",
    "quote": "2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_03_gate_rejects_malformed_commits"
+    "test:test_03_gate_rejects_malformed_commits",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by several layers: Check #2, the delta reader's status and mode checks, then the read of a deleted entry itself (and, for a changed entry, the CAS hash check). Test 03 deletes an orphan atom; a mutant removing all three guards still refuses it."
+   "mutants": [
+    "m-append-reader"
+   ]
   },
   {
    "id": "gate.scope-rules",
    "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or `H_LENS_KERNEL_V1C`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_57_rules_v2_from_genesis"
+    "test:test_57_rules_v2_from_genesis",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by two layers: the host refuses rules it does not implement, and the pinned kernel refuses the same genesis (E-10). The gate always runs the pinned kernel, so no mutant removes both."
+   "mutants": [
+    "m-scope-rules-host"
+   ]
   },
   {
    "id": "gate.seals",
    "quote": "Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of `S_base`'s admission policy",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
     "test:test_02_local_loop_rebinding_rollback_import_rotation",
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
-    "prop:I10"
+    "prop:I10",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by two layers: the host's seal check and the pinned kernel's E-13 refuse the same seal. The gate always runs the pinned kernel, so no mutant removes both."
+   "mutants": [
+    "m-seal-signer-twin",
+    "m-seal-key-kernel"
+   ]
   },
   {
    "id": "gate.references",
    "quote": "4. **References and replay.** Every referenced hash is present",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_05_signatures_names_dependencies_verdicts_acceptance",
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
     "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": [],
-   "reason": "Held by more than one layer: an input whose referenced hash is missing is refused by Check #4 and, with that guard removed, by a later reading of the same object; each case of test 78 has its own input, none passes one layer and not the next."
+   "mutants": [
+    "m-refs-seal"
+   ]
   },
   {
    "id": "gate.cycle-witness",
@@ -1120,7 +1149,8 @@
     "m-rc-a-status",
     "m-rc-b-old",
     "m-rc-c-lost",
-    "m-amend-class"
+    "m-amend-class",
+    "m-rc-needs-decision"
    ]
   },
   {
@@ -1141,11 +1171,14 @@
   {
    "id": "rules.change.counterexample-admitted",
    "quote": "which must pass every check of this gate",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_50_rules_change_b_refutes_the_old_rules"
+    "test:test_50_rules_change_b_refutes_the_old_rules",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by two layers: the gate's check_chain of the counterexample and the old rules' pinned kernel over it (E-15 on an unsealed cell) refuse the same input."
+   "mutants": [
+    "m-rc-cx-admitted"
+   ]
   },
   {
    "id": "rules.change.counterexample-id",
@@ -1162,11 +1195,13 @@
   {
    "id": "rules.change.refusal",
    "quote": "either rules refusing either log refuses the rotation",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
    ],
-   "reason": "Its guard falls through to the gate's net: without it the replay raises IndexError, which the gate still turns into a refusal."
+   "mutants": [
+    "m-rc-refusal"
+   ]
   },
   {
    "id": "rules.change.a",
@@ -1191,7 +1226,8 @@
    ],
    "mutants": [
     "m-rc-b-digest",
-    "m-rc-b-old"
+    "m-rc-b-old",
+    "m-rc-b-range"
    ]
   },
   {
@@ -1271,11 +1307,14 @@
   {
    "id": "types.kin1",
    "quote": "`kin1`: a KIN1 atom.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_64_a_resource_hardening_needs_each_piece"
+    "test:test_64_a_resource_hardening_needs_each_piece",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "reason": "Held by two layers: an atom of another type in a kin1 slot is refused by the type check and again by the replay's digest comparison, which the wrong bytes cannot reproduce."
+   "mutants": [
+    "m-amend-kin1-type"
+   ]
   },
   {
    "id": "rules.v1b-code",
@@ -1744,12 +1783,13 @@
    "id": "assurance.whatif-complete",
    "source": "ASSURANCE.md",
    "quote": "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
    ],
-   "mutants": [],
-   "reason": "No input can show the loop bites: `lost` is computed over every cell of the chain by construction, and no chain is known where a change escapes the region (invalidating a custom schema leaves its instances unchanged)."
+   "mutants": [
+    "m-whatif-escapes"
+   ]
   },
   {
    "id": "gate.cycle-entry-ceiling",
@@ -1807,7 +1847,8 @@
    "mutants": [
     "m-runner-wording",
     "m-runner-priority",
-    "m-runner-assertion"
+    "m-runner-assertion",
+    "m-runner-import-check"
    ]
   }
  ],

@@ -133,7 +133,7 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | A held decision whose counted endorsements change carries its threshold and its counts before and after: Settled kept on a thinner margin is reported though no status bit changes | Tested, with mutants | `test_vars1.py` 81 |
 | `transcript` binds the consequence lists to their context (mode, scope, tip, the rules at the tip and at the candidate, the hypothesis cells, and the cell and key of every hypothesis seal); `digest` binds the lists alone, so two signers of one hypothesis share the digest and not the transcript | Tested, with mutants: a second signer gives the same digest and another transcript | `test_vars1.py` 81 |
 | An assumed hypothesis (`what_if(..., assume=True)`, `minds_chain.py what-if CELL... --assume PUBKEY`) needs no key: its seals name a key and carry a zero signature, the gate checks everything else as for an admission (the key against the policy, references, replay), the run uses a throwaway instance whose caches the caller never shares, and its candidate is refused by any real check; the report carries `mode: assumed`, the digest of the sealed run and another transcript | Tested, with mutants: a reader without keys gets a member's consequences, restoration included; a real signature, a weak key and a key outside the policy are refused; the caller's caches hold no assumed seal and its candidate cannot be admitted | `test_vars1.py` 81, 82; `vars1.py` `what_if`, `_checked_object`; `tools/minds_chain.py` `what_if` |
-| Every cell whose statuses a hypothesis changes is reported, inside its region or not | Unburned: `lost` is computed over every cell of the chain, by construction; no chain has been found where a change escapes the region (invalidating a custom schema leaves its instances unchanged), so no mutant can show the loop bites | `vars1.py` `what_if` |
+| Every cell whose statuses a hypothesis changes is reported, inside its region or not | Tested, with mutants: a decision a hypothesis's new seal settles lies outside its region and is still reported (test 81); a `lost` confined to the region drops it | `vars1.py` `what_if` |
 | A release decision relies on one cell per check (what ran, its result, the commit and profile), and a member's verdict relies on that member's own check cells, so `minds_chain.py what-if CELL [--key FILE]` says what a failed check takes with it (sealed by a member's own key or the maintainer's, never created; no ref moves and nothing is filed on the chain, though the candidate's objects stay unreachable in the object store until gc): a member's check makes its verdict Stale and an n-of-n release loses Settled; the maintainer's check makes the release Stale | Tested, with mutants | `test_vars1.py` 82; `tools/minds_chain.py` `release`, `verify_release`, `what_if` |
 | `what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement | Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key) | `test_vars1.py` 82; `tools/minds_chain.py` `what_if` |
 | Releases recorded before this format rest on their checks | **Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts | — |
@@ -147,25 +147,13 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 ## Not burned, and why
 
 Rendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim
-without one. Most are refusals held by more than one layer, where a mutant of one guard only changes the message
-(`tools/mutant_test.py` counts that as nothing).
+without one, and a reason on any other. A refusal more than one layer holds is burned layer by layer, each layer
+asked alone on an input only its rule refuses (test 87); a value checked as the module loads, by a mutant that
+names that check; a guard whose absence falls into the gate's net for crashes, by a test that asks for the named
+refusal (`_gate_refuses`). None is unburned at present.
 
 | Unburned claim | Why no mutant burns it |
 |---|---|
-| `intrinsics.values` | Checked at import: vars1.py asserts that every intrinsic atom hashes to its listed id, so a mutant of the value stops the module loading before any test runs, and an import failure is no kill. |
-| `rules.hash` | Checked at import (vars1.py refuses a kernel/lens.wasm that does not hash to H_LENS_KERNEL) and by CI's rebuild of the kernel; a mutant of the value stops the module loading, which is no kill. |
-| `rules.v2-default` | v1 stays the default because a rotation to other rules needs its rules-change decision; without that guard the gate's replay raises IndexError, which its net still turns into a refusal, so the mutant changes only the message. |
-| `payloads.cycle-witness` | Held by two layers: the gate's bound check and Book I's verify_cycle, which refuses the same witness ("a cycle needs at least one priced action", "more actions than cost"); with the gate's check removed, test 75 meets the refusal in other words. |
-| `store.paths` | Held by layers: a CAS entry whose bytes do not hash to its path is also refused as a missing referenced object (Check #4); removing the hash check alone changes only the message. |
-| `gate.no-crash` | Held by the gate's net, which turns every exception into a refusal: removing a named guard falls into the net (still a refusal), and removing the net crashes, which run_mutants counts as nothing. I0 checks it on generated sequences. |
-| `gate.append-only` | Held by several layers: Check #2, the delta reader's status and mode checks, then the read of a deleted entry itself (and, for a changed entry, the CAS hash check). Test 03 deletes an orphan atom; a mutant removing all three guards still refuses it. |
-| `gate.scope-rules` | Held by two layers: the host refuses rules it does not implement, and the pinned kernel refuses the same genesis (E-10). The gate always runs the pinned kernel, so no mutant removes both. |
-| `gate.seals` | Held by two layers: the host's seal check and the pinned kernel's E-13 refuse the same seal. The gate always runs the pinned kernel, so no mutant removes both. |
-| `gate.references` | Held by more than one layer: an input whose referenced hash is missing is refused by Check #4 and, with that guard removed, by a later reading of the same object; each case of test 78 has its own input, none passes one layer and not the next. |
-| `rules.change.counterexample-admitted` | Held by two layers: the gate's check_chain of the counterexample and the old rules' pinned kernel over it (E-15 on an unsealed cell) refuse the same input. |
-| `rules.change.refusal` | Its guard falls through to the gate's net: without it the replay raises IndexError, which the gate still turns into a refusal. |
-| `types.kin1` | Held by two layers: an atom of another type in a kin1 slot is refused by the type check and again by the replay's digest comparison, which the wrong bytes cannot reproduce. |
-| `assurance.whatif-complete` | No input can show the loop bites: `lost` is computed over every cell of the chain by construction, and no chain is known where a change escapes the region (invalidating a custom schema leaves its instances unchanged). |
 
 ## Known limits of the bounded checks
 
