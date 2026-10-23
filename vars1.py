@@ -137,7 +137,8 @@ INTRINSIC_ATOMS: Dict[bytes, bytes] = {sha256(raw): raw for raw in (
 )}
 
 
-assert set(INTRINSIC_ATOMS) <= INTRINSIC_HASHES
+if not set(INTRINSIC_ATOMS) <= INTRINSIC_HASHES:
+    raise RuntimeError("an intrinsic atom does not hash to an intrinsic id")
 
 
 def atom_of(h: bytes, atoms: Dict[bytes, bytes], what: str = "atom") -> bytes:
@@ -508,6 +509,13 @@ def verify_cycle_witness_replay(c: Cell, atoms: Dict[bytes, bytes], *, gate_mode
     if verdict != "CYCLE_PROVEN":
         raise VarsError(f"cycle_witness replay failed: {verdict}")
     return "CYCLE_PROVEN"
+
+
+def check_scope_rules(c: Cell) -> None:
+    """§3 check 3: a scope cell names rules this host implements. The fold has no answer of its own for other rules
+    (it cannot even look them up), so this check is the refusal that names the reason."""
+    if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES:
+        raise VarsError("scope names rules this host does not implement (slots[2] is not in RULES)")
 
 
 def gate_cycle_witness(c: Cell, atoms: Dict[bytes, bytes]) -> str:
@@ -1280,8 +1288,7 @@ class GitVarsRepo:
             is_scope_name = slot_str == f"{slot_str.split('/', 1)[0]}/SCOPE"
             if (c.h_schema == H_SCHEMA["scope"]) != is_scope_name:
                 raise VarsError(f"reserved scope name: {slot_str!r} must be <origin>/SCOPE iff the cell is a schema.scope")
-            if c.h_schema == H_SCHEMA["scope"] and len(c.slots) == 3 and c.slots[2] not in RULES:
-                raise VarsError("scope names rules this host does not implement (slots[2] is not in RULES)")
+            check_scope_rules(c)
             if c.h_schema == H_META_SCHEMA:
                 if c.h_payload != H_EMPTY or any(
                     m != H_EMPTY for m in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates, c.h_loss)

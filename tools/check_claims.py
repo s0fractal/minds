@@ -8,7 +8,8 @@ the claim cell of exactly one claim-table row of assurance.json whose evidence c
 ASSURANCE.md must be exactly the rendering of assurance.json; every witness must exist; a claim
 that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
 exists, and finds its line exactly once. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
-mutant has shown that it bites). Exit 1 on any violation.
+mutant has shown that it bites). An unburned claim says why in `reason`, rendered into ASSURANCE.md's debt table; no other
+claim carries one. Exit 1 on any violation.
 
     python3 tools/check_claims.py            # check
     python3 tools/check_claims.py --table    # print claim -> status -> witnesses -> mutants
@@ -80,15 +81,20 @@ EVIDENCE_WORD = {"proved": "Proved", "bounded": "Bounded", "differential": "Diff
                  "assumed": "Assumed", "unburned": "Unburned"}
 
 
-def render_assurance(doc: dict) -> str:
+def render_assurance(doc: dict, claims: list = ()) -> str:
     """ASSURANCE.md is a projection of assurance.json: prose parts verbatim, tables rendered from their cells (a `|` in
     a cell escaped). Nothing parses the Markdown; the file must be exactly this rendering. A table whose first header
-    is `Claim` holds claim rows."""
+    is `Claim` holds claim rows. The part `{"unburned": true}` is the debt table, rendered from the unburned claims of
+    claims.json and their reasons."""
     out = []
     for part in doc["parts"]:
         if "md" in part:
             out.append(part["md"])
             continue
+        if part.get("unburned"):
+            part = {"table": {"header": ["Unburned claim", "Why no mutant burns it"],
+                              "rows": [[f"`{c['id']}`", c.get("reason", "")] for c in claims
+                                       if c["status"] == "unburned"]}}
         t = part["table"]
         cell = lambda c: c.replace("|", "\\|")
         out.append("\n".join(["| " + " | ".join(map(cell, t["header"])) + " |", "|" + "---|" * len(t["header"])]
@@ -106,6 +112,8 @@ def witness_exists(w: str) -> bool:
     kind, _, name = w.partition(":")
     if kind == "test":
         return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "test_vars1.py").read_text(), re.M) is not None
+    if kind == "import":  # a check vars1.py makes as it loads, named by its message
+        return name in (ROOT / "vars1.py").read_text()
     if kind == "prop":
         return re.search(rf"\b{re.escape(name)}\b", (ROOT / "test_vars1_props.py").read_text()) is not None
     if kind == "lean":
@@ -138,7 +146,7 @@ def main(argv: list[str]) -> int:
     errors += spec_problems(spec_doc, carriers)
     carried = {cid for part in spec_doc["parts"] for cid in part.get("carries", [])}
     assurance_doc = json.loads(arg("--assurance-data", ROOT / "assurance.json").read_text())
-    rendered = render_assurance(assurance_doc)
+    rendered = render_assurance(assurance_doc, claims)
     if "--write-assurance" in argv:
         arg("--assurance", ROOT / "ASSURANCE.md").write_text(rendered)
     if arg("--assurance", ROOT / "ASSURANCE.md").read_text() != rendered:
@@ -168,6 +176,10 @@ def main(argv: list[str]) -> int:
             errors.append(f"{c['id']}: {c['status']} without a witness")
         if c["status"] == "unburned" and c.get("mutants"):
             errors.append(f"{c['id']}: unburned, yet it names mutants (then it is tested or differential)")
+        if c["status"] == "unburned" and not c.get("reason", "").strip():
+            errors.append(f"{c['id']}: unburned without a reason (why no mutant burns it)")
+        if c["status"] != "unburned" and "reason" in c:
+            errors.append(f"{c['id']}: {c['status']}, yet it gives a reason for not being burned")
         if c["status"] == "assumed" and (c.get("witnesses") or c.get("mutants")):
             errors.append(f"{c['id']}: assumed, yet it names witnesses or mutants")
         for w in c.get("witnesses", []):

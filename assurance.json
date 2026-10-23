@@ -353,6 +353,11 @@
       "`test_vars1.py` 45; `tools/check_claims.py`"
      ],
      [
+      "An unburned claim says in `reason` why no mutant burns it, and only an unburned claim carries one; the debt table of ASSURANCE.md is the rendering of those reasons",
+      "Tested, with mutants",
+      "`test_vars1.py` 45; `tools/check_claims.py`"
+     ],
+     [
       "Every normative character of a §0–§5 part is covered by the quotes it carries",
       "**Not established**: a part may say more than its carriers' quotes, as a block did before; block boundaries are now declared in spec.json, not inferred (closing Codex review of PR #4, round 9, F4), but what a part says beyond its quotes is held by nothing",
       "—"
@@ -476,7 +481,7 @@
      ],
      [
       "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
-      "Unburned: `lost` is computed over every cell of the chain, by construction; no chain has been found where a change escapes the region (invalidating a custom schema leaves its instances unchanged), so no mutant can show the loop bites",
+      "Tested, with mutants: a decision a hypothesis's new seal settles lies outside its region and is still reported (test 81); a `lost` confined to the region drops it",
       "`vars1.py` `what_if`"
      ],
      [
@@ -515,6 +520,12 @@
      ]
     ]
    }
+  },
+  {
+   "md": "\n## Not burned, and why\n\nRendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim\nwithout one, and a reason on any other. A refusal more than one layer holds is burned layer by layer, each layer\nasked alone on an input only its rule refuses (test 87); a value checked as the module loads, by a mutant that\nnames that check; a guard whose absence falls into the gate's net for crashes, by a test that asks for the named\nrefusal (`_gate_refuses`). None is unburned at present.\n\n"
+  },
+  {
+   "unburned": true
   },
   {
    "md": "\n## Known limits of the bounded checks\n\nOne mutant has been run so far: making `Active` ignore `accepted` fails `two_cells_foreign_scope` on exactly that\nassertion. The other invariants and families are not yet burned by mutants of their own. The first version of these checks had no family that reached an unaccepted cell (a foreign cell is refused\nwithout a self-sealed scope of its origin, which no two-cell log had), so the same mutant passed every family; the\nforeign-scope family was added for that reason. An invariant is only as checked as the families that reach it.\n\n**Kernel time is not bounded by input size (v1).** Fuzzing found that every count in the input is checked against the\ninput's length except the commit count `C`, and the fold visits every commit: an 8 KB input claiming 84 million\ncommits runs for minutes. The host supplies `C` from its own chain and bundles never run the kernel, so the live\nchains are not exposed; as a standalone component the kernel's time is `O(C·(N+S))`. The v1b rules\n(`H_LENS_KERNEL_V1B`) bound `C` by the input's length, so their time is `O(L·(N+S))` for `L` input bytes; they reach a\nscope only by a resource hardening (AMENDMENTS.md), and `refs/vars/heads/minds` stays on v1 until its members decide.\nThe fuzzer builds v1 and skips inputs with `C > 4096` so it keeps looking for correctness defects.\n\nKani runs the kernel on the host, where `usize` is 64 bits; wasm32 has 32. An overflow possible only at 32 bits is\noutside these checks (the kernel bounds every count by the input length, which wasm32 already bounds). The bounds\nare small; they find shallow defects in every branch they reach, not deep ones beyond the bound.\n"

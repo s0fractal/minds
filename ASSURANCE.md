@@ -95,6 +95,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | A release statement names its profile after its checks, so a reader of the earlier format still reads its commit, rules and pins | Tested (the earlier pattern, verbatim) | `test_vars1.py` 76 |
 | A claim quoting ASSURANCE.md is held only by the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status; ASSURANCE.md is exactly the rendering of assurance.json, so nothing in it is parsed and no hidden or quoted text can hold a quote (nine review rounds on hand-read Markdown, Codex review of PR #4, led here) | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
 | Every paragraph, list item, table and code block of VARS-1-SPEC.md §0–§5 is a part of spec.json that carries a claim or an informative passage whose quote is in its own text; VARS-1-SPEC.md is exactly the rendering of spec.json, a part's section is counted from the headings and never read from the part, a heading part is one heading line and a gap one blank line, and every claim and informative passage is carried by some part. Nothing parses the Markdown | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
+| An unburned claim says in `reason` why no mutant burns it, and only an unburned claim carries one; the debt table of ASSURANCE.md is the rendering of those reasons | Tested, with mutants | `test_vars1.py` 45; `tools/check_claims.py` |
 | Every normative character of a §0–§5 part is covered by the quotes it carries | **Not established**: a part may say more than its carriers' quotes, as a block did before; block boundaries are now declared in spec.json, not inferred (closing Codex review of PR #4, round 9, F4), but what a part says beyond its quotes is held by nothing | — |
 
 ## Who reads which rules
@@ -132,7 +133,7 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | A held decision whose counted endorsements change carries its threshold and its counts before and after: Settled kept on a thinner margin is reported though no status bit changes | Tested, with mutants | `test_vars1.py` 81 |
 | `transcript` binds the consequence lists to their context (mode, scope, tip, the rules at the tip and at the candidate, the hypothesis cells, and the cell and key of every hypothesis seal); `digest` binds the lists alone, so two signers of one hypothesis share the digest and not the transcript | Tested, with mutants: a second signer gives the same digest and another transcript | `test_vars1.py` 81 |
 | An assumed hypothesis (`what_if(..., assume=True)`, `minds_chain.py what-if CELL... --assume PUBKEY`) needs no key: its seals name a key and carry a zero signature, the gate checks everything else as for an admission (the key against the policy, references, replay), the run uses a throwaway instance whose caches the caller never shares, and its candidate is refused by any real check; the report carries `mode: assumed`, the digest of the sealed run and another transcript | Tested, with mutants: a reader without keys gets a member's consequences, restoration included; a real signature, a weak key and a key outside the policy are refused; the caller's caches hold no assumed seal and its candidate cannot be admitted | `test_vars1.py` 81, 82; `vars1.py` `what_if`, `_checked_object`; `tools/minds_chain.py` `what_if` |
-| Every cell whose statuses a hypothesis changes is reported, inside its region or not | Unburned: `lost` is computed over every cell of the chain, by construction; no chain has been found where a change escapes the region (invalidating a custom schema leaves its instances unchanged), so no mutant can show the loop bites | `vars1.py` `what_if` |
+| Every cell whose statuses a hypothesis changes is reported, inside its region or not | Tested, with mutants: a decision a hypothesis's new seal settles lies outside its region and is still reported (test 81); a `lost` confined to the region drops it | `vars1.py` `what_if` |
 | A release decision relies on one cell per check (what ran, its result, the commit and profile), and a member's verdict relies on that member's own check cells, so `minds_chain.py what-if CELL [--key FILE]` says what a failed check takes with it (sealed by a member's own key or the maintainer's, never created; no ref moves and nothing is filed on the chain, though the candidate's objects stay unreachable in the object store until gc): a member's check makes its verdict Stale and an n-of-n release loses Settled; the maintainer's check makes the release Stale | Tested, with mutants | `test_vars1.py` 82; `tools/minds_chain.py` `release`, `verify_release`, `what_if` |
 | `what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement | Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key) | `test_vars1.py` 82; `tools/minds_chain.py` `what_if` |
 | Releases recorded before this format rest on their checks | **Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts | — |
@@ -142,6 +143,17 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | Claim | Evidence | Where |
 |---|---|---|
 | A mutant counts as killed only when an assertion fails on what the code does (an expected exception not raised, values that differ); an expected exception met with another message, on one line or several, with a custom `msg` or not, is a survival (the input is still refused), and so is any other error. `tools/mutant_test.py` decides where assertRaises checks, not from the printed text | Tested, with mutants: a fixture of eleven tests, each with its expected verdict | `test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict` |
+
+## Not burned, and why
+
+Rendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim
+without one, and a reason on any other. A refusal more than one layer holds is burned layer by layer, each layer
+asked alone on an input only its rule refuses (test 87); a value checked as the module loads, by a mutant that
+names that check; a guard whose absence falls into the gate's net for crashes, by a test that asks for the named
+refusal (`_gate_refuses`). None is unburned at present.
+
+| Unburned claim | Why no mutant burns it |
+|---|---|
 
 ## Known limits of the bounded checks
 
