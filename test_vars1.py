@@ -5144,15 +5144,16 @@ class TestVars1Conformance(unittest.TestCase):
         # §3 gate.no-crash: an exception inside the gate (injected here) leaves it as a refusal, from an admission
         # and from a check of a chain. The net turns KeyError, IndexError, TypeError, ValueError and
         # UnicodeDecodeError into refusals; that is what this holds (any other exception would still escape)
-        for kind in (KeyError, IndexError, TypeError, ValueError):
-            with unittest.mock.patch.object(V.GitVarsRepo, "_check_commit", side_effect=kind("injected")):
+        for exc in (KeyError("injected"), IndexError("injected"), TypeError("injected"), ValueError("injected"),
+                    UnicodeDecodeError("utf-8", b"\xff", 0, 1, "injected")):
+            with unittest.mock.patch.object(V.GitVarsRepo, "_check_commit", side_effect=exc):
                 for call in (lambda: self.repo.admit_and_advance("core", exe, expected_old=c0),
                              lambda: self.repo.check_chain("core", exe)):
                     try:
                         call()
                         self.fail("the injected fault was not seen")
                     except V.VarsError as e:
-                        self.assertTrue(str(e).startswith(f"malformed commit refused ({kind.__name__}"), str(e))
+                        self.assertTrue(str(e).startswith(f"malformed commit refused ({type(exc).__name__}"), str(e))
                     except Exception as e:  # noqa: BLE001 — the point: anything else is a crash
                         self.fail(f"the gate crashed with {e!r} instead of refusing")
 

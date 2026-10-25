@@ -226,8 +226,8 @@
      ],
      [
       "The gate's own bound `1 ≤ cycle_actions ≤ cycle_cost`",
-      "Unburned: `verify_cycle` refuses the same witnesses before any replay, so removing the bound changes only the message",
-      "`test_vars1.py` 75"
+      "Tested, with mutants (`m-cycle-bound-*`): `verify_cycle` stubbed to accept, so only the gate's bound is left to refuse (test 87)",
+      "`test_vars1.py` 75, 87"
      ],
      [
       "`verify_cycle` matches `checkCycle` on Sigma terms and the rich profile",

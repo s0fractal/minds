@@ -612,6 +612,7 @@ class KernelRunner:
 
     def close(self) -> None:
         self.proc.stdin.close()
+        self.proc.stdout.close()
         self.proc.wait(timeout=10)
 
 
