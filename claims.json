@@ -72,9 +72,13 @@
   {
    "id": "intrinsics.values",
    "quote": "| `H_EMPTY` | `HVEC` | `f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329dc908872e` |",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_01_golden_test_vectors"
+    "test:test_01_golden_test_vectors",
+    "import:an intrinsic atom does not hash to an intrinsic id"
+   ],
+   "mutants": [
+    "m-intrinsic-empty"
    ]
   },
   {
@@ -91,12 +95,15 @@
   {
    "id": "rules.hash",
    "quote": "`H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "ci:Rebuild the rules kernel; it must hash to H_LENS_KERNEL",
-    "test:test_01_golden_test_vectors"
+    "test:test_01_golden_test_vectors",
+    "import:kernel/lens.wasm does not hash to H_LENS_KERNEL"
    ],
-   "mutants": []
+   "mutants": [
+    "m-rules-hash"
+   ]
   },
   {
    "id": "rules.v2-hash",
@@ -114,10 +121,13 @@
   {
    "id": "rules.v2-default",
    "quote": "A scope names them from its genesis or reaches them by a rules change (§4.3); v1 stays the default.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis",
     "test:test_48_rules_change_needs_its_decision"
+   ],
+   "mutants": [
+    "m-rc-needs-decision"
    ]
   },
   {
@@ -340,11 +350,16 @@
   {
    "id": "payloads.cycle-witness",
    "quote": "cycle_witness: `id(entry state)`, `1 ≤ cycle_actions ≤ cycle_cost`.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle"
+    "test:test_75_a_cycle_witness_is_checked_by_verify_cycle",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "mutants": []
+   "mutants": [
+    "m-cycle-bound-gate",
+    "m-cycle-bound-low",
+    "m-cycle-bound-high"
+   ]
   },
   {
    "id": "payloads.projection",
@@ -360,10 +375,15 @@
   {
    "id": "store.paths",
    "quote": "every entry a regular file (`100644`) whose bytes hash to its path.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_03_gate_rejects_malformed_commits",
-    "test:test_38_caches_never_stand_in_for_new_bytes"
+    "test:test_38_caches_never_stand_in_for_new_bytes",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-cas-path",
+    "m-store-mode"
    ]
   },
   {
@@ -405,11 +425,15 @@
   {
    "id": "gate.no-crash",
    "quote": "Every refusal is an error of the gate, never a crash.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "prop:I0"
+    "prop:I0",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
    ],
-   "mutants": []
+   "mutants": [
+    "m-net-admit",
+    "m-net-chain"
+   ]
   },
   {
    "id": "gate.chain",
@@ -426,48 +450,67 @@
   {
    "id": "gate.roster-rotation",
    "quote": "That quorum alone may set the new roster, removing keys as well as adding them; no key has a veto over its own removal",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
-    "test:test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds"
+    "test:test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds",
+    "test:test_83_a_kernel_build_answers_what_the_rules_answer"
    ],
-   "mutants": []
+   "mutants": [
+    "m-roster-veto-twin",
+    "m-roster-veto-kernel"
+   ]
   },
   {
    "id": "gate.append-only",
    "quote": "2. **Append-only.** `git diff-tree -r --no-renames --diff-filter=a T_old T_new` is empty.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_03_gate_rejects_malformed_commits"
+    "test:test_03_gate_rejects_malformed_commits",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-append-reader"
    ]
   },
   {
    "id": "gate.scope-rules",
    "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or `H_LENS_KERNEL_V1C`",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_57_rules_v2_from_genesis"
+    "test:test_57_rules_v2_from_genesis",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-scope-rules-host"
    ]
   },
   {
    "id": "gate.seals",
    "quote": "Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of `S_base`'s admission policy",
-   "status": "unburned",
+   "status": "differential",
    "witnesses": [
     "test:test_02_local_loop_rebinding_rollback_import_rotation",
     "test:test_11_fold_refusals_are_decided_by_the_kernel",
-    "prop:I10"
+    "prop:I10",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-seal-signer-twin",
+    "m-seal-key-kernel"
    ]
   },
   {
    "id": "gate.references",
    "quote": "4. **References and replay.** Every referenced hash is present",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_05_signatures_names_dependencies_verdicts_acceptance",
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
     "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": []
+   "mutants": [
+    "m-refs-seal"
+   ]
   },
   {
    "id": "gate.cycle-witness",
@@ -1106,7 +1149,8 @@
     "m-rc-a-status",
     "m-rc-b-old",
     "m-rc-c-lost",
-    "m-amend-class"
+    "m-amend-class",
+    "m-rc-needs-decision"
    ]
   },
   {
@@ -1127,9 +1171,13 @@
   {
    "id": "rules.change.counterexample-admitted",
    "quote": "which must pass every check of this gate",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_50_rules_change_b_refutes_the_old_rules"
+    "test:test_50_rules_change_b_refutes_the_old_rules",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-rc-cx-admitted"
    ]
   },
   {
@@ -1147,9 +1195,12 @@
   {
    "id": "rules.change.refusal",
    "quote": "either rules refusing either log refuses the rotation",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
+   ],
+   "mutants": [
+    "m-rc-refusal"
    ]
   },
   {
@@ -1175,7 +1226,8 @@
    ],
    "mutants": [
     "m-rc-b-digest",
-    "m-rc-b-old"
+    "m-rc-b-old",
+    "m-rc-b-range"
    ]
   },
   {
@@ -1255,9 +1307,13 @@
   {
    "id": "types.kin1",
    "quote": "`kin1`: a KIN1 atom.",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
-    "test:test_64_a_resource_hardening_needs_each_piece"
+    "test:test_64_a_resource_hardening_needs_each_piece",
+    "test:test_87_each_layer_of_a_layered_refusal_refuses_on_its_own"
+   ],
+   "mutants": [
+    "m-amend-kin1-type"
    ]
   },
   {
@@ -1635,6 +1691,20 @@
    ]
   },
   {
+   "id": "assurance.unburned-reasons",
+   "source": "ASSURANCE.md",
+   "quote": "An unburned claim says in `reason` why no mutant burns it, and only an unburned claim carries one",
+   "status": "tested",
+   "witnesses": [
+    "test:test_45_the_spec_is_a_projection_of_its_witnesses"
+   ],
+   "mutants": [
+    "m-claims-reason-required",
+    "m-claims-reason-only-debt",
+    "m-claims-debt-table"
+   ]
+  },
+  {
    "id": "assurance.whatif-gate",
    "source": "ASSURANCE.md",
    "quote": "`what_if` admits a hypothesis through the gate on a candidate commit and moves no ref",
@@ -1713,11 +1783,13 @@
    "id": "assurance.whatif-complete",
    "source": "ASSURANCE.md",
    "quote": "Every cell whose statuses a hypothesis changes is reported, inside its region or not",
-   "status": "unburned",
+   "status": "tested",
    "witnesses": [
     "test:test_81_what_if_reports_what_a_failed_ground_takes_with_it"
    ],
-   "mutants": []
+   "mutants": [
+    "m-whatif-escapes"
+   ]
   },
   {
    "id": "gate.cycle-entry-ceiling",
@@ -1775,7 +1847,8 @@
    "mutants": [
     "m-runner-wording",
     "m-runner-priority",
-    "m-runner-assertion"
+    "m-runner-assertion",
+    "m-runner-import-check"
    ]
   }
  ],

@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -2806,6 +2807,23 @@ class TestVars1Conformance(unittest.TestCase):
         tested["mutants"] = []
         code, out = check(spec, bare)
         self.assertIn(f"{tested['id']}: tested without a mutant", out)
+        # an unburned claim says why no mutant burns it, and only an unburned claim does; ASSURANCE.md's debt table is
+        # the rendering of those reasons
+        owed = json.loads(json.dumps(claims))
+        debt = next(c for c in owed["claims"] if c["status"] == "tested" and "source" not in c)
+        debt.update(status="unburned", reason="a reason this test gives it")
+        del debt["mutants"]
+        check(spec, owed, write=True)
+        self.assertIn("a reason this test gives it", (Path(self.tmp.name) / "assurance.md").read_text(),
+                      "the debt table renders every reason")
+        del debt["reason"]
+        code, out = check(spec, owed)
+        self.assertIn(f"{debt['id']}: unburned without a reason", out)
+        excused = json.loads(json.dumps(claims))
+        tested = next(c for c in excused["claims"] if c["status"] == "tested")
+        tested["reason"] = "a reason it does not need"
+        code, out = check(spec, excused)
+        self.assertIn(f"{tested['id']}: tested, yet it gives a reason for not being burned", out)
         # a claim on what the tools establish beyond the spec quotes ASSURANCE.md, and goes stale like any other
         moved = json.loads(json.dumps(claims))
         held = next(c for c in moved["claims"] if c.get("source") == "ASSURANCE.md")
@@ -2972,6 +2990,12 @@ class TestVars1Conformance(unittest.TestCase):
         return c, s, (ds[0] if ds else None)
 
     def _gate_refuses(self, regex: str, scope: str, cand: str, parent: str) -> None:
+        """The gate refuses `cand` by a named check, not by its net for crashes (an exception turned into a refusal
+        says that the check meant to name the reason is missing: G3), and the refusal says `regex`."""
+        with self.assertRaises(V.VarsError) as refused:
+            self.repo.admit_and_advance(scope, cand, expected_old=parent)
+        self.assertNotRegex(str(refused.exception), r"^malformed (commit|hypothesis) refused \(",
+                            "refused by the net for crashes, not by a named check")
         with self.assertRaisesRegex(V.VarsError, regex):
             self.repo.admit_and_advance(scope, cand, expected_old=parent)
 
@@ -4511,8 +4535,7 @@ class TestVars1Conformance(unittest.TestCase):
                                                                          path_raw)])
 
         def refused(regex: str, cand: str) -> None:
-            with self.assertRaisesRegex(V.VarsError, regex):
-                self.repo.admit_and_advance("core", cand, expected_old=c0)
+            self._gate_refuses(regex, "core", cand, c0)  # by its named check, not by the net for crashes
 
         # §1.2 rule 1: an eviction without loss, as bytes (the encoder refuses to make it)
         a: dict[bytes, bytes] = {}
@@ -4855,6 +4878,12 @@ class TestVars1Conformance(unittest.TestCase):
             "test_other_words_msg": "wording", "test_callable_form": "wording",
             "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
             "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
+        # a value held by a check made at import: the mutant counts only if that named check stops the import
+        (fixture / "loads.py").write_text("x = 1\n")
+        (fixture / "checked.py").write_text("raise RuntimeError('the value is not the one listed')\n")
+        (fixture / "other.py").write_text("raise ImportError('no such thing')\n")
+        got = {m: rm.import_refuses(m, "the value is not the one listed", fixture, env)[0] for m in ("loads", "checked", "other")}
+        self.assertEqual(got, {"loads": False, "checked": True, "other": False})
 
     def _v1c_genesis(self) -> tuple[str, V.Cell, bytes]:
         """A scope under the rules with a rotation delay (v1c) from genesis: roster {pk1, pk2}, threshold 1."""
@@ -5024,6 +5053,129 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual([b for _, b in got], [r for r, _ in got])
         self.assertEqual([r for r, _ in got if r.startswith("E")], ["E-24", "E-24"], "both candidates are refused")
 
+    def _layers(self, scope: str, cand: str, runner: "V.KernelRunner") -> tuple:
+        """Each layer of the fold on its own, on a candidate commit: the twin's refusal (or None) and the rules
+        kernel's refusal code (or None), the kernel being `runner` (a build under test)."""
+        deltas = self.repo.chain_deltas(self.repo.commit_chain(cand))
+        try:
+            self.repo._fold_twin(scope, deltas)
+            twin = None
+        except V.VarsError as e:
+            twin = str(e)
+        try:
+            runner.run(V.kernel_facts(scope, deltas)[0])
+            code = None
+        except V.KernelRefusal as e:
+            code = e.code
+        return twin, code
+
+    def test_87_each_layer_of_a_layered_refusal_refuses_on_its_own(self) -> None:
+        """A refusal two layers hold is burned layer by layer (G3): each layer is asked alone, on an input that
+        breaks only the rule under test, so a mutant of either layer is seen by that layer's own assertion. The
+        kernel is the pinned one, or, with MINDS_KERNEL_WASM, a build of a mutant (tools/run_mutants.py)."""
+        module = os.environ.get("MINDS_KERNEL_WASM")
+        built = V.KernelRunner(V.H_LENS_KERNEL, Path(module) if module else None)
+        self.addCleanup(built.close)
+
+        # §3 step 3, gate.seals: a seal by a key outside the admission policy, beside a member's (so the cell is
+        # sealed, and "unsealed" cannot be what refuses it)
+        c0, s0, _ = self._bootstrap_genesis("core")
+        a: dict[bytes, bytes] = {}
+        x = self._axiom(a, "core/x", "sealed by a member and an outsider")
+        cand = self.repo.build_candidate_commit("core", a, [x], [V.Seal.sign(self.sk1, x.id, s0.id),
+                                                                 V.Seal.sign(b"\x09" * 32, x.id, s0.id)], parent_commit=c0)
+        twin, code = self._layers("core", cand, built)
+        self.assertEqual(twin, "Local seal signer not in active SCOPE policy", "the twin refuses the outsider's seal")
+        self.assertEqual(code, -13, "the kernel refuses it, alone, with its own code")
+
+        # §3 step 3, gate.scope-rules: the host's check alone (the fold cannot look other rules up, so it has no
+        # refusal of its own here)
+        other = V.Cell(V.H_SCHEMA["scope"], s0.h_slot_name, s0.h_payload, slots=(s0.slots[0], s0.slots[1], bytes(32)))
+        with self.assertRaises(V.VarsError):
+            V.check_scope_rules(other)
+        for rules in V.RULES:
+            V.check_scope_rules(V.Cell(V.H_SCHEMA["scope"], s0.h_slot_name, s0.h_payload,
+                                       slots=(s0.slots[0], s0.slots[1], rules)))
+
+        # §1 store.paths: every entry a regular file (`100644`) whose bytes hash to its path. The reader refuses an
+        # added entry of another mode whose bytes do hash to its path; the object check refuses bytes that do not,
+        # whatever reads them
+        raw = V.atom_utf8("an executable atom")
+        h = V.sha256(raw).hex()
+        exe = self.repo.build_candidate_commit("core", {}, [], [], parent_commit=c0,
+                                               extra_tree_entries=[("100755", "blob", f"cas/atoms/{h[:2]}/{h[2:]}", raw)])
+        with self.assertRaises(V.VarsError):
+            self.repo.chain_deltas(self.repo.commit_chain(exe))
+        self.assertEqual(self.repo._checked_object("atoms", bytes.fromhex(h), raw, "p"), raw)
+        with self.assertRaises(V.VarsError):
+            self.repo._checked_object("atoms", bytes.fromhex(h), raw + b"!", "p")
+
+        # §3 step 2, gate.append-only: the delta reader's own refusal of a change that is not an addition. The
+        # entry keeps its mode and is rewritten, and the object check is told the new bytes are what the path
+        # names, so only the reader's status check is left to refuse it
+        orphan: dict[bytes, bytes] = {}
+        h_orphan = self._put_atom(orphan, V.atom_utf8("an atom nothing names"))
+        c_orphan = self.repo.build_candidate_commit("core", orphan, [], [], parent_commit=c0)
+        self.repo.admit_and_advance("core", c_orphan, expected_old=c0)
+        path = f"cas/atoms/{h_orphan.hex()[:2]}/{h_orphan.hex()[2:]}"
+        rewritten = self.repo.build_candidate_commit("core", {}, [], [], parent_commit=c_orphan,
+                                                     extra_tree_entries=[("100644", "blob", path, V.atom_utf8("other"))])
+        checked = V.GitVarsRepo._checked_object
+        self.repo = V.GitVarsRepo(self.repo_path)  # no cache from the admissions above
+        with unittest.mock.patch.object(V.GitVarsRepo, "_checked_object",
+                                        lambda repo, kind, h, raw, p: checked(repo, kind, V.sha256(raw), raw, p)):
+            with self.assertRaises(V.VarsError):
+                self.repo.chain_deltas(self.repo.commit_chain(rewritten))
+        c0 = c_orphan
+
+        # §4.3 rules.change.counterexample-admitted: the counterexample chain passes every check of this gate. Its
+        # tip adds a cell whose name only the gate refuses (the rules read no names), so the evidence replays and
+        # nothing but the gate's own check of the counterexample stands between it and the rotation
+        cx, c1, s_core = self._rules_change_fixture_on("rc")
+        cx_lens = self.repo.lens("cx", at=cx[0])
+        cx_scope = next(cid for cid, c in cx_lens["cells"].items() if c.h_schema == V.H_SCHEMA["scope"])
+        n: dict[bytes, bytes] = {}
+        misnamed = self._axiom(n, "cx/a..b", "a name the gate refuses")
+        cx_bad = self.repo.build_candidate_commit("cx", n, [misnamed], [V.Seal.sign(self.sk1, misnamed.id, cx_scope)],
+                                                  parent_commit=cx[0])
+        self._gate_refuses("forbidden path segment", "rc",
+                           self._change_rules("rc", c1, s_core, V.H_LENS_KERNEL_V2, [self.sk1], (cx_bad, cx[1]))[0], c1)
+
+        # §3 gate.no-crash: an exception inside the gate (injected here) leaves it as a refusal, from an admission
+        # and from a check of a chain. The net turns KeyError, IndexError, TypeError, ValueError and
+        # UnicodeDecodeError into refusals; that is what this holds (any other exception would still escape)
+        for exc in (KeyError("injected"), IndexError("injected"), TypeError("injected"), ValueError("injected"),
+                    UnicodeDecodeError("utf-8", b"\xff", 0, 1, "injected")):
+            with unittest.mock.patch.object(V.GitVarsRepo, "_check_commit", side_effect=exc):
+                for call in (lambda: self.repo.admit_and_advance("core", exe, expected_old=c0),
+                             lambda: self.repo.check_chain("core", exe)):
+                    try:
+                        call()
+                        self.fail("the injected fault was not seen")
+                    except V.VarsError as e:
+                        self.assertTrue(str(e).startswith(f"malformed commit refused ({type(exc).__name__}"), str(e))
+                    except Exception as e:  # noqa: BLE001 — the point: anything else is a crash
+                        self.fail(f"the gate crashed with {e!r} instead of refusing")
+
+        # §2 types.kin1: a kin1 slot holds a KIN1 atom; the type check alone (the replay that reads the input
+        # behind it would refuse the wrong bytes for another reason)
+        kin = {V.sha256(V.atom_kin1(b"input")): V.atom_kin1(b"input"), V.sha256(V.atom_utf8("input")): V.atom_utf8("input")}
+        V.check_slot_type(V.sha256(V.atom_kin1(b"input")), "kin1", kin, {})
+        with self.assertRaises(V.VarsError):
+            V.check_slot_type(V.sha256(V.atom_utf8("input")), "kin1", kin, {})
+
+        # §2 cycle_witness, payloads.cycle-witness: the gate's own bound, with Book I's verify_cycle (the second
+        # layer, not this repository's) made to accept anything
+        cw = lambda actions, cost: V.Cell(  # noqa: E731
+            V.H_SCHEMA["cycle_witness"], V.sha256(b"name"), V.H_EMPTY,
+            slots=(bytes(32), V.sha256(V.atom_u64(0)), V.sha256(V.atom_u64(actions)), V.sha256(V.atom_u64(cost))))
+        u64s = {V.sha256(V.atom_u64(n)): V.atom_u64(n) for n in (0, 1, 2, 3)}
+        with unittest.mock.patch.object(V, "verify_cycle_witness_replay", return_value="CYCLE_PROVEN"):
+            self.assertEqual(V.gate_cycle_witness(cw(2, 3), u64s), "CYCLE_PROVEN")
+            for actions, cost in ((0, 3), (3, 2)):
+                with self.assertRaises(V.VarsError, msg=f"{actions} actions, cost {cost}"):
+                    V.gate_cycle_witness(cw(actions, cost), u64s)
+
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
         MINDS_KERNEL_WASM, a mutant built by tools/run_mutants.py) gives every status the twin gives on a corpus of
@@ -5057,8 +5209,13 @@ class TestVars1Conformance(unittest.TestCase):
                           V.Seal.sign(self.sk1, acc.id, s0.id), V.Seal.sign(self.sk2, acc.id, s0.id),
                           V.Seal.sign(self.sk1, B2.id, s0.id), V.Seal.sign(self.sk1, R.id, s0.id),
                           V.Seal.sign(self.sk1, I.id, s0.id)], c1)
+        # one member rotates the other out, alone: v1 asks only the admission quorum (§3 check 1)
+        r: dict[bytes, bytes] = {}
+        s1 = self._scope_cell(r, "core", "pk1 alone", (1, [self.pk1]), h_supersedes=self._hv(r, [s0.id]),
+                              h_loss=self._put_atom(r, V.atom_utf8("pk2 removed")))
+        c3 = self._admit(r, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c2)
         try:
-            for tip in (c0, c1, c2):
+            for tip in (c0, c1, c2, c3):
                 lens = self.repo.lens("core", at=tip)
                 try:
                     got = built.statuses(lens)

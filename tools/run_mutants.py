@@ -3,7 +3,9 @@
 on an assertion, or on a TwinDivergence (the rules kernel and its Python twin disagree: the differential witness
 caught the mutant). An import error or any other crash proves nothing, and neither does a test whose only failure
 is assertRaisesRegex meeting the expected refusal in other words: the input is still refused (by another layer, or
-by the gate's net for crashes), so the mutant took nothing away. The file is restored after every mutant.
+by the gate's net for crashes), so the mutant took nothing away. A mutant of a value the module checks as it loads
+names that check (`refused_at_import`: module and message) and counts only if that check stops the import. The file
+is restored after every mutant.
 A mutant of kernel/src/ or kernel2/src/ is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
 default kernel-mutants-target in the checkout's git directory) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
 
@@ -57,6 +59,17 @@ def verdict(test: str, cwd: Path, env: dict) -> tuple[str, str]:
     return "none", next((message for _, message in doc["outcomes"]), "passed")
 
 
+def import_refuses(module: str, check: str, cwd: Path, env: dict) -> tuple[bool, str]:
+    """Does importing `module` stop at the import-time check whose message is `check`? For a claim held by such a
+    check (a value the module verifies as it loads): the mutant is caught by that check, named in advance, and by
+    nothing else; any other failure, or a clean import, proves nothing."""
+    with tempfile.TemporaryDirectory() as cache:
+        out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", "-c", f"import {module}"],
+                             cwd=cwd, capture_output=True, text=True, env=env)
+    last = (out.stderr.strip().splitlines() or [""])[-1]
+    return out.returncode != 0 and check in last, last or "imported cleanly"
+
+
 def run(mid: str, m: dict) -> tuple[bool, str]:
     path = ROOT / m["file"]
     original = path.read_text()
@@ -86,6 +99,10 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             if hashlib.sha256(built.read_bytes()).digest() == hashlib.sha256((ROOT / pinned).read_bytes()).digest():
                 return False, "the mutant builds to the unmutated kernel (an equivalent mutant)"
             env_extra[var] = str(built)
+        if "refused_at_import" in m:
+            module, check = m["refused_at_import"]
+            ok, last = import_refuses(module, check, ROOT, dict(os.environ, MINDS_MUTANT=mid))
+            return ok, (f"refused at import by {check!r}" if ok else f"not refused at import by {check!r}: {last[:160]}")
         wording = ""
         for t in m["kills"]:
             env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
