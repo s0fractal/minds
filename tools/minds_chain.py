@@ -322,10 +322,14 @@ def replay_changes(repo_dir: Path, scope: str = SCOPE) -> List[Tuple[str, str]]:
 # so two commits with the same bytes have one profile. Not named: the interpreters (Python, node, Lean, cargo),
 # which come from the host.
 PROFILE_FORMAT = "minds-profile/1"
-# The rules modules a commit carries (by file), and of those the one the offline verifier interprets, read from its own
-# bytes (minds_verify.py `H_LENS_KERNEL`; it reports every other identity unsupported). Carrying a module is not the
-# gate running it: which modules the gate runs, and for which epochs, is vars1.py's `RULES`, named here by its hash.
-RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kernel2/lens2.wasm", "v2"))
+# The rules modules a commit carries (by file), and of those the ones the offline verifier interprets, read from its
+# own bytes: the rows of minds_verify.py's `KNOWN_RULES_TABLE`, or, in a verifier of one rules identity before it, its
+# `H_LENS_KERNEL` line (it reports every other identity unsupported), read as before, so an earlier release keeps its
+# profile. Carrying a module is not the gate running it: which modules the gate runs, and for which epochs, is
+# vars1.py's `RULES`, named here by its hash. A retired module keeps its row: the profile is a function of the commit,
+# and the commits that carried `kernel/lens1c.wasm` (releases of PRs #16–#18) are profiled with it.
+RULES_FILES = (("kernel/lens.wasm", "v1"), ("kernel/lens1b.wasm", "v1b"), ("kernel/lens1c.wasm", "v1c"),
+               ("kernel2/lens2.wasm", "v2"))
 
 
 def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
@@ -355,10 +359,16 @@ def profile_at(repo_dir: Path, sha: str) -> Dict[str, object]:
         at = header_end + 1 + size + 1
         files[path], blobs[path] = V.sha256(raw).hex(), raw
     carried = {name: files[path] for path, name in RULES_FILES if path in files}
-    m = re.search(rb'^H_LENS_KERNEL = bytes\.fromhex\("([0-9a-f]{64})"\)', blobs.get("verify/minds_verify.py", b""), re.M)
-    offline = {name: h for name, h in carried.items() if m and h == m.group(1).decode()}
-    if m and not offline:
-        offline = {"other": m.group(1).decode()}  # a rules identity this commit does not carry
+    verifier = blobs.get("verify/minds_verify.py", b"")
+    table = re.search(rb'^KNOWN_RULES_TABLE = """\n((?:[0-9a-f]{64} v[12] H_LENS_KERNEL\w*\n)+)"""\n', verifier, re.M)
+    if table:
+        known = {row.split(b" ")[0].decode() for row in table.group(1).splitlines()}
+        offline = {name: h for name, h in carried.items() if h in known}
+    else:
+        m = re.search(rb'^H_LENS_KERNEL = bytes\.fromhex\("([0-9a-f]{64})"\)', verifier, re.M)
+        offline = {name: h for name, h in carried.items() if m and h == m.group(1).decode()}
+        if m and not offline:
+            offline = {"other": m.group(1).decode()}  # a rules identity this commit does not carry
     doc: Dict[str, object] = {"format": PROFILE_FORMAT, "files": dict(sorted(files.items())), "rules_carried": carried,
                               "offline_reads": offline}
     return dict(doc, id=_digest(doc))

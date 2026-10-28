@@ -489,8 +489,12 @@ builds a bundle.
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
 that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
 PUBKEY...` or `inspect-projection|inspect-attestation BUNDLE.json` (same arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;
-no bundle check reads one. Only `rules = H_LENS_KERNEL` is interpreted: a projection naming other rules is reported
-`rules_status: "unsupported"` — its seals and digests are checked, but its input and output are not read as
+no bundle check reads one. The verifier reads every rules identity the host implements, by its table
+`KNOWN_RULES`: `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B` in v1's input encoding, `H_LENS_KERNEL_V2` in v2's, whose
+references are the input's own list (RULES-V2.md §3), each entry checked to name an older cell whose id is the value
+at its position; an input not in the encoding of the rules its projection names is refused. `vars1.py` refuses to
+load if it implements rules the verifier does not read in the same encoding. A projection naming other rules is
+reported `rules_status: "unsupported"` — its seals and digests are checked, but its input and output are not read as
 statuses, scope or Pass 3, and nothing is accepted on it (`verify-projection` exits 1).
 
 Every result carries `explain`, derived from the bundle by the same computation as the verdict fields; it is a

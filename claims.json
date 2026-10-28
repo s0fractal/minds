@@ -1611,6 +1611,24 @@
    ]
   },
   {
+   "id": "offline.rules",
+   "quote": "The verifier reads every rules identity the host implements, by its table `KNOWN_RULES`:",
+   "status": "tested",
+   "witnesses": [
+    "test:test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements",
+    "test:test_53_v1_releases_survive_a_rules_change"
+   ],
+   "mutants": [
+    "m-offline-v2-values",
+    "m-offline-v2-refs",
+    "m-offline-v1-refs",
+    "m-offline-ref-check",
+    "m-offline-host-check",
+    "m-offline-host-encoding",
+    "m-offline-v2-encoding"
+   ]
+  },
+  {
    "id": "offline.explain",
    "quote": "Every result carries `explain`, derived from the bundle by the same computation as the verdict fields;",
    "status": "tested",
@@ -1664,7 +1682,9 @@
     "m-profile-offline",
     "m-profile-commit-id",
     "m-profile-all",
-    "m-profile-bytes"
+    "m-profile-bytes",
+    "m-profile-table",
+    "m-profile-retired"
    ]
   },
   {

@@ -2474,7 +2474,7 @@ class TestVars1Conformance(unittest.TestCase):
         code, p = offline("inspect-projection", foreign)
         self.assertEqual((code, p["witnessed"], p["data_ok"], p["rules_status"], p["statuses"], p["scope"]),
                          (1, True, True, "unsupported", None, None))
-        self.assertIn("only H_LENS_KERNEL", p["explain"]["rules"]["reason"])
+        self.assertIn("only the rules of KNOWN_RULES", p["explain"]["rules"]["reason"])
         code, r = offline("inspect-attestation", dict(b1, projection=foreign))
         self.assertEqual(code, 1, r)
         self.assertEqual((code, r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted"]),
@@ -3155,7 +3155,8 @@ class TestVars1Conformance(unittest.TestCase):
     def test_53_v1_releases_survive_a_rules_change(self) -> None:
         """tools/minds_chain.py after a rotation to v2 (Monday F40): `release` and `join` keep the governing rules,
         a release projection names its tip's epoch, and v1 projection and attestation bundles made before the
-        change still verify against a pinned key; a v2 projection is admitted, and offline it is unsupported."""
+        change still verify against a pinned key; a v2 projection is admitted, and the offline verifier reads it and
+        an attestation at its tip (roadmap O4c)."""
         mc = self._minds_chain()
         sk, sk2 = b"\x07" * 32, b"\x08" * 32
         pk = V.ed25519_pubkey(sk)
@@ -3192,8 +3193,13 @@ class TestVars1Conformance(unittest.TestCase):
         b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
         self.assertTrue(V.verify_attestation(b, require=[pk])["accepted"])
         self.assertTrue(repo.lens("minds")["settled"][r4["projection"]])
-        got = V.verify_projection(json.loads(json.dumps(V.export_projection(repo, "minds", r4["projection"]))))
-        self.assertEqual(got["rules_status"], "unsupported", "the offline verifier interprets v1 only")
+        got = V.verify_projection(json.loads(json.dumps(V.export_projection(repo, "minds", r4["projection"]))),
+                                  require=[pk])
+        self.assertEqual((got["rules_status"], got["witnessed"], got["required_missing"]), ("known", True, []),
+                         "the offline verifier reads a v2 projection")
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r3["decision"], r4["projection"])))
+        got = V.verify_attestation(b, require=[pk])
+        self.assertEqual((got["evidence"], got["accepted"]), ("complete_at_tip", True), "and an attestation at its tip")
 
     def test_54_rules_v2_keep_an_opaque_digest_opaque(self) -> None:
         """RULES-V2: after the change to v2, a digest equal to a later cell's id stays opaque and vetoes nothing; the
@@ -4301,6 +4307,21 @@ class TestVars1Conformance(unittest.TestCase):
                                "three")
         self.assertEqual(mc.profile_at(self.repo_path, c)["offline_reads"], {"other": "ab" * 32},
                          "a verifier naming rules the commit does not carry reads none of them")
+        # since O4c the verifier names its rules in a table: each row is read, and only rows the commit carries count
+        rows = f"{V.H_LENS_KERNEL.hex()} v1 H_LENS_KERNEL\n{V.H_LENS_KERNEL_V2.hex()} v2 H_LENS_KERNEL_V2\n"
+        t = self._commit_files({"verify/minds_verify.py": f'KNOWN_RULES_TABLE = """\n{rows}"""\n'.encode(),
+                                "kernel/lens1b.wasm": V.KERNEL1B_ATOM, "kernel2/lens2.wasm": V.KERNEL2_ATOM}, "four")
+        self.assertEqual(mc.profile_at(self.repo_path, t)["offline_reads"],
+                         {"v1": V.H_LENS_KERNEL.hex(), "v2": V.H_LENS_KERNEL_V2.hex()}, "v1b carried, not in the table")
+        here = (ROOT_DIR / "verify" / "minds_verify.py").read_bytes()
+        h = self._commit_files({"verify/minds_verify.py": here}, "five")
+        self.assertEqual(mc.profile_at(self.repo_path, h)["offline_reads"],
+                         {"v1": V.H_LENS_KERNEL.hex(), "v1b": V.H_LENS_KERNEL_V1B.hex(), "v2": V.H_LENS_KERNEL_V2.hex()},
+                         "this verifier reads every module the host carries")
+        retired = self._commit_files({"kernel/lens1c.wasm": b"\0asm a retired module\n"}, "six")
+        self.assertEqual(mc.profile_at(self.repo_path, retired)["rules_carried"].get("v1c"),
+                         V.sha256(b"\0asm a retired module\n").hex(),
+                         "a retired module is still profiled: the releases that carried it keep their profiles")
         self.assertEqual(mc.profile_at(self.repo_path, a)["id"], pa["id"], "the profile is a function of the commit")
         with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
             mc.profile_at(self.repo_path, "main")
@@ -5468,6 +5489,127 @@ class TestVars1Conformance(unittest.TestCase):
         finally:
             built.close()
             real.close()
+
+    def _hash_decides_an_endorsement(self, scope: str, rules: bytes) -> dict:
+        """A genesis of `scope` under `rules`, then a local decision `d` (evaluator policy 2-of-{A, B}) and a foreign
+        ATTESTED verdict `w` on it of origin peerF, sealed by A under the peerF scope SF1 and by B under SF2. One
+        acceptance admits `w` under SF1, another a newer peerF contract `x` under SF2, whose `expected_outcome` (a
+        `hash`) holds w's id. Read as v1 reads it, that hash is a reference: `x` passes SF2 on to `w`, B's seal counts
+        and `d` settles. Read as v2 types it, it is a value: only A's seal counts. Then a projection of that tip. A and
+        B are in the scope's admission roster, as an evaluator policy's keys must be (§3)."""
+        skA, skB = self.sk_peer, b"\x04" * 32
+        pkA, pkB = self.pk_peer, V.ed25519_pubkey(skB)
+        atoms = dict(V.STD_SCHEMA_ATOMS)
+        if rules != V.H_LENS_KERNEL:
+            atoms[rules] = V.RULES_ATOMS[rules]
+        pol = self._pol(atoms, 1, [self.pk1])
+        roster = self._pol(atoms, 1, [self.pk1, pkA, pkB])  # an evaluator policy names keys of the roster
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(atoms, V.atom_utf8(f"{scope}/SCOPE")),
+                    self._put_atom(atoms, V.atom_utf8(scope)), slots=(roster, pol, rules))
+        c0 = self.repo.build_candidate_commit(scope, atoms, [*V.STD_SCHEMAS.values(), s0],
+                                              [V.Seal.sign(self.sk1, s0.id, s0.id)], parent_commit=None)
+        self.repo.admit_and_advance(scope, c0, expected_old=None)
+        a: dict[bytes, bytes] = {}
+        sf1 = self._scope_cell(a, "peerF", "peerF one", (1, [pkA]))
+        sf2 = self._scope_cell(a, "peerF", "peerF two", (1, [pkB]))
+        d = V.Cell(V.H_SCHEMA["decision"], self._put_atom(a, V.atom_utf8(f"{scope}/d")),
+                   self._put_atom(a, V.atom_utf8("d")),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, self._pol(a, 2, [pkA, pkB])))
+        w = V.Cell(V.H_SCHEMA["verdict"], self._put_atom(a, V.atom_utf8("peerF/d.w")), d.id,
+                   h_attests=self._hv(a, [d.id]),
+                   slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(a, V.atom_utf8("peerF-checker"))))
+        accept = lambda name, target, sf: V.Cell(  # noqa: E731
+            V.H_SCHEMA["acceptance"], self._put_atom(a, V.atom_utf8(f"{scope}/{name}")), target.id,
+            slots=(self._put_atom(a, V.atom_utf8("peerF")), sf.id))
+        a1 = accept("accept.w", w, sf1)
+        # x relies on a1, so x follows w in the input's order under either reading (a local cell passes nothing on)
+        x = V.Cell(V.H_SCHEMA["contract"], self._put_atom(a, V.atom_utf8("peerF/x")),
+                   self._put_atom(a, V.atom_utf8("x")), h_relies=self._hv(a, [a1.id]),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, w.id, V.H_EMPTY))
+        a2 = accept("accept.x", x, sf2)
+        seals = [V.Seal.sign(skA, sf1.id, sf1.id), V.Seal.sign(skB, sf2.id, sf2.id), V.Seal.sign(self.sk1, d.id, s0.id),
+                 V.Seal.sign(skA, w.id, sf1.id), V.Seal.sign(skB, w.id, sf2.id), V.Seal.sign(skB, x.id, sf2.id),
+                 V.Seal.sign(self.sk1, a1.id, s0.id), V.Seal.sign(self.sk1, a2.id, s0.id)]
+        c1 = self.repo.build_candidate_commit(scope, a, [sf1, sf2, d, w, x, a1, a2], seals, parent_commit=c0)
+        self.repo.admit_and_advance(scope, c1, expected_old=c0)
+        h_in, h_state = self.repo.projection_digests(scope, c1)
+        pa: dict[bytes, bytes] = {}
+        p = V.Cell(V.H_SCHEMA["projection"], self._put_atom(pa, V.atom_utf8(f"{scope}/p")), V.H_EMPTY,
+                   slots=(self._put_atom(pa, V.atom_utf8(c1)), rules, h_in, h_state, pol))
+        c2 = self.repo.build_candidate_commit(scope, pa, [p], [V.Seal.sign(self.sk1, p.id, s0.id)], parent_commit=c1)
+        self.repo.admit_and_advance(scope, c2, expected_old=c1)
+        return {"tip": c1, "d": d, "w": w, "x": x, "p": p, "A": pkA, "B": pkB}
+
+    def test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements(self) -> None:
+        """Roadmap G4, O4c: the offline verifier reads projections and attestations under v1, v1b and v2, each input in
+        its rules' encoding, and recomputes Pass 3 as the lens does: where a `hash` that v1 reads as a reference and v2
+        as a value decides a foreign endorsement, the lens, `vars1.py` and the standalone file agree under each rules.
+        The host refuses to load rules the verifier does not read in their encoding; a v2 input whose reference list
+        names a cell its position does not hold is refused, and so is an input in the other encoding."""
+        V.check_offline_reads(V.RULES)
+        for extra, why in (({b"\x01" * 32: V.Rules(Path("x.wasm"), "v1")}, "rules the verifier does not know"),
+                           ({V.H_LENS_KERNEL_V2: V.Rules(V.KERNEL2_DIR / "lens2.wasm", "v1")}, "in another encoding")):
+            with self.assertRaisesRegex(RuntimeError, "does not read the rules", msg=why):
+                V.check_offline_reads({**V.RULES, **extra})
+
+        fresh_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh_tmp.cleanup)
+        fresh = Path(fresh_tmp.name)
+        (fresh / "minds_verify.py").write_bytes((ROOT_DIR / "verify" / "minds_verify.py").read_bytes())
+
+        def offline(bundle):
+            (fresh / "bundle.json").write_text(json.dumps(bundle))
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", "inspect-attestation", "bundle.json"],
+                                 cwd=fresh, env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True)
+            return json.loads(out.stdout) if out.returncode in (0, 1) else out.stderr
+
+        made = {}
+        for scope, rules, settles in (("one", V.H_LENS_KERNEL, True), ("oneb", V.H_LENS_KERNEL_V1B, True),
+                                      ("two", V.H_LENS_KERNEL_V2, False)):
+            f = made[scope] = self._hash_decides_an_endorsement(scope, rules)
+            lens = self.repo.lens(scope, at=f["tip"])
+            self.assertEqual(lens["rules"], rules)
+            self.assertTrue(lens["active"][f["w"].id] and not lens["stale"][f["w"].id], f"{scope}: w is live")
+            self.assertEqual(lens["settled"][f["d"].id], settles, f"{scope}: the hash decides B's endorsement")
+            b = json.loads(json.dumps(V.export_attestation(self.repo, scope, f["d"].id, f["p"].id)))
+            r = V.verify_attestation(b)
+            self.assertEqual((r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted"]),
+                             ("known", "complete_at_tip", settles, settles), scope)
+            self.assertEqual(r["endorsers_at_tip"], sorted(k.hex() for k in ([f["A"], f["B"]] if settles else [f["A"]])))
+            self.assertEqual(r["explain"]["rules"]["encoding"], "v2" if rules == V.H_LENS_KERNEL_V2 else "v1")
+            self.assertEqual(offline(b), r, f"{scope}: the standalone file reads it alone, as vars1.py does")
+
+        # A v2 input listing a reference its cell does not hold: x's tier slot "names" w
+        two = made["two"]
+        bundle = V.export_attestation(self.repo, "two", two["d"].id, two["p"].id)
+        proj = bundle["projection"]
+
+        def witnessed(kernel_input: bytes, of: dict = bundle) -> dict:
+            """The attestation bundle `of` with `kernel_input` for its projection's input, re-projected and sealed."""
+            cell = V.Cell.decode(bytes.fromhex(of["projection"]["cell"]))
+            other = dataclasses.replace(cell, slots=(*cell.slots[:2], V.sha256(kernel_input), *cell.slots[3:]))
+            ctx = V.Seal.decode(bytes.fromhex(of["projection"]["seals"][0])).h_scope_ctx
+            return dict(of, projection=dict(of["projection"], cell=other.encode().hex(), input=kernel_input.hex(),
+                                            seals=[V.Seal.sign(self.sk1, other.id, ctx).encode().hex()]))
+
+        self.assertFalse(V.verify_attestation(witnessed(bytes.fromhex(proj["input"])))["attested_at_tip"])
+        deltas = self.repo.chain_deltas(self.repo.commit_chain(two["tip"]))
+        real = V.cell_refs
+        try:
+            V.cell_refs = lambda c, cells, atoms, v1: real(c, cells, atoms, v1) + (
+                [(1, two["w"].id)] if c.id == two["x"].id else [])
+            forged = V.kernel_facts("two", deltas)[0]
+        finally:
+            V.cell_refs = real
+        with self.assertRaisesRegex(V.VarsError, "lists a reference its cell does not hold"):
+            V.verify_attestation(witnessed(forged))
+        # An input in the other encoding than its rules read
+        with self.assertRaisesRegex(V.VarsError, "not in the v2 encoding"):
+            V.verify_attestation(witnessed(V.kernel_facts("two", deltas, V.H_LENS_KERNEL)[0]))
+        one = V.export_attestation(self.repo, "one", made["one"]["d"].id, made["one"]["p"].id)
+        deltas1 = self.repo.chain_deltas(self.repo.commit_chain(made["one"]["tip"]))
+        with self.assertRaises(V.VarsError):
+            V.verify_attestation(witnessed(V.kernel_facts("one", deltas1, V.H_LENS_KERNEL_V2)[0], one))
 
 
 if __name__ == "__main__":

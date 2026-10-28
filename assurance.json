@@ -289,8 +289,8 @@
     "rows": [
      [
       "An offline client's Pass 3 equals the lens's Settled",
-      "Differential (I11)",
-      "property suite"
+      "Differential (I11) on v1 chains; under v1, v1b and v2, tested where the v1 and v2 readings of a `hash` decide a foreign endorsement",
+      "property suite; `test_vars1.py` 90"
      ],
      [
       "A bundle cannot hide a verdict or seal its projection's tip holds",
@@ -371,7 +371,7 @@
    }
   },
   {
-   "md": "\n## Who reads which rules\n\nWhat each reader of a chain interprets, at the commit a release names (`profile` lists the modules carried and the\none the offline verifier reads, from their own bytes). \"Refuses\" means a controlled refusal or an `unsupported`\nresult, never a reading.\n\n"
+   "md": "\n## Who reads which rules\n\nWhat each reader of a chain interprets, at the commit a release names (`profile` lists the modules carried and the\nones the offline verifier reads, from their own bytes). \"Refuses\" means a controlled refusal or an `unsupported`\nresult, never a reading.\n\n"
   },
   {
    "table": {
@@ -391,8 +391,8 @@
      [
       "The offline verifier (`verify/minds_verify.py`)",
       "Reads projections and attestations",
-      "Unsupported: digests checked, nothing read or accepted",
-      "Unsupported, likewise"
+      "Reads them, in v1's encoding (v1's output; one more refusal)",
+      "Reads them, in the v2 encoding: references from the input's own list, each checked against its cell"
      ],
      [
       "The Lean model (`vars1exec`, `vars1fold`)",
@@ -410,7 +410,7 @@
    }
   },
   {
-   "md": "\nSo a chain moved to v1b or v2 keeps its gate and loses its offline readers until the verifier learns those rules; an\nactivation has to name which readers it leaves behind (RULES-V2.md F42 is a further condition for v2).\n\n## What each result trusts\n\n"
+   "md": "\nSo a chain moved to v1b or v2 keeps its gate and its offline verifier, which reads every rules identity the host\nimplements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). It leaves behind\nthe Lean model and Kani and the fuzzer, which an activation has to name (RULES-V2.md §7).\n\n## What each result trusts\n\n"
   },
   {
    "table": {
@@ -438,7 +438,7 @@
      [
       "An offline `accepted`",
       "`verify/minds_verify.py`, standard library only",
-      "Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute"
+      "Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type)"
      ],
      [
       "A release is Settled",
