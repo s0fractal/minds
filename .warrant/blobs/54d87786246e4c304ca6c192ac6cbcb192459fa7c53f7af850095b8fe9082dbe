@@ -1,0 +1,62 @@
+# Codex: two minds obligation closures
+
+Date: 2026-10-29, Europe/Kyiv. Base M: `f444ba8f5dc0ac7ba4addd02e9975916627555be`. One round per named version.
+
+## Verdicts
+
+| Obligation | Closure version | Verdict |
+|---|---|---|
+| G3 `0d26b702c06bb8774a399bfd660aa26a0b7e319f5eafb86508d53048466264b8` | `1ef320a6e2bf8c0476f4077a5ae49193b743a7ac8454237c6e2f3e9a08fa0368` | ACCEPT, for the original 15 claims with the stated narrowings |
+| G4 `a0f5cfef48d4d43c3973e74833cc9821d39ea9f7526d5fb72569cd9d338c107f` | `234d8cd49103a26df84fa662187e02f02839f5ebf94ffd53ceaf47e909e56e9c` | ACCEPT, within the explicit commit-count/input-size domain |
+
+These acceptances target the exact obligation versions. They do not assert that all parent goals are closed or that every new claim introduced while doing the work is backed universally.
+
+## G3: why this version answers 98c4868f
+
+The obligation permits either an independent burn or narrowing to what is held. The prior challenge identified two diagnostic-only kills incorrectly credited to semantic refusal claims. The new closure explicitly preserves `gate.references` and `rules.change.refusal` as **unburned**, with their duplicated enforcement named. They no longer cite the diagnostic mutants as their burns. The named-reason claim is separated and marked diagnostic. This is the requested narrowing; the debt has not been hidden by another green count.
+
+The attribution of `m-rc-needs-decision` is also corrected: the missing-decision input still falls into the net, while the later two-decision candidate is admitted by the mutant. The independent semantic replay is rerun at M and confirms exactly this. On baseline and under `m-rc-refusal` / `m-refs-seal`, the complete named tests pass when they ask only for VarsError plus unchanged ref; the tests therefore still establish the boundary stated in the new residuals.
+
+The original 21-mutant table is replayed against current source: 19 are caught semantically/by the named import check; the two challenged rows are correctly reported diagnostic. Import-time constant consistency is treated as its own check, not as an assertion about runtime admission. Original layer-isolated checks and their explicit limits remain as previously reviewed: reader status versus duplicate Check #2, seal-reference site versus the payload type check, and the five named exception types of the net.
+
+The survey blob `71091dbfe3f9972046ac0c370fed21a5395d0b7919f6917a8a73bcae8cab323a` has 235 rows and four diagnostic-only entries. Its other rows record unittest error/failure counts without typed causes, so the survey alone is not a proof of 231 semantic assertion kills. This verdict instead uses the named current replay of the original table and the explicit narrowings. The entire 267-mutant run is not redundantly rerun here.
+
+### Outstanding PR #27 findings remain separate
+
+P27-F1 and P27-F2 still reproduce at M:
+
+- A mutant with both a semantic-kill test and a diagnostic-only test can be accepted as diagnostic in either test order.
+- A semantic KeyError followed by a normal-mode assertion can be accepted as diagnostic-only.
+
+The six fixture baselines pass. `classifier-counterexamples.py`, `counterexamples.json` and `classifier-counterexamples.log` retain the exact production-runner replay. These are findings about the new generic classifier / new `assurance.named-refusals` guarantee, beyond the original 15-claim obligation. None of the two currently narrowed rows is counted as a semantic burn by this acceptance. The G3 closure is not an acceptance of PR #27's generic classifier for arbitrary future test sets. P27-F1/F2 should be fixed and independently reviewed as their own work; they are not erased by this verdict.
+
+## G4: the single successor and its domain
+
+The obligation itself now states the resource-domain restriction that blocked the earlier unqualified compatibility promise. Tests 56, 63 and 86 pass at M. In particular, test 63 creates genuine constant-tree Git histories, compares old/v2 outputs at the bound minus one and at the bound, and requires E-7 and failure to make reproduce evidence one commit past it. This is a domain restriction, not a wrong computed status.
+
+A fresh `cargo build --release --target wasm32-unknown-unknown` of kernel2 produces SHA-256:
+
+`1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e`
+
+The bytes equal `kernel2/lens2.wasm`. Test 86 passes with `MINDS_KERNEL2_WASM` set to this fresh build. The m-v2-bound and m-4a-kernel-v1 mutants are built separately and killed by that test, checking both the fence and v1-epoch interpretation. The other original G3 kernel mutants are also rebuilt by the runner; no production wasm is modified.
+
+A fresh GitHub clone at M fetches `refs/vars/heads/minds` and `refs/vars/evidence/*`. `tools/minds_chain.py replay-changes` reports `a68e8e32… REPLAYED`. Fetched tip is `b68d88a292dd4ba1f1ba34851df75919b1379bca`, with 72 commits. Examining all governing epoch identities finds exactly one transition, v1 to v2: rotation `370cbf488953f4804ad6eee84f3bf1383b855d65` belongs to v1, and its following commit belongs to v2. No epoch is v1b. v1c is absent from the current runtime rules registry. These are read-only checks; no adoption or live ref change was performed.
+
+The restriction remains material: a valid v1 history beyond v2's count/byte bound cannot rotate until it carries enough encoded content. The closure states that residual explicitly. Historical v1/v1b readers are preserved; retiring v1c is not a promise to erase old inventory or recorded profiles.
+
+## Local checks
+
+- Initial focused unmutated tests 56, 63, 86, 84 and 45: 5/5 PASS, 28.436 s (`baseline.log`).
+- Clean original-G3 tests 22, 83, 87, 50, 48, 78 and 81: 7/7 PASS, 27.872 s (`g3-clean-baseline.log`).
+- Fresh-build test 86: PASS, 10.805 s (`built-kernel-test.log`).
+- Original table's 21 mutants plus two G4 mutants: 23/23 caught with the classifications above (`mutants.log`). This does not mean 23 semantic admission burns: two are diagnostic and two are named import checks.
+- Public gate semantic probe: both diagnostic-only rows preserve refusal and ref; m-rc-needs-decision admits the duplicate-decision case (`refusal-semantics-current.json`).
+- Known classifier-boundary counterexamples still reproduce; fixture baseline is green.
+- One preliminary baseline accidentally overlapped the independent source-mutating semantic probe in the fresh clone; it is discarded (`g3-baseline.log`), not counted as a passing or failing product check. The final clean baseline ran in a separate, restored tree with a fresh bytecode cache and no concurrent mutation. Mutant runner cases use their own fresh caches.
+- Signature/context assessment at M has zero rejected records and zero problems before verdicts. Roadmap and claim metadata checks are rerun after filing.
+
+## Filing and scope
+
+Verdicts are signed only as codex through the configured Warrant MCP server, in `/Users/s0fractal/Projects/.worktrees/codex-review/minds-closures-f444ba8`. They and the evidence blob they cite are left there for the roadmap publication flow; no Git commit, push, pull request or merge is performed by this review. Full record ids and readback are in `VERDICTS.md` / `verdicts.json` after filing.
+
+The owner's agent-spore direction was separately written to the primary minds checkout as `AGENT-SPORE-DIRECTION.md` with a README pointer and a pointer from the dated workspace proposal. It is explicitly design intent with AS-1–AS-7 and future acceptance criteria, not an implemented claim, schema change or additional roadmap closure. Warrant and minds remain separate protocols; the executor/spore orchestration layer has not been assigned silently to either core. These documentation edits are not part of this pinned review worktree or its signed verdict records.
