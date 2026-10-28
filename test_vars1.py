@@ -5376,9 +5376,9 @@ class TestVars1Conformance(unittest.TestCase):
     def test_89_the_host_reads_typed_references_as_the_f42_oracle_does(self) -> None:
         """F42 (RULES-V2.md §8): v2's typed references, descriptor -> mask -> reference positions, as the host reads
         them (`schema_cell_mask`, `cell_refs`), equal the answers of an oracle that does not call the host's parser:
-        `proofs/Vars1/Mask.lean`, whose answers are `vectors/f42.json` (CI regenerates them with the oracle). The
+        `proofs/Vars1/Mask.lean`, whose answers are `proofs/vectors/f42.json` (CI regenerates them with the oracle). The
         standard verdict and acceptance schemas name the descriptors the vectors give them."""
-        doc = json.loads((ROOT_DIR / "vectors" / "f42.json").read_text())
+        doc = json.loads((ROOT_DIR / "proofs" / "vectors" / "f42.json").read_text())
         self.assertEqual(doc["format"], "minds.f42-vectors@1")
         std = {k: V.STD_SCHEMAS[k] for k in ("verdict", "acceptance")}
         for case in doc["refs"]:

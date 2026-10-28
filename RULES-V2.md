@@ -195,7 +195,7 @@ F40, F41 and F42 are closed on main.
   constants; for a custom schema it trusts the mask the host derived from the UTF8 descriptors, so the descriptor
   parser is in the trusted base. **Closed (2026-10-28) by an independent oracle:** `proofs/Vars1/Mask.lean` derives
   descriptor → mask → reference positions from the spec's words without calling `schema_cell_mask()`; its answers
-  on 310 cases of the admitted domain are `vectors/f42.json`, which CI regenerates and byte-compares, and
+  on 310 cases of the admitted domain are `proofs/vectors/f42.json`, which CI regenerates and byte-compares, and
   `test_vars1.py` 89 holds the host to them (five mutants of the mask and the reading). What remains: the kernel still
   takes the mask from the host, and the host's parser is checked against the oracle on that corpus, not proved.
 - **Drift.** Resolved by re-deriving v2 on top of main (branch `rules-change`) rather than merging `rules-v2`; the

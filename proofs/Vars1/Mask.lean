@@ -2,7 +2,7 @@
 (`vars1.schema_cell_mask`). It is written from the spec's own words, VARS-1-SPEC.md §2 and RULES-V2.md §2: a schema
 cell's descriptors are UTF8 atoms `name:type`, and its `cell`-typed fields are the reference slots of its instances;
 a verdict or an acceptance also references its payload. The tests compare the host with vectors this oracle
-produced (`vectors/f42.json`, regenerated and byte-compared in CI by `tools/f42_vectors.py`).
+produced (`proofs/vectors/f42.json`, regenerated and byte-compared in CI by `tools/f42_vectors.py`).
 
 The domain is what schema admission accepts: every descriptor a strict UTF-8 atom whose text has a non-empty name, a
 `:`, and a known type. On any other bytes the oracle answers `none`. -/

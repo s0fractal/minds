@@ -8,7 +8,7 @@ oracle's mask. Reference cases are an instance of such a schema, or of the stand
 the oracle's reference positions: what each slot holds (empty, a cell, anything else) and whether a verdict's or an
 acceptance's payload is a cell. The cases are fixed corners plus a seeded random sample, so the file is reproducible.
 
-    python3 tools/f42_vectors.py --write   # regenerate vectors/f42.json with the oracle
+    python3 tools/f42_vectors.py --write   # regenerate proofs/vectors/f42.json with the oracle
     python3 tools/f42_vectors.py --check   # CI: the file is exactly what the oracle answers now
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ORACLE = ROOT / "proofs" / ".lake" / "build" / "bin" / "vars1mask"
-OUT = ROOT / "vectors" / "f42.json"
+OUT = ROOT / "proofs" / "vectors" / "f42.json"
 TYPES = ["utf8", "u64", "pol1", "root", "digest", "wasm", "kin1", "cell", "hash"]
 NAMES = ["a", "cell", "cells", "x1", "the cell", "ünïcode", "c", "utf8", "z" * 40]
 # the standard verdict and acceptance schemas' descriptors (VARS-1-SPEC.md §2), as data; test 89 checks the host's
@@ -87,7 +87,7 @@ def main(argv: list[str]) -> int:
         return 0
     if "--check" in argv:
         if not OUT.exists() or OUT.read_text() != text:
-            print("vectors/f42.json is not what the oracle answers now (tools/f42_vectors.py --write)")
+            print("proofs/vectors/f42.json is not what the oracle answers now (tools/f42_vectors.py --write)")
             return 1
         print("f42 vectors: the oracle's")
         return 0
