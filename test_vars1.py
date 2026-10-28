@@ -3519,7 +3519,8 @@ class TestVars1Conformance(unittest.TestCase):
 
     def _change(self, kind: str, scope: str, parent: str, base: V.Cell, new_rules: bytes, *, label: str,
                 inp: bytes = b"", budget: int = BUDGET, refusal: int = 7, override: "dict | None" = None,
-                rotate: bool = True, fields: "list[str] | None" = None) -> tuple[str, V.Cell, V.Cell]:
+                rotate: bool = True, fields: "list[str] | None" = None,
+                extra: "tuple[dict, list] | None" = None) -> tuple[str, V.Cell, V.Cell]:
         """A candidate commit rotating `scope` to `new_rules` with a decision of class `kind` (not `correction`:
         see `_change_rules`), its digests the gate's own replay; `override` replaces fields by name."""
         a = dict(V.RULES_ATOMS)
@@ -3547,7 +3548,9 @@ class TestVars1Conformance(unittest.TestCase):
         s = V.Cell(V.H_SCHEMA["scope"], put(V.atom_utf8(f"{scope}/SCOPE")), put(V.atom_utf8(f"{scope} under {label}")),
                    h_supersedes=self._hv(a, [base.id]), h_loss=put(V.atom_utf8(f"rules change to {label}")),
                    slots=(base.slots[0], base.slots[1], new_rules))
-        cells = [d, sch] + ([s] if rotate else [])
+        cells = [d, sch] + ([s] if rotate else []) + (list(extra[1]) if extra else [])
+        if extra:
+            a.update(extra[0])
         seals = [V.Seal.sign(self.sk1, x.id, base.id) for x in cells]
         return self.repo.build_candidate_commit(scope, a, cells, seals, parent_commit=parent), s, d
 
@@ -5233,13 +5236,14 @@ class TestVars1Conformance(unittest.TestCase):
             self.addCleanup(patch.stop)
         return h
 
-    def _veto(self, s_gov: V.Cell, s_wait: V.Cell, tip: str, cell: bytes, label: str, sk: bytes | None = None):
-        """A veto of the waiting rules change `s_wait` (§4.1 latch 4b): its evidence `tip` and `cell`, sealed under
-        the governing `s_gov` by `sk` (sk2 by default), with the veto schema it is an instance of."""
+    def _veto(self, s_gov: V.Cell, s_wait: V.Cell, cell: bytes, label: str, sk: bytes | None = None):
+        """A veto of the waiting rules change `s_wait` (§4.1 latch 4b): its evidence `cell`, read at the veto's own
+        commit, sealed under the governing `s_gov` by `sk` (sk2 by default), with the veto schema it is an instance
+        of."""
         sch, a = V.veto_schema("core")
         v = V.Cell(sch.id, self._put_atom(a, V.atom_utf8(f"core/veto.{label}")),
                    self._put_atom(a, V.atom_utf8("this change alters a record the chain had")),
-                   slots=(s_wait.id, self._put_atom(a, V.atom_utf8(tip)), cell))
+                   slots=(s_wait.id, cell))
         return a, [sch, v], [V.Seal.sign(sk or self.sk2, x.id, s_gov.id) for x in (sch, v)]
 
     def test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain(self) -> None:
@@ -5287,11 +5291,10 @@ class TestVars1Conformance(unittest.TestCase):
         t_y = self._admit(y, [Y], [V.Seal.sign(self.sk1, Y.id, s0.id)], t)
         t_inv, I = invalidate(t_y, s0, A, "a")  # under v2 X and Y go stale; under the variant they do not
         inputs.append(self.repo.lens("core")["kernel_input"])
-        bad = (("inside the change's window", t, X.id, "outside"),
-               ("a record the chain had", t_inv, Y.id, "young"),
-               ("no difference on this chain", t_inv, A.id, "same"))
-        for why, tip, cell, label in bad:
-            a, cells, seals = self._veto(s0, s1, tip, cell, label)
+        bad = (("a record the chain had", Y.id, "young"),
+               ("no difference on this chain", A.id, "same"))
+        for why, cell, label in bad:
+            a, cells, seals = self._veto(s0, s1, cell, label)
             self._gate_refuses(why, "core", self.repo.build_candidate_commit("core", a, cells, seals, parent_commit=t_inv),
                                t_inv)
         n: dict[bytes, bytes] = {}
@@ -5302,7 +5305,7 @@ class TestVars1Conformance(unittest.TestCase):
         self._gate_refuses("is a veto, of the veto schema", "core", self.repo.build_candidate_commit(
             "core", n, [note, plain], [V.Seal.sign(self.sk2, x.id, s0.id) for x in (note, plain)], parent_commit=t_inv),
             t_inv)
-        a, cells, seals = self._veto(s0, s1, t_inv, X.id, "x")
+        a, cells, seals = self._veto(s0, s1, X.id, "x")
         t_veto = self._admit(a, cells, seals, t_inv)
         inputs.append(self.repo.lens("core")["kernel_input"])
         tip = self._tick(t_veto, s0, 16)
@@ -5343,12 +5346,23 @@ class TestVars1Conformance(unittest.TestCase):
         VAR = self._variant()
         s0, A, X, c1 = grounds()
         t, s1 = change(c1, s0, "variant")
-        t_inv, _ = invalidate(t, s0, A, "a")
-        tip = self._tick(t_inv, s0, 14)  # commits t+1 ... t+15
-        a, cells, seals = self._veto(s0, s1, t_inv, X.id, "last")
-        tip = self._admit(a, cells, seals, tip)  # t+16
-        inputs.append(self.repo.lens("core")["kernel_input"])
-        self.assertEqual(self._governing(self._tick(tip, s0, 1)), s0.id, "a veto in the window's last commit counts")
+        tip = self._tick(t, s0, 15)  # commits t+1 ... t+15: no difference yet
+        a, cells, seals = self._veto(s0, s1, X.id, "last")
+        I = self._axiom(a, "core/not.a", "the ground fails", invalidates=[A.id])
+        tip = self._admit(a, [*cells, I], [*seals, V.Seal.sign(self.sk1, I.id, s0.id)], tip)  # t+16: the difference
+        inputs.append(self.repo.lens("core")["kernel_input"])                                  # and its veto at once
+        self.assertEqual(self._governing(self._tick(tip, s0, 1)), s0.id,
+                         "a veto in the window's last commit counts, read at its own commit (Codex PR #20 r1)")
+
+        # the new rules read the commit that rotates to them: a rotation carrying a cell they refuse froze the chain
+        self.tmp.cleanup(); self.setUp()
+        VAR = self._variant()
+        s0, A, X, c1 = grounds()
+        b: dict[bytes, bytes] = {}
+        gs = [self._axiom(b, f"core/g{i}", f"ground {i}") for i in range(3)]
+        w = self._axiom(b, "core/w", "rests on three grounds", relies=[g.id for g in gs])
+        cand, _, _ = self._change("equivalent", "core", c1, s0, VAR, label="variant", extra=(b, [*gs, w]))
+        self._gate_refuses("the new rules must read the commit that rotates to them", "core", cand, c1)
 
         def outcome(runner, ki):
             try:

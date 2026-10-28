@@ -18,8 +18,9 @@ one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
 
 - **The rules-change quarantine** (VARS-1-SPEC.md §4.1 latch 4b): in a v2 epoch, a rotation to other rules waits 16
   commits whatever its consent, both rules must read every commit of that window, and a veto cancels it for good. A
-  veto is admitted only with evidence on this chain: a commit inside the window and a record older than the rotation
-  to which the old and the new rules give different bits there. A cancelled change cannot come back as equivalent,
+  veto is admitted only with evidence on this chain: a record older than the rotation to which the old and the new
+  rules, read at the veto's own commit, give different bits. The rotation commit itself must be read by the new rules
+  too, as must every commit of the window. A cancelled change cannot come back as equivalent,
   since the history then shows the difference. A rotation to v2 itself happens in a v1 epoch and is not quarantined.
 
 v1c, which carried the delay on v1 encoding, was retired before any chain used it. v1b stays, as the example of a

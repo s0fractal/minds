@@ -1875,7 +1875,7 @@
  },
  "m-veto-schema": {
   "file": "vars1.py",
-  "find": "            if c.h_schema != vschema or len(c.slots) != 3 or c.slots[0] != w_id:",
+  "find": "            if c.h_schema != vschema or len(c.slots) != 2 or c.slots[0] != w_id:",
   "replace": "            if False:",
   "kills": [
    "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
@@ -1900,6 +1900,14 @@
  "m-rules-window": {
   "file": "vars1.py",
   "find": "        except KernelRefusal as e:\n            raise VarsError(f\"a commit in a rules change's window must be read by the new rules too: {e}\") from None",
+  "replace": "        except KernelRefusal:\n            pass",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-rc-reads-rotation": {
+  "file": "vars1.py",
+  "find": "        except KernelRefusal as e:\n            raise VarsError(f\"the new rules must read the commit that rotates to them: {e}\") from None",
   "replace": "        except KernelRefusal:\n            pass",
   "kills": [
    "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"

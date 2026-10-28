@@ -846,8 +846,7 @@ def rules_change_schema(scope: str, kind: str = "correction") -> Tuple[Cell, Dic
 
 def veto_schema(scope: str) -> Tuple[Cell, Dict[bytes, bytes]]:
     """The schema cell of `scope`'s vetoes of a waiting rules change (§4.1 latch 4b), with the atoms it names:
-    `change`, the waiting scope; `tip`, a commit of the chain in the change's window; and `cell`, a record the chain
-    had when the change was decided."""
+    `change`, the waiting scope, and `cell`, a record the chain had when the change was decided."""
     atoms: Dict[bytes, bytes] = {}
 
     def put(raw: bytes) -> bytes:
@@ -855,7 +854,7 @@ def veto_schema(scope: str) -> Tuple[Cell, Dict[bytes, bytes]]:
         return sha256(raw)
 
     cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/veto/schema")), h_payload=H_EMPTY,
-                slots=(put(atom_utf8("change:cell")), put(atom_utf8("tip:utf8")), put(atom_utf8("cell:cell"))))
+                slots=(put(atom_utf8("change:cell")), put(atom_utf8("cell:cell"))))
     return cell, atoms
 
 
@@ -1465,17 +1464,18 @@ class GitVarsRepo:
         self._check_rules_window(scope, expected_old, prior_chain, candidate_commit, cells, atoms, prior)
 
         # Changing the rules (§4.3): only by a rotation admitted with a decision whose computations replay
-        return self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior)
+        return self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior, candidate_commit)
 
     def _check_rules_window(self, scope: str, expected_old: Optional[str], prior_chain: List[str], candidate: str,
                             cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], prior: Set[bytes]) -> None:
         """§4.1 latch 4b at the gate. While a rules change waits, a commit is admitted only if the waiting rules'
         kernel also accepts the chain with it (at the window's last commit this is the replay of the exact tip they
         take over), and a cell that names the waiting scope only as a veto with its evidence: of the veto schema, its
-        `change` the waiting scope, its `tip` a commit of this chain inside the window and its `cell` a cell born at
-        or before the rotation, to which the old and the new rules, each over the chain up to `tip`, give different
-        status or Authorized bits. A veto says that the change already alters what this chain says about a record
-        it had."""
+        `change` the waiting scope and its `cell` a cell born at or before the rotation, to which the old and the new
+        rules, each over the chain up to and including the veto's own commit, give different status or Authorized
+        bits. A veto says that the change already alters what this chain says about a record it had; read at its own
+        commit, a difference that first appears in the window's last commit can still be vetoed there (Codex PR #20
+        r1)."""
         if expected_old is None:
             return
         fold = self._evaluate_commit_chain(scope, prior_chain)
@@ -1494,27 +1494,25 @@ class GitVarsRepo:
             c = cells[cid]
             if w_id not in (c.h_payload, *c.slots):
                 continue
-            if c.h_schema != vschema or len(c.slots) != 3 or c.slots[0] != w_id:
+            if c.h_schema != vschema or len(c.slots) != 2 or c.slots[0] != w_id:
                 raise VarsError("a cell that names a waiting rules change is a veto, of the veto schema "
                                 "(§4.1 latch 4b)")
-            tip, target = parse_utf8(atoms[c.slots[1]]), c.slots[2]
-            if tip not in prior_chain or prior_chain.index(tip) <= w_at:
-                raise VarsError("a veto's tip is a commit of this chain inside the change's window, before the veto")
+            target = c.slots[1]
             if born.get(target, w_at + 1) > w_at:
                 raise VarsError("a veto's cell is a record the chain had when the change was decided")
             reads = []
             for rules in (old_rules, new_rules):
-                out, reading = self.rules_output(scope, tip, rules)
+                out, reading = self.rules_output(scope, candidate, rules)
                 order, n = reading["order"], len(reading["order"])
                 i = order.index(target)
                 reads.append((out[4 + i], out[4 + n + i]))
             if reads[0] == reads[1]:
                 raise VarsError("a veto shows no difference on this chain: both rules give its cell the same bits "
-                                "at its tip")
+                                "at the veto's commit")
 
     def _check_rules_change(self, scope: str, expected_old: Optional[str], prior_chain: List[str],
                             cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], seals: Dict[bytes, Seal],
-                            prior: Set[bytes]) -> List[Tuple[str, str]]:
+                            prior: Set[bytes], candidate: str) -> List[Tuple[str, str]]:
         """A rotation whose new scope names other rules than the governing scope is admitted only with exactly one
         rules-change decision in its commit, of one class (§4.3), endorsed by the governing admission quorum, whose
         computations the gate replays here for its class; and the new rules must still decide every earlier rules
@@ -1544,6 +1542,14 @@ class GitVarsRepo:
             # Codex review r1 F1: v2 reads a cell as v1 does only if it was born under H_LENS_KERNEL itself
             raise VarsError("v2 reads as v1 only the cells born under H_LENS_KERNEL: a chain with an epoch of other "
                             "rules that read as v1 does cannot rotate to v2")
+        # the new rules fold the whole chain once they govern, the rotation commit included: they read it now, or no
+        # later commit could be admitted (Codex PR #20 r1: a rotation carrying a cell its new rules refuse froze the
+        # chain, the window's check refusing every commit after it)
+        try:
+            kernel_runner(new_rules).run(kernel_facts(scope, self.chain_deltas(self.commit_chain(candidate)),
+                                                      new_rules)[0])
+        except KernelRefusal as e:
+            raise VarsError(f"the new rules must read the commit that rotates to them: {e}") from None
         f = dict(zip((x.split(":")[0] for x in RULES_CHANGE_CLASSES[kind][1]), d.slots))
         if (f["old_rules"], f["new_rules"]) != (old, new_rules):
             raise VarsError("the rules-change decision names other rules than those the rotation changes")

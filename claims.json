@@ -800,8 +800,19 @@
    ]
   },
   {
+   "id": "gate.rules-rotation-read",
+   "quote": "The rotation commit is read by the rules of `S'` too",
+   "status": "tested",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-rc-reads-rotation"
+   ]
+  },
+  {
    "id": "gate.rules-window",
-   "quote": "While a rules change waits, the gate admits a commit only if the rules of `S'` also accept the chain with it",
+   "quote": "while a rules change waits, the gate admits a commit only if the rules of `S'` also accept the chain with it",
    "status": "tested",
    "witnesses": [
     "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"

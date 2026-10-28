@@ -258,11 +258,11 @@ Latches (never undone):
     consent, its supersedes edge withheld as in 4a; `t` is the commit that admitted it. A new local cell of the
     commits `t+1 … t+16` that references `S'`, sealed under `S` by a key of `S`'s admission policy, cancels it
     before the wait can end: `S'` never governs, its supersedes edge never latches, and the wait is over. The gate
-    admits such a cell only as a veto, of the schema `<scope>/veto/schema` (`change:cell`, `tip:utf8`,
-    `cell:cell`): its `change` is `S'`, its `tip` a commit of the chain inside the window and before the veto, its
-    `cell` a cell born at or before `t`, to which the rules of `S` and those of `S'`, each over the chain up to
-    `tip`, give different status or Authorized bits. While a rules change waits, the gate admits a commit only if
-    the rules of `S'` also accept the chain with it. Which rules evaluate each commit is read from the rotations
+    admits such a cell only as a veto, of the schema `<scope>/veto/schema` (`change:cell`, `cell:cell`): its
+    `change` is `S'` and its `cell` a cell born at or before `t`, to which the rules of `S` and those of `S'`, each
+    over the chain up to and including the veto's commit, give different status or Authorized bits. The rotation
+    commit is read by the rules of `S'` too, and while a rules change waits, the gate admits a commit only if the
+    rules of `S'` also accept the chain with it. Which rules evaluate each commit is read from the rotations
     and vetoes (`commit_rules`) and checked against the twin's fold.
 
 ### 4.2 Lens (status at the tip)
