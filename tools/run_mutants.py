@@ -12,7 +12,9 @@ default kernel-mutants-target in the checkout's git directory) and its tests rec
     .venv/bin/python tools/run_mutants.py            # all
     .venv/bin/python tools/run_mutants.py ID...      # some
 
-A kill names a test of test_vars1.TestVars1Conformance by its method, or any other test by its dotted name.
+A kill names a test of test_vars1.TestVars1Conformance by its method, or any other test by its dotted name. A test
+that asks for a named refusal (`_gate_refuses`) is run first asking only for the refusal: a mutant caught only by the
+name must be declared `diagnostic` (`classify`).
 """
 from __future__ import annotations
 
@@ -56,6 +58,29 @@ def verdict(test: str, cwd: Path, env: dict) -> tuple[str, str]:
             if kind == how:
                 return how, message
     return "none", next((message for _, message in doc["outcomes"]), "passed")
+
+
+def classify(test: str, cwd: Path, env: dict, diagnostic: bool = False) -> tuple[bool, str]:
+    """Does one named test catch a mutant, and for what? First with `_gate_refuses` asking only that the input is
+    refused and the ref unmoved (MINDS_REFUSAL=semantic): a kill there is a lost behaviour. Else as written: a kill
+    only there means the input is still refused and only its named reason is lost. That counts for a mutant declared
+    `diagnostic` (its claim is about the reason) and for no other; a mutant declared diagnostic that the first run
+    catches is wrongly declared (Codex, challenge of the G3 closure: two such kills had been counted as burns)."""
+    how, message = verdict(test, cwd, dict(env, MINDS_REFUSAL="semantic"))
+    if how in ("kill", "twin"):
+        if diagnostic:
+            return False, f"declared diagnostic, yet {test} catches it with only the refusal asked: {message[:200]}"
+        return True, f"killed by {test}" + (" (kernel and twin diverge)" if how == "twin" else "")
+    named, message = verdict(test, cwd, env)
+    if named in ("kill", "twin"):
+        if diagnostic:
+            return True, f"killed by {test}, by its named reason only (declared diagnostic)"
+        return False, (f"{test} catches it only by its named reason: the input stays refused; find an input it "
+                       "admits, or declare it diagnostic for a claim about the reason")
+    if named == "wording":
+        # the refusal is still there under another message: the mutant took nothing a test can see
+        return False, f"refused only in other words by {test}: {message[:300]}"
+    return False, f"survived {test}"
 
 
 def import_refuses(module: str, check: str, cwd: Path, env: dict) -> tuple[bool, str]:
@@ -102,18 +127,15 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             module, check = m["refused_at_import"]
             ok, last = import_refuses(module, check, ROOT, dict(os.environ, MINDS_MUTANT=mid))
             return ok, (f"refused at import by {check!r}" if ok else f"not refused at import by {check!r}: {last[:160]}")
-        wording = ""
+        whys = []
         for t in m["kills"]:
             env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
-            how, message = verdict(t if "." in t else f"test_vars1.TestVars1Conformance.{t}", ROOT, env)
-            if how == "kill":
-                return True, f"killed by {t}"
-            if how == "twin":
-                return True, f"killed by {t} (kernel and twin diverge)"
-            if how == "wording":
-                # the refusal is still there under another message: the mutant took nothing a test can see
-                wording = f"refused only in other words by {t}: {message[:300]}"
-        return False, wording or f"survived {', '.join(m['kills'])}"
+            ok, why = classify(t if "." in t else f"test_vars1.TestVars1Conformance.{t}", ROOT, env,
+                               m.get("diagnostic", False))
+            if ok:
+                return True, why
+            whys.append(why)
+        return False, "; ".join(whys)[:600]
     finally:
         path.write_text(original)
         for d in cleanup:

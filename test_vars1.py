@@ -2773,6 +2773,12 @@ class TestVars1Conformance(unittest.TestCase):
         code, out = check(spec + "\nA new rule nobody holds to anything.\n", claims)
         self.assertEqual(code, 1)
         self.assertIn("VARS-1-SPEC.md is not the rendering of spec.json", out)
+        # a mutant that loses only a named reason burns no claim about what is refused (Codex, G3 challenge)
+        lent = json.loads(json.dumps(claims))
+        next(c for c in lent["claims"] if c["id"] == "gate.no-crash")["mutants"].append("m-refs-seal")
+        code, out = check(spec, lent)
+        self.assertEqual(code, 1)
+        self.assertIn("gate.no-crash: names m-refs-seal, a diagnostic mutant, but is not a claim about a reason", out)
 
         def parts(change):
             doc = json.loads(json.dumps(sdoc))
@@ -2991,10 +2997,17 @@ class TestVars1Conformance(unittest.TestCase):
         return c, s, (ds[0] if ds else None)
 
     def _gate_refuses(self, regex: str, scope: str, cand: str, parent: str) -> None:
-        """The gate refuses `cand` by a named check, not by its net for crashes (an exception turned into a refusal
-        says that the check meant to name the reason is missing: G3), and the refusal says `regex`."""
+        """The gate refuses `cand` and its ref does not move; by a named check, not by its net for crashes (an
+        exception turned into a refusal says that the check meant to name the reason is missing: G3), and the refusal
+        says `regex`. Under MINDS_REFUSAL=semantic (tools/run_mutants.py) only the refusal and the ref are asked: a
+        mutant this mode does not catch has lost the named reason, not the refusal (Codex, challenge of the G3
+        closure, 2026-10-28)."""
+        before = self.repo.ref_commit(scope)
         with self.assertRaises(V.VarsError) as refused:
             self.repo.admit_and_advance(scope, cand, expected_old=parent)
+        self.assertEqual(self.repo.ref_commit(scope), before, "a refusal moved the ref")
+        if os.environ.get("MINDS_REFUSAL") == "semantic":
+            return
         self.assertNotRegex(str(refused.exception), r"^malformed (commit|hypothesis) refused \(",
                             "refused by the net for crashes, not by a named check")
         with self.assertRaisesRegex(V.VarsError, regex):
@@ -4897,6 +4910,7 @@ class TestVars1Conformance(unittest.TestCase):
         fixture = Path(self.tmp.name) / "fixture"
         fixture.mkdir()
         (fixture / "fx.py").write_text(
+            "import os\n"
             "import unittest\n"
             "def refuse(msg): raise ValueError(msg)\n"
             "class T(unittest.TestCase):\n"
@@ -4924,7 +4938,11 @@ class TestVars1Conformance(unittest.TestCase):
             "        with self.subTest(2):\n"
             "            self.assertEqual(1, 2)\n"
             "    def test_message_is_a_lookalike(self):\n"
-            "        self.fail('\"a\" does not match \"b\"')\n")
+            "        self.fail('\"a\" does not match \"b\"')\n"
+            "    def test_named_reason_only(self):\n"  # a `_gate_refuses` whose input the net still refuses
+            "        if os.environ.get('MINDS_REFUSAL') != 'semantic': self.fail('refused by the net')\n"
+            "    def test_admitted(self):\n"  # a `_gate_refuses` whose input is admitted
+            "        self.fail('INVALID INPUT WAS ADMITTED')\n")
         env = dict(os.environ)
         got = {t: rm.verdict(f"fx.T.{t}", fixture, env)[0] for t in (
             "test_pass", "test_other_words", "test_other_lines", "test_other_words_msg", "test_callable_form",
@@ -4935,6 +4953,14 @@ class TestVars1Conformance(unittest.TestCase):
             "test_other_words_msg": "wording", "test_callable_form": "wording",
             "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
             "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
+        # a refusal asked for by name: caught with only the refusal asked is a burn; caught only by the name is one
+        # just for a mutant declared diagnostic, and a mutant so declared must not be caught with only the refusal
+        got = {(t, d): rm.classify(f"fx.T.{t}", fixture, env, d)[0] for t in
+               ("test_named_reason_only", "test_admitted", "test_pass", "test_other_words") for d in (False, True)}
+        self.assertEqual(got, {("test_named_reason_only", False): False, ("test_named_reason_only", True): True,
+                               ("test_admitted", False): True, ("test_admitted", True): False,
+                               ("test_pass", False): False, ("test_pass", True): False,
+                               ("test_other_words", False): False, ("test_other_words", True): False})
         # a value held by a check made at import: the mutant counts only if that named check stops the import
         (fixture / "loads.py").write_text("x = 1\n")
         (fixture / "checked.py").write_text("raise RuntimeError('the value is not the one listed')\n")
