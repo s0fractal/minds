@@ -18,7 +18,8 @@ checks:
       expected_outcome = H_CYCLE_PROVEN, a cycle witness of that computation that verify_cycle proves
   I5  latches (scope, acceptance, schema, edge) never unlatch across commits
   I6  the lens is independent of dict iteration order (shuffled CAS dicts in-process) and of PYTHONHASHSEED
-  I7  the scope cell the fold governs with is the unique Active local schema.scope cell
+  I7  the scope cell the fold governs with is the unique Active local schema.scope cell; I7b it is the scope the
+      interpreter governs with (under v2, after the rotation delay it keeps from the spec)
   I0  admit/lens never raise anything but VarsError (a TwinDivergence between the rules kernel and its Python twin
       is such a crash), and an admitted tip's lens never raises
   I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
@@ -1550,6 +1551,12 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
     if act_scopes != [fold["active_scope_id"]]:
         out.append(("I7", f"fold governs with {fold['active_scope_id'].hex()[:10]} but Active local scopes are "
                           f"{[x.hex()[:10] for x in act_scopes]}"))
+    # I7b: the interpreter's own governing scope (it keeps latch 4a from the spec's words; the generator seals under it
+    # and the oracles' history records it) is the fold's. Without this a model that kept a stale scope would only see
+    # its later proposals refused, which the run discards (Codex review of PR #23, P23-F1)
+    if it.cur is not None and it.ids[it.cur] != fold["active_scope_id"]:
+        out.append(("I7b", f"the interpreter governs with {it.ids[it.cur].hex()[:10]}, "
+                           f"the fold with {fold['active_scope_id'].hex()[:10]}"))
 
     # I5
     latches = fold_latches(fold)
@@ -1853,9 +1860,10 @@ class TestVars1Properties(unittest.TestCase):
         a model of v1's input): the gate and twin, the v2 kernel, the Stale oracle reading typed references, the edge
         oracle with the rotation delay of §4.1 latch 4a kept by the interpreter from the spec, and the offline client
         reading the v2 input's reference list. The generator also writes a peer contract naming a foreign verdict in
-        its `hash` slot under a second peer scope, and removed keys' consent seals. The run must reach a tip where
-        reading the input's payloads and slots by value, as v1 does, changes Pass 3 (else I11 could not tell the
-        readings apart), and rotation waits ended both by consent and by the 16 commits."""
+        its `hash` slot under a second peer scope, and removed keys' consent seals; I7b holds the interpreter's
+        governing scope to the fold's at every tip, so its model of the wait cannot drift unseen. The run must reach
+        a tip where reading the input's payloads and slots by value, as v1 does, changes Pass 3 (else I11 could not
+        tell the readings apart), and rotation waits ended both by consent and by the 16 commits."""
         before = dict(POWER)
         self._explore(V.H_LENS_KERNEL_V2, self.N_SEQS_V2, self.N_COMMITS_V2)
         reached = {k: POWER[k] - before[k] for k in POWER}

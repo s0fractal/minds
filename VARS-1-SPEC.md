@@ -537,7 +537,8 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
   (`proofs/Vars1/Cycle.lean`, compiled) (I12). A second run writes chains whose genesis names `H_LENS_KERNEL_V2` and
   checks I0–I8 and I11 on them (I9 and I10 compare a model of v1's input): there the interpreter keeps the rotation
-  delay of §4.1 latch 4a from its words, the edge oracle withholds a waiting scope's supersedes edge, the Stale
+  delay of §4.1 latch 4a from its words and its governing scope is the fold's at every tip (I7b), the edge oracle
+  withholds a waiting scope's supersedes edge, the Stale
   oracle reads typed references, and the generator writes a peer contract that names a foreign verdict in a `hash`
   slot; the run must reach tips where reading the input by value, as v1 does, changes Pass 3, and waits ended
   both by consent and by the 16 commits.

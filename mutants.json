@@ -2042,5 +2042,13 @@
   "kills": [
    "test_vars1_props.TestVars1Properties.test_random_admission_sequences_under_v2"
   ]
+ },
+ "m-props-model-expiry": {
+  "file": "test_vars1_props.py",
+  "find": "                next_cur = self.waiting[\"h\"]",
+  "replace": "                next_cur = self.cur if i >= self.waiting[\"t\"] + 16 else self.waiting[\"h\"]",
+  "kills": [
+   "test_vars1_props.TestVars1Properties.test_random_admission_sequences_under_v2"
+  ]
  }
 }
