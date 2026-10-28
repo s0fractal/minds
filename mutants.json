@@ -2026,5 +2026,21 @@
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
+ },
+ "m-props-v2-reading": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not v2:\n        pos = {c[\"id\"]: i for i, c in enumerate(cells)}",
+  "replace": "    if True:\n        pos = {c[\"id\"]: i for i, c in enumerate(cells)}",
+  "kills": [
+   "test_vars1_props.TestVars1Properties.test_random_admission_sequences_under_v2"
+  ]
+ },
+ "m-props-v2-delay": {
+  "file": "vars1.py",
+  "find": "    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / \"lens2.wasm\", \"v2\", frozenset({-7}), rotation_delay=16),",
+  "replace": "    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / \"lens2.wasm\", \"v2\", frozenset({-7}), rotation_delay=15),",
+  "kills": [
+   "test_vars1_props.TestVars1Properties.test_random_admission_sequences_under_v2"
+  ]
  }
 }

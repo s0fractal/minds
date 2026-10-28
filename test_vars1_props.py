@@ -30,6 +30,11 @@ checks:
       (`vars1.cycle_witness_answers`) counts a witness exactly when the model proves it, for a contract of its own
       computation expecting `H_CYCLE_PROVEN`
 
+A second run writes sequences whose genesis names H_LENS_KERNEL_V2 and checks I0-I8 and I11 (I9 and I10 compare a
+model of v1's input). The interpreter keeps the rotation delay of §4.1 latch 4a from the spec's words, so the oracles
+see the governing scope; the Stale oracle reads typed references; and the generator adds v2-only variants (a peer
+contract naming a foreign verdict in a `hash` slot, consent seals, early rotations) that a v1 seed never draws.
+
 Failing programs are shrunk greedily (drop commits, ops, signers, edges) and frozen below as named regression
 tests. Run `VARS1_PBT_SEQS=400 python3 test_vars1_props.py` for a longer exploration; the default stays < 2 min.
 """
@@ -115,6 +120,10 @@ _d, _i, _s = SR.start(COMP["cycle"].hex(), _H_MM)
 _MM_ENTRY = SR.advance(_d, _i, _s, SR.Environment([_H_MM], {_H_MM: _APP_MM}), 3, runtime=SR.RICH_RUNTIME_ID).state_bytes
 CYCLE_VARIANTS = {"true": (3, 1, 2), "big": (3, 1, BIG), "bad_cost": (3, 1, 3)}
 EXP = {"K": V.H_K, "I": V.H_I, "EMPTY": V.H_EMPTY, "CYCLE": V.H_CYCLE_PROVEN}
+# What the v2 exploration reached, so its test can tell it reached it: evaluated contracts and decisions where reading
+# the v2 input's payloads and slots by value (as v1 does) would change Pass 3 (I11's power over the reading), and
+# rotations whose wait (§4.1 latch 4a) ended by the removed keys' seals or by its 16 commits
+POWER: Dict[str, int] = {"v2_reading_decides": 0, "wait_ended_by_consent": 0, "wait_expired": 0}
 STATUS_KEYS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "provisional")
 
 
@@ -184,8 +193,13 @@ def fold_latches(fold: dict) -> Dict[str, Set]:
 # Interpreter: program (list of commits of ops) -> real cells/seals -> admit_and_advance
 # ---------------------------------------------------------------------------
 class Interp:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, rules: bytes = V.H_LENS_KERNEL):
         self.path = path
+        self.rules = rules  # every local and foreign scope cell names these rules (genesis stores the module)
+        # §4.1 latch 4a, kept here from the spec's words (not asked of the host): under v2 a rotation whose removed
+        # keys have not all sealed it waits; the old scope governs until the commit that completes their seals, or
+        # the 16th commit after its admission. {"h", "base": handles, "t": its commit's index, "removed": key indices}
+        self.waiting: Optional[dict] = None
         subprocess.run(["git", "-C", str(path), "init", "-q"], check=True)
         self.repo = MemoRepo(path)
         self.tip: Optional[str] = None
@@ -202,10 +216,16 @@ class Interp:
     # -- helpers ------------------------------------------------------------------------------------------
     def _snapshot(self):
         return (self.tip, dict(self.ids), copy.deepcopy(self.meta), dict(self.cell_by_id), dict(self.seals),
-                dict(self.atoms), self.cur)
+                dict(self.atoms), self.cur, copy.deepcopy(self.waiting))
 
     def _restore(self, snap):
-        self.tip, self.ids, self.meta, self.cell_by_id, self.seals, self.atoms, self.cur = snap
+        self.tip, self.ids, self.meta, self.cell_by_id, self.seals, self.atoms, self.cur, self.waiting = snap
+
+    def _consented(self, w: dict) -> bool:
+        """Every removed key of the waiting rotation `w` has sealed its scope under the scope it supersedes."""
+        sid, base = self.ids[w["h"]], self.ids[w["base"]]
+        sealed = {x.actor_pubkey for x in self.seals.values() if x.h_target == sid and x.h_scope_ctx == base}
+        return all(PKS[k] in sealed for k in w["removed"])
 
     def _hv(self, atoms, ids: List[bytes]) -> bytes:
         return _put(atoms, V.atom_hvec(ids))
@@ -251,7 +271,7 @@ class Interp:
                         h_schema=V.H_SCHEMA["scope"],
                         h_slot_name=_put(atoms, V.atom_utf8(f"{origin}/SCOPE")),
                         h_payload=_put(atoms, V.atom_utf8(payload)),
-                        slots=(self._pol(atoms, adm_thr, adm), self._pol(atoms, acc_thr, acc), V.H_LENS_KERNEL),
+                        slots=(self._pol(atoms, adm_thr, adm), self._pol(atoms, acc_thr, acc), self.rules),
                         **kw,
                     )
                     ctx = cell.id if kind != "rotate" else self.ids[self.cur]
@@ -261,6 +281,8 @@ class Interp:
                                    adm=list(adm), acc=list(acc), adm_thr=adm_thr)
                     if kind == "genesis":
                         atoms.update(COMP_ATOMS)
+                        if self.rules != V.H_LENS_KERNEL:
+                            atoms[self.rules] = V.RULES_ATOMS[self.rules]
                     if kind in ("genesis", "rotate"):
                         next_cur = op["h"]
                 elif kind == "cell":
@@ -306,6 +328,21 @@ class Interp:
         for s in new_seals:
             self.seals[s.id] = s
         self.atoms.update(atoms)
+        i = len(self.history)  # this commit's index
+        if V.KNOWN_RULES[self.rules] == "v2" and self.cur is not None and next_cur != self.cur:
+            m0, m1 = self.meta[self.cur], self.meta[next_cur]
+            removed = {k for pol in ("adm", "acc") for k in set(m0[pol]) - set(m1[pol])}
+            self.waiting = {"h": next_cur, "base": self.cur, "t": i, "removed": sorted(removed)}
+            next_cur = self.cur
+        waiting_id, governs = None, None
+        if self.waiting is not None:
+            if self._consented(self.waiting) or i >= self.waiting["t"] + 16:
+                governs = self.ids[self.waiting["h"]]  # it governs from the next commit; its edge latches now
+                next_cur = self.waiting["h"]
+                POWER["wait_ended_by_consent" if i < self.waiting["t"] + 16 else "wait_expired"] += i > self.waiting["t"]
+                self.waiting = None
+            else:
+                waiting_id = self.ids[self.waiting["h"]]
         self.cur = next_cur
         self.tip = cand
         self.tips.append(cand)
@@ -314,6 +351,8 @@ class Interp:
             "cells": dict(self.cell_by_id),
             "seals": list(self.seals.values()),
             "new": {c.id for c in new_cells},
+            "waiting": waiting_id,  # a local scope whose supersedes edge latch 3 withholds at this commit (4a)
+            "governs": governs,  # a scope that stopped waiting at this commit: its supersedes edge latches here
         })
         return True
 
@@ -385,7 +424,10 @@ class Interp:
                 return V.Cell(h_schema=sch, h_slot_name=name, h_payload=text, slots=(V.H_SCHEMA["axiom"], pol), **kw)
             tier = V.H_PROVISIONAL if op["tier"] == "provisional" else V.H_OWNER
             req = COMP[op["req"]] if op.get("req") else V.H_EMPTY
-            return V.Cell(h_schema=sch, h_slot_name=name, h_payload=text, slots=(tier, req, EXP[op["exp"]], pol), **kw)
+            exp = self.ids.get(op["exp"][5:]) if op["exp"].startswith("cell:") else EXP[op["exp"]]
+            if exp is None:
+                return None
+            return V.Cell(h_schema=sch, h_slot_name=name, h_payload=text, slots=(tier, req, exp, pol), **kw)
         if kind == "verdict":
             if op["target"] not in self.ids:
                 return None
@@ -405,8 +447,9 @@ class Interp:
 # Generator: proposes the next commit from the interpreter's current state
 # ---------------------------------------------------------------------------
 class Gen:
-    def __init__(self, rng: random.Random):
+    def __init__(self, rng: random.Random, v2: bool = False):
         self.r = rng
+        self.v2 = v2  # draws of the v2-only variants are made only then: a v1 seed writes the program it always did
         self.n = 0
         self.pending: List = []  # follow-up commits of a macro: callables it -> ops, so signers track rotations
 
@@ -612,6 +655,11 @@ class Gen:
 
     def seal(self, it: Interp) -> Optional[dict]:
         r = self.r
+        w = it.waiting
+        if self.v2 and w and r.random() < 0.5:  # a removed admission key consents to the waiting rotation (4a)
+            keys = [k for k in w["removed"] if k in it.meta[w["base"]]["adm"]]
+            if keys:
+                return {"op": "seal", "target": w["h"], "key": r.choice(keys), "ctx": w["base"]}
         if r.random() < 0.75:
             targets = self.handles(it, lambda hh, m: m["origin"] == SCOPE and m["kind"] != "scope")
             if not targets:
@@ -721,6 +769,24 @@ class Gen:
                  "target": target, "peer": peer, "fscope": hf, "edges": {},
                  "signers": self.full(sorted(set(it.roster()[1]))) if r.random() < 0.85 else self.signers(it, True)},
             ]
+            keys2 = sorted(set(pol[1] if pol else adm) - set(foreign[1]["signers"]))
+            if self.v2 and keys2 and r.random() < 0.8:
+                # a second scope of the peer, whose keys are the policy keys the verdict's first seals lack, seals the
+                # verdict too and admits a newer peer contract that names the verdict in its `hash` slot
+                # (expected_outcome) and relies on the first acceptance, so it follows the verdict under either
+                # reading. v1 reads the hash as a reference, passing the second scope on to the verdict; v2 types it as
+                # a value (I11 counts where the two readings decide Pass 3)
+                hf2, hx, hax = self.h(), self.h(), self.h()
+                foreign += [
+                    {"op": "fscope", "h": hf2, "peer": peer, "keys": keys2, "thr": 1, "signers": keys2},
+                    *({"op": "seal", "target": hv, "key": k, "ctx": hf2} for k in keys2),
+                    {"op": "cell", "h": hx, "origin": peer, "kind": "contract", "tier": "provisional", "req": None,
+                     "exp": f"cell:{hv}", "pol": None, "name": f"{peer}/contract.{hx}", "ctx": hf2,
+                     "edges": {"relies": [ha]}, "signers": keys2},
+                    {"op": "cell", "h": hax, "origin": SCOPE, "kind": "acceptance", "name": f"{SCOPE}/acceptance.{hax}",
+                     "target": hx, "peer": peer, "fscope": hf2, "edges": {},
+                     "signers": self.full(sorted(set(it.roster()[1])))},
+                ]
             if r.random() < 0.5:
                 ops += foreign
             else:
@@ -818,6 +884,8 @@ class Gen:
         r = self.r
         if self.pending and r.random() < 0.7:
             return self.pending.pop(0)(it)
+        if self.v2 and it.waiting is None and r.random() < (0.3 if len(it.history) < 4 else 0.06):
+            return [self.rotate(it)]  # early rotations, so a 16-commit wait can end within the sequence
         x = r.random()
         if x < 0.14:
             return self.bundle(it)
@@ -897,12 +965,14 @@ def oracle_edges(it: Interp, foreign_initial: bool = False) -> Set[Tuple[bytes, 
                     if len(selfs) >= fthr:
                         got |= {x.actor_pubkey for x in rec["seals"] if x.h_target == v and x.h_scope_ctx == fid and x.actor_pubkey in fpks}
                 initial[v] = got
+        if rec.get("governs") is not None:  # 4a: authorized when it becomes governing (its quorum checked at admission)
+            latched |= {(rec["governs"], vid, "supersedes") for vid in _items(atoms, cells[rec["governs"]].h_supersedes)}
         for wid, w in cells.items():
             if w.h_schema == V.H_META_SCHEMA:
                 continue
             for kind, mh in (("invalidates", w.h_invalidates), ("retires", w.h_retires), ("supersedes", w.h_supersedes)):
                 for vid in _items(atoms, mh):
-                    if (wid, vid, kind) in latched:
+                    if (wid, vid, kind) in latched or (kind == "supersedes" and wid == rec.get("waiting")):
                         continue
                     v = cells[vid]
                     sch = v.h_schema
@@ -930,12 +1000,15 @@ def oracle_auth(it: Interp) -> Dict[str, Set[bytes]]:
 
     1. a local acceptance cell pinned to a self-sealed foreign scope whose Endorsers_i (seals under S_i by keys of
        S_i's acceptance policy) meet that policy is Authorized; 2. a local custom schema cell whose Endorsers_i (keys
-       of S_i's admission policy) meet the admission policy is Authorized; 4. every governing scope is Authorized."""
+       of S_i's admission policy) meet the admission policy is Authorized; 4. every governing scope is Authorized,
+       and so is a local scope cell from its admission, also while it waits (4a: its quorum is checked then)."""
     atoms = it.atoms
     out: Dict[str, Set[bytes]] = {"acc": set(), "schema": set(V.STD_SCHEMA_IDS), "scope": set()}
     for rec in it.history:
         cells, s_id, seals = rec["cells"], rec["scope"], rec["seals"]
         out["scope"].add(s_id)
+        out["scope"] |= {v for v in rec["new"]
+                         if cells[v].h_schema == V.H_SCHEMA["scope"] and _origin(atoms, cells[v]) == SCOPE}
         s = cells[s_id]
         adm, acc = _pol(atoms, s.slots[0]), _pol(atoms, s.slots[1])
 
@@ -963,14 +1036,20 @@ def oracle_auth(it: Interp) -> Dict[str, Set[bytes]]:
     return out
 
 
-def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], latched_acc: Set[bytes]) -> Dict[bytes, bool]:
-    """Spec §4.2 Pass 2 least fixed point, computed by chaotic iteration with no round cap and no topological order."""
+def oracle_stale(atoms, cells: Dict[bytes, V.Cell], active: Dict[bytes, bool], latched_acc: Set[bytes],
+                 value_refs: Optional[Dict[bytes, List[Tuple[int, bytes]]]] = None) -> Dict[bytes, bool]:
+    """Spec §4.2 Pass 2 least fixed point, computed by chaotic iteration with no round cap and no topological order.
+    A payload or slot is a reference as v1 reads it, or, with `value_refs` (the fold's reading by birth epoch under v2,
+    RULES-V2.md §4), as listed there."""
     refs: Dict[bytes, Set[bytes]] = {}
     for u, c in cells.items():
         out = set()
         for mh in (c.h_relies, c.h_attests, c.h_supersedes, c.h_retires, c.h_invalidates):
             out.update(_items(atoms, mh))
-        out.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        if value_refs is None:
+            out.update(x for x in (c.h_payload, *c.slots) if x in cells)
+        else:
+            out.update(x for _, x in value_refs[u])
         out.discard(u)
         refs[u] = out
     children: Dict[bytes, Set[bytes]] = {u: set() for u in cells}
@@ -1169,7 +1248,7 @@ def model_fold(line: str) -> List[int]:
     return [int(x) for x in out.split()]
 
 
-_RUNNER: Optional["V.KernelRunner"] = None
+_RUNNERS: Dict[bytes, "V.KernelRunner"] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -1333,11 +1412,10 @@ def check_cycles(seed: int, n_tables: int) -> Tuple[List[str], Dict[str, int]]:
     return out, counts
 
 
-def kernel_runner() -> "V.KernelRunner":
-    global _RUNNER
-    if _RUNNER is None:
-        _RUNNER = V.KernelRunner()
-    return _RUNNER
+def kernel_runner(rules: bytes = V.H_LENS_KERNEL) -> "V.KernelRunner":
+    if rules not in _RUNNERS:
+        _RUNNERS[rules] = V.KernelRunner(rules)
+    return _RUNNERS[rules]
 
 
 def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Random, shuffles: int = 1):
@@ -1351,10 +1429,11 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
     except Exception as e:  # noqa: BLE001
         return [("I0", f"lens/fold crashed: {type(e).__name__}: {e}")], prev_latches
     cells, atoms, active = lens["cells"], lens["atoms"], lens["active"]
+    encoding = V.KNOWN_RULES[lens["rules"]]
 
-    # I8: a fresh run of the rules kernel (kernel/lens.wasm) reproduces the lens's Passes 1-2
+    # I8: a fresh run of the rules kernel (the module of the tip's rules) reproduces the lens's Passes 1-2
     try:
-        for cid, bits in kernel_runner().statuses(lens).items():
+        for cid, bits in kernel_runner(lens["rules"]).statuses(lens).items():
             bad = [n for n, v in bits.items() if lens[n][cid] != v]
             if bad:
                 out.append(("I8", f"kernel disagrees on {bad} of {cid.hex()[:10]}"))
@@ -1362,32 +1441,41 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
     except V.VarsError as e:
         out.append(("I8", str(e)))
 
+    raw = kernel_runner(lens["rules"]).run(lens["kernel_input"])
     # I9: the proved executable lens (proofs/Vars1/Exec.lean, compiled) computes the kernel's own status bytes
     # from the kernel's input and its fold's authority output
-    raw = kernel_runner().run(lens["kernel_input"])
-    line, kstatus = exec_facts(lens["kernel_input"], raw)
-    estatus = exec_statuses(line)
     # I10: the model's own fold (proofs/Vars1/Fold.lean, compiled) reproduces the kernel's scope, Authorized bits and
-    # edge authorizations from the kernel's input
-    n = len(kstatus)
-    mfold = model_fold(fold_facts(lens["kernel_input"]))
-    kfold = [int.from_bytes(raw[:4], "little"), *raw[4 + n:4 + 2 * n], *raw[4 + 2 * n:]]
-    if mfold != kfold:
-        i = next((i for i, (a, b) in enumerate(zip(mfold, kfold)) if a != b), min(len(mfold), len(kfold)))
-        what = "scope" if i == 0 else f"Authorized of cell {i - 1}" if i <= n else f"edge latch {i - 1 - n}"
-        out.append(("I10", f"model fold disagrees with the kernel on {what}: model={mfold[i:i+1]} kernel={kfold[i:i+1]}"))
-    if list(kstatus) != estatus:
-        i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
-        out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
+    # edge authorizations from the kernel's input. The model reads v1's input and has no rotation delay: under v2
+    # neither runs (RULES-V2.md §6)
+    if encoding == "v1":
+        line, kstatus = exec_facts(lens["kernel_input"], raw)
+        estatus = exec_statuses(line)
+        n = len(kstatus)
+        mfold = model_fold(fold_facts(lens["kernel_input"]))
+        kfold = [int.from_bytes(raw[:4], "little"), *raw[4 + n:4 + 2 * n], *raw[4 + 2 * n:]]
+        if mfold != kfold:
+            i = next((i for i, (a, b) in enumerate(zip(mfold, kfold)) if a != b), min(len(mfold), len(kfold)))
+            what = "scope" if i == 0 else f"Authorized of cell {i - 1}" if i <= n else f"edge latch {i - 1 - n}"
+            out.append(("I10", f"model fold disagrees with the kernel on {what}: "
+                               f"model={mfold[i:i+1]} kernel={kfold[i:i+1]}"))
+        if list(kstatus) != estatus:
+            i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
+            out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
 
-    # I11: a client's Pass 3 from the kernel input and output alone equals the lens's Settled
+    # I11: a client's Pass 3 from the kernel input (in its rules' encoding) and output alone equals the lens's Settled
     try:
-        ki = V.parse_kernel_input(lens["kernel_input"])
+        ki = V.parse_kernel_input(lens["kernel_input"], encoding)
+        if encoding == "v2":
+            pos = {kc["id"]: j for j, kc in enumerate(ki["cells"])}
+            by_value = dict(ki, cells=[dict(kc, refs=[pos[x] for x in (kc["payload"], *kc["slots"]) if x in pos])
+                                       for kc in ki["cells"]])
         for i, kcell in enumerate(ki["cells"]):
             c = cells[kcell["id"]]
             if c.h_schema not in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]) or c.slots[1] != V.H_EMPTY:
                 continue
             got = V.pass3_at_tip(ki, raw, i)[0]
+            if encoding == "v2" and V.pass3_at_tip(by_value, raw, i)[0] != got:
+                POWER["v2_reading_decides"] += 1
             if got != lens["settled"][kcell["id"]]:
                 out.append(("I11", f"client Pass 3 says {got}, lens Settled {lens['settled'][kcell['id']]} "
                                    f"for {kcell['id'].hex()[:10]}"))
@@ -1405,7 +1493,8 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
             out.append(("I1", f"{len(cids)} Active bindings of {V.parse_utf8(atoms[nm])!r}: {[x.hex()[:10] for x in cids]}"))
 
     # I2
-    st = oracle_stale(atoms, cells, active, set(fold["latched_acc_auth"]))
+    st = oracle_stale(atoms, cells, active, set(fold["latched_acc_auth"]),
+                      fold["value_refs"] if encoding == "v2" else None)
     diff = sorted(cid.hex()[:10] + ("+" if st[cid] else "-") for cid in cells if st[cid] != lens["stale"][cid])
     if diff:
         out.append(("I2", f"Stale differs from the LFP oracle (+ oracle Stale, - oracle fresh): {diff}"))
@@ -1489,10 +1578,11 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
 # ---------------------------------------------------------------------------
 # Runner + shrinker
 # ---------------------------------------------------------------------------
-def run_program(program: List[List[dict]], seed: int = 0, shuffles: int = 1, stop_at_first: bool = True):
-    """Execute `program`; check invariants on each admitted tip. Returns (violations, interp, tmpdir)."""
+def run_program(program: List[List[dict]], seed: int = 0, shuffles: int = 1, stop_at_first: bool = True,
+                rules: bytes = V.H_LENS_KERNEL):
+    """Execute `program` under `rules`; check invariants on each admitted tip. Returns (violations, interp, tmpdir)."""
     tmp = tempfile.TemporaryDirectory()
-    it = Interp(Path(tmp.name))
+    it = Interp(Path(tmp.name), rules)
     rng = random.Random(seed ^ 0x5EED)
     prev = None
     viols: List[Tuple[int, str, str]] = []
@@ -1509,12 +1599,12 @@ def run_program(program: List[List[dict]], seed: int = 0, shuffles: int = 1, sto
     return viols, it, tmp
 
 
-def generate(seed: int, n_commits: int, shuffles: int = 1):
-    """Generate a program interleaved with execution; stop at the first violation."""
+def generate(seed: int, n_commits: int, shuffles: int = 1, rules: bytes = V.H_LENS_KERNEL):
+    """Generate a program under `rules`, interleaved with execution; stop at the first violation."""
     rng = random.Random(seed)
-    g = Gen(rng)
+    g = Gen(rng, v2=V.KNOWN_RULES[rules] == "v2")
     tmp = tempfile.TemporaryDirectory()
-    it = Interp(Path(tmp.name))
+    it = Interp(Path(tmp.name), rules)
     program: List[List[dict]] = []
     ops = g.genesis()
     if not it.exec_commit(ops):
@@ -1751,14 +1841,33 @@ class TestVars1Properties(unittest.TestCase):
     N_COMMITS = int(os.environ.get("VARS1_PBT_COMMITS", "10"))
     SEED0 = int(os.environ.get("VARS1_PBT_SEED", "1"))
 
+    N_SEQS_V2 = int(os.environ.get("VARS1_PBT_SEQS_V2", "16"))
+    N_COMMITS_V2 = int(os.environ.get("VARS1_PBT_COMMITS_V2", "24"))  # long enough for a rotation's 16-commit wait
+
     def test_random_admission_sequences(self) -> None:
         """I0..I11 on every admitted tip of N seeded random sequences (+ PYTHONHASHSEED check on a sample)."""
+        self._explore(V.H_LENS_KERNEL, self.N_SEQS, self.N_COMMITS)
+
+    def test_random_admission_sequences_under_v2(self) -> None:
+        """I0..I8 and I11 on every admitted tip of sequences whose genesis names H_LENS_KERNEL_V2 (I9 and I10 compare
+        a model of v1's input): the gate and twin, the v2 kernel, the Stale oracle reading typed references, the edge
+        oracle with the rotation delay of §4.1 latch 4a kept by the interpreter from the spec, and the offline client
+        reading the v2 input's reference list. The generator also writes a peer contract naming a foreign verdict in
+        its `hash` slot under a second peer scope, and removed keys' consent seals. The run must reach a tip where
+        reading the input's payloads and slots by value, as v1 does, changes Pass 3 (else I11 could not tell the
+        readings apart), and rotation waits ended both by consent and by the 16 commits."""
+        before = dict(POWER)
+        self._explore(V.H_LENS_KERNEL_V2, self.N_SEQS_V2, self.N_COMMITS_V2)
+        reached = {k: POWER[k] - before[k] for k in POWER}
+        self.assertTrue(all(reached.values()), f"the exploration did not reach every case it is for: {reached}")
+
+    def _explore(self, rules: bytes, n_seqs: int, n_commits: int) -> None:
         found: Dict[str, List[str]] = {}
         known_hits: Dict[str, int] = {}
         admitted_total = 0
         sample_repos = []
-        for seed in range(self.SEED0, self.SEED0 + self.N_SEQS):
-            program, vs, it, tmp = generate(seed, self.N_COMMITS)
+        for seed in range(self.SEED0, self.SEED0 + n_seqs):
+            program, vs, it, tmp = generate(seed, n_commits, rules=rules)
             admitted_total += len(program)
             for inv, detail in vs:
                 if is_known(inv, detail):
@@ -1776,7 +1885,7 @@ class TestVars1Properties(unittest.TestCase):
             tmp.cleanup()
         if known_hits:
             print(f"\n  known (frozen) violation classes hit: {known_hits}", file=sys.stderr)
-        self.assertGreater(admitted_total, self.N_SEQS * 3, "generator admits too few commits to be meaningful")
+        self.assertGreater(admitted_total, n_seqs * 3, "generator admits too few commits to be meaningful")
         self.assertEqual(found, {}, "new invariant violations (shrink with VARS1_PBT_SHRINK=1)")
 
     def test_cycle_witnesses_agree_with_the_model(self) -> None:

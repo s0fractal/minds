@@ -168,9 +168,11 @@ Lost or changed:
   projections naming their tip's epoch (57); the release checks (58).
 - Mutants (`mutants.json`, `m-rc-*`, `m-v2-*`, `m-f40-*`, `m-f41-*`, `m-gate-scope-rules`), each killed by these tests.
 
-Not carried over from the prototype: its property-suite generator for v2 (scopes under v2, rotations, typed and
-opaque fields, I0–I11 on v2 tips) and `proofs/Vars1/Refs.lean`. On main the property suite exercises v1 only, and no
-Lean statement is about v2. Rotations to v2 in the generator would now need a rules-change decision.
+The property suite has a second run under v2 (`test_vars1_props.py`, `test_random_admission_sequences_under_v2`):
+genesis under v2, rotations with the delay of latch 4a, a `hash` slot naming a foreign verdict, and I0–I8 and I11 on
+every tip (I9 and I10 compare a model of v1's input). It starts under v2 rather than rotating to it: a rotation to v2
+in the generator would need a rules-change decision. Not carried over from the prototype: `proofs/Vars1/Refs.lean`;
+no Lean statement is about v2.
 
 ## 7. Adoption (not done)
 

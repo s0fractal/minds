@@ -289,8 +289,8 @@
     "rows": [
      [
       "An offline client's Pass 3 equals the lens's Settled",
-      "Differential (I11) on v1 chains; under v1, v1b and v2, tested where the v1 and v2 readings of a `hash` decide a foreign endorsement",
-      "property suite; `test_vars1.py` 90"
+      "Differential (I11) on v1 chains and on v2 chains whose `hash` slots decide a foreign endorsement",
+      "property suite (two runs); `test_vars1.py` 90"
      ],
      [
       "A bundle cannot hide a verdict or seal its projection's tip holds",

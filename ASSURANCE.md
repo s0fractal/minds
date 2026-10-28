@@ -82,7 +82,7 @@ mutation tests. **Assumed** means nothing here checks it.
 
 | Claim | Evidence | Where |
 |---|---|---|
-| An offline client's Pass 3 equals the lens's Settled | Differential (I11) on v1 chains; under v1, v1b and v2, tested where the v1 and v2 readings of a `hash` decide a foreign endorsement | property suite; `test_vars1.py` 90 |
+| An offline client's Pass 3 equals the lens's Settled | Differential (I11) on v1 chains and on v2 chains whose `hash` slots decide a foreign endorsement | property suite (two runs); `test_vars1.py` 90 |
 | A bundle cannot hide a verdict or seal its projection's tip holds | Tested | `test_vars1.py` 17, 21 |
 | `verify-*` accepts only against keys the reader pinned | Tested, with mutants | `test_vars1.py` 39 |
 | Every release on `refs/vars/heads/minds` was checked by both members in fresh worktrees | Recorded on the chain; each member's checks are its own claim | `tools/minds_chain.py` |
