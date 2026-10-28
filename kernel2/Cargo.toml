@@ -7,6 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 path = "src/lib.rs"
 
+[features]
+# a second v2-encoded rules module for the tests of a rules change under v2 (test_vars1.py); never pinned in RULES
+test-variant = []
+
 [profile.release]
 opt-level = "z"
 lto = true

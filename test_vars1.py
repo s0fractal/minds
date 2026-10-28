@@ -4999,10 +4999,6 @@ class TestVars1Conformance(unittest.TestCase):
         t = self._admit(a, [s1], [V.Seal.sign(self.sk1, s1.id, s0.id)], c0)
         self.assertEqual(self._governing(t), s1.id)
 
-        # a rotation that would wait names the rules it supersedes: no new rules ride in on a removal (E-24)
-        a, s2 = self._rotation(s1, [self.pk1], "drop pk2, other rules", rules=V.H_LENS_KERNEL_V1B)
-        a[V.H_LENS_KERNEL_V1B] = V.KERNEL1B_ATOM
-        self._refused(-24, a, [s2], [V.Seal.sign(self.sk1, s2.id, s1.id)], t)
 
         # under v1 nothing waits: a removal that also names other rules passes the fold (the gate then asks for
         # its rules-change decision, a separate step)
@@ -5019,8 +5015,8 @@ class TestVars1Conformance(unittest.TestCase):
     def test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations(self) -> None:
         """A build of the v2 rules (`kernel2/`: the pinned one, or, with MINDS_KERNEL2_WASM, a mutant built by
         tools/run_mutants.py) gives the pinned v2 kernel's output, byte for byte, on chains that wait, end their wait,
-        consent at once or late, remove nothing, and on the candidates v2 refuses (a second rotation while one waits,
-        a waiting rotation to other rules): the same code. On a v1 chain whose rotation removed a key it gives v1's
+        consent at once or late, remove nothing, a removal that also names other rules (a rules change, which waits
+        its full delay), and a second rotation while one waits, which v2 refuses: the same code. On a v1 chain whose rotation removed a key it gives v1's
         own output: in a v1 epoch a rotation takes effect at once, so a v1 history is read as v1 read it (the
         reproduce evidence of a v1 -> v2 change). It refuses more commits than input bytes (E-7), as v1b does."""
         module = os.environ.get("MINDS_KERNEL2_WASM")
@@ -5097,8 +5093,8 @@ class TestVars1Conformance(unittest.TestCase):
                 return f"E{e.code}"
         got = [(outcome(real, ki), outcome(built, ki)) for ki in inputs]
         self.assertEqual([b for _, b in got], [r for r, _ in got])
-        self.assertEqual([r for r, _ in got if r.startswith("E")], ["E-24", "E-24", "E-7"],
-                         "both candidates are refused, and the claim of too many commits")
+        self.assertEqual([r for r, _ in got if r.startswith("E")], ["E-24", "E-7"],
+                         "a second rotation while one waits is refused, and the claim of too many commits")
 
     def _layers(self, scope: str, cand: str, runner: "V.KernelRunner") -> tuple:
         """Each layer of the fold on its own, on a candidate commit: the twin's refusal (or None) and the rules
@@ -5222,6 +5218,146 @@ class TestVars1Conformance(unittest.TestCase):
             for actions, cost in ((0, 3), (3, 2)):
                 with self.assertRaises(V.VarsError, msg=f"{actions} actions, cost {cost}"):
                     V.gate_cycle_witness(cw(actions, cost), u64s)
+
+    def _variant(self) -> bytes:
+        """Register, for this test only, a second v2-encoded rules module (`kernel2/lens2-test-variant.wasm`, the
+        feature `test-variant`; never pinned in RULES): an inactive ground leaves its dependents as they are, and a
+        cell relying on three grounds is refused. Returns its id."""
+        path = V.KERNEL2_DIR / "lens2-test-variant.wasm"
+        raw = path.read_bytes()
+        h = V.sha256(raw)
+        for table, value in ((V.RULES, V.Rules(path, "v2", frozenset({-7}), rotation_delay=16)), (V.RULES_ATOMS, raw),
+                             (V.RULES_MODULES, path)):
+            patch = unittest.mock.patch.dict(table, {h: value})
+            patch.start()
+            self.addCleanup(patch.stop)
+        return h
+
+    def _veto(self, s_gov: V.Cell, s_wait: V.Cell, tip: str, cell: bytes, label: str, sk: bytes | None = None):
+        """A veto of the waiting rules change `s_wait` (§4.1 latch 4b): its evidence `tip` and `cell`, sealed under
+        the governing `s_gov` by `sk` (sk2 by default), with the veto schema it is an instance of."""
+        sch, a = V.veto_schema("core")
+        v = V.Cell(sch.id, self._put_atom(a, V.atom_utf8(f"core/veto.{label}")),
+                   self._put_atom(a, V.atom_utf8("this change alters a record the chain had")),
+                   slots=(s_wait.id, self._put_atom(a, V.atom_utf8(tip)), cell))
+        return a, [sch, v], [V.Seal.sign(sk or self.sk2, x.id, s_gov.id) for x in (sch, v)]
+
+    def test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain(self) -> None:
+        """Under v2 (§4.1 latch 4b) a rotation to other rules waits 16 commits whatever its consent, and both rules
+        read every commit of its window (a commit the new rules refuse is refused). A veto cancels it for good, and
+        is admitted only with evidence on this chain: a commit inside the window and a cell born at or before the
+        rotation to which the old and the new rules give different bits there. A veto in the window's last commit
+        counts; after it the wait is over (a new rotation is admitted at once), and the same change cannot come back
+        as equivalent, the history now showing the difference; a change nobody vetoes governs after 16."""
+        VAR = self._variant()
+        module = os.environ.get("MINDS_KERNEL2_WASM")
+        built = V.KernelRunner(V.H_LENS_KERNEL_V2, Path(module) if module else None)
+        self.addCleanup(built.close)
+        inputs: list[bytes] = []
+
+        def grounds():
+            c0, s0, _ = self._v2_genesis()
+            a: dict[bytes, bytes] = {}
+            A, X = self._axiom(a, "core/a", "a ground"), None
+            X = self._axiom(a, "core/x", "rests on A", relies=[A.id])
+            return s0, A, X, self._admit(a, [A, X], [V.Seal.sign(self.sk1, x.id, s0.id) for x in (A, X)], c0)
+
+        def change(parent, base, label):
+            cand, s_new, _ = self._change("equivalent", "core", parent, base, VAR, label=label)
+            self.repo.admit_and_advance("core", cand, expected_old=parent)
+            return cand, s_new
+
+        def invalidate(tip, s_gov, target, label):
+            a: dict[bytes, bytes] = {}
+            I = self._axiom(a, f"core/not.{label}", "the ground fails", invalidates=[target.id])
+            return self._admit(a, [I], [V.Seal.sign(self.sk1, I.id, s_gov.id)], tip), I
+
+        s0, A, X, c1 = grounds()
+        t, s1 = change(c1, s0, "variant")
+        self.assertEqual((self._governing(t), self.repo.lens("core")["rules"]), (s0.id, V.H_LENS_KERNEL_V2),
+                         "a rules change waits")
+        # both rules read the window: a cell relying on three grounds is the variant's refusal
+        b: dict[bytes, bytes] = {}
+        gs = [self._axiom(b, f"core/g{i}", f"ground {i}") for i in range(3)]
+        w = self._axiom(b, "core/w", "rests on three grounds", relies=[g.id for g in gs])
+        self._gate_refuses("must be read by the new rules too", "core", self.repo.build_candidate_commit(
+            "core", b, [*gs, w], [V.Seal.sign(self.sk1, x.id, s0.id) for x in (*gs, w)], parent_commit=t), t)
+        y: dict[bytes, bytes] = {}
+        Y = self._axiom(y, "core/y", "rests on A, born in the window", relies=[A.id])
+        t_y = self._admit(y, [Y], [V.Seal.sign(self.sk1, Y.id, s0.id)], t)
+        t_inv, I = invalidate(t_y, s0, A, "a")  # under v2 X and Y go stale; under the variant they do not
+        inputs.append(self.repo.lens("core")["kernel_input"])
+        bad = (("inside the change's window", t, X.id, "outside"),
+               ("a record the chain had", t_inv, Y.id, "young"),
+               ("no difference on this chain", t_inv, A.id, "same"))
+        for why, tip, cell, label in bad:
+            a, cells, seals = self._veto(s0, s1, tip, cell, label)
+            self._gate_refuses(why, "core", self.repo.build_candidate_commit("core", a, cells, seals, parent_commit=t_inv),
+                               t_inv)
+        n: dict[bytes, bytes] = {}
+        note = V.Cell(V.H_META_SCHEMA, self._put_atom(n, V.atom_utf8("core/note/schema")), V.H_EMPTY,
+                      slots=(self._put_atom(n, V.atom_utf8("about:cell")),))
+        plain = V.Cell(note.id, self._put_atom(n, V.atom_utf8("core/note")), self._put_atom(n, V.atom_utf8("a note")),
+                       slots=(s1.id,))  # names the waiting scope, and is no veto
+        self._gate_refuses("is a veto, of the veto schema", "core", self.repo.build_candidate_commit(
+            "core", n, [note, plain], [V.Seal.sign(self.sk2, x.id, s0.id) for x in (note, plain)], parent_commit=t_inv),
+            t_inv)
+        a, cells, seals = self._veto(s0, s1, t_inv, X.id, "x")
+        t_veto = self._admit(a, cells, seals, t_inv)
+        inputs.append(self.repo.lens("core")["kernel_input"])
+        tip = self._tick(t_veto, s0, 16)
+        self.assertEqual((self._governing(tip), self.repo.lens("core")["rules"]), (s0.id, V.H_LENS_KERNEL_V2),
+                         "a vetoed change never governs")
+        self.assertFalse(self.repo.lens("core")["active"].get(s1.id), "nor is it Active")
+        tip = self._admit({}, [], [V.Seal.sign(self.sk2, s1.id, s0.id)], tip)  # a later seal on it latches nothing
+        self.assertEqual(self._governing(tip), s0.id)
+        self.assertFalse(self.repo.lens("core")["active"].get(s1.id))
+        inputs.append(self.repo.lens("core")["kernel_input"])
+        # the wait is over: a new rotation is admitted at once (no E-24), and the vetoed change cannot come back as
+        # equivalent, since the history now shows the difference the veto named
+        r: dict[bytes, bytes] = {}
+        s3 = self._scope_cell(r, "core", "after the veto", (1, [self.pk1, self.pk2]), h_supersedes=self._hv(r, [s0.id]),
+                              h_loss=self._put_atom(r, V.atom_utf8("roster unchanged")))
+        s3 = V.Cell(s3.h_schema, s3.h_slot_name, s3.h_payload, h_supersedes=s3.h_supersedes, h_loss=s3.h_loss,
+                    slots=(s3.slots[0], s3.slots[1], V.H_LENS_KERNEL_V2))
+        tip = self._admit(r, [s3], [V.Seal.sign(self.sk1, s3.id, s0.id)], tip)
+        self.assertEqual(self._governing(tip), s3.id)
+        cand, _, _ = self._change("equivalent", "core", tip, s3, VAR, label="variant-again")
+        self._gate_refuses("the new rules do not give the old rules' output", "core", cand, tip)
+
+        # a change nobody vetoes governs after its 16 commits
+        self.tmp.cleanup(); self.setUp()
+        VAR = self._variant()
+        s0, A, X, c1 = grounds()
+        t2, s2 = change(c1, s0, "variant")
+        tip = self._tick(t2, s0, 15)
+        self.assertEqual(self._governing(tip), s0.id)
+        inputs.append(self.repo.lens("core")["kernel_input"])
+        tip = self._tick(tip, s0, 1)
+        self.assertEqual((self._governing(tip), self.repo.lens("core")["rules"]), (s2.id, V.H_LENS_KERNEL_V2),
+                         "the 16th commit of the window ends it; the next commit is under the new rules")
+        self.assertEqual(self.repo.lens("core", at=self._tick(tip, s2, 1))["rules"], VAR)
+
+        # on a fresh chain, a veto in the window's last commit still counts
+        self.tmp.cleanup(); self.setUp()
+        VAR = self._variant()
+        s0, A, X, c1 = grounds()
+        t, s1 = change(c1, s0, "variant")
+        t_inv, _ = invalidate(t, s0, A, "a")
+        tip = self._tick(t_inv, s0, 14)  # commits t+1 ... t+15
+        a, cells, seals = self._veto(s0, s1, t_inv, X.id, "last")
+        tip = self._admit(a, cells, seals, tip)  # t+16
+        inputs.append(self.repo.lens("core")["kernel_input"])
+        self.assertEqual(self._governing(self._tick(tip, s0, 1)), s0.id, "a veto in the window's last commit counts")
+
+        def outcome(runner, ki):
+            try:
+                return runner.run(ki).hex()
+            except V.KernelRefusal as e:
+                return f"E{e.code}"
+        self.assertEqual([outcome(built, ki) for ki in inputs],
+                         [outcome(V.kernel_runner(V.H_LENS_KERNEL_V2), ki) for ki in inputs],
+                         "a v2 build answers what the pinned v2 answers on these chains")
 
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with

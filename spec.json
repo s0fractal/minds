@@ -183,7 +183,7 @@
   {
    "kind": "block",
    "section": 1,
-   "text": "`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e` is the id of\n`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md), the commit bound of v1b (−7) and the\nrotation delay of §4.1 latch 4a. A scope names them from its genesis or reaches them by a rules change (§4.3); v1\nstays the default.",
+   "text": "`H_LENS_KERNEL_V2 = 1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e` is the id of\n`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md), the commit bound of v1b (−7), the\nrotation delay of §4.1 latch 4a and the rules-change quarantine of latch 4b. A scope names them from its genesis or reaches them by a rules change (§4.3); v1\nstays the default.",
    "carries": [
     "rules.v2-hash",
     "rules.v2-default",
@@ -689,13 +689,25 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "4a. Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1\n    has it), step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from\n    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at\n    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules\n    than `S` (E-24).",
+   "text": "4a. Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1\n    has it), step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from\n    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at\n    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits (here or under 4b), a new local scope refuses its commit (E-24).",
    "carries": [
     "fold.rotation-epoch",
     "fold.rotation-waits",
     "fold.rotation-ends",
     "fold.rotation-pending",
     "fold.rotation-edge"
+   ]
+  },
+  {
+   "kind": "block",
+   "section": 4,
+   "text": "4b. Under `H_LENS_KERNEL_V2`, a rotation whose `S'` names other rules than `S` waits 16 commits whatever its\n    consent, its supersedes edge withheld as in 4a; `t` is the commit that admitted it. A new local cell of the\n    commits `t+1 … t+16` that references `S'`, sealed under `S` by a key of `S`'s admission policy, cancels it\n    before the wait can end: `S'` never governs, its supersedes edge never latches, and the wait is over. The gate\n    admits such a cell only as a veto, of the schema `<scope>/veto/schema` (`change:cell`, `tip:utf8`,\n    `cell:cell`): its `change` is `S'`, its `tip` a commit of the chain inside the window and before the veto, its\n    `cell` a cell born at or before `t`, to which the rules of `S` and those of `S'`, each over the chain up to\n    `tip`, give different status or Authorized bits. While a rules change waits, the gate admits a commit only if\n    the rules of `S'` also accept the chain with it. Which rules evaluate each commit is read from the rotations\n    and vetoes (`commit_rules`) and checked against the twin's fold.",
+   "carries": [
+    "fold.rules-wait",
+    "fold.rules-veto",
+    "gate.veto-evidence",
+    "gate.rules-window",
+    "rules.epochs-quarantine"
    ]
   },
   {
@@ -931,7 +943,7 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,\nretired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per\ninvalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input\n(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,\nunsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).\n`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V2` refuses\nwith −7 too, and with −24: a new scope while a rotation waits, or a waiting rotation to other rules.",
+   "text": "Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,\nretired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per\ninvalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input\n(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,\nunsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).\n`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V2` refuses\nwith −7 too, and with −24: a new scope while a rotation waits.",
    "carries": [
     "rules.output",
     "rules.v1b-code",

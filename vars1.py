@@ -70,12 +70,12 @@ KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
-# Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input, with v1b's commit bound (-7) and the
-# rotation delay of §4.1 latch 4a in v2 epochs. Dormant: v1 is the default, and a scope moves to v2 only by a
-# rotation admitted with a rules-change decision (§4.3). The host keeps both modules, so every past tip stays
-# recomputable under the rules of its epoch.
+# Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input, with v1b's commit bound (-7), the
+# rotation delay of §4.1 latch 4a and the rules-change quarantine of latch 4b in v2 epochs. Dormant: v1 is the
+# default, and a scope moves to v2 only by a rotation admitted with a rules-change decision (§4.3). The host keeps
+# both modules, so every past tip stays recomputable under the rules of its epoch.
 KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
-H_LENS_KERNEL_V2 = bytes.fromhex("0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e")
+H_LENS_KERNEL_V2 = bytes.fromhex("1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e")
 KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
 if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
     raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
@@ -550,7 +550,7 @@ KERNEL_CODES = {
     -22: "binding does not reach a prior binding of its name", -23: "unknown policy",
     -6: "reference list differs from the rules' reading", -25: "rotation back to the v1 rules",
     -7: "more commits than input bytes (a resource bound)",
-    -24: "a new scope while a rotation waits, or a waiting rotation to other rules",
+    -24: "a new scope while a rotation waits",
 }
 
 
@@ -687,20 +687,36 @@ def schema_cell_mask(c: "Cell", atoms: Dict[bytes, bytes]) -> int:
 def commit_rules(scope: str, deltas: List["Delta"]) -> List[bytes]:
     """The rules of each commit's epoch: those named by the scope governing it (fixed at its start, §0). Parsed: the
     genesis scope, then the newest local scope born in an earlier commit (§3 check 1 makes it the governing one, or,
-    under rules with a rotation delay, the one waiting to govern, which names the same rules (§4.1); the kernel
-    recomputes it). A commit log the gate would refuse may get any answer here; the kernel refuses it."""
+    under rules with a rotation delay, the one waiting to govern, which names the same rules (§4.1 latch 4a)). Under
+    those rules a rotation to other rules governs only after their delay, and never if a local cell of its window
+    names it (latch 4b: the gate admits such a cell only as a veto). The twin records the rules it folds each commit
+    under and refuses any difference from these (TwinDivergence); the kernel recomputes the governing scope. A
+    commit log the gate would refuse may get any answer here; the kernel refuses it."""
     out: List[bytes] = []
     cur: Optional[Cell] = None
+    waiting: Optional[Tuple[Cell, int]] = None  # a rules change in its window, and the commit that admitted it
     name = b"UTF8" + f"{scope}/SCOPE".encode()
     atoms: Dict[bytes, bytes] = {}
+    rules_of = lambda c: c.slots[2] if c is not None and len(c.slots) == 3 else H_LENS_KERNEL  # noqa: E731
     for i, (d_atoms, d_cells, _) in enumerate(deltas):
         atoms.update(d_atoms)
         new = [c for c in d_cells.values() if c.h_schema == H_SCHEMA["scope"] and atoms.get(c.h_slot_name) == name]
         if i == 0 and len(new) == 1:
             cur = new[0]
-        out.append(cur.slots[2] if cur is not None and len(cur.slots) == 3 else H_LENS_KERNEL)
+        out.append(rules_of(cur))
+        local = b"UTF8" + f"{scope}/".encode()
+        if waiting is not None and any(
+                waiting[0].id in (c.h_payload, *c.slots) for c in d_cells.values()
+                if atoms.get(c.h_slot_name, b"").startswith(local)):
+            waiting = None  # vetoed
         if i > 0 and len(new) == 1:
-            cur = new[0]
+            delay = RULES[rules_of(cur)].rotation_delay if rules_of(cur) in RULES else 0
+            if delay and rules_of(new[0]) != rules_of(cur):
+                waiting = (new[0], i)
+            else:
+                cur = new[0]
+        if waiting is not None and i >= waiting[1] + RULES[rules_of(cur)].rotation_delay:
+            cur, waiting = waiting[0], None
     return out
 
 
@@ -825,6 +841,21 @@ def rules_change_schema(scope: str, kind: str = "correction") -> Tuple[Cell, Dic
     name, fields = RULES_CHANGE_CLASSES[kind]
     cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/{name}")), h_payload=H_EMPTY,
                 slots=tuple(put(atom_utf8(d)) for d in fields))
+    return cell, atoms
+
+
+def veto_schema(scope: str) -> Tuple[Cell, Dict[bytes, bytes]]:
+    """The schema cell of `scope`'s vetoes of a waiting rules change (§4.1 latch 4b), with the atoms it names:
+    `change`, the waiting scope; `tip`, a commit of the chain in the change's window; and `cell`, a record the chain
+    had when the change was decided."""
+    atoms: Dict[bytes, bytes] = {}
+
+    def put(raw: bytes) -> bytes:
+        atoms[sha256(raw)] = raw
+        return sha256(raw)
+
+    cell = Cell(h_schema=H_META_SCHEMA, h_slot_name=put(atom_utf8(f"{scope}/veto/schema")), h_payload=H_EMPTY,
+                slots=(put(atom_utf8("change:cell")), put(atom_utf8("tip:utf8")), put(atom_utf8("cell:cell"))))
     return cell, atoms
 
 
@@ -1430,8 +1461,56 @@ class GitVarsRepo:
         # Run the commit-chain fold to verify admission authority on the new commit
         self._evaluate_commit_chain(scope, self.commit_chain(candidate_commit))
 
+        # A rules change in its window (§4.1 latch 4b): both rules read every commit, and a veto carries its evidence
+        self._check_rules_window(scope, expected_old, prior_chain, candidate_commit, cells, atoms, prior)
+
         # Changing the rules (§4.3): only by a rotation admitted with a decision whose computations replay
         return self._check_rules_change(scope, expected_old, prior_chain, cells, atoms, seals, prior)
+
+    def _check_rules_window(self, scope: str, expected_old: Optional[str], prior_chain: List[str], candidate: str,
+                            cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], prior: Set[bytes]) -> None:
+        """§4.1 latch 4b at the gate. While a rules change waits, a commit is admitted only if the waiting rules'
+        kernel also accepts the chain with it (at the window's last commit this is the replay of the exact tip they
+        take over), and a cell that names the waiting scope only as a veto with its evidence: of the veto schema, its
+        `change` the waiting scope, its `tip` a commit of this chain inside the window and its `cell` a cell born at
+        or before the rotation, to which the old and the new rules, each over the chain up to `tip`, give different
+        status or Authorized bits. A veto says that the change already alters what this chain says about a record
+        it had."""
+        if expected_old is None:
+            return
+        fold = self._evaluate_commit_chain(scope, prior_chain)
+        if not fold["waiting"] or not fold["waiting"][2]:
+            return
+        w_id, w_at, _ = fold["waiting"]
+        old_rules, new_rules = cells[fold["active_scope_id"]].slots[2], cells[w_id].slots[2]
+        try:
+            candidate_deltas = self.chain_deltas(self.commit_chain(candidate))
+            kernel_runner(new_rules).run(kernel_facts(scope, candidate_deltas, new_rules)[0])
+        except KernelRefusal as e:
+            raise VarsError(f"a commit in a rules change's window must be read by the new rules too: {e}") from None
+        vschema = veto_schema(scope)[0].id
+        born = {cid: i for i, (_, d_cells, _) in enumerate(self.chain_deltas(prior_chain)) for cid in d_cells}
+        for cid in sorted(set(cells) - prior):
+            c = cells[cid]
+            if w_id not in (c.h_payload, *c.slots):
+                continue
+            if c.h_schema != vschema or len(c.slots) != 3 or c.slots[0] != w_id:
+                raise VarsError("a cell that names a waiting rules change is a veto, of the veto schema "
+                                "(§4.1 latch 4b)")
+            tip, target = parse_utf8(atoms[c.slots[1]]), c.slots[2]
+            if tip not in prior_chain or prior_chain.index(tip) <= w_at:
+                raise VarsError("a veto's tip is a commit of this chain inside the change's window, before the veto")
+            if born.get(target, w_at + 1) > w_at:
+                raise VarsError("a veto's cell is a record the chain had when the change was decided")
+            reads = []
+            for rules in (old_rules, new_rules):
+                out, reading = self.rules_output(scope, tip, rules)
+                order, n = reading["order"], len(reading["order"])
+                i = order.index(target)
+                reads.append((out[4 + i], out[4 + n + i]))
+            if reads[0] == reads[1]:
+                raise VarsError("a veto shows no difference on this chain: both rules give its cell the same bits "
+                                "at its tip")
 
     def _check_rules_change(self, scope: str, expected_old: Optional[str], prior_chain: List[str],
                             cells: Dict[bytes, Cell], atoms: Dict[bytes, bytes], seals: Dict[bytes, Seal],
@@ -1726,6 +1805,8 @@ class GitVarsRepo:
             twin, twin_err = None, e
         kernel_input, order = kernel_facts(scope, deltas)
         value_refs, _, rules = chain_refs(scope, deltas)
+        if twin_err is None and twin["governing_rules"] != rules:
+            raise TwinDivergence("the rules of a commit's epoch: the twin's fold and commit_rules disagree")
         if twin_err is None and -7 in RULES[rules[-1]].resource_codes and len(deltas) > len(kernel_input):
             # the twin of a resource bound (H_LENS_KERNEL_V1B): more commits than input bytes
             twin, twin_err = None, VarsError("the commit log has more commits than its rules input has bytes")
@@ -1805,14 +1886,17 @@ class GitVarsRepo:
         latched_sup: Dict[bytes, Set[bytes]] = {}
         any_sup: Dict[bytes, Set[bytes]] = {}
         prev_base: Optional[bytes] = None
-        waiting: Optional[Tuple[bytes, int]] = None  # a rotation admitted at commit idx whose scope does not govern yet
+        # a rotation admitted at commit idx whose scope does not govern yet, and whether it changes the rules (latch 4b)
+        waiting: Optional[Tuple[bytes, int, bool]] = None
+        born_at: Dict[bytes, int] = {}  # the commit each cell was born in
+        governing_rules: List[bytes] = []  # the rules of each commit's governing scope (cross-checked, commit_rules)
 
         def waits(base_id: bytes, s_id: bytes) -> bool:
             """Must the rotation from `base_id` to `s_id` wait (§4.1, delayed rotation)? Only under rules with a delay,
             while some key of the base's admission or acceptance policy that the new scope's same policy lacks has
             not sealed the new scope under the base."""
             base_c, s_c = cells[base_id], cells[s_id]
-            if len(base_c.slots) < 3 or not RULES[base_c.slots[2]].rotation_delay:
+            if len(base_c.slots) < 3:  # a v1 scope: its rules' delay is 0, so nothing it decides waits
                 return False
             removed = set()
             for i in (0, 1):
@@ -1900,6 +1984,9 @@ class GitVarsRepo:
             base_changed = s_base_id != prev_base
 
             # Index this commit's cells
+            for cid in new_cids:
+                born_at[cid] = idx
+            governing_rules.append(s_base.slots[2] if len(s_base.slots) == 3 else H_LENS_KERNEL)
             new_foreign_cells: List[bytes] = []
             for cid in sorted(new_cids):
                 c = cells[cid]
@@ -2004,6 +2091,7 @@ class GitVarsRepo:
             # At most one new local schema.scope cell in any transition commit
             pending_next_scope: Optional[bytes] = None
             pending_waits = False
+            pending_change = False
             if idx >= 1:
                 new_local_scopes = [
                     cid for cid in new_cids if cells[cid].h_schema == H_SCHEMA["scope"] and cell_origin(cells[cid]) == scope
@@ -2027,9 +2115,9 @@ class GitVarsRepo:
                         raise VarsError("a rotation may not go back from v2 rules to v1 (RULES-V2.md §4)")
                     if waiting is not None:
                         raise VarsError("a new scope while a rotation waits (§4.1)")
-                    pending_waits = waits(s_base_id, s_next_id)
-                    if pending_waits and s_next.slots[2] != s_base.slots[2]:
-                        raise VarsError("a rotation that waits names the rules of the scope it supersedes (§4.1)")
+                    # under rules with the delay a rotation to other rules always waits (latch 4b)
+                    pending_change = bool(RULES[s_base.slots[2]].rotation_delay) and s_next.slots[2] != s_base.slots[2]
+                    pending_waits = pending_change or waits(s_base_id, s_next_id)
                     pending_next_scope = s_next_id
 
             # Latch ACCEPTANCE (pinned to a self-sealed foreign scope per §2.5) and custom META_SCHEMA cells. An open
@@ -2154,12 +2242,24 @@ class GitVarsRepo:
             # End-of-commit scope transition: the new scope governs the next commit, unless it removes keys without
             # their consent under rules with a delay; then it governs after that many more commits, or once every
             # removed key has sealed it (§4.1)
+            # A rules change waits its full delay, and a new local cell of its window that references the waiting scope,
+            # sealed under S_base by a key of its admission policy, cancels it for good (a veto, latch 4b; the gate
+            # admits such a cell only as a veto with its evidence). It is checked before the wait can end.
             if pending_next_scope is not None:
                 latched_scope_auth.add(pending_next_scope)
-                waiting = (pending_next_scope, idx)
+                waiting = (pending_next_scope, idx, pending_change)
             if waiting is not None:
-                w_id, w_at = waiting
-                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay or not waits(s_base_id, w_id):
+                w_id, w_at, w_change = waiting
+                vetoed = w_change and any(
+                    w_at < born_at[cid] and cell_origin(c) == scope
+                    and w_id in {r for _, r in cell_refs(c, cells, atoms, False)}
+                    and signers(cid, s_base_id, adm_pks)
+                    for cid, c in cells.items() if cid in born_at)
+                if vetoed:
+                    open_edges.pop(w_id, None)  # the scope never governs, and its supersedes edge never latches
+                    waiting = None
+                elif (idx >= w_at + RULES[s_base.slots[2]].rotation_delay
+                      or (not w_change and not waits(s_base_id, w_id))):
                     latched_edge_auth.add((w_id, s_base_id, "supersedes"))  # its quorum was checked at admission
                     latched_sup.setdefault(w_id, set()).add(s_base_id)
                     open_edges.pop(w_id, None)
@@ -2178,6 +2278,8 @@ class GitVarsRepo:
             "initial_endorsers": initial_endorsers,
             "cumulative_endorsers": cumulative_endorsers,
             "foreign_endorsers_by_scope": foreign_endorsers_by_scope,
+            "governing_rules": governing_rules,
+            "waiting": waiting,
         }
 
     def lens(self, scope: str, at: Optional[str] = None) -> Dict[str, object]:
