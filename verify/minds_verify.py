@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import struct
 import subprocess
@@ -636,7 +637,10 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
         return out
 
     d = kc[di]
-    scope_cell = kc[struct.unpack_from("<I", output, 0)[0]]
+    si = struct.unpack_from("<I", output, 0)[0]
+    if si >= n:
+        raise VarsError("kernel output names a scope outside its input")
+    scope_cell = kc[si]
     p = d["slots"][3] if d["slots"][3] != H_EMPTY else scope_cell["slots"][0]
     if p not in pols:
         raise VarsError("the kernel input lacks the evaluator policy")
@@ -708,24 +712,33 @@ process.stdin.on("end", async () => {
 });
 """
 KERNEL_TIMEOUT = 120.0  # seconds a reader's run of the rules may take before it is reported as not run
+# The one reply the driver gives: a refusal code, or the output as lowercase hex, on one line
+KERNEL_REPLY = re.compile(rb"(E-[1-9][0-9]{0,9}|(?:[0-9a-f]{2})+)\n")
 
 
 def run_rules(module: bytes, kernel_input: bytes, timeout: float = KERNEL_TIMEOUT) -> Tuple[str, object]:
     """Run a rules module on one kernel input under Node: ("output", bytes after the length word), ("refusal",
-    its negative code), or ("not_run", why) when Node is missing, fails (a trap included) or outlasts `timeout`
-    seconds. Not running is a fact about this host, never about the input."""
+    its negative code), or ("not_run", why) when Node is missing, does not start, fails (a trap included), outlasts
+    `timeout` seconds or replies other than the driver does. Not running is a fact about this host, never about the
+    input. Node is the binary `node` on PATH, run with an empty environment: inherited startup code (NODE_OPTIONS
+    --require, NODE_PATH) would run in the engine beside the module, which its hash does not cover (Codex review of
+    PR #24, P24-F1)."""
     node = shutil.which("node")
     if node is None:
         return "not_run", "node is not on PATH"
     try:
-        got = subprocess.run([node, "-e", KERNEL_DRIVER], capture_output=True, timeout=timeout,
+        got = subprocess.run([node, "-e", KERNEL_DRIVER], capture_output=True, timeout=timeout, env={},
                              input=(module.hex() + "\n" + kernel_input.hex() + "\n").encode())
     except subprocess.TimeoutExpired:
         return "not_run", f"the run outlasted {timeout:g} s"
-    line = got.stdout.decode("ascii", "replace").strip()
-    if got.returncode != 0 or not line:
+    except OSError as e:
+        return "not_run", f"node did not start: {e}"[:200]
+    if got.returncode != 0:
         why = (got.stderr.decode("utf-8", "replace").strip().splitlines() or ["no output"])[-1]
         return "not_run", f"node failed: {why[:200]}"
+    if not KERNEL_REPLY.fullmatch(got.stdout):
+        return "not_run", f"node replied other than the driver does: {got.stdout[:80]!r}"
+    line = got.stdout[:-1].decode("ascii")
     if line.startswith("E"):
         return "refusal", int(line[1:])
     return "output", bytes.fromhex(line)
@@ -812,16 +825,7 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
         result["data_ok"] = True
         if rules["status"] != "known":
             return result
-        order = kernel_input_order(kernel_input, rules["encoding"])
-        n = len(order)
-        if len(output) < 4 + n:
-            raise VarsError("bundle output is shorter than its cell count")
-        result["scope"] = order[int.from_bytes(output[:4], "little")].hex()
-        result["explain"]["scope_epoch"] = result["scope"]
-        result["statuses"] = {
-            cid.hex(): {name: bool(output[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
-            for i, cid in enumerate(order)
-        }
+        # the reader's own run first, on the raw bytes, before anything of the output is read
         kernel = {"status": "witnessed", "module": None, "reason": "no module of these rules was supplied"}
         module = {sha256(m): m for m in kernels}.get(cell.slots[1])
         if module is not None:
@@ -837,6 +841,19 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
             else:
                 kernel["reason"] = got
         result["kernel"], result["explain"]["kernel"] = kernel["status"], kernel
+        order = kernel_input_order(kernel_input, rules["encoding"])
+        n = len(order)
+        if len(output) < 4 + n:
+            raise VarsError("bundle output is shorter than its cell count")
+        si = int.from_bytes(output[:4], "little")
+        if si >= n:
+            raise VarsError("bundle output names a scope outside its input")
+        result["scope"] = order[si].hex()
+        result["explain"]["scope_epoch"] = result["scope"]
+        result["statuses"] = {
+            cid.hex(): {name: bool(output[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
+            for i, cid in enumerate(order)
+        }
     return result
 
 

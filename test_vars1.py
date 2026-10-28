@@ -5702,6 +5702,58 @@ class TestVars1Conformance(unittest.TestCase):
         code, k = offline(no_node, "--kernel", "lens2.wasm")
         self.assertEqual((code, k["status"], k["reason"]), (1, "witnessed", "node is not on PATH"))
 
+        # Codex review of PR #24. P24-F1: startup code the reader's environment hands Node (NODE_OPTIONS --require)
+        # would run beside the module; a preload that prints the bundle's wrong output must not verify it
+        wrong = self._rewitnessed(bundle["two"], output=bytes(out))
+        (fresh / "wrong.json").write_text(json.dumps(wrong["projection"]))
+        (fresh / "preload.cjs").write_text("const w = process.stdout.write.bind(process.stdout);\n"
+                                           f"process.stdout.write = () => w('{bytes(out).hex()}\\n');\n")
+        got = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", "verify-projection", "wrong.json",
+                              "--require", self.pk1.hex(), "--kernel", "lens2.wasm"], cwd=fresh, capture_output=True,
+                             text=True, env={"PATH": node_dir, "NODE_OPTIONS": f"--require={fresh / 'preload.cjs'}"})
+        self.assertEqual(got.returncode, 2, f"a preload decided the run: {got.stdout[-300:]}")
+        self.assertIn("another output than the bundle's", got.stderr)
+
+        def refused(call, why: str, what: str) -> None:
+            try:
+                call()
+            except V.VarsError as e:
+                self.assertIn(why, str(e), what)
+            except Exception as e:  # noqa: BLE001
+                self.fail(f"{what}: crashed with {type(e).__name__}: {e}")
+            else:
+                self.fail(f"{what}: read as if well formed")
+
+        # P24-F2: an output naming a scope past its input is refused, not an IndexError; with --kernel the run
+        # compares the raw bytes first; Pass 3 bounds the index too
+        bad = bytearray.fromhex(bundle["two"]["projection"]["output"])
+        bad[:4] = b"\xff\xff\xff\xff"
+        badb = self._rewitnessed(bundle["two"], output=bytes(bad))
+        refused(lambda: V.verify_attestation(badb), "names a scope outside its input", "without --kernel")
+        refused(lambda: V.verify_attestation(badb, kernels=[V.KERNEL2_ATOM]), "another output than the bundle's",
+                "with --kernel")
+        ki = V.parse_kernel_input(bytes.fromhex(bundle["two"]["projection"]["input"]), "v2")
+        di = next(i for i, c in enumerate(ki["cells"]) if c["id"] == two["d"].id)
+        refused(lambda: V.pass3_at_tip(ki, bytes(bad), di), "names a scope outside its input", "Pass 3")
+
+        # P24-F3: a reply other than the driver's, or a node that does not start, is not_run, never an exception
+        fakebin = fresh / "fakebin"
+        fakebin.mkdir()
+        fake = fakebin / "node"
+        for script, reply, want in ((True, b"a startup note\n", "not_run"), (True, b"E-x\n", "not_run"),
+                                    (True, b"abc\n", "not_run"), (True, b"00ff\n00ff\n", "not_run"),
+                                    (True, b"E-6", "not_run"), (True, b"E-6\n", "refusal"), (True, b"00ff\n", "output"),
+                                    (False, b"", "not_run")):
+            (fakebin / "reply").write_bytes(reply)
+            fake.write_text(f"#!/bin/sh\nexec /bin/cat {fakebin / 'reply'}\n" if script else "not a program\n")
+            fake.chmod(0o755)
+            with unittest.mock.patch.dict(os.environ, {"PATH": str(fakebin)}):
+                try:
+                    how, _ = V._MV.run_rules(V.KERNEL2_ATOM, b"\x00")
+                except Exception as e:  # noqa: BLE001
+                    self.fail(f"a reply {reply!r} raised {type(e).__name__}: {e}")
+            self.assertEqual(how, want, reply)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

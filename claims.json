@@ -1630,7 +1630,9 @@
     "m-offline-ref-check",
     "m-offline-host-check",
     "m-offline-host-encoding",
-    "m-offline-v2-encoding"
+    "m-offline-v2-encoding",
+    "m-scope-index",
+    "m-pass3-scope-index"
    ]
   },
   {
@@ -1645,7 +1647,10 @@
     "m-kernel-output",
     "m-kernel-identity",
     "m-kernel-verified",
-    "m-kernel-cli"
+    "m-kernel-cli",
+    "m-kernel-env",
+    "m-kernel-reply",
+    "m-kernel-oserror"
    ]
   },
   {

@@ -501,6 +501,9 @@ rules give the input is otherwise the witnesses' word (`kernel: "witnessed"`): a
 rules module (`--kernel FILE`, used only if its SHA-256 is the projection's rules), which is then run on the input;
 the same output is `kernel: "verified_here"`, a refusal or another output refuses the bundle, a run that cannot be
 made leaves `witnessed` with its reason, and `verify-*` with `--kernel` exits 0 only when the output was checked.
+Node is the `node` on PATH, run with an empty environment, so no startup code the reader's environment names
+(`NODE_OPTIONS`) runs beside the module, whose hash covers only its own bytes; the run compares the raw output before
+any of it is read, and an output naming a scope outside its input is refused.
 
 Every result carries `explain`, derived from the bundle by the same computation as the verdict fields; it is a
 reading aid, not authority, and a doubting reader recomputes. For a projection: the rules identity and its status,

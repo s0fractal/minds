@@ -123,7 +123,7 @@ the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V
 | A commit is admitted | `vars1.py` gate, the kernel under node | Python, node and its wasm engine, git's object store, SHA-256, Ed25519 (`minds_verify.py`'s own implementation, 34 vectors), `sigma_resume` (bytes pinned at import) |
 | A status bit (Passes 1–2) | `kernel/lens.wasm` | As above; the kernel's equality with the Lean model is differential, not proved |
 | Settled (Pass 3) | `vars1.py` | Python replay of Book I (transcribed by hand from the abstract machine) |
-| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type); with `--kernel`, Node and its wasm engine compute the output here, and the witnesses vouch only that the input is the chain's at `tip` |
+| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type); with `--kernel`, the `node` on PATH (run with an empty environment) and its wasm engine compute the output here, and the witnesses still vouch that the input faithfully encodes the chain at `tip`: its cells, seals and parsed facts (Codex review of PR #24) |
 | A release is Settled | every member's `verify-release` | Each member's host: its interpreters, its checkout, and that it ran the checks it signs |
 
 ## What would follow (what-if)
