@@ -1915,6 +1915,23 @@
     "m-runner-assertion",
     "m-runner-import-check"
    ]
+  },
+  {
+   "id": "assurance.f42-oracle",
+   "source": "ASSURANCE.md",
+   "quote": "v2's typed references, descriptor → mask → reference positions, as the host reads them",
+   "status": "differential",
+   "witnesses": [
+    "test:test_89_the_host_reads_typed_references_as_the_f42_oracle_does",
+    "ci:F42 vectors are the oracle's"
+   ],
+   "mutants": [
+    "m-f42-mask-bit",
+    "m-f42-mask-type",
+    "m-f42-refs-offset",
+    "m-f42-refs-payload",
+    "m-f42-refs-known"
+   ]
   }
  ],
  "informative": [

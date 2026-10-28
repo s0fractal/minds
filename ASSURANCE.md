@@ -52,6 +52,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
 | A custom schema's `cell` mask is parsed correctly from its descriptors | Assumed: host parsing in the trusted base (RULES-V2.md F42) | — |
 | The spec's text changes in the same decision | Assumed: nothing checks the text | — |
+| v2's typed references, descriptor → mask → reference positions, as the host reads them (`schema_cell_mask`, `cell_refs`), equal the answers of an oracle that does not call the host's parser (`proofs/Vars1/Mask.lean`, compiled as `vars1mask`), on 310 cases of the domain schema admission accepts (F42): `proofs/vectors/f42.json`, which CI regenerates with the oracle and byte-compares | Differential (host against the oracle's vectors), with mutants of the mask and of the reading; the kernel still takes a custom schema's mask from the host, so the host's parser stays in the trusted base, now checked against the oracle on the corpus rather than proved | `test_vars1.py` 89; `tools/f42_vectors.py`; `proofs/Vars1/Mask.lean` |
 
 ## Replay (§5)
 

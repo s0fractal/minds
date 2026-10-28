@@ -1912,5 +1912,45 @@
   "kills": [
    "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
   ]
+ },
+ "m-f42-mask-bit": {
+  "find": "            mask |= 1 << s",
+  "replace": "            mask |= 1 << (s + 1)",
+  "file": "vars1.py",
+  "kills": [
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
+ },
+ "m-f42-mask-type": {
+  "find": "raw[4:].decode(\"utf-8\", \"replace\").partition(\":\")[2] == \"cell\"",
+  "replace": "raw[4:].decode(\"utf-8\", \"replace\").partition(\":\")[0] == \"cell\"",
+  "file": "vars1.py",
+  "kills": [
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
+ },
+ "m-f42-refs-offset": {
+  "find": "    typed += [1 + s for s in range(len(c.slots)) if mask >> s & 1 and c.slots[s] != H_EMPTY]",
+  "replace": "    typed += [s for s in range(len(c.slots)) if mask >> s & 1 and c.slots[s] != H_EMPTY]",
+  "file": "vars1.py",
+  "kills": [
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
+ },
+ "m-f42-refs-payload": {
+  "find": "    typed = [0] if c.h_schema in (H_SCHEMA[\"verdict\"], H_SCHEMA[\"acceptance\"]) else []",
+  "replace": "    typed = []",
+  "file": "vars1.py",
+  "kills": [
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
+ },
+ "m-f42-refs-known": {
+  "find": "    return [(p, vals[p]) for p in typed if vals[p] in cells]",
+  "replace": "    return [(p, vals[p]) for p in typed]",
+  "file": "vars1.py",
+  "kills": [
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
  }
 }

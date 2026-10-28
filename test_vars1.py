@@ -5373,6 +5373,40 @@ class TestVars1Conformance(unittest.TestCase):
                          [outcome(V.kernel_runner(V.H_LENS_KERNEL_V2), ki) for ki in inputs],
                          "a v2 build answers what the pinned v2 answers on these chains")
 
+    def test_89_the_host_reads_typed_references_as_the_f42_oracle_does(self) -> None:
+        """F42 (RULES-V2.md §8): v2's typed references, descriptor -> mask -> reference positions, as the host reads
+        them (`schema_cell_mask`, `cell_refs`), equal the answers of an oracle that does not call the host's parser:
+        `proofs/Vars1/Mask.lean`, whose answers are `proofs/vectors/f42.json` (CI regenerates them with the oracle). The
+        standard verdict and acceptance schemas name the descriptors the vectors give them."""
+        doc = json.loads((ROOT_DIR / "proofs" / "vectors" / "f42.json").read_text())
+        self.assertEqual(doc["format"], "minds.f42-vectors@1")
+        std = {k: V.STD_SCHEMAS[k] for k in ("verdict", "acceptance")}
+        for case in doc["refs"]:
+            if case["schema"] != "custom":
+                self.assertEqual([V.parse_utf8(V.STD_SCHEMA_ATOMS[h]) for h in std[case["schema"]].slots],
+                                 case["descriptors"], f"the standard {case['schema']} schema")
+
+        def schema(descriptors: list[str]) -> tuple[V.Cell, dict[bytes, bytes]]:
+            a: dict[bytes, bytes] = {}
+            return V.Cell(V.H_META_SCHEMA, self._put_atom(a, V.atom_utf8("core/f42/schema")), V.H_EMPTY,
+                          slots=tuple(self._put_atom(a, V.atom_utf8(d)) for d in descriptors)), a
+
+        for case in doc["masks"]:
+            sc, a = schema(case["descriptors"])
+            self.assertEqual(V.schema_cell_mask(sc, a), case["mask"], case["descriptors"])
+        for i, case in enumerate(doc["refs"]):
+            if case["schema"] == "custom":
+                sc, a = schema(case["descriptors"])
+            else:
+                sc, a = std[case["schema"]], dict(V.STD_SCHEMA_ATOMS)
+            k = self._axiom(a, "core/known", "a cell the chain has")
+            other = lambda j: V.sha256(b"no cell %d %d" % (i, j))  # noqa: E731
+            slots = tuple(V.H_EMPTY if f == 0 else k.id if f == 1 else other(j) for j, f in enumerate(case["slots"]))
+            payload = k.id if case["payload_cell"] else self._put_atom(a, V.atom_utf8("a payload"))
+            inst = V.Cell(sc.id, self._put_atom(a, V.atom_utf8(f"core/i{i}")), payload, slots=slots)
+            got = [pos for pos, _ in V.cell_refs(inst, {sc.id: sc, k.id: k}, a, False)]
+            self.assertEqual(got, case["positions"], case)
+
     def test_83_a_kernel_build_answers_what_the_rules_answer(self) -> None:
         """The rules kernel decides the fold and Passes 1–2 (§4.3): a build of it (the one in kernel/, or, with
         MINDS_KERNEL_WASM, a mutant built by tools/run_mutants.py) gives every status the twin gives on a corpus of
