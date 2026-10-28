@@ -40,6 +40,7 @@ from minds_verify import (  # noqa: E402
     MAX_INT, MAX_STATE_BYTES, MAX_UTF8_BYTES, MAX_LOSS_BYTES, MAX_HVEC_LEN, MAX_KIN1_BYTES,
     H_I, H_K, H_S, H_FALSE, H_INVALID, H_EMPTY, H_META_SCHEMA, H_ZERO, H_NORMAL_FORM, H_PAUSED, H_BLOCKED_REF,
     H_CYCLE_PROVEN, H_REPLAYED, H_ATTESTED, H_VERDICT_INVALID, H_NOT_ASSESSED, H_PROVISIONAL, H_OWNER, H_LENS_KERNEL,
+    H_LENS_KERNEL_V2, H_LENS_KERNEL_V1B, KNOWN_RULES, KERNEL2_MAGIC,
     VarsError, atom_u64, parse_u64, atom_utf8, parse_utf8, validate_utf8_atom, atom_hvec, parse_hvec, atom_pol1,
     parse_pol1, Cell, Seal, SCHEMA_SPECS, build_standard_schemas, STD_SCHEMAS, STD_SCHEMA_ATOMS, H_SCHEMA,
     KERNEL_BITS, BUNDLE_FORMAT, ATTESTATION_FORMAT, parse_kernel_input, pass3_at_tip, kernel_input_order,
@@ -75,13 +76,11 @@ if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
 # default, and a scope moves to v2 only by a rotation admitted with a rules-change decision (§4.3). The host keeps
 # both modules, so every past tip stays recomputable under the rules of its epoch.
 KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
-H_LENS_KERNEL_V2 = bytes.fromhex("1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e")
 KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
 if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
     raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
 # v1 with the commit count bounded by the input's length (`kernel/`, built with `--features commit-bound`): the first
 # resource hardening (AMENDMENTS.md). Dormant like v2: a scope reaches it only by a rules change (§4.3).
-H_LENS_KERNEL_V1B = bytes.fromhex("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd")
 KERNEL1B_ATOM = (KERNEL_DIR / "lens1b.wasm").read_bytes()
 if sha256(KERNEL1B_ATOM) != H_LENS_KERNEL_V1B:
     raise RuntimeError("kernel/lens1b.wasm does not hash to H_LENS_KERNEL_V1B")
@@ -107,7 +106,17 @@ RULES: Dict[bytes, Rules] = {
 RULES_MODULES: Dict[bytes, Path] = {h: r.path for h, r in RULES.items()}
 RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM,
                                    H_LENS_KERNEL_V1B: KERNEL1B_ATOM}
-KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
+
+
+def check_offline_reads(rules: Dict[bytes, Rules]) -> None:
+    """Every rules identity of `rules` is one the offline verifier reads (`KNOWN_RULES`), in the same encoding: rules
+    the gate could admit but no client could check are refused when this module loads, before any chain is read."""
+    unread = sorted(h.hex()[:12] for h, r in rules.items() if KNOWN_RULES.get(h) != r.encoding)
+    if unread:
+        raise RuntimeError(f"the offline verifier does not read the rules {unread} in the encoding this host does")
+
+
+check_offline_reads(RULES)
 
 INTRINSIC_HASHES: Set[bytes] = {
     H_I, H_K, H_S, H_FALSE, H_INVALID,

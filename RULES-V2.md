@@ -96,10 +96,12 @@ S, S × (target, ctx, key, commit)
 - **Refusals** add `−6` (reference list or schema mask differs) and `−25` (rotation back to v1) to v1's codes.
 
 The host's twin, the gate's topological order and the attestation client (§4.4: references "of a newer cell of
-its origin that references it") read references the same way: `cell_refs` in `vars1.py`, and a client parsing a
-v2 input would read the explicit list. On main the offline verifier (`verify/minds_verify.py`) interprets v1
-only: a v2 projection bundle is reported `rules_status: "unsupported"`, its seals and digests checked, nothing
-accepted on it.
+its origin that references it") read references the same way: `cell_refs` in `vars1.py`, and the offline verifier
+(`verify/minds_verify.py`, since roadmap O4c) the explicit list of a v2 input, checking that each entry names an older
+cell whose id is the value at its position. Whether the list is the typed one is the kernel's check (`−6`), which
+the projection's witnesses vouch for; the verifier does not read masks or epochs. `test_vars1.py` 90 builds a chain
+where the two readings of a `hash` decide a foreign endorsement: under v1 and v2 the lens, `vars1.py` and the
+standalone file agree.
 
 ## 4. Per-epoch rules dispatch
 
@@ -146,7 +148,8 @@ Lost or changed:
 
 - **One-way.** After rotation to v2 a chain cannot be evaluated by v1 rules, and cannot rotate back.
 - **A v2 tip is not a v1 tip.** Its input digest is over the v2 encoding, so a projection at a v2 tip is only
-  checkable by a host that implements v2. A v1-only client refuses it as rules it does not implement.
+  checkable by a reader of v2: the offline verifier on main is one; an earlier copy of it, which reads v1 only,
+  reports it unsupported.
 - **v1 references in v2-born cells.** A v2-born cell that relied on an untyped slot or custom payload to carry
   hereditary acceptance gets none; it must use a `cell` field or an edge. (No standard schema does this.)
 - **The interim veto remains on v1-born values.** A digest written in a v1 epoch still blocks a later cell with
@@ -174,7 +177,9 @@ Lean statement is about v2. Rotations to v2 in the generator would now need a ru
 Adopting v2 for `refs/vars/heads/minds` needs: the owner's explicit go-ahead; a rotation whose new scope names
 `H_LENS_KERNEL_V2`, sealed by the admission quorum, with a rules-change decision (VARS-1-SPEC.md §4.3) whose
 counterexample chain is published under `refs/vars/heads/<its scope>`; `kernel2/lens2.wasm` stored as an atom; and
-every member's verifier updated to a host that implements v2 first.
+every member's verifier updated to a host that implements v2 first. The offline verifier reads v2 since roadmap O4c,
+and the host refuses to load rules it does not read; the readers an activation leaves behind (the Lean model, Kani
+and the fuzzer) are those of ASSURANCE.md, "Who reads which rules".
 
 ## 8. Known gaps (Monday's review of 9f69bfd, 2026-10-20)
 

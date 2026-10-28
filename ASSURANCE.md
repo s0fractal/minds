@@ -82,7 +82,7 @@ mutation tests. **Assumed** means nothing here checks it.
 
 | Claim | Evidence | Where |
 |---|---|---|
-| An offline client's Pass 3 equals the lens's Settled | Differential (I11) | property suite |
+| An offline client's Pass 3 equals the lens's Settled | Differential (I11) on v1 chains; under v1, v1b and v2, tested where the v1 and v2 readings of a `hash` decide a foreign endorsement | property suite; `test_vars1.py` 90 |
 | A bundle cannot hide a verdict or seal its projection's tip holds | Tested | `test_vars1.py` 17, 21 |
 | `verify-*` accepts only against keys the reader pinned | Tested, with mutants | `test_vars1.py` 39 |
 | Every release on `refs/vars/heads/minds` was checked by both members in fresh worktrees | Recorded on the chain; each member's checks are its own claim | `tools/minds_chain.py` |
@@ -102,18 +102,19 @@ mutation tests. **Assumed** means nothing here checks it.
 ## Who reads which rules
 
 What each reader of a chain interprets, at the commit a release names (`profile` lists the modules carried and the
-one the offline verifier reads, from their own bytes). "Refuses" means a controlled refusal or an `unsupported`
+ones the offline verifier reads, from their own bytes). "Refuses" means a controlled refusal or an `unsupported`
 result, never a reading.
 
 | Reader | v1 (`H_LENS_KERNEL`) | v1b (`H_LENS_KERNEL_V1B`) | v2 (`H_LENS_KERNEL_V2`) |
 |---|---|---|---|
 | The gate and lens (`vars1.py`) | Runs it; Python twin | Runs it; Python twin | Runs it; Python twin reading the typed references |
-| The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations | Unsupported: digests checked, nothing read or accepted | Unsupported, likewise |
+| The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations | Reads them, in v1's encoding (v1's output; one more refusal) | Reads them, in the v2 encoding: references from the input's own list, each checked against its cell |
 | The Lean model (`vars1exec`, `vars1fold`) | Compared with the kernel (I9, I10) | Not compared (v1 with one more refusal) | Not modelled on main |
 | Kani and the fuzzer | Bounded / fuzzed | Not run | Not run |
 
-So a chain moved to v1b or v2 keeps its gate and loses its offline readers until the verifier learns those rules; an
-activation has to name which readers it leaves behind (RULES-V2.md F42 is a further condition for v2).
+So a chain moved to v1b or v2 keeps its gate and its offline verifier, which reads every rules identity the host
+implements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). It leaves behind
+the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V2.md §7).
 
 ## What each result trusts
 
@@ -122,7 +123,7 @@ activation has to name which readers it leaves behind (RULES-V2.md F42 is a furt
 | A commit is admitted | `vars1.py` gate, the kernel under node | Python, node and its wasm engine, git's object store, SHA-256, Ed25519 (`minds_verify.py`'s own implementation, 34 vectors), `sigma_resume` (bytes pinned at import) |
 | A status bit (Passes 1–2) | `kernel/lens.wasm` | As above; the kernel's equality with the Lean model is differential, not proved |
 | Settled (Pass 3) | `vars1.py` | Python replay of Book I (transcribed by hand from the abstract machine) |
-| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute |
+| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type) |
 | A release is Settled | every member's `verify-release` | Each member's host: its interpreters, its checkout, and that it ran the checks it signs |
 
 ## What would follow (what-if)

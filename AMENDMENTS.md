@@ -157,8 +157,8 @@ already replays what each class needs. A node can always recompute the manifest 
   property of degenerate chains, and the price of the bound.
 - With v1b, the kernel's time is O(L·(N+S)) for an input of L bytes, N cells and S seals: quadratic in L, no longer
   unbounded.
-- The offline verifier (`verify/minds_verify.py`) interprets only v1; a v1b projection is reported unsupported, as a
-  v2 one is.
+- The offline verifier (`verify/minds_verify.py`) reads a v1b projection as a v1 one (v1's encoding and output) since
+  roadmap O4c; before it, a v1b projection was reported unsupported, as a v2 one was.
 
 To activate it on `refs/vars/heads/minds` (the members' decision, not done here):
 

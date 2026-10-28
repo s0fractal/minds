@@ -1601,8 +1601,8 @@
  },
  "m-rules-hash": {
   "file": "verify/minds_verify.py",
-  "find": "H_LENS_KERNEL = bytes.fromhex(\"874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb\")",
-  "replace": "H_LENS_KERNEL = bytes.fromhex(\"974e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb\")",
+  "find": "874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb v1 H_LENS_KERNEL\n",
+  "replace": "974e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb v1 H_LENS_KERNEL\n",
   "refused_at_import": [
    "vars1",
    "kernel/lens.wasm does not hash to H_LENS_KERNEL"
@@ -1951,6 +1951,80 @@
   "file": "vars1.py",
   "kills": [
    "test_89_the_host_reads_typed_references_as_the_f42_oracle_does"
+  ]
+ },
+ "m-offline-v2-values": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not v2:\n        pos = {c[\"id\"]: i for i, c in enumerate(cells)}",
+  "replace": "    if True:\n        pos = {c[\"id\"]: i for i, c in enumerate(cells)}",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-offline-v1-refs": {
+  "file": "verify/minds_verify.py",
+  "find": "            c[\"refs\"] = [pos[x] for x in (c[\"payload\"], *c[\"slots\"]) if x in pos]",
+  "replace": "            c[\"refs\"] = []",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-offline-ref-check": {
+  "file": "verify/minds_verify.py",
+  "find": "                raise VarsError(\"a v2 kernel input lists a reference its cell does not hold\")",
+  "replace": "                pass",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-offline-v2-encoding": {
+  "file": "verify/minds_verify.py",
+  "find": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e v2 H_LENS_KERNEL_V2\n",
+  "replace": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e v1 H_LENS_KERNEL_V2\n",
+  "refused_at_import": [
+   "vars1",
+   "the offline verifier does not read the rules"
+  ],
+  "kills": []
+ },
+ "m-offline-host-check": {
+  "file": "vars1.py",
+  "find": "    if unread:\n        raise RuntimeError(f\"the offline verifier does not read",
+  "replace": "    if False:\n        raise RuntimeError(f\"the offline verifier does not read",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-offline-host-encoding": {
+  "file": "vars1.py",
+  "find": "if KNOWN_RULES.get(h) != r.encoding)",
+  "replace": "if h not in KNOWN_RULES)",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-profile-table": {
+  "file": "tools/minds_chain.py",
+  "find": "offline = {name: h for name, h in carried.items() if h in known}",
+  "replace": "offline = {name: h for name, h in carried.items()}",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
+  ]
+ },
+ "m-offline-v2-refs": {
+  "file": "verify/minds_verify.py",
+  "find": "            cell[\"refs\"] = [x for _, x in listed]",
+  "replace": "            cell[\"refs\"] = []",
+  "kills": [
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements"
+  ]
+ },
+ "m-profile-retired": {
+  "file": "tools/minds_chain.py",
+  "find": "(\"kernel/lens1c.wasm\", \"v1c\"),\n               (\"kernel2/lens2.wasm\", \"v2\"))",
+  "replace": "\n               (\"kernel2/lens2.wasm\", \"v2\"))",
+  "kills": [
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
  }
 }

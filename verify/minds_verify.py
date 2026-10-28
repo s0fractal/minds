@@ -191,9 +191,24 @@ H_NOT_ASSESSED = sha256(b"UTF8NOT_ASSESSED")
 H_PROVISIONAL = sha256(b"UTF8provisional")
 H_OWNER = sha256(b"UTF8owner")
 
-# The one rules identity this verifier interprets: the compiled rules kernel `kernel/lens.wasm` (§4.3). It is only a
-# name here; nothing is executed. A projection that names other rules is reported as unsupported, never read.
-H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
+# The rules identities this verifier interprets, each with the kernel input encoding it reads (§4.3, RULES-V2.md §3):
+# `kernel/lens.wasm` (v1); `kernel/` built with `commit-bound` (v1b: v1's encoding and output, one more refusal); and
+# `kernel2/lens2.wasm` (v2: typed references, listed in the input). They are only names here; nothing is executed. A
+# projection that names other rules is reported as unsupported, never read. `vars1.py` refuses to load unless every
+# rules identity it implements is one of these, with its encoding; a release profile (`tools/minds_chain.py`) reads
+# this table from the file's bytes, so it stays one row per line: id, encoding, name.
+KNOWN_RULES_TABLE = """
+874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb v1 H_LENS_KERNEL
+2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd v1 H_LENS_KERNEL_V1B
+1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e v2 H_LENS_KERNEL_V2
+"""
+_RULES_ROWS = [row.split(" ") for row in KNOWN_RULES_TABLE.strip("\n").split("\n")]
+KNOWN_RULES: Dict[bytes, str] = {bytes.fromhex(h): enc for h, enc, _ in _RULES_ROWS}
+_RULES_BY_NAME = {name: bytes.fromhex(h) for h, _, name in _RULES_ROWS}
+H_LENS_KERNEL = _RULES_BY_NAME["H_LENS_KERNEL"]
+H_LENS_KERNEL_V1B = _RULES_BY_NAME["H_LENS_KERNEL_V1B"]
+H_LENS_KERNEL_V2 = _RULES_BY_NAME["H_LENS_KERNEL_V2"]
+KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 
 MAX_KIN1_BYTES = 1 << 20  # a rules input carried as an atom (KIN1, §1.1): the counterexample of a rules change
@@ -492,9 +507,12 @@ KERNEL_BITS = ("accepted", "invalidated", "effective", "retired", "superseded", 
 BUNDLE_FORMAT = "vars-1.projection-bundle@1"
 
 
-def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
-    """A kernel input (§4.3) as data: POL1 rosters as key indices, cells in order with their slots and edges as cell
-    indices, and seals as (target, context, key index, commit). Key bytes are not in the input, only their order."""
+def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, object]:
+    """A kernel input (§4.3) in `encoding` as data: POL1 rosters as key indices, cells in order with their slots,
+    edges and references as cell indices, and seals as (target, context, key index, commit). Key bytes are not in the
+    input, only their order. A cell's `refs` are the cells its payload and slots name as the rules read them: in v1
+    every payload or slot equal to a cell id; in v2 the input's own list (RULES-V2.md §3), each entry checked to name
+    an older cell whose id is the value at its position."""
     def u32(off: int) -> int:
         if off + 4 > len(kernel_input):
             raise VarsError("kernel input truncated")
@@ -505,8 +523,14 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
             raise VarsError("kernel input truncated")
         return kernel_input[off:off + n]
 
-    n, p = u32(4), u32(12)
-    off = 16
+    if encoding not in ("v1", "v2"):
+        raise VarsError(f"no kernel input encoding {encoding!r}")
+    v2 = encoding == "v2"
+    if v2 and u32(0) != KERNEL2_MAGIC:
+        raise VarsError("the kernel input is not in the v2 encoding of the rules it names")
+    base = 4 if v2 else 0
+    n, p = u32(base + 4), u32(base + 12)
+    off = base + 16
     pols: Dict[bytes, Tuple[int, List[int]]] = {}
     for _ in range(p):
         k = u32(off + 36)
@@ -520,19 +544,33 @@ def parse_kernel_input(kernel_input: bytes) -> Dict[str, object]:
         off += 12
         slots = [take(off + 32 * j, 32) for j in range(k)]
         off += 32 * k
+        if v2:
+            off += 8  # the schema mask (mask_lo, mask_hi): the kernel checks it; Pass 3 does not read it
         edges = []
         for _ in range(5):
             m = u32(off)
             edges.append([u32(off + 4 + 4 * j) for j in range(m)])
             off += 4 + 4 * m
-        cells.append({"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
-                      "relies": edges[0], "attests": edges[1], "edges": edges})
+        cell = {"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
+                "relies": edges[0], "attests": edges[1], "edges": edges}
+        if v2:
+            vals, i = (payload, *slots), len(cells)
+            listed = [(u32(off + 4 + 8 * j), u32(off + 8 + 8 * j)) for j in range(u32(off))]
+            off += 4 + 8 * len(listed)
+            if any(not (q < len(vals) and x < i and vals[q] == cells[x]["id"]) for q, x in listed):
+                raise VarsError("a v2 kernel input lists a reference its cell does not hold")
+            cell["refs"] = [x for _, x in listed]
+        cells.append(cell)
+    if not v2:
+        pos = {c["id"]: i for i, c in enumerate(cells)}
+        for c in cells:
+            c["refs"] = [pos[x] for x in (c["payload"], *c["slots"]) if x in pos]
     seals = []
     for j in range(u32(off)):
         seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
     if off + 4 + 16 * len(seals) != len(kernel_input):
         raise VarsError("kernel input has trailing bytes")
-    return {"pols": pols, "cells": cells, "seals": seals}
+    return {"pols": pols, "cells": cells, "seals": seals, "encoding": encoding}
 
 
 def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
@@ -542,11 +580,12 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
     and the kernel's output alone: whether it is Settled, the key indices that endorse it, the threshold, and the
     policy hash. Endorsers are counted as the lens counts them: every admitted seal on a local verdict; on a
     foreign verdict, seals under a scope of its origin that a live acceptance (of it or of a newer cell of its
-    origin that references it) names, by that scope's admission keys. A contradicting INVALID verdict of the same
-    verifier, endorsed by a policy key, blocks; `blocked_after` adds the verifier ids that such INVALID verdicts
-    recorded after the tip block. With `trace`, it is filled with what was counted: `counted` maps each counted
-    verdict's index to the key indices that endorse it, `blocked_at_tip` holds the verifier ids blocked by INVALID
-    verdicts at the tip, and `blocked_after` those added from after it."""
+    origin that references it, by an edge or by a reference the input's rules read) names, by that scope's
+    admission keys. A contradicting INVALID verdict of the same verifier, endorsed by a policy key, blocks;
+    `blocked_after` adds the verifier ids that such INVALID verdicts recorded after the tip block. With `trace`, it
+    is filled with what was counted: `counted` maps each counted verdict's index to the key indices that endorse it,
+    `blocked_at_tip` holds the verifier ids blocked by INVALID verdicts at the tip, and `blocked_after` those added
+    from after it."""
     kc, pols, seals = ki["cells"], ki["pols"], ki["seals"]
     n = len(kc)
     if len(output) < 4 + 2 * n:
@@ -557,7 +596,7 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
     pos = {c["id"]: i for i, c in enumerate(kc)}
     children: List[Set[int]] = [set() for _ in range(n)]
     for u, c in enumerate(kc):
-        refs = {v for e in c["edges"] for v in e} | {pos[x] for x in (c["payload"], *c["slots"]) if x in pos}
+        refs = {v for e in c["edges"] for v in e} | set(c["refs"])
         for v in refs - {u}:
             children[v].add(u)
     # live accepted scopes of foreign cells, newest first (children are newer)
@@ -621,19 +660,19 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
     return live[di] and len(end) >= thr, end, thr, p
 
 
-def kernel_input_order(kernel_input: bytes) -> List[bytes]:
+def kernel_input_order(kernel_input: bytes, encoding: str = "v1") -> List[bytes]:
     """The cell ids of a kernel input (§4.3), in its order; the kernel's output indexes cells by this order."""
-    return [c["id"] for c in parse_kernel_input(kernel_input)["cells"]]
+    return [c["id"] for c in parse_kernel_input(kernel_input, encoding)["cells"]]
 
-RULES_UNSUPPORTED = ("this verifier interprets only H_LENS_KERNEL: the digests are checked, but the kernel input and "
-                     "output are not read as statuses, scope or Pass 3")
+RULES_UNSUPPORTED = ("this verifier interprets only the rules of KNOWN_RULES (v1, v1b, v2): the digests are checked, "
+                     "but the kernel input and output are not read as statuses, scope or Pass 3")
 
 
 def rules_status(rules: bytes) -> Dict[str, object]:
-    """Whether a rules identity is one this verifier interprets: only H_LENS_KERNEL is `known`."""
-    if rules == H_LENS_KERNEL:
-        return {"id": rules.hex(), "status": "known", "reason": None}
-    return {"id": rules.hex(), "status": "unsupported", "reason": RULES_UNSUPPORTED}
+    """Whether a rules identity is one this verifier interprets (`KNOWN_RULES`), and the input encoding it reads."""
+    if rules in KNOWN_RULES:
+        return {"id": rules.hex(), "status": "known", "encoding": KNOWN_RULES[rules], "reason": None}
+    return {"id": rules.hex(), "status": "unsupported", "encoding": None, "reason": RULES_UNSUPPORTED}
 
 
 def _bundle_atoms(bundle: Dict[str, object]) -> Dict[bytes, bytes]:
@@ -650,9 +689,10 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
 
     Every seal must be a valid Ed25519 seal on this projection; `witnessed` says whether distinct keys of its
     `witness_policy` meet the threshold. With `input` and `output`, both must hash to the projection's digests; if the
-    projection names H_LENS_KERNEL, the statuses are read by cell id and `scope` is the scope cell at the tip (the scope
-    epoch). A projection naming other rules has `rules_status: "unsupported"` and no statuses or scope: its data is not
-    interpreted as known. Any inconsistency raises VarsError; too few witnesses is `witnessed: false`.
+    projection names rules of `KNOWN_RULES`, the input is read in their encoding (an input in another is refused), the
+    statuses are read by cell id and `scope` is the scope cell at the tip (the scope epoch). A projection naming other
+    rules has `rules_status: "unsupported"` and no statuses or scope: its data is not interpreted as known. Any
+    inconsistency raises VarsError; too few witnesses is `witnessed: false`.
     This establishes what the named witnesses vouch for at `tip` — not freshness after it, and not Pass 3.
 
     The witness policy is the projection's own: whoever made it chose it. A reader trusts a projection only for keys
@@ -716,7 +756,7 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
         result["data_ok"] = True
         if rules["status"] != "known":
             return result
-        order = kernel_input_order(kernel_input)
+        order = kernel_input_order(kernel_input, rules["encoding"])
         n = len(order)
         if len(output) < 4 + n:
             raise VarsError("bundle output is shorter than its cell count")
@@ -746,7 +786,7 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `accepted` requires that,
     the projection witnessed, and no supplied verdict from after the tip contradicting it by a policy key; it says
     nothing else about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a
-    computation need replay, hence the repository. A projection naming rules other than H_LENS_KERNEL is not read:
+    computation need replay, hence the repository. A projection naming rules outside `KNOWN_RULES` is not read:
     `rules_status: "unsupported"`, and nothing is accepted on it.
 
     The chain's admission quorum may rotate its roster, so a key that refused a release can be rotated out and
@@ -852,7 +892,7 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         for row in explain["required"]:
             row["reasons"] = ["the projection's rules are unsupported: nothing is read at its tip"]
         return result
-    ki = parse_kernel_input(bytes.fromhex(bundle["projection"]["input"]))
+    ki = parse_kernel_input(bytes.fromhex(bundle["projection"]["input"]), pr["explain"]["rules"]["encoding"])
     kc = ki["cells"]
     pos = {c["id"]: i for i, c in enumerate(kc)}
     explain["scope_epoch"] = pr["scope"]
