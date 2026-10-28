@@ -1,0 +1,2462 @@
+{
+ "m-4a-twin-activate": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4a-twin-consent": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4a-twin-defer": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4a-twin-delay": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4a-twin-pending": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4a-twin-removed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_85_a_rotation_that_removes_keys_without_consent_waits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4b-twin-cancelled": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4b-twin-change": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-4b-twin-veto": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-actions": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_30_checkpoint_actions_are_replayed": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-budget-max": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-budget-passed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-bytes": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_66_an_implementation_equivalent_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-class": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_62_a_resource_hardening_bounds_the_commit_count": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-d-correction": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_67_earlier_counterexamples_stay_decided": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-d-refusal": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_67_earlier_counterexamples_stay_decided": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-d-skip": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_67_earlier_counterexamples_stay_decided": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-decision-name": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_73_change_rules_returns_to_earlier_rules": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-evidence-closure": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_72_nested_evidence_travels": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-evidence-history": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_69_a_fresh_clone_replays_a_past_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-evidence-missing": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_59_a_counterexample_is_named_by_its_full_commit_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_69_a_fresh_clone_replays_a_past_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-evidence-ref": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_69_a_fresh_clone_replays_a_past_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-evidence-shallow": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_69_a_fresh_clone_replays_a_past_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-exhausted-flag": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_62_a_resource_hardening_bounds_the_commit_count": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-fault-gate": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_71_a_trap_is_a_fault_not_exhaustion": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-kin1-size": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-kin1-type": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-old-unbounded": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-other-object": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_59_a_counterexample_is_named_by_its_full_commit_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-refutes": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-release-v1b": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_58_release_checks_rebuild_every_rules_module": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-reproduce": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_66_an_implementation_equivalent_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-same-encoding": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_64_a_resource_hardening_needs_each_piece": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_66_an_implementation_equivalent_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-shadow-accept": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-shadow-bits": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-shadow-check": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_70_a_rotation_is_recorded_only_after_its_shadow_replay": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-tight-output": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_65_a_validation_tightening": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-tight-resource": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_65_a_validation_tightening": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-twin-bound": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_63_the_bound_refuses_a_chain_of_empty_commits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-amend-v1b-to-v2": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_68_no_rotation_from_v2_to_rules_that_read_as_v1": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-append-reader": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-cli-restore": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-cli-seals": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-fresh": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-mode": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-structure": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assume-zero": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assurance-escape": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-assurance-render": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-att-supplied": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_17_attestation_evidence_is_complete_at_the_projection_tip": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-attested-witness": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-binding": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_02_local_loop_rebinding_rollback_import_rotation": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_07_slot_rebinding_requires_authorized_supersedes_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-bundle-omits": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_17_attestation_evidence_is_complete_at_the_projection_tip": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cas-path": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cell-header": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_01_golden_test_vectors": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cell-id": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_01_golden_test_vectors": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cell-loss": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cell-magic": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-chain-commit-id": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_60_the_gate_names_commits_by_canonical_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-ckpt-kind": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-claims-debt-table": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-claims-reason-only-debt": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-claims-reason-required": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-claims-status-word": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-commit-id-canonical": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_59_a_counterexample_is_named_by_its_full_commit_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cross-schema": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_44_supersedes_stays_within_a_schema_and_attested_names_no_witness": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-bound-gate": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-bound-high": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-bound-low": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-entry-ceiling": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-entry-strict": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-not-assessed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-pass3-comp": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-pass3-expected": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-pass3-not-assessed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-cycle-verdict": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_75_a_cycle_witness_is_checked_by_verify_cycle": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-dependency": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-ed25519-s": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_05_signatures_names_dependencies_verdicts_acceptance": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-env": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-epochs-veto": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-epochs-wait": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-explain-missing": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_36_offline_verifier_in_a_fresh_folder": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-export-scope": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_27_a_historical_attestation_survives_a_rotation": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f40-join": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_53_v1_releases_survive_a_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f40-release-projection": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_53_v1_releases_survive_a_rules_change": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f41-kernel2": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_58_release_checks_rebuild_every_rules_module": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f41-rules-rebuilt": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_58_release_checks_rebuild_every_rules_module": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f42-mask-bit": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f42-mask-type": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f42-refs-known": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f42-refs-offset": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-f42-refs-payload": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_89_the_host_reads_typed_references_as_the_f42_oracle_does": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-field-type": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_29_gate_enforces_payloads_and_enumerations": {
+    "errors": 0,
+    "failures": 3,
+    "passed": false
+   }
+  }
+ },
+ "m-foreign-scope": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-forward-ref": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_34_no_reference_to_a_later_born_cell": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-grounds-decision": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-grounds-payload": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-grounds-verdict": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-intrinsic": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_33_intrinsic_atoms_need_not_be_stored": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-judged-kind": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-cli": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-env": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-identity": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-oserror": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-output": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-refusal": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-reply": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-kernel-verified": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-later-ignored": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-needs-endorse": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-needs-grounds": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-needs-stale": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-net-admit": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-net-chain": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-node": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-host-check": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-host-encoding": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-ref-check": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-stdlib": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_36_offline_verifier_in_a_fresh_folder": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-v1-refs": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-v2-refs": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-offline-v2-values": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-own-verifier": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-parents-header": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_35_parents_come_from_the_commit_header": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-pass3-attested": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-pass3-exclusion": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-pass3-question": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_31_a_question_is_answered_by_any_cell_of_its_schema": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-pass3-scope-index": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-pass3-threshold": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_16_light_client_verifies_a_release_attestation": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_28_a_later_invalid_withdraws_only_its_own_verifier": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-all": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-bytes": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_80_the_profile_closes_over_what_the_gate_loads": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-commit-id": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-format": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-offline": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-regular": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-retired": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-profile-table": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-proj-witnessed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_14_light_client_verifies_a_projection_bundle_without_the_repository": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-projection-digests": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_40_projection_is_recomputed_at_the_gate_and_settled_by_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-projection-edge": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_42_projections_are_immutable_historical_facts": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-projection-payload": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_29_gate_enforces_payloads_and_enumerations": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-a-digest": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_49_rules_change_a_reproduces_the_history": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-a-status": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_49_rules_change_a_reproduces_the_history": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-b-digest": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_50_rules_change_b_refutes_the_old_rules": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-b-old": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_50_rules_change_b_refutes_the_old_rules": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-b-range": {
+  "diagnostic_only": true,
+  "tests": {
+   "test_50_rules_change_b_refutes_the_old_rules": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   }
+  }
+ },
+ "m-rc-basis": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_48_rules_change_needs_its_decision": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-c-counterexample": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_51_rules_change_c_latches_only_grow": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-c-digest": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_51_rules_change_c_latches_only_grow": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-c-lost": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_51_rules_change_c_latches_only_grow": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-commit-id": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_59_a_counterexample_is_named_by_its_full_commit_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-cx-admitted": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-needs-decision": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_48_rules_change_needs_its_decision": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-quorum": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_48_rules_change_needs_its_decision": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-reads-rotation": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-refusal": {
+  "diagnostic_only": true,
+  "tests": {
+   "test_50_rules_change_b_refutes_the_old_rules": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   }
+  }
+ },
+ "m-rc-rules": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_48_rules_change_needs_its_decision": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-rc-stray-decision": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_48_rules_change_needs_its_decision": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-refs-seal": {
+  "diagnostic_only": true,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   }
+  }
+ },
+ "m-release-book-pin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_61_release_checks_name_commits_by_canonical_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-release-book-pin-full": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_61_release_checks_name_commits_by_canonical_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-release-commit-id": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_61_release_checks_name_commits_by_canonical_id": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-reserved-scope-name": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_10_scope_cells_use_the_reserved_scope_name": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-restore": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-root": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-root-field": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_01_golden_test_vectors": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-roster-veto-twin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-rules-window": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-runner-assertion": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_84_the_mutant_runner_counts_only_lost_behaviour": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-runner-import-check": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_84_the_mutant_runner_counts_only_lost_behaviour": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-runner-priority": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_84_the_mutant_runner_counts_only_lost_behaviour": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-runner-wording": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_84_the_mutant_runner_counts_only_lost_behaviour": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-schema-cell-empty": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-schema-descriptor": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_01_golden_test_vectors": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-scope-index": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-scope-label": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-scope-rules-host": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-seal-magic": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_78_each_structural_refusal_has_its_own_input": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-seal-signer-twin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-settled-live": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-carried-claim": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-carries": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-heading-shape": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-quote-in-part": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-render": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-spec-section": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_45_the_spec_is_a_projection_of_its_witnesses": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-state": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_32_gate_validates_whole_objects": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-statement-guard": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-statement-malformed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-behind": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_77_status_tells_merged_from_settled": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-invalid-answer": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_79_status_reads_pass_3": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-invalidators": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_79_status_reads_pass_3": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-live-invalid": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_79_status_reads_pass_3": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-main-released": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_77_status_tells_merged_from_settled": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-pass3": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_79_status_reads_pass_3": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-status-settled-awaits": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_79_status_reads_pass_3": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-store-mode": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-tier": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_29_gate_enforces_payloads_and_enumerations": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-acc-latch": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-acc-pin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_05_signatures_names_dependencies_verdicts_acceptance": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_11_fold_refusals_are_decided_by_the_kernel": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-cumulative": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_08_late_cosign_on_verdict_counts_and_grants_no_author_rights": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_19_a_second_member_verifies_releases": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   },
+   "test_21_attestation_counts_what_the_lens_counts": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   }
+  }
+ },
+ "m-twin-edge-quorum": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_02_local_loop_rebinding_rollback_import_rotation": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_07_slot_rebinding_requires_authorized_supersedes_chain": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   },
+   "test_11_fold_refusals_are_decided_by_the_kernel": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_13_governing_policy_rows": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-owner-evict": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_02_local_loop_rebinding_rollback_import_rotation": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_11_fold_refusals_are_decided_by_the_kernel": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_13_governing_policy_rows": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-provisional-policy": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_11_fold_refusals_are_decided_by_the_kernel": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   },
+   "test_13_governing_policy_rows": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-twin-schema-latch": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_46_latches_and_witnesses_need_their_quorum_and_kind": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-bound-twin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_63_the_bound_refuses_a_chain_of_empty_commits": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-downgrade": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_52_rules_never_rotate_back_to_v1": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-epoch-start": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_47_rules_change_admits_a_rotation_whose_decision_replays": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-interim-epoch": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_54_rules_v2_keep_an_opaque_digest_opaque": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-projection-rules": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_57_rules_v2_from_genesis": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-v2-typed-refs": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_47_rules_change_admits_a_rotation_whose_decision_replays": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   },
+   "test_55_rules_v2_read_references_by_type": {
+    "errors": 1,
+    "failures": 0,
+    "passed": false
+   }
+  }
+ },
+ "m-verdict-code": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_29_gate_enforces_payloads_and_enumerations": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-verify-anchor": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-verify-data": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-verify-pins": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-verify-profile": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-verify-witness-seal": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_39_verify_needs_a_trust_anchor_the_reader_chose": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-veto-difference": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-veto-schema": {
+  "diagnostic_only": true,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 0,
+    "failures": 0,
+    "passed": true
+   }
+  }
+ },
+ "m-veto-young": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-backwards": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-escapes": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-gate": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-held": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-judged": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-key": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_82_a_release_rests_on_its_checks": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-margin": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-path": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-region": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-relies": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-sealed": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-settled": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-shortest": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-transcript-seals": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ },
+ "m-whatif-transcript-tip": {
+  "diagnostic_only": false,
+  "tests": {
+   "test_81_what_if_reports_what_a_failed_ground_takes_with_it": {
+    "errors": 0,
+    "failures": 1,
+    "passed": false
+   }
+  }
+ }
+}
