@@ -169,7 +169,7 @@ input's length except the commit count `C`, and the fold visits every commit: an
 commits runs for minutes. The host supplies `C` from its own chain and bundles never run the kernel, so the live
 chains are not exposed; as a standalone component the kernel's time is `O(C·(N+S))`. The v1b rules
 (`H_LENS_KERNEL_V1B`) bound `C` by the input's length, so their time is `O(L·(N+S))` for `L` input bytes; they reach a
-scope only by a resource hardening (AMENDMENTS.md), and `refs/vars/heads/minds` stays on v1 until its members decide.
+scope only by a resource hardening (AMENDMENTS.md), never from v2, and `refs/vars/heads/minds` moved to v2 on 2026-10-28.
 The fuzzer builds v1 and skips inputs with `C > 4096` so it keeps looking for correctness defects.
 
 Kani runs the kernel on the host, where `usize` is 64 bits; wasm32 has 32. An overflow possible only at 32 bits is
