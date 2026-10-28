@@ -518,15 +518,14 @@
   {
    "id": "gate.references",
    "quote": "4. **References and replay.** Every referenced hash is present",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_05_signatures_names_dependencies_verdicts_acceptance",
     "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
     "test:test_78_each_structural_refusal_has_its_own_input"
    ],
-   "mutants": [
-    "m-refs-seal"
-   ]
+   "mutants": [],
+   "reason": "Held twice: by Check #4 and, beneath it, by the lookups that read each reference, whose KeyError the gate's net for crashes turns into a refusal. Either alone refuses a missing reference, so no single-site mutant admits one; m-refs-seal removes only Check #4's named reason (Codex, challenge of the G3 closure, 2026-10-28)."
   },
   {
    "id": "gate.cycle-witness",
@@ -798,7 +797,6 @@
     "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
    ],
    "mutants": [
-    "m-veto-schema",
     "m-veto-young",
     "m-veto-difference"
    ]
@@ -1277,13 +1275,12 @@
   {
    "id": "rules.change.refusal",
    "quote": "either rules refusing either log refuses the rotation",
-   "status": "tested",
+   "status": "unburned",
    "witnesses": [
     "test:test_50_rules_change_b_refutes_the_old_rules"
    ],
-   "mutants": [
-    "m-rc-refusal"
-   ]
+   "mutants": [],
+   "reason": "Held twice: by the named refusal and, beneath it, by the four digests that read every run, whose missing output is an IndexError the gate's net turns into a refusal. Either alone refuses the rotation, so no single-site mutant admits it; m-rc-refusal removes only the named reason (Codex, challenge of the G3 closure, 2026-10-28)."
   },
   {
    "id": "rules.change.a",
@@ -1308,8 +1305,7 @@
    ],
    "mutants": [
     "m-rc-b-digest",
-    "m-rc-b-old",
-    "m-rc-b-range"
+    "m-rc-b-old"
    ]
   },
   {
@@ -1959,6 +1955,29 @@
     "m-runner-priority",
     "m-runner-assertion",
     "m-runner-import-check"
+   ]
+  },
+  {
+   "id": "assurance.named-refusals",
+   "source": "ASSURANCE.md",
+   "diagnostic": true,
+   "quote": "A refusal that a named check and the gate's net for crashes both hold says the named check's reason",
+   "status": "tested",
+   "witnesses": [
+    "test:test_50_rules_change_b_refutes_the_old_rules",
+    "test:test_78_each_structural_refusal_has_its_own_input",
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain",
+    "test:test_84_the_mutant_runner_counts_only_lost_behaviour"
+   ],
+   "mutants": [
+    "m-rc-b-range",
+    "m-rc-refusal",
+    "m-refs-seal",
+    "m-veto-schema",
+    "m-runner-semantic",
+    "m-runner-declared",
+    "m-runner-undeclared",
+    "m-claims-diagnostic"
    ]
   },
   {

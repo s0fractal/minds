@@ -195,6 +195,9 @@ def main(argv: list[str]) -> int:
         for m in c.get("mutants", []):
             if m not in mutants:
                 errors.append(f"{c['id']}: mutant does not exist: {m}")
+            elif mutants[m].get("diagnostic") and not c.get("diagnostic"):
+                # it loses the reason a refusal names, not the refusal: it burns no claim about what is refused
+                errors.append(f"{c['id']}: names {m}, a diagnostic mutant, but is not a claim about a reason")
     for i, q in enumerate(informative):
         if f"informative:{i}" not in carried:
             errors.append(f"informative passage {i} is carried by no part of spec.json: {norm(q)[:80]!r}")

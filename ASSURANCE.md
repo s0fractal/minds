@@ -147,17 +147,21 @@ the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V
 | Claim | Evidence | Where |
 |---|---|---|
 | A mutant counts as killed only when an assertion fails on what the code does (an expected exception not raised, values that differ); an expected exception met with another message, on one line or several, with a custom `msg` or not, is a survival (the input is still refused), and so is any other error. `tools/mutant_test.py` decides where assertRaises checks, not from the printed text | Tested, with mutants: a fixture of eleven tests, each with its expected verdict | `test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict` |
+| A refusal that a named check and the gate's net for crashes both hold says the named check's reason, not the net's; a mutant that removes only that reason is declared `diagnostic`, burns only this claim, and `tools/run_mutants.py` refuses the declaration both ways: a mutant a test catches with only the refusal asked is not diagnostic, and one caught only by the reason is not a burn of what is refused | Tested, with mutants (diagnostic): four named reasons, each lost while its input stays refused; the runner's two modes on fixtures | `test_vars1.py` 50, 78, 88, 84; `tools/run_mutants.py` `classify`; `tools/check_claims.py` |
 
 ## Not burned, and why
 
 Rendered from the `reason` of every unburned claim in claims.json; `check_claims` refuses an unburned claim
 without one, and a reason on any other. A refusal more than one layer holds is burned layer by layer, each layer
 asked alone on an input only its rule refuses (test 87); a value checked as the module loads, by a mutant that
-names that check; a guard whose absence falls into the gate's net for crashes, by a test that asks for the named
-refusal (`_gate_refuses`). None is unburned at present.
+names that check; a guard whose absence falls into the gate's net for crashes is not burned by a test that asks for the
+named refusal (`_gate_refuses`): that loses the reason, not the refusal, and burns only a claim about the reason
+(`diagnostic`). A refusal the net also holds is listed here, unburned (Codex, challenge of the G3 closure).
 
 | Unburned claim | Why no mutant burns it |
 |---|---|
+| `gate.references` | Held twice: by Check #4 and, beneath it, by the lookups that read each reference, whose KeyError the gate's net for crashes turns into a refusal. Either alone refuses a missing reference, so no single-site mutant admits one; m-refs-seal removes only Check #4's named reason (Codex, challenge of the G3 closure, 2026-10-28). |
+| `rules.change.refusal` | Held twice: by the named refusal and, beneath it, by the four digests that read every run, whose missing output is an IndexError the gate's net turns into a refusal. Either alone refuses the rotation, so no single-site mutant admits it; m-rc-refusal removes only the named reason (Codex, challenge of the G3 closure, 2026-10-28). |
 
 ## Known limits of the bounded checks
 
