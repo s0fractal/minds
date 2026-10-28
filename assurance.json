@@ -390,9 +390,9 @@
      ],
      [
       "The offline verifier (`verify/minds_verify.py`)",
-      "Reads projections and attestations",
-      "Reads them, in v1's encoding (v1's output; one more refusal)",
-      "Reads them, in the v2 encoding: references from the input's own list, each checked against its cell"
+      "Reads projections and attestations; with `--kernel` and Node, it runs the rules on the input",
+      "Reads them, in v1's encoding (v1's output; one more refusal); likewise with `--kernel`",
+      "Reads them, in the v2 encoding: references from the input's own list, each checked against its cell; with `--kernel` and Node, the kernel's check of the list too"
      ],
      [
       "The Lean model (`vars1exec`, `vars1fold`)",
@@ -438,7 +438,7 @@
      [
       "An offline `accepted`",
       "`verify/minds_verify.py`, standard library only",
-      "Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type)"
+      "Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type); with `--kernel`, Node and its wasm engine compute the output here, and the witnesses vouch only that the input is the chain's at `tip`"
      ],
      [
       "A release is Settled",

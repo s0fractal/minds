@@ -1634,6 +1634,21 @@
    ]
   },
   {
+   "id": "offline.kernel",
+   "quote": "a reader who has Node may supply the rules module (`--kernel FILE`, used only if its SHA-256 is the projection's rules), which is then run on the input;",
+   "status": "tested",
+   "witnesses": [
+    "test:test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+   ],
+   "mutants": [
+    "m-kernel-refusal",
+    "m-kernel-output",
+    "m-kernel-identity",
+    "m-kernel-verified",
+    "m-kernel-cli"
+   ]
+  },
+  {
    "id": "offline.explain",
    "quote": "Every result carries `explain`, derived from the bundle by the same computation as the verdict fields;",
    "status": "tested",

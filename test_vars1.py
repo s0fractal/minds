@@ -13,6 +13,7 @@ import dataclasses
 import json
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -5610,6 +5611,96 @@ class TestVars1Conformance(unittest.TestCase):
         deltas1 = self.repo.chain_deltas(self.repo.commit_chain(made["one"]["tip"]))
         with self.assertRaises(V.VarsError):
             V.verify_attestation(witnessed(V.kernel_facts("one", deltas1, V.H_LENS_KERNEL_V2)[0], one))
+
+    def _rewitnessed(self, bundle: dict, kernel_input: bytes | None = None, output: bytes | None = None) -> dict:
+        """The attestation bundle with another input or output for its projection, re-projected with their digests
+        and sealed again by the projection's witness (sk1): what a witness who vouches for wrong data hands out."""
+        proj = bundle["projection"]
+        kernel_input = bytes.fromhex(proj["input"]) if kernel_input is None else kernel_input
+        output = bytes.fromhex(proj["output"]) if output is None else output
+        cell = V.Cell.decode(bytes.fromhex(proj["cell"]))
+        other = dataclasses.replace(cell, slots=(*cell.slots[:2], V.sha256(kernel_input), V.sha256(output),
+                                                 cell.slots[4]))
+        ctx = V.Seal.decode(bytes.fromhex(proj["seals"][0])).h_scope_ctx
+        return dict(bundle, projection=dict(proj, cell=other.encode().hex(), input=kernel_input.hex(),
+                                            output=output.hex(),
+                                            seals=[V.Seal.sign(self.sk1, other.id, ctx).encode().hex()]))
+
+    def test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for(self) -> None:
+        """Codex's countervector (review of PR #22): a v2 input listing an untyped reference whose value is right,
+        re-projected and sealed by the witness, is accepted offline, since the verifier takes the kernel's output on
+        the witnesses' word (`kernel: "witnessed"`). A reader who supplies the rules module (`--kernel`, the file
+        whose SHA-256 is the projection's rules) has it run on the input under Node: the honest bundle is
+        `verified_here` under v1 and v2; the forged input is refused as the rules refuse it (E-6); another output is
+        refused; a module of other rules, a missing Node or a run past its time leaves `witnessed` with the reason;
+        and `verify-*` with `--kernel` exits 0 only when the output was checked here."""
+        made = {scope: self._hash_decides_an_endorsement(scope, rules)
+                for scope, rules in (("one", V.H_LENS_KERNEL), ("two", V.H_LENS_KERNEL_V2))}
+        bundle = {s: json.loads(json.dumps(V.export_attestation(self.repo, s, f["d"].id, f["p"].id)))
+                  for s, f in made.items()}
+        for scope, module in (("one", V.KERNEL_ATOM), ("two", V.KERNEL2_ATOM)):
+            self.assertEqual(V.verify_attestation(bundle[scope])["kernel"], "witnessed")
+            r = V.verify_attestation(bundle[scope], kernels=[module])
+            self.assertEqual((r["kernel"], r["explain"]["projection"]["kernel"]["reason"]), ("verified_here", None))
+            self.assertEqual(r["accepted"], scope == "one", "running the rules changes no verdict on honest data")
+        try:
+            other = V.verify_attestation(bundle["two"], kernels=[V.KERNEL_ATOM])["explain"]["projection"]["kernel"]
+        except V.VarsError as e:
+            self.fail(f"a module of other rules was run on the input: {e}")
+        self.assertEqual((other["status"], other["module"]), ("witnessed", None), "a module of other rules is not run")
+
+        # The countervector: x's `hash` slot (position 3) listed as a reference; its value really is w's id
+        two = made["two"]
+        deltas = self.repo.chain_deltas(self.repo.commit_chain(two["tip"]))
+        real = V.cell_refs
+        try:
+            V.cell_refs = lambda c, cells, atoms, v1: real(c, cells, atoms, v1) + (
+                [(3, two["w"].id)] if c.id == two["x"].id else [])
+            forged = V.kernel_facts("two", deltas)[0]
+        finally:
+            V.cell_refs = real
+        lying = self._rewitnessed(bundle["two"], kernel_input=forged)
+        r = V.verify_attestation(lying)
+        self.assertEqual((r["attested_at_tip"], r["accepted"], r["kernel"]), (True, True, "witnessed"),
+                         "on the witnesses' word the forged input is accepted: the boundary PR #22 names")
+        with self.assertRaisesRegex(V.VarsError, r"rules refuse its input \(E-6\)"):
+            V.verify_attestation(lying, kernels=[V.KERNEL2_ATOM])
+        # Another output for the honest input: a status byte flipped
+        out = bytearray.fromhex(bundle["two"]["projection"]["output"])
+        out[4] ^= 1
+        self.assertEqual(V.verify_attestation(self._rewitnessed(bundle["two"], output=bytes(out)))["kernel"],
+                         "witnessed")
+        with self.assertRaisesRegex(V.VarsError, "another output than the bundle's"):
+            V.verify_attestation(self._rewitnessed(bundle["two"], output=bytes(out)), kernels=[V.KERNEL2_ATOM])
+        # A run that cannot be made says why, and claims nothing
+        late = V.verify_attestation(bundle["two"], kernels=[V.KERNEL2_ATOM], timeout=0.001)
+        self.assertEqual(late["kernel"], "witnessed")
+        self.assertIn("outlasted", late["explain"]["projection"]["kernel"]["reason"])
+
+        # The standalone file and its exit codes, with and without Node on PATH
+        fresh_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh_tmp.cleanup)
+        fresh = Path(fresh_tmp.name)
+        (fresh / "minds_verify.py").write_bytes((ROOT_DIR / "verify" / "minds_verify.py").read_bytes())
+        (fresh / "lens.wasm").write_bytes(V.KERNEL_ATOM)
+        (fresh / "lens2.wasm").write_bytes(V.KERNEL2_ATOM)
+        (fresh / "bundle.json").write_text(json.dumps(bundle["two"]["projection"]))
+        node_dir = str(Path(shutil.which("node")).parent)
+
+        def offline(path: str, *args: str):
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", "verify-projection", "bundle.json",
+                                  "--require", self.pk1.hex(), *args], cwd=fresh, env={"PATH": path},
+                                 capture_output=True, text=True)
+            return out.returncode, json.loads(out.stdout)["explain"]["kernel"] if out.returncode in (0, 1) else out.stderr
+
+        with_node, no_node = node_dir, str(fresh / "no-bin")  # PATH is read for `node` alone
+        self.assertEqual(offline(with_node)[0], 0, "without --kernel the witnesses' word is what verify asks")
+        code, k = offline(with_node, "--kernel", "lens2.wasm")
+        self.assertEqual((code, k["status"]), (0, "verified_here"))
+        code, k = offline(with_node, "--kernel", "lens.wasm")
+        self.assertEqual((code, k["status"]), (1, "witnessed"), "asked to run the rules, it could not: not verified")
+        code, k = offline(no_node, "--kernel", "lens2.wasm")
+        self.assertEqual((code, k["status"], k["reason"]), (1, "witnessed", "node is not on PATH"))
 
 
 if __name__ == "__main__":
