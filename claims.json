@@ -107,7 +107,7 @@
   },
   {
    "id": "rules.v2-hash",
-   "quote": "`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f` is the id of `kernel2/lens2.wasm`",
+   "quote": "`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e` is the id of `kernel2/lens2.wasm`",
    "status": "tested",
    "witnesses": [
     "ci:Rebuild the v2 rules kernel; it must hash to H_LENS_KERNEL_V2",
@@ -116,6 +116,22 @@
    "mutants": [
     "m-f41-kernel2",
     "m-f41-rules-rebuilt"
+   ]
+  },
+  {
+   "id": "rules.v2-bound",
+   "quote": "the commit bound of v1b (−7) and the rotation delay of §4.1 latch 4a",
+   "status": "differential",
+   "witnesses": [
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+    "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
+    "test:test_63_the_bound_refuses_a_chain_of_empty_commits"
+   ],
+   "mutants": [
+    "m-v2-bound",
+    "m-4a-kernel-delay",
+    "m-4a-twin-delay",
+    "m-v2-bound-twin"
    ]
   },
   {
@@ -474,7 +490,7 @@
   },
   {
    "id": "gate.scope-rules",
-   "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or `H_LENS_KERNEL_V1C`",
+   "quote": "every scope cell names rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`",
    "status": "tested",
    "witnesses": [
     "test:test_57_rules_v2_from_genesis",
@@ -678,15 +694,15 @@
   },
   {
    "id": "fold.rotation-epoch",
-   "quote": "Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`, step 4 holds for a rotation that does not wait",
+   "quote": "Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1 has it), step 4 holds for a rotation that does not wait",
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-v1c-kernel-v1",
-    "m-v1c-twin-v1"
+    "m-4a-kernel-v1",
+    "m-4a-twin-v1"
    ]
   },
   {
@@ -695,11 +711,11 @@
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-v1c-kernel-removed",
-    "m-v1c-twin-removed"
+    "m-4a-kernel-removed",
+    "m-4a-twin-removed"
    ]
   },
   {
@@ -708,13 +724,13 @@
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-v1c-kernel-defer",
-    "m-v1c-kernel-activate",
-    "m-v1c-twin-defer",
-    "m-v1c-twin-activate"
+    "m-4a-kernel-defer",
+    "m-4a-kernel-activate",
+    "m-4a-twin-defer",
+    "m-4a-twin-activate"
    ]
   },
   {
@@ -723,13 +739,13 @@
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-v1c-kernel-consent",
-    "m-v1c-kernel-delay",
-    "m-v1c-twin-consent",
-    "m-v1c-twin-delay"
+    "m-4a-kernel-consent",
+    "m-4a-kernel-delay",
+    "m-4a-twin-consent",
+    "m-4a-twin-delay"
    ]
   },
   {
@@ -738,22 +754,11 @@
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-v1c-twin-pending",
-    "m-v1c-twin-rules"
-   ]
-  },
-  {
-   "id": "rules.change-keeps-delay",
-   "quote": "A rules change never goes from rules with this delay to rules without it (§4.3)",
-   "status": "tested",
-   "witnesses": [
-    "test:test_85_a_rotation_that_removes_keys_without_consent_waits"
-   ],
-   "mutants": [
-    "m-v1c-leave"
+    "m-4a-twin-pending",
+    "m-4a-twin-rules"
    ]
   },
   {
@@ -1269,28 +1274,17 @@
    ]
   },
   {
-   "id": "rules.v1c-hash",
-   "quote": "`H_LENS_KERNEL_V1C = db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017` is the id of `kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`",
-   "status": "tested",
-   "witnesses": [
-    "ci:Rebuild the v1c rules kernel; it must hash to H_LENS_KERNEL_V1C",
-    "test:test_58_release_checks_rebuild_every_rules_module"
-   ],
-   "mutants": [
-    "m-v1c-release"
-   ]
-  },
-  {
-   "id": "rules.v1c-code",
-   "quote": "`H_LENS_KERNEL_V1C` adds −24 as well",
+   "id": "rules.v2-codes",
+   "quote": "`H_LENS_KERNEL_V2` refuses with −7 too, and with −24",
    "status": "differential",
    "witnesses": [
-    "test:test_86_a_v1c_build_answers_what_the_v1c_rules_answer",
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits"
    ],
    "mutants": [
-    "m-v1c-kernel-pending",
-    "m-v1c-kernel-rules"
+    "m-4a-kernel-pending",
+    "m-4a-kernel-rules",
+    "m-v2-bound"
    ]
   },
   {

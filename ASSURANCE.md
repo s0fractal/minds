@@ -19,7 +19,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | Claim | Evidence | Where |
 |---|---|---|
 | Latches only grow; a commit's latches depend only on seals under its own scope | Proved | `proofs/Vars1/Fold.lean` |
-| At most one Active local binding per name; one Active local scope, the governing one | Proved (gate rules as hypotheses) for rules whose rotations take effect at once (v1, v1b); for a rotation that waits under v1c (§4.1 latch 4a), whose scope has not governed yet, tested: the waiting scope is not Active until it governs (test 85) | `Pass1.lean`, `Scope.lean` |
+| At most one Active local binding per name; one Active local scope, the governing one | Proved (gate rules as hypotheses) for rules whose rotations take effect at once (v1, v1b); for a rotation that waits under v2 (§4.1 latch 4a), whose scope has not governed yet, tested: the waiting scope is not Active until it governs (test 85) | `Pass1.lean`, `Scope.lean` |
 | `Stale` is the least fixed point of a monotone operator, reached within `\|cells\|+1` rounds | Proved | `Pass2.lean`, `Lfp.lean` |
 | An executable Passes 1–2 equals the model | Proved | `Exec.lean`, `ExecProof.lean` |
 | `kernel/lens.wasm` Passes 1–2 equal that executable | Differential (I9) | `test_vars1_props.py` |

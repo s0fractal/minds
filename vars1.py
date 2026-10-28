@@ -70,11 +70,12 @@ KERNEL_DIR = Path(__file__).resolve().parent / "kernel"
 KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
-# Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input. Dormant: v1 is the default, and a scope
-# moves to v2 only by a rotation admitted with a rules-change decision (§4.3). The host keeps both modules, so every
-# past tip stays recomputable under the rules of its epoch.
+# Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input, with v1b's commit bound (-7) and the
+# rotation delay of §4.1 latch 4a in v2 epochs. Dormant: v1 is the default, and a scope moves to v2 only by a
+# rotation admitted with a rules-change decision (§4.3). The host keeps both modules, so every past tip stays
+# recomputable under the rules of its epoch.
 KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
-H_LENS_KERNEL_V2 = bytes.fromhex("7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f")
+H_LENS_KERNEL_V2 = bytes.fromhex("0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e")
 KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
 if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:
     raise RuntimeError("kernel2/lens2.wasm does not hash to H_LENS_KERNEL_V2")
@@ -84,12 +85,6 @@ H_LENS_KERNEL_V1B = bytes.fromhex("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7b
 KERNEL1B_ATOM = (KERNEL_DIR / "lens1b.wasm").read_bytes()
 if sha256(KERNEL1B_ATOM) != H_LENS_KERNEL_V1B:
     raise RuntimeError("kernel/lens1b.wasm does not hash to H_LENS_KERNEL_V1B")
-# v1b with a rotation that removes keys without their consent delayed (`kernel/`, built with `--features
-# commit-bound,rotation-delay`; §4.1). Dormant like v1b: a scope reaches it only by a rules change (§4.3).
-H_LENS_KERNEL_V1C = bytes.fromhex("db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017")
-KERNEL1C_ATOM = (KERNEL_DIR / "lens1c.wasm").read_bytes()
-if sha256(KERNEL1C_ATOM) != H_LENS_KERNEL_V1C:
-    raise RuntimeError("kernel/lens1c.wasm does not hash to H_LENS_KERNEL_V1C")
 
 
 @dataclass(frozen=True)
@@ -106,13 +101,12 @@ class Rules:
 
 RULES: Dict[bytes, Rules] = {
     H_LENS_KERNEL: Rules(KERNEL_DIR / "lens.wasm", "v1"),
-    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / "lens2.wasm", "v2"),
+    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / "lens2.wasm", "v2", frozenset({-7}), rotation_delay=16),
     H_LENS_KERNEL_V1B: Rules(KERNEL_DIR / "lens1b.wasm", "v1", frozenset({-7})),
-    H_LENS_KERNEL_V1C: Rules(KERNEL_DIR / "lens1c.wasm", "v1", frozenset({-7}), rotation_delay=16),
 }
 RULES_MODULES: Dict[bytes, Path] = {h: r.path for h, r in RULES.items()}
 RULES_ATOMS: Dict[bytes, bytes] = {H_LENS_KERNEL: KERNEL_ATOM, H_LENS_KERNEL_V2: KERNEL2_ATOM,
-                                   H_LENS_KERNEL_V1B: KERNEL1B_ATOM, H_LENS_KERNEL_V1C: KERNEL1C_ATOM}
+                                   H_LENS_KERNEL_V1B: KERNEL1B_ATOM}
 KERNEL2_MAGIC = 0x32524156  # "VAR2": the first word of a v2 kernel input
 
 INTRINSIC_HASHES: Set[bytes] = {
@@ -1465,10 +1459,6 @@ class GitVarsRepo:
         old, new_rules = base.slots[2], rotation[0].slots[2]
         if RULES[old].encoding == "v2" and RULES[new_rules].encoding == "v1":
             raise VarsError("rules that read references as v1 does cannot read a v2 epoch: no rotation goes there")
-        if RULES[old].rotation_delay and not RULES[new_rules].rotation_delay:
-            # the kernel of the last epoch folds the whole chain: rules without the delay would let an earlier
-            # waiting rotation govern at once
-            raise VarsError("rules that delay a rotation are never left for rules without the delay (§4.1)")
         if RULES[new_rules].encoding == "v2" and any(
                 RULES[r].encoding == "v1" and r != H_LENS_KERNEL
                 for r in {old, *commit_rules(scope, self.chain_deltas(prior_chain))}):

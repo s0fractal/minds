@@ -25,12 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # A kernel build a mutant may need: its crate, cargo's features, the wasm, the variable that hands it to the tests,
-# and the pinned module it must differ from. A mutant of kernel/src or kernel2/src gets its crate's default build;
-# `"build": "kernel1c"` asks for the v1c one (both features) instead.
+# and the pinned module it must differ from. A mutant of kernel/src or kernel2/src gets its crate's default build.
 KERNELS = {"kernel": ("kernel", (), "vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
-           "kernel2": ("kernel2", (), "vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm"),
-           "kernel1c": ("kernel", ("--features", "commit-bound,rotation-delay"), "vars_lens.wasm",
-                        "MINDS_KERNEL1C_WASM", "kernel/lens1c.wasm")}
+           "kernel2": ("kernel2", (), "vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
 
 
 def git_dir() -> Path:

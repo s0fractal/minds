@@ -10,9 +10,6 @@ path = "src/lib.rs"
 [features]
 # v1 with the commit count bounded by the input's length (VARS-1-SPEC.md §4.3, AMENDMENTS.md): H_LENS_KERNEL_V1B
 commit-bound = []
-# v1b with a rotation that removes keys without their consent delayed (VARS-1-SPEC.md §4.1): H_LENS_KERNEL_V1C,
-# built with both features
-rotation-delay = []
 
 [profile.release]
 opt-level = "z"

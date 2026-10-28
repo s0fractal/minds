@@ -183,10 +183,11 @@
   {
    "kind": "block",
    "section": 1,
-   "text": "`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f` is the id of\n`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md). A scope names them from its genesis or\nreaches them by a rules change (§4.3); v1 stays the default.",
+   "text": "`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e` is the id of\n`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md), the commit bound of v1b (−7) and the\nrotation delay of §4.1 latch 4a. A scope names them from its genesis or reaches them by a rules change (§4.3); v1\nstays the default.",
    "carries": [
     "rules.v2-hash",
-    "rules.v2-default"
+    "rules.v2-default",
+    "rules.v2-bound"
    ]
   },
   {
@@ -201,19 +202,6 @@
    "carries": [
     "rules.v1b-hash",
     "rules.v1b-bound"
-   ]
-  },
-  {
-   "kind": "gap",
-   "section": 1,
-   "text": ""
-  },
-  {
-   "kind": "block",
-   "section": 1,
-   "text": "`H_LENS_KERNEL_V1C = db47ca0f3ab342a1545848a752803602439870100ae8cc58598929dd43051017` is the id of\n`kernel/lens1c.wasm`, the v1b rules built also with the feature `rotation-delay`: a rotation that removes keys\nwithout their consent waits (§4.1, latch 4a), and they are otherwise v1b. A scope reaches them by a validation\ntightening (§4.3).",
-   "carries": [
-    "rules.v1c-hash"
    ]
   },
   {
@@ -485,7 +473,7 @@
   {
    "kind": "block",
    "section": 3,
-   "text": "1. **Chain.** Genesis has no parent and exactly one local scope cell `S_0`, with empty edges, self-sealed to its\n   admission quorum. Any later commit has exactly the parent `T_old` and at most one new local scope cell, which\n   supersedes exactly the governing scope and is sealed by its admission quorum. That quorum alone may set the\n   new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the\n   reader's pin; under `H_LENS_KERNEL_V1C` a removal without consent waits, §4.1 latch 4a).",
+   "text": "1. **Chain.** Genesis has no parent and exactly one local scope cell `S_0`, with empty edges, self-sealed to its\n   admission quorum. Any later commit has exactly the parent `T_old` and at most one new local scope cell, which\n   supersedes exactly the governing scope and is sealed by its admission quorum. That quorum alone may set the\n   new roster, removing keys as well as adding them; no key has a veto over its own removal (see §4.4 for the\n   reader's pin; under `H_LENS_KERNEL_V2` a removal without consent waits, §4.1 latch 4a).",
    "carries": [
     "gate.chain",
     "gate.roster-rotation"
@@ -502,7 +490,7 @@
   {
    "kind": "block",
    "section": 3,
-   "text": "3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell names\n   rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2`, `H_LENS_KERNEL_V1B` or\n   `H_LENS_KERNEL_V1C`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of\n   `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its\n   `witness_policy`, roster or not). A **cross-seal** — a seal on a\n   foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a\n   standard schema has at least one such seal by a key of the admission policy (acceptance policy for an\n   acceptance cell): a projection's outside witnesses sign it but do not write it. The evaluator policy of a local contract, decision or question\n   has keys within the admission policy.",
+   "text": "3. **Objects and seals.** Every object passes §1; every slot has its schema type (§2); every scope cell names\n   rules this host implements, `H_LENS_KERNEL`, `H_LENS_KERNEL_V2` or `H_LENS_KERNEL_V1B`. Every new seal on a local cell has `H_scope_ctx = id(S_base)` and a key of\n   `S_base`'s admission policy (acceptance policy for an acceptance cell; for a projection, also a key of its\n   `witness_policy`, roster or not). A **cross-seal** — a seal on a\n   foreign cell whose context is a local scope cell — follows the same rule. Every new local cell other than a\n   standard schema has at least one such seal by a key of the admission policy (acceptance policy for an\n   acceptance cell): a projection's outside witnesses sign it but do not write it. The evaluator policy of a local contract, decision or question\n   has keys within the admission policy.",
    "carries": [
     "gate.scope-rules",
     "gate.seals"
@@ -685,7 +673,7 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V1C` a waiting scope's supersedes edge is the exception (4a).\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
+   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V2` a waiting scope's supersedes edge is the exception (4a).\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
    "carries": [
     "fold.latch-edges"
    ]
@@ -701,13 +689,12 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "4a. Under `H_LENS_KERNEL_V1C`, while `S` governs under rules other than `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B`,\n    step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from\n    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at\n    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules\n    than `S` (E-24). A rules change never goes from rules with this delay to rules without it (§4.3): the last\n    epoch's rules fold the whole chain.",
+   "text": "4a. Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1\n    has it), step 4 holds for a rotation that does not wait. The **removed keys** of a rotation to `S'` are the keys of\n    `S`'s admission or acceptance policy that `S'`'s same policy lacks; while a removed key has not sealed `S'`\n    under `S`, the rotation **waits** and `S` stays governing. Its supersedes edge to `S` is withheld from\n    latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at\n    its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which\n    every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A\n    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a\n    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules\n    than `S` (E-24).",
    "carries": [
     "fold.rotation-epoch",
     "fold.rotation-waits",
     "fold.rotation-ends",
     "fold.rotation-pending",
-    "rules.change-keeps-delay",
     "fold.rotation-edge"
    ]
   },
@@ -944,11 +931,11 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,\nretired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per\ninvalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input\n(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,\nunsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).\n`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V1C` adds −24 as\nwell: a new scope while a rotation waits, or a waiting rotation to other rules.",
+   "text": "Output: a u32 length, the governing scope's index, one status byte per cell (accepted, invalidated, effective,\nretired, superseded, active, stale), one Authorized byte per cell (scope, acceptance, schema), and one byte per\ninvalidates, retires and supersedes edge in input order (authorized). A negative result is a malformed input\n(−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,\nunsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).\n`H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V2` refuses\nwith −7 too, and with −24: a new scope while a rotation waits, or a waiting rotation to other rules.",
    "carries": [
     "rules.output",
     "rules.v1b-code",
-    "rules.v1c-code"
+    "rules.v2-codes"
    ]
   },
   {
@@ -1003,7 +990,7 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "**Results.** Rules run on an input give an output or a refusal (a negative code). Run under a budget of steps they may\ninstead exhaust it, or trap: a fault, a defect of the module and never a verdict. A step is an entry into a function\nbody or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module\n(`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for\nthe run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it\nimplements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B`.",
+   "text": "**Results.** Rules run on an input give an output or a refusal (a negative code). Run under a budget of steps they may\ninstead exhaust it, or trap: a fault, a defect of the module and never a verdict. A step is an entry into a function\nbody or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module\n(`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for\nthe run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it\nimplements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B` and of `H_LENS_KERNEL_V2`.",
    "carries": [
     "rules.results",
     "rules.steps",
@@ -1329,7 +1316,7 @@
   {
    "kind": "block",
    "section": 6,
-   "text": "- `test_vars1_props.py`: seeded random admission sequences; on each admitted tip, gate refusals and the lens\n  never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed\n  point (I2), latched edges equal a spec oracle (I3), acceptance, custom-schema and scope latches equal a spec\n  oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed\n  independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces\n  the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status\n  bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,\n  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3\n  recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled\n  for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle\n  witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker\n  (`proofs/Vars1/Cycle.lean`, compiled) (I12). The generator writes chains under the v1 rules, whose rotations\n  take effect at once: for a rotation that waits under `H_LENS_KERNEL_V1C` (§4.1 latch 4a) I7 is test 85's, and\n  the model fold of I10 has no delay."
+   "text": "- `test_vars1_props.py`: seeded random admission sequences; on each admitted tip, gate refusals and the lens\n  never crash or diverge from the twin (I0), one Active binding per name (I1), `Stale` equals an independent fixed\n  point (I2), latched edges equal a spec oracle (I3), acceptance, custom-schema and scope latches equal a spec\n  oracle (I3c), Settled implies a full replay from root (I4), latches only grow (I5), order and hash-seed\n  independence (I6), the fold governs with the unique Active local scope (I7), a fresh kernel run reproduces\n  the lens (I8), and the Lean-proved executable lens (`proofs/Vars1/Exec.lean`) computes the kernel's status\n  bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,\n  compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3\n  recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled\n  for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle\n  witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker\n  (`proofs/Vars1/Cycle.lean`, compiled) (I12). The generator writes chains under the v1 rules, whose rotations\n  take effect at once: for a rotation that waits under `H_LENS_KERNEL_V2` (§4.1 latch 4a) I7 is test 85's, and\n  the model fold of I10 has no delay."
   },
   {
    "kind": "block",

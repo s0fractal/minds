@@ -4,9 +4,24 @@ Status: **dormant support on main, not adopted.** The host implements both rules
 moves to v2 only by a rotation admitted with a rules-change decision (VARS-1-SPEC.md §4.3). The live chain
 `refs/vars/heads/minds` keeps `H_LENS_KERNEL` (v1): the owner decided so. Nothing here changes v1.
 
-`H_LENS_KERNEL_V2 = 7e1368bcb7ee66fb3eb9cdcfe7b763cf75430b7493730cd2a5666e0ecb33469f`. It differs from the prototype
-on branch `rules-v2` (`4605f0db…`) by one change: the prototype refused (`−24`) a log whose last commit is in a v1
-epoch; this module evaluates it, reading every cell as v1 does, because a rules-change decision runs the new rules
+`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e`. Since 2026-10-28 v2 is the
+one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
+
+- **v1b's commit bound:** an input claiming more commits than it has bytes is refused, `−7`.
+- **v1c's rotation delay** (VARS-1-SPEC.md §4.1 latch 4a): in a v2 epoch, a rotation that removes keys without
+  their consent waits 16 commits, or until every removed key has sealed it; meanwhile a new scope is refused, `−24`.
+  In a v1 epoch every rotation takes effect at once, as v1 has it, so a v1 history is still read exactly as v1
+  reads it (`test_vars1.py` 86 checks this on a v1 chain whose rotation removed a key) — **within the commit
+  bound**: a v1 history with more commits than v2's input of it has bytes (a long run of empty commits) is refused
+  by v2 (`−7`), so no v1 → v2 change can be made on it until the chain carries more content (`test_vars1.py` 63,
+  at the bound and one commit past it; Codex review of PR #19).
+
+v1c, which carried the delay on v1 encoding, was retired before any chain used it. v1b stays, as the example of a
+resource hardening; a chain with a v1b epoch does not rotate to v2.
+
+The module differs from the archived prototype (tag `archive/rules-v2-prototype`, `4605f0db…`, kept locally): the
+prototype refused a log whose last commit is in a v1 epoch, with the code `−24` that now means a waiting rotation;
+this module evaluates such a log, reading every cell as v1 does, because a rules-change decision runs the new rules
 over the history before the rotation (check (a) of §4.3).
 
 ## 1. Problem (Codex R2-03)
@@ -93,7 +108,8 @@ other value is refused, as today.
 - **v2 reads v1 epochs as v1 did.** For a cell born in a v1 epoch the v2 kernel expects every payload or slot
   equal to a cell id as a reference — v1's reading — so statuses of history are kept. For a cell born in a v2
   epoch it expects the typed positions only. Over a log wholly in v1 epochs it gives v1's output byte for byte
-  (`test_vars1.py` 56), and a rules-change decision checks that on the chain itself before the rotation.
+  (`test_vars1.py` 56) within its commit bound (above), and a rules-change decision checks that on the chain itself
+  before the rotation.
 - **The interim rule continues for v1-born cells only.** A new cell is refused if a cell born in a v1 epoch names
   its id in a payload or slot. Without that, a v1-born cell could gain a reference to a later cell. Cells born in a
   v2 epoch veto nothing: their opaque values stay opaque.
