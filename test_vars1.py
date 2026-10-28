@@ -3590,8 +3590,10 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_63_the_bound_refuses_a_chain_of_empty_commits(self) -> None:
         """The gate admits a commit that adds nothing, so a chain can claim more commits than its input has bytes:
-        v1 folds it, v1b refuses it (E-7), and the host's twin agrees with each (no TwinDivergence)."""
-        for rules in (V.H_LENS_KERNEL, V.H_LENS_KERNEL_V1B):
+        v1 folds it, v1b and v2 refuse it (E-7), and the host's twin agrees with each (no TwinDivergence). v2's
+        bound also limits what it reads of a v1 history: it reads a v1 history as v1 does up to it, and refuses one empty commit past it, and so does a
+        v1 -> v2 change made there."""
+        for rules in (V.H_LENS_KERNEL, V.H_LENS_KERNEL_V1B, V.H_LENS_KERNEL_V2):
             repo = V.GitVarsRepo(self.repo_path)
             a = {**V.STD_SCHEMA_ATOMS, rules: V.RULES_ATOMS[rules]}
             pol = self._pol(a, 1, [self.pk1])
@@ -3616,6 +3618,44 @@ class TestVars1Conformance(unittest.TestCase):
             with self.assertRaisesRegex(V.VarsError, r"more commits than its rules input has bytes \[rules kernel E-7"):
                 repo._evaluate_commit_chain("e", commits)
             repo._evaluate_commit_chain("e", commits[:-1])  # one commit fewer: within the bound
+
+        # v2 carries the same bound (Codex PR #19 r1 F1): a v1 history is read by v2 as v1 reads it only while it has
+        # no more commits than v2's input of it has bytes. Up to that point both outputs agree and the reproduce
+        # evidence of a v1 -> v2 change is made; one empty commit more and v2 refuses (E-7), and so does the change
+        repo = V.GitVarsRepo(self.repo_path)
+        a = {**V.STD_SCHEMA_ATOMS}
+        pol = self._pol(a, 1, [self.pk1])
+        s0 = V.Cell(V.H_SCHEMA["scope"], self._put_atom(a, V.atom_utf8("w/SCOPE")), self._put_atom(a, V.atom_utf8("w")),
+                    slots=(pol, pol, V.H_LENS_KERNEL))
+        c0 = repo.build_candidate_commit("w", a, [*V.STD_SCHEMAS.values(), s0], [V.Seal.sign(self.sk1, s0.id, s0.id)],
+                                         parent_commit=None)
+        repo.admit_and_advance("w", c0, expected_old=None)
+        size = len(V.kernel_facts("w", repo.chain_deltas([c0]), V.H_LENS_KERNEL_V2)[0])
+        tree = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{c0}^{{tree}}"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        script = "".join(f"commit refs/heads/v1-empty\ncommitter t <t@t> 0 +0000\ndata 0\n"
+                         f"{'from ' + c0 + chr(10) if i == 0 else ''}M 040000 {tree} \"\"\n\n" for i in range(size))
+        subprocess.run(["git", "-C", str(self.repo_path), "fast-import", "--quiet", "--force"], input=script.encode(),
+                       check=True)
+        tip = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", "refs/heads/v1-empty"], capture_output=True,
+                             text=True, check=True).stdout.strip()
+        chain = repo.commit_chain(tip)
+        within = []
+        for count in (size - 1, size, size + 1):
+            deltas = repo.chain_deltas(chain[:count])
+            as_v1 = V.kernel_runner(V.H_LENS_KERNEL).run(V.kernel_facts("w", deltas)[0])
+            v2_input = V.kernel_facts("w", deltas, V.H_LENS_KERNEL_V2)[0]
+            if count <= len(v2_input):
+                self.assertEqual(V.kernel_runner(V.H_LENS_KERNEL_V2).run(v2_input), as_v1, f"{count} commits")
+                repo.rules_change_basis("w", chain[count - 1], V.H_LENS_KERNEL, V.H_LENS_KERNEL_V2)
+                within.append(count)
+                continue
+            with self.assertRaises(V.KernelRefusal) as refused:
+                V.kernel_runner(V.H_LENS_KERNEL_V2).run(v2_input)
+            self.assertEqual(refused.exception.code, -7, f"{count} commits: v2 refuses past its bound")
+            with self.assertRaisesRegex(V.VarsError, "the new rules over the chain so far: rules kernel E-7"):
+                repo.rules_change_basis("w", chain[count - 1], V.H_LENS_KERNEL, V.H_LENS_KERNEL_V2)
+        self.assertEqual(within, [size - 1, size], "the bound falls exactly between the last two")
 
     def test_64_a_resource_hardening_needs_each_piece(self) -> None:
         """A hardening is refused when its reproduce or refutes digest is not the replay's, when the chain so far

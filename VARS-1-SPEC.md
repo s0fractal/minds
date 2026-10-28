@@ -358,7 +358,7 @@ instead exhaust it, or trap: a fault, a defect of the module and never a verdict
 body or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module
 (`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for
 the run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it
-implements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B`.
+implements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B` and of `H_LENS_KERNEL_V2`.
 
 The semantic correction is a local cell of the schema `<scope>/rules-change/schema`, whose descriptors are, in order,
 `old_rules:wasm`, `new_rules:wasm`, `basis:utf8`, `reproduce:digest`, `counterexample_scope:utf8`,

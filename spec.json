@@ -990,7 +990,7 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "**Results.** Rules run on an input give an output or a refusal (a negative code). Run under a budget of steps they may\ninstead exhaust it, or trap: a fault, a defect of the module and never a verdict. A step is an entry into a function\nbody or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module\n(`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for\nthe run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it\nimplements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B`.",
+   "text": "**Results.** Rules run on an input give an output or a refusal (a negative code). Run under a budget of steps they may\ninstead exhaust it, or trap: a fault, a defect of the module and never a verdict. A step is an entry into a function\nbody or into a loop body of the module (each iteration enters again); a host counts steps by rewriting the module\n(`meter.py`), so every host counts the same, whatever its engine or speed. Exhaustion says the budget was too small for\nthe run, not that the input is wrong: it is a result of the run, never a status. The host declares, for every rules it\nimplements, the input encoding they read (v1, or v2's) and their resource refusals: −7 of `H_LENS_KERNEL_V1B` and of `H_LENS_KERNEL_V2`.",
    "carries": [
     "rules.results",
     "rules.steps",

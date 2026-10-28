@@ -1824,5 +1824,13 @@
   "kills": [
    "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
   ]
+ },
+ "m-v2-bound-twin": {
+  "file": "vars1.py",
+  "find": "    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / \"lens2.wasm\", \"v2\", frozenset({-7}), rotation_delay=16),",
+  "replace": "    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / \"lens2.wasm\", \"v2\", frozenset(), rotation_delay=16),",
+  "kills": [
+   "test_63_the_bound_refuses_a_chain_of_empty_commits"
+  ]
  }
 }

@@ -11,7 +11,10 @@ one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
 - **v1c's rotation delay** (VARS-1-SPEC.md §4.1 latch 4a): in a v2 epoch, a rotation that removes keys without
   their consent waits 16 commits, or until every removed key has sealed it; meanwhile a new scope is refused, `−24`.
   In a v1 epoch every rotation takes effect at once, as v1 has it, so a v1 history is still read exactly as v1
-  reads it (`test_vars1.py` 86 checks this on a v1 chain whose rotation removed a key).
+  reads it (`test_vars1.py` 86 checks this on a v1 chain whose rotation removed a key) — **within the commit
+  bound**: a v1 history with more commits than v2's input of it has bytes (a long run of empty commits) is refused
+  by v2 (`−7`), so no v1 → v2 change can be made on it until the chain carries more content (`test_vars1.py` 63,
+  at the bound and one commit past it; Codex review of PR #19).
 
 v1c, which carried the delay on v1 encoding, was retired before any chain used it. v1b stays, as the example of a
 resource hardening; a chain with a v1b epoch does not rotate to v2.
@@ -105,7 +108,8 @@ other value is refused, as today.
 - **v2 reads v1 epochs as v1 did.** For a cell born in a v1 epoch the v2 kernel expects every payload or slot
   equal to a cell id as a reference — v1's reading — so statuses of history are kept. For a cell born in a v2
   epoch it expects the typed positions only. Over a log wholly in v1 epochs it gives v1's output byte for byte
-  (`test_vars1.py` 56), and a rules-change decision checks that on the chain itself before the rotation.
+  (`test_vars1.py` 56) within its commit bound (above), and a rules-change decision checks that on the chain itself
+  before the rotation.
 - **The interim rule continues for v1-born cells only.** A new cell is refused if a cell born in a v1 epoch names
   its id in a payload or slot. Without that, a v1-born cell could gain a reference to a later cell. Cells born in a
   v2 epoch veto nothing: their opaque values stay opaque.
