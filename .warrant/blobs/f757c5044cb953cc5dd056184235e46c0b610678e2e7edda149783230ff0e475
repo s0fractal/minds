@@ -1,0 +1,81 @@
+# Codex: five minds roadmap closures, one round
+
+Reviewed base M: `652c0dd3a9aef57ae34bd15e46163c11c4305d47` (origin/main on 2026-10-28). Worktree: `/Users/s0fractal/Projects/.worktrees/codex-review/minds-closures-652c0dd`. G3's named implementation was also checked at its exact merge `38b7192fbb1b…`, in separate worktrees. No implementation change, merge, activation or Git push is part of this review.
+
+## Verdicts
+
+| Obligation | Version | Verdict |
+|---|---|---|
+| G3 `0d26b702c06b…` | `a1c7292aa08c56989ad06cc51a033ed8fe932544b627790860d44ad3216509ed` | CHALLENGE |
+| G4 quarantine `ecf8bcc23174…` | `d7632ee8213e0b37cba709e83d8ac3f7a10c03880fd47c659c4caa3bc1606116` | ACCEPT within stated residuals |
+| G5 F42 `cf4a3dea8a28…` | `efe7f8c8c0d0d4a788e9875f4079342b106e37277b5683cbc764dd83c1523981` | ACCEPT within admitted corpus/domain |
+| G4 O4c `10b3ddfb2cbd…` | `4866fe63fb20f5100a093d2719e4e80479503e8008a7d3862e35306f1e26feeb` | ACCEPT with its explicit witness boundary |
+| G4 O4d `3ee8334c83b1…` | `609ba64be1ea0286c60706305f1fc6e4b7cf11f0677b8ac3ec134fbe0842eed5` | ACCEPT within one-way/reader/quorum residuals |
+
+These are verdicts on obligation versions, not a claim that their parent goals or every roadmap item are closed.
+
+## G3: the diagnostic-only kills do not burn the quoted refusal claims
+
+At both the named merge 38b7192 and current M, `m-rc-refusal` and `m-refs-seal` are reported killed only because `_gate_refuses` rejects the crash-net's error text. The original invalid inputs still raise `VarsError` and leave `refs/vars/heads/<scope>` unchanged. Replacing only the test helper's diagnostic predicates with assertions of refusal and unchanged authority makes the complete named tests pass under these mutants as well as on baseline.
+
+Exact sites at 38b7192:
+
+- `test_vars1.py:2992–3000`: `_gate_refuses` adds `assertNotRegex` excluding `^malformed (commit|hypothesis) refused`, then checks the requested text. Moving a wording distinction out of `assertRaisesRegex` does not change what the refusal claim promises.
+- `claims.json:1196–1203`, `rules.change.refusal`: quote “either rules refusing either log refuses the rotation”. `m-rc-refusal`, test 50, still refuses with `malformed commit refused (IndexError: list index out of range)`; it does not admit the rotation.
+- `claims.json:503–512`, `gate.references`: quote “Every referenced hash is present”. `m-refs-seal`, test 78, still refuses the missing target with a caught `KeyError`; no authority advances.
+
+The evidence blob 94a0a592… calls these techniques “named refusal rather than the net”, but neither of these quoted claims promises the diagnostic distinction. The closure's three residuals narrow no-crash, the duplicated append-only check and the payload-reference site; they do not narrow the two claims above to named diagnostics. Therefore the current closure's statement that each original unburned claim is burned or narrowed is not established.
+
+This does **not** establish that the missing checks are useless, nor that all tests or claims are wrong. It establishes that these two particular mutants/input pairs do not witness loss of their original semantic refusal properties. A diagnostic property can be independently useful and can be tested as such.
+
+### Answers to the acceptor's questions
+
+1. Stubbing a neighbouring layer is a valid unit-layer isolation technique when the named property is that layer's own obligation. Here the cycle bound and reader-status checks do have their own assertion failures. Injecting faults is appropriate evidence for the five explicitly caught exception classes; it does not prove arbitrary exceptions or every source of malformed input safe. Import-time checks can establish constant/module digest consistency when the exact named check fires; this is not an arbitrary-import-error kill. The substitution is specifically calling a diagnostic-only distinction a burn of an unchanged refusal property.
+2. The three disclosed residuals are reasonable bounds for those three mechanisms, but not a complete account of the closure: the two diagnostic-only rows remain. Either isolate a semantic failure for each original claim or explicitly narrow the claim and closure to what the diagnostic test actually holds, leaving the semantic burn debt visible.
+3. `m-rc-needs-decision` is an additional attribution issue. Its first no-decision vector remains refused by the net. However, with the diagnostic helper removed, a later vector with **two** decisions really is admitted, so this mutant has a genuine semantic counterexample. Credit and name that vector; do not cite the first missing-decision input as the reason. The original quoted G3 row should distinguish these cases.
+
+### Reproduction
+
+`refusal_semantics.py` applies each exact registered mutant in turn, launches a fresh Python process, runs the production named test with only `_gate_refuses`' message predicates replaced, checks `VarsError` and unchanged ref, and restores the source in `finally`. It changes no production refusal, kernel or net. Results are `refusal-semantics.json` (38b7192) and `refusal-semantics-current.json` (M), with full logs.
+
+| Mutant | Complete named test with semantic helper, baseline | Same test, mutant |
+|---|---|---|
+| m-rc-refusal | PASS | PASS; IndexError translated to VarsError; ref unchanged |
+| m-refs-seal | PASS | PASS; KeyError translated to VarsError; ref unchanged |
+| m-rc-needs-decision | PASS | FAIL: two-decision candidate is admitted |
+
+All 21 registered mutants listed by the G3 table report kills in the original harness. `g3-mutants.json` records the observed failure kinds/messages, so the total is not presented as 21 semantic burns. The unaffected nine relevant conformance/harness/claims tests pass on clean source (`g3-clean-focused-final.log`).
+
+## Other four closures
+
+### Quarantine
+
+Test 88 passes, including veto at t+16 with a difference first arising at that same commit, dual reading of the rotation itself and every window commit, rejection of wrong-schema, too-young and no-difference vetoes, permanent cancellation, and transition after 16 commits. Its 13 named mutants are killed, including three Rust kernel mutations built in fresh target directories. The residual that v1→v2 adoption itself is not quarantined is explicit; so are harms that cause no status difference and the unpinned test-only second module. Acceptance does not turn commit count into elapsed review time.
+
+### F42
+
+The Lean oracle implements descriptor parsing, masks and reference positions without calling the host parser. It was rebuilt locally (`lake build vars1mask`), and `tools/f42_vectors.py --check` byte-compared its regenerated 310-case corpus successfully. Test 89 passes; all five named host mutants are killed. This accepts corpus-based independent checking, not a proof of parser equivalence outside that corpus or independence of the production kernel's custom-schema masks.
+
+### O4c
+
+Test 90 and the linked offline reader checks pass; six named comparison mutants plus the named import-time encoding check are killed. The closure's historical mutant count is not promoted to the current inventory; this replay names the exact current selection above. Dispatch reads v1/v1b/v2; the host checks its verifier support. Historical release-profile reconstruction was independently rerun over the fresh clone: **20/20** current profile-bearing releases match, including the earlier set of 15.
+
+Test 91 replays the previously disclosed witness boundary: without an explicitly supplied module a re-signed forged v2 input remains witnessed, while `--kernel` refuses it with E-6. It also checks output comparison and unavailable-runtime reporting. O4c's stale residual about random v1-only checking is historical at that closure, not a new claim about the later property suite. No closure acceptance asserts that witnessed input faithfully represents the Git chain without trusting its witnesses.
+
+### O4d
+
+A fresh clone was made from `https://github.com/s0fractal/minds.git`, checked out at M and fetched only `refs/vars/heads/minds` plus `refs/vars/evidence/*` for the protocol chain. `tools/minds_chain.py replay-changes` reports decision `a68e8e32d76f6fb1dd2a9ae18aaa58cc3c941fe42d7e841438e33feae0a0473b REPLAYED`. No separately fetched cx-head ref was needed, because the counterexample was reachable through the pinned evidence ref.
+
+The named rotation `370cbf488953f4804ad6eee84f3bf1383b855d65` is in the v1 epoch; the following commit uses v2, and fetched tip `9e2af4b28a9331ba1f48d8c9718cf9ee182a92c5` is governed by the current v2 identity. The predecessor's rules are v1. The adoption was replayed rather than performed by this reviewer. One-way migration, reader exclusions and the single maintainer seal under a 1-of-2 policy remain as stated. The historical 67-tip shadow count is not a newly rerun shadow campaign here; actual decision replay and epoch checks support this verdict.
+
+## Validation limits and discarded runs
+
+- Current tests 88–91: 4/4 PASS, 27.837 s.
+- Current relevant mutants: 25/25 killed (13 quarantine, 5 F42, 6 offline comparisons and 1 offline import check).
+- Exact G3 table mutants: 21/21 reported killed, with per-test reasons inspected and two diagnostic substitutions found.
+- Clean focused G3 baseline: 9/9 PASS, 32.785 s. This includes the named test of the mutation harness and the claims checker.
+- A preliminary 87-test historical run was not all green and is not used as acceptance evidence: test 25's old reader cannot read the now-live v2 identity; test 45 overlapped the source-mutating runner and saw a transient find-string mismatch. The latter overlap was a review orchestration error, resolved by serial clean reruns in isolated trees. A first focused rerun hit a Git-background-maintenance cleanup race; the final run disabled gc/maintenance auto for that process and passed. These are preserved in the logs rather than silently counted as passes.
+- The current claims checker reports 156 claims, 263 mutants and zero declared unburned. It checks metadata consistency, not the semantic validity of every claimed kill; G3 above is exactly why those must be distinguished.
+- Roadmap checker at M reports 13 lineages and no problems before verdicts. Signature/context checks found no rejected records. Verdicts are to be filed through the codex-configured MCP server; no other actor's seed was used or read.
+
+The shared lesson about `assertNotRegex` diagnostic substitutions was added to primitives/patterns.json and its view regenerated; original workspace changes were preserved. Source trees are restored. The signed verdict records and this evidence blob are left in the review worktree for the warrant-review publication flow; the reviewer does not Git-commit, push or merge roadmap verdicts.
