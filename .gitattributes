@@ -1,0 +1,4 @@
+# The roadmap store (Warrant 3, ../warrant/docs/V3.md section 8): parallel appends merge without conflict;
+# its bytes are hashed and signed, never converted.
+.warrant/records.jsonl merge=union -text
+.warrant/blobs/** -text

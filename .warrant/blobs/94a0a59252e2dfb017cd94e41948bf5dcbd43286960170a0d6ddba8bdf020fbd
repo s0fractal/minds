@@ -1,0 +1,29 @@
+# G3 closure, claim by claim (minds PR #17, merged 38b7192)
+
+Obligation (G3, Warrant 3; formerly Warrant 2 duty 9d6ecdaa, whose text said "19"): "Each of the 15 claims unburned before PR #17 is burned by a mutant that fails on its own input, or narrowed to what is held."
+
+At the time of PR #17, 15 claims were unburned. The duty names 19 because it was written before PRs #11 and #12 burned some and PR #15 unburned others. Each row gives the layer a test asks alone, the vector, the mutant(s) and how the other layers are kept out. To reproduce one row: `python tools/run_mutants.py <mutant>` in a checkout of 38b7192, then run `tools/mutant_test.py` on the named test with that mutant applied to see the failure.
+
+| Claim | Layer asked | Vector | Mutant(s) | Other layers kept out by |
+|---|---|---|---|---|
+| gate.roster-rotation | twin; kernel build | one member rotates the other out, alone (tests 22, 83) | m-roster-veto-twin, m-roster-veto-kernel | each layer judged apart: the twin through TwinDivergence, the kernel build by itself |
+| gate.seals | twin; kernel build | a member's cell also sealed by an outsider (test 87) | m-seal-signer-twin, m-seal-key-kernel | the member's seal keeps "unsealed" from firing; each layer called directly |
+| gate.scope-rules | `check_scope_rules` | a scope naming 32 zero bytes as rules (test 87) | m-scope-rules-host | function called directly; the fold has no answer for unknown rules (it raises KeyError) |
+| payloads.cycle-witness | `gate_cycle_witness` bound | 0 actions; actions > cost (test 87) | m-cycle-bound-gate, -low, -high | Book I's `verify_cycle_witness_replay` stubbed to accept |
+| store.paths | reader mode; object hash | an added 100755 entry with correct bytes; bytes that do not hash to their id (test 87) | m-store-mode, m-cas-path | the vector breaks only one rule; `_checked_object` called directly |
+| gate.append-only | reader status | an orphan atom rewritten in place, mode kept (test 87) | m-append-reader | the object check stubbed to accept the rewritten bytes. Check #2 duplicates the reader: removing it alone changes nothing (narrowing, stated) |
+| types.kin1 | `check_slot_type` | a UTF8 atom in a kin1 slot (test 87) | m-amend-kin1-type | function called directly |
+| rules.change.counterexample-admitted | the gate's `check_chain` of the counterexample | the counterexample plus a cell named `cx/a..b` (test 87) | m-rc-cx-admitted | the rules read no names, so the evidence replays; without the guard the rotation is admitted |
+| rules.change.refusal | named refusal | test 50's refusing counterexample | m-rc-refusal | `_gate_refuses` refuses "malformed commit refused (…)": without the guard the input falls into the net |
+| rules.v2-default | named refusal | test 48: a rotation without its decision | m-rc-needs-decision | as above (IndexError into the net) |
+| gate.references | named refusal | test 78: a seal on a missing target | m-refs-seal | as above (KeyError into the net). The payload site is also held by the payload's type check (narrowing, stated) |
+| gate.no-crash | the net | an injected KeyError, IndexError, TypeError, ValueError or UnicodeDecodeError in `_check_commit` (test 87; the last added in 1afdde1) | m-net-admit, m-net-chain | fault injection; holds for exactly the five types the net names (narrowing, stated) |
+| intrinsics.values | the import check | `H_EMPTY` changed | m-intrinsic-empty | `refused_at_import`: only the named check counts (the rule is burned in test 84) |
+| rules.hash | the import check | `H_LENS_KERNEL` changed | m-rules-hash | as above |
+| assurance.whatif-complete | `lost` over the whole chain | test 81: a decision that a hypothesis's new seal settles lies outside the region | m-whatif-escapes | the mutant changes only what lies outside the region |
+
+## Questions for the acceptor
+
+1. Is any of these techniques a substitution rather than a burn: the stubbed neighbour, fault injection, the named import check, or "named refusal, not the net"?
+2. Are the three stated narrowings narrow enough (no-crash, append-only's Check #2, references' payload site)?
+3. Does any mutant pass its test for a reason other than the one in its row?
