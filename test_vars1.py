@@ -4942,7 +4942,10 @@ class TestVars1Conformance(unittest.TestCase):
             "    def test_named_reason_only(self):\n"  # a `_gate_refuses` whose input the net still refuses
             "        if os.environ.get('MINDS_REFUSAL') != 'semantic': self.fail('refused by the net')\n"
             "    def test_admitted(self):\n"  # a `_gate_refuses` whose input is admitted
-            "        self.fail('INVALID INPUT WAS ADMITTED')\n")
+            "        self.fail('INVALID INPUT WAS ADMITTED')\n"
+            "    def test_semantic_crash(self):\n"  # the run asking only for the refusal crashes
+            "        if os.environ.get('MINDS_REFUSAL') == 'semantic': raise KeyError('x')\n"
+            "        self.fail('refused by the net')\n")
         env = dict(os.environ)
         got = {t: rm.verdict(f"fx.T.{t}", fixture, env)[0] for t in (
             "test_pass", "test_other_words", "test_other_lines", "test_other_words_msg", "test_callable_form",
@@ -4953,14 +4956,41 @@ class TestVars1Conformance(unittest.TestCase):
             "test_other_words_msg": "wording", "test_callable_form": "wording",
             "test_not_raised": "kill", "test_not_raised_plain": "kill", "test_other_exception": "none",
             "test_values": "kill", "test_words_then_values": "kill", "test_message_is_a_lookalike": "kill"})
-        # a refusal asked for by name: caught with only the refusal asked is a burn; caught only by the name is one
-        # just for a mutant declared diagnostic, and a mutant so declared must not be caught with only the refusal
-        got = {(t, d): rm.classify(f"fx.T.{t}", fixture, env, d)[0] for t in
-               ("test_named_reason_only", "test_admitted", "test_pass", "test_other_words") for d in (False, True)}
-        self.assertEqual(got, {("test_named_reason_only", False): False, ("test_named_reason_only", True): True,
-                               ("test_admitted", False): True, ("test_admitted", True): False,
-                               ("test_pass", False): False, ("test_pass", True): False,
-                               ("test_other_words", False): False, ("test_other_words", True): False})
+        # a refusal asked for by name: caught with only the refusal asked is `semantic`; caught only by the name is
+        # `named`, and only after the run asking only for the refusal passed (a crash there is no ground: P27-F2)
+        got = {t: rm.classify(f"fx.T.{t}", fixture, env)[0] for t in
+               ("test_named_reason_only", "test_admitted", "test_pass", "test_other_words", "test_semantic_crash")}
+        self.assertEqual(got, {"test_named_reason_only": "named", "test_admitted": "semantic", "test_pass": "none",
+                               "test_other_words": "wording", "test_semantic_crash": "none"})
+        # over all the tests a mutant names, in any order: a declared diagnostic mutant counts only if none catches
+        # it semantically (P27-F1), an undeclared one only if one does
+        S, N = ("s", "semantic", ""), ("n", "named", "")
+        got = {(names, d): rm.decide(rows, d)[0] for names, rows in (("S", [S]), ("N", [N]), ("SN", [S, N]),
+                                                                      ("NS", [N, S])) for d in (False, True)}
+        self.assertEqual(got, {("S", False): True, ("S", True): False, ("N", False): False, ("N", True): True,
+                               ("SN", False): True, ("SN", True): False, ("NS", False): True, ("NS", True): False})
+        # Codex's counterexamples on the runner itself (review of f444ba8): a declared diagnostic mutant that one of
+        # its tests catches semantically, either order, and one whose semantic run crashes, are not kills
+        (fixture / "subject.py").write_text("value = 1\n")
+        (fixture / "sx.py").write_text(
+            "import os, unittest\nfrom subject import value\nclass T(unittest.TestCase):\n"
+            "    def test_semantic(self):\n        self.assertEqual(value, 1)\n"
+            "    def test_reason(self):\n"
+            "        if os.environ.get('MINDS_REFUSAL') != 'semantic': self.assertEqual(value, 1, 'reason')\n"
+            "    def test_crash(self):\n        if value != 1:\n"
+            "            if os.environ.get('MINDS_REFUSAL') == 'semantic': raise KeyError('no refusal established')\n"
+            "            self.fail('reason')\n")
+        root, rm.ROOT = rm.ROOT, fixture
+        try:
+            m = {"file": "subject.py", "find": "value = 1", "replace": "value = 2", "diagnostic": True}
+            got = {k: rm.run(f"m-fx-{k}", dict(m, kills=[f"sx.T.{x}" for x in tests]))[0] for k, tests in (
+                ("semantic-first", ["test_semantic", "test_reason"]), ("reason-first", ["test_reason", "test_semantic"]),
+                ("reason-only", ["test_reason"]), ("semantic-crash", ["test_crash"]))}
+        finally:
+            rm.ROOT = root
+        self.assertEqual(got, {"semantic-first": False, "reason-first": False, "reason-only": True,
+                               "semantic-crash": False})
+        self.assertEqual((fixture / "subject.py").read_text(), "value = 1\n", "the runner restores the file")
         # a value held by a check made at import: the mutant counts only if that named check stops the import
         (fixture / "loads.py").write_text("x = 1\n")
         (fixture / "checked.py").write_text("raise RuntimeError('the value is not the one listed')\n")

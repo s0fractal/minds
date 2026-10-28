@@ -1977,7 +1977,8 @@
     "m-runner-semantic",
     "m-runner-declared",
     "m-runner-undeclared",
-    "m-claims-diagnostic"
+    "m-claims-diagnostic",
+    "m-runner-crash"
    ]
   },
   {

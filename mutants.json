@@ -2137,24 +2137,24 @@
  },
  "m-runner-semantic": {
   "file": "tools/run_mutants.py",
-  "find": "    how, message = verdict(test, cwd, dict(env, MINDS_REFUSAL=\"semantic\"))",
-  "replace": "    how, message = verdict(test, cwd, env)",
+  "find": "    first = outcomes(test, cwd, dict(env, MINDS_REFUSAL=\"semantic\"))",
+  "replace": "    first = outcomes(test, cwd, env)",
   "kills": [
    "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
  },
  "m-runner-declared": {
   "file": "tools/run_mutants.py",
-  "find": "        if diagnostic:\n            return False, f\"declared diagnostic, yet",
-  "replace": "        if False:\n            return False, f\"declared diagnostic, yet",
+  "find": "        if caught:\n            return False, (f\"declared diagnostic, yet",
+  "replace": "        if False:\n            return False, (f\"declared diagnostic, yet",
   "kills": [
    "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
  },
  "m-runner-undeclared": {
   "file": "tools/run_mutants.py",
-  "find": "        return False, (f\"{test} catches it only by its named reason",
-  "replace": "        return True, (f\"{test} catches it only by its named reason",
+  "find": "        return False, (f\"{named[0][0]} catches it only by its named reason",
+  "replace": "        return True, (f\"{named[0][0]} catches it only by its named reason",
   "kills": [
    "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
@@ -2165,6 +2165,14 @@
   "replace": "            elif False:",
   "kills": [
    "test_45_the_spec_is_a_projection_of_its_witnesses"
+  ]
+ },
+ "m-runner-crash": {
+  "file": "tools/run_mutants.py",
+  "find": "    if first:  # the run asking only for the refusal did not pass",
+  "replace": "    if False:  # the run asking only for the refusal did not pass",
+  "kills": [
+   "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
  }
 }
