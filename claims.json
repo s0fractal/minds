@@ -1630,7 +1630,27 @@
     "m-offline-ref-check",
     "m-offline-host-check",
     "m-offline-host-encoding",
-    "m-offline-v2-encoding"
+    "m-offline-v2-encoding",
+    "m-scope-index",
+    "m-pass3-scope-index"
+   ]
+  },
+  {
+   "id": "offline.kernel",
+   "quote": "a reader who has Node may supply the rules module (`--kernel FILE`, used only if its SHA-256 is the projection's rules), which is then run on the input;",
+   "status": "tested",
+   "witnesses": [
+    "test:test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+   ],
+   "mutants": [
+    "m-kernel-refusal",
+    "m-kernel-output",
+    "m-kernel-identity",
+    "m-kernel-verified",
+    "m-kernel-cli",
+    "m-kernel-env",
+    "m-kernel-reply",
+    "m-kernel-oserror"
    ]
   },
   {

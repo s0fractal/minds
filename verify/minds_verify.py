@@ -9,7 +9,8 @@ copy this file anywhere and run
     python3 -I minds_verify.py inspect-attestation|inspect-projection BUNDLE.json
 
 `verify-*` trusts only keys the reader names; `inspect-*` checks a bundle against its own policies and claims no
-trust.
+trust. With `--kernel RULES.wasm`, a reader who has Node also runs the projection's rules module on its input, so the
+output is checked here rather than taken on its witnesses' word.
 
 `vars1.py` delegates its bundle checks here, so there is one implementation. Every result carries `explain`: which
 witnesses and keys were counted, which verifiers were blocked, the scope epoch, the policy, why a pinned key is
@@ -20,7 +21,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import shutil
 import struct
+import subprocess
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -633,7 +637,10 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
         return out
 
     d = kc[di]
-    scope_cell = kc[struct.unpack_from("<I", output, 0)[0]]
+    si = struct.unpack_from("<I", output, 0)[0]
+    if si >= n:
+        raise VarsError("kernel output names a scope outside its input")
+    scope_cell = kc[si]
     p = d["slots"][3] if d["slots"][3] != H_EMPTY else scope_cell["slots"][0]
     if p not in pols:
         raise VarsError("the kernel input lacks the evaluator policy")
@@ -684,7 +691,61 @@ def _bundle_atoms(bundle: Dict[str, object]) -> Dict[bytes, bytes]:
     return atoms
 
 
-def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] = None) -> Dict[str, object]:
+# A reader's own run of the rules (optional, `--kernel`). Every other check here is Python's standard library; this
+# one runs the rules module under Node's WebAssembly, as the host does (§4.3), so a reader who has Node checks the one
+# thing a projection's witnesses otherwise vouch for: that the bundle's output is what its rules give its input.
+KERNEL_DRIVER = r"""
+const chunks = [];
+process.stdin.on("data", (c) => chunks.push(c));
+process.stdin.on("end", async () => {
+  const [mod, inp] = Buffer.concat(chunks).toString().trim().split("\n");
+  const { instance } = await WebAssembly.instantiate(Buffer.from(mod, "hex"), {});
+  const { memory, reset, alloc, run } = instance.exports;
+  const input = Buffer.from(inp, "hex");
+  reset();
+  const ptr = alloc(input.length);
+  new Uint8Array(memory.buffer, ptr, input.length).set(input);
+  const out = run(ptr, input.length);
+  if (out < 0) { process.stdout.write(`E${out}\n`); return; }
+  const n = new DataView(memory.buffer).getUint32(out, true);
+  process.stdout.write(Buffer.from(new Uint8Array(memory.buffer, out + 4, n)).toString("hex") + "\n");
+});
+"""
+KERNEL_TIMEOUT = 120.0  # seconds a reader's run of the rules may take before it is reported as not run
+# The one reply the driver gives: a refusal code, or the output as lowercase hex, on one line
+KERNEL_REPLY = re.compile(rb"(E-[1-9][0-9]{0,9}|(?:[0-9a-f]{2})+)\n")
+
+
+def run_rules(module: bytes, kernel_input: bytes, timeout: float = KERNEL_TIMEOUT) -> Tuple[str, object]:
+    """Run a rules module on one kernel input under Node: ("output", bytes after the length word), ("refusal",
+    its negative code), or ("not_run", why) when Node is missing, does not start, fails (a trap included), outlasts
+    `timeout` seconds or replies other than the driver does. Not running is a fact about this host, never about the
+    input. Node is the binary `node` on PATH, run with an empty environment: inherited startup code (NODE_OPTIONS
+    --require, NODE_PATH) would run in the engine beside the module, which its hash does not cover (Codex review of
+    PR #24, P24-F1)."""
+    node = shutil.which("node")
+    if node is None:
+        return "not_run", "node is not on PATH"
+    try:
+        got = subprocess.run([node, "-e", KERNEL_DRIVER], capture_output=True, timeout=timeout, env={},
+                             input=(module.hex() + "\n" + kernel_input.hex() + "\n").encode())
+    except subprocess.TimeoutExpired:
+        return "not_run", f"the run outlasted {timeout:g} s"
+    except OSError as e:
+        return "not_run", f"node did not start: {e}"[:200]
+    if got.returncode != 0:
+        why = (got.stderr.decode("utf-8", "replace").strip().splitlines() or ["no output"])[-1]
+        return "not_run", f"node failed: {why[:200]}"
+    if not KERNEL_REPLY.fullmatch(got.stdout):
+        return "not_run", f"node replied other than the driver does: {got.stdout[:80]!r}"
+    line = got.stdout[:-1].decode("ascii")
+    if line.startswith("E"):
+        return "refusal", int(line[1:])
+    return "output", bytes.fromhex(line)
+
+
+def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] = None,
+                      kernels: Iterable[bytes] = (), timeout: float = KERNEL_TIMEOUT) -> Dict[str, object]:
     """Check a projection bundle with no repository (§4.4).
 
     Every seal must be a valid Ed25519 seal on this projection; `witnessed` says whether distinct keys of its
@@ -696,7 +757,13 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
     This establishes what the named witnesses vouch for at `tip` — not freshness after it, and not Pass 3.
 
     The witness policy is the projection's own: whoever made it chose it. A reader trusts a projection only for keys
-    it chose beforehand; `require` names them, and `required_missing` lists those that did not witness it."""
+    it chose beforehand; `require` names them, and `required_missing` lists those that did not witness it.
+
+    That the output is what the rules give the input is the witnesses' word, `kernel: "witnessed"`, unless the reader
+    supplies the rules module in `kernels` (module bytes; the one used is the one whose SHA-256 is the projection's
+    rules, so its identity is the reader's, not the bundle's). Then it is run on the input (`run_rules`): the same
+    output is `kernel: "verified_here"`; a refusal or another output raises VarsError; a run that cannot be made
+    leaves `kernel: "witnessed"` with the reason in `explain.kernel`."""
     if bundle.get("format") != BUNDLE_FORMAT:
         raise VarsError("unknown projection bundle format")
     cell = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -738,6 +805,7 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
         "scope": None,
         "statuses": None,
         "required_missing": [k.hex() for k in require or [] if k not in witnesses],
+        "kernel": None,
     }
     result["explain"] = {
         "rules": rules,
@@ -745,6 +813,7 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
         "witness_seals": sorted(witness_seals, key=lambda x: (x["key"], x["seal"])),
         "witnesses_missing": sorted(k.hex() for k in set(keys) - witnesses),
         "scope_epoch": None,
+        "kernel": None,
     }
     if "input" in bundle or "output" in bundle:
         kernel_input = bytes.fromhex(bundle.get("input", ""))
@@ -756,11 +825,30 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
         result["data_ok"] = True
         if rules["status"] != "known":
             return result
+        # the reader's own run first, on the raw bytes, before anything of the output is read
+        kernel = {"status": "witnessed", "module": None, "reason": "no module of these rules was supplied"}
+        module = {sha256(m): m for m in kernels}.get(cell.slots[1])
+        if module is not None:
+            kernel["module"] = cell.slots[1].hex()
+            how, got = run_rules(module, kernel_input, timeout)
+            if how == "refusal":
+                raise VarsError(f"the projection's rules refuse its input (E{got}): its witnesses vouch for an output "
+                                "the rules do not give")
+            if how == "output" and got != output:
+                raise VarsError("the projection's rules give its input another output than the bundle's")
+            if how == "output":
+                kernel.update(status="verified_here", reason=None)
+            else:
+                kernel["reason"] = got
+        result["kernel"], result["explain"]["kernel"] = kernel["status"], kernel
         order = kernel_input_order(kernel_input, rules["encoding"])
         n = len(order)
         if len(output) < 4 + n:
             raise VarsError("bundle output is shorter than its cell count")
-        result["scope"] = order[int.from_bytes(output[:4], "little")].hex()
+        si = int.from_bytes(output[:4], "little")
+        if si >= n:
+            raise VarsError("bundle output names a scope outside its input")
+        result["scope"] = order[si].hex()
         result["explain"]["scope_epoch"] = result["scope"]
         result["statuses"] = {
             cid.hex(): {name: bool(output[4 + i] >> b & 1) for b, name in enumerate(KERNEL_BITS)}
@@ -772,7 +860,8 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
 ATTESTATION_FORMAT = "vars-1.attestation-bundle@1"
 
 
-def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]] = None) -> Dict[str, object]:
+def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]] = None,
+                       kernels: Iterable[bytes] = (), timeout: float = KERNEL_TIMEOUT) -> Dict[str, object]:
     """Recompute §4.2 Pass 3 for one contract or decision from a bundle, with no repository.
 
     `attested`: over the supplied verdicts, ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator
@@ -792,7 +881,8 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     The chain's admission quorum may rotate its roster, so a key that refused a release can be rotated out and
     later releases settle without it. A reader who wants a veto for certain keys pins them: with `require`, each
     must also endorse the cell at the tip and witness the projection, and `required_missing` lists those that
-    do not (`explain.required` says why)."""
+    do not (`explain.required` says why). `kernels` and `timeout` are the projection's (`verify_projection`):
+    `kernel` says whether its output was the witnesses' word or checked here."""
     if bundle.get("format") != ATTESTATION_FORMAT:
         raise VarsError("unknown attestation bundle format")
     d = Cell.decode(bytes.fromhex(bundle["cell"]))
@@ -858,6 +948,7 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         "active_at_tip": None,
         "accepted": False,
         "rules_status": None,
+        "kernel": None,
     }
     explain: Dict[str, object] = {
         "policy": {"id": pol.hex(), "source": "evaluator_policy" if d.slots[3] != H_EMPTY else "scope_admission",
@@ -880,12 +971,13 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         result["required_missing"] = [k.hex() for k in require]
     if "projection" not in bundle:
         return result
-    pr = verify_projection(bundle["projection"])
+    pr = verify_projection(bundle["projection"], kernels=kernels, timeout=timeout)
     if not pr["data_ok"]:
         raise VarsError("the projection in an attestation bundle must carry its input and output")
     result["tip"] = pr["tip"]
     result["projection_witnessed"] = pr["witnessed"]
     result["rules_status"] = pr["rules_status"]
+    result["kernel"] = pr["kernel"]
     explain["rules"] = pr["explain"]["rules"]
     explain["projection"] = pr["explain"]
     if pr["rules_status"] != "known":
@@ -950,20 +1042,26 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     return result
 
 
-USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]...
+USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]... [--kernel RULES.wasm]...
   verify-projection   exit 0 iff every pinned key witnessed it, its data matches, and its rules are known
   verify-attestation  exit 0 iff it is accepted at a witnessed tip and every pinned key endorsed and witnessed it
   inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
   inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed)
-verify-* needs at least one --require: a bundle's own policy was chosen by whoever made it, not by the reader."""
+verify-* needs at least one --require: a bundle's own policy was chosen by whoever made it, not by the reader.
+--kernel runs the projection's rules module on its input under Node (the file whose SHA-256 is its rules), so the
+output is checked here, not taken on its witnesses' word; then every command also needs `kernel: verified_here`."""
 
 
 def main(argv: List[str]) -> int:
     cmds = ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation")
-    if len(argv) < 2 or argv[0] not in cmds or len(argv) % 2 or not all(a == "--require" for a in argv[2::2]):
+    opts = list(zip(argv[2::2], argv[3::2]))
+    if len(argv) < 2 or argv[0] not in cmds or len(argv) % 2 \
+            or not all(k in ("--require", "--kernel") for k, _ in opts):
         print(USAGE, file=sys.stderr)
         return 2
-    cmd, pins = argv[0], argv[3::2]
+    cmd = argv[0]
+    pins = [v for k, v in opts if k == "--require"]
+    modules = [v for k, v in opts if k == "--kernel"]
     if cmd.startswith("verify-") and not pins:
         print("refused: verify needs --require PUBKEY, keys you trust; inspect-* checks consistency only",
               file=sys.stderr)
@@ -971,11 +1069,12 @@ def main(argv: List[str]) -> int:
     try:
         bundle = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
         keys = [bytes.fromhex(k) for k in pins]
+        kernels = [Path(m).read_bytes() for m in modules]
         if cmd.endswith("-projection"):
-            result = verify_projection(bundle, require=keys)
+            result = verify_projection(bundle, require=keys, kernels=kernels)
         else:
-            result = verify_attestation(bundle, require=keys)
-    except (VarsError, ValueError, KeyError, TypeError) as e:
+            result = verify_attestation(bundle, require=keys, kernels=kernels)
+    except (VarsError, ValueError, KeyError, TypeError, OSError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True))
@@ -986,6 +1085,8 @@ def main(argv: List[str]) -> int:
               and not result["required_missing"])
     else:
         ok = result["accepted"]
+    if modules:  # the reader asked for the output to be checked here: the witnesses' word is not enough
+        ok = ok and result["kernel"] == "verified_here"
     return 0 if ok else 1
 
 

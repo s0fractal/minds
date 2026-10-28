@@ -2050,5 +2050,85 @@
   "kills": [
    "test_vars1_props.TestVars1Properties.test_random_admission_sequences_under_v2"
   ]
+ },
+ "m-kernel-refusal": {
+  "file": "verify/minds_verify.py",
+  "find": "            if how == \"refusal\":\n                raise VarsError(f\"the projection's rules refuse its input",
+  "replace": "            if False:\n                raise VarsError(f\"the projection's rules refuse its input",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-output": {
+  "file": "verify/minds_verify.py",
+  "find": "            if how == \"output\" and got != output:",
+  "replace": "            if False:",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-identity": {
+  "file": "verify/minds_verify.py",
+  "find": "        module = {sha256(m): m for m in kernels}.get(cell.slots[1])",
+  "replace": "        module = next(iter(kernels), None)",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-verified": {
+  "file": "verify/minds_verify.py",
+  "find": "                kernel.update(status=\"verified_here\", reason=None)",
+  "replace": "                kernel.update(reason=None)",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-cli": {
+  "file": "verify/minds_verify.py",
+  "find": "        ok = ok and result[\"kernel\"] == \"verified_here\"",
+  "replace": "        ok = ok",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-env": {
+  "file": "verify/minds_verify.py",
+  "find": "capture_output=True, timeout=timeout, env={},",
+  "replace": "capture_output=True, timeout=timeout,",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-reply": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not KERNEL_REPLY.fullmatch(got.stdout):",
+  "replace": "    if False:",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-kernel-oserror": {
+  "file": "verify/minds_verify.py",
+  "find": "    except OSError as e:\n        return \"not_run\", f\"node did not start: {e}\"[:200]\n",
+  "replace": "",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-scope-index": {
+  "file": "verify/minds_verify.py",
+  "find": "        if si >= n:\n            raise VarsError(\"bundle output names a scope outside its input\")",
+  "replace": "        if False:\n            raise VarsError(\"bundle output names a scope outside its input\")",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
+ },
+ "m-pass3-scope-index": {
+  "file": "verify/minds_verify.py",
+  "find": "    if si >= n:\n        raise VarsError(\"kernel output names a scope outside its input\")",
+  "replace": "    if False:\n        raise VarsError(\"kernel output names a scope outside its input\")",
+  "kills": [
+   "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for"
+  ]
  }
 }

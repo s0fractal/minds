@@ -108,7 +108,7 @@ result, never a reading.
 | Reader | v1 (`H_LENS_KERNEL`) | v1b (`H_LENS_KERNEL_V1B`) | v2 (`H_LENS_KERNEL_V2`) |
 |---|---|---|---|
 | The gate and lens (`vars1.py`) | Runs it; Python twin | Runs it; Python twin | Runs it; Python twin reading the typed references |
-| The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations | Reads them, in v1's encoding (v1's output; one more refusal) | Reads them, in the v2 encoding: references from the input's own list, each checked against its cell |
+| The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations; with `--kernel` and Node, it runs the rules on the input | Reads them, in v1's encoding (v1's output; one more refusal); likewise with `--kernel` | Reads them, in the v2 encoding: references from the input's own list, each checked against its cell; with `--kernel` and Node, the kernel's check of the list too |
 | The Lean model (`vars1exec`, `vars1fold`) | Compared with the kernel (I9, I10) | Not compared (v1 with one more refusal) | Not modelled on main |
 | Kani and the fuzzer | Bounded / fuzzed | Not run | Not run |
 
@@ -123,7 +123,7 @@ the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V
 | A commit is admitted | `vars1.py` gate, the kernel under node | Python, node and its wasm engine, git's object store, SHA-256, Ed25519 (`minds_verify.py`'s own implementation, 34 vectors), `sigma_resume` (bytes pinned at import) |
 | A status bit (Passes 1–2) | `kernel/lens.wasm` | As above; the kernel's equality with the Lean model is differential, not proved |
 | Settled (Pass 3) | `vars1.py` | Python replay of Book I (transcribed by hand from the abstract machine) |
-| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type) |
+| An offline `accepted` | `verify/minds_verify.py`, standard library only | Python, the pinned keys the reader supplies, and the projection's witnesses for everything Pass 3 does not recompute (under v2, that the input's reference list is the typed one: the verifier checks each entry's value, the kernel its type); with `--kernel`, the `node` on PATH (run with an empty environment) and its wasm engine compute the output here, and the witnesses still vouch that the input faithfully encodes the chain at `tip`: its cells, seals and parsed facts (Codex review of PR #24) |
 | A release is Settled | every member's `verify-release` | Each member's host: its interpreters, its checkout, and that it ran the checks it signs |
 
 ## What would follow (what-if)

@@ -99,7 +99,8 @@ The host's twin, the gate's topological order and the attestation client (§4.4:
 its origin that references it") read references the same way: `cell_refs` in `vars1.py`, and the offline verifier
 (`verify/minds_verify.py`, since roadmap O4c) the explicit list of a v2 input, checking that each entry names an older
 cell whose id is the value at its position. Whether the list is the typed one is the kernel's check (`−6`), which
-the projection's witnesses vouch for; the verifier does not read masks or epochs. `test_vars1.py` 90 builds a chain
+the projection's witnesses vouch for; the verifier does not read masks or epochs, unless the reader runs the module
+itself (`--kernel`, `test_vars1.py` 91: Codex's countervector of an untyped entry with the right value is then refused). `test_vars1.py` 90 builds a chain
 where the two readings of a `hash` decide a foreign endorsement: under v1 and v2 the lens, `vars1.py` and the
 standalone file agree.
 
