@@ -72,9 +72,10 @@ KERNEL_ATOM = (KERNEL_DIR / "lens.wasm").read_bytes()
 if sha256(KERNEL_ATOM) != H_LENS_KERNEL:
     raise RuntimeError("kernel/lens.wasm does not hash to H_LENS_KERNEL")
 # Rules v2 (RULES-V2.md): typed cell references, explicit in the kernel input, with v1b's commit bound (-7), the
-# rotation delay of §4.1 latch 4a and the rules-change quarantine of latch 4b in v2 epochs. Dormant: v1 is the
-# default, and a scope moves to v2 only by a rotation admitted with a rules-change decision (§4.3). The host keeps
-# both modules, so every past tip stays recomputable under the rules of its epoch.
+# rotation delay of §4.1 latch 4a and the rules-change quarantine of latch 4b in v2 epochs. v1 is the default for a
+# new genesis, and a scope moves to v2 only by a rotation admitted with a rules-change decision (§4.3);
+# refs/vars/heads/minds did on 2026-10-28 (RULES-V2.md §7). The host keeps both modules, so every past tip stays
+# recomputable under the rules of its epoch.
 KERNEL2_DIR = Path(__file__).resolve().parent / "kernel2"
 KERNEL2_ATOM = (KERNEL2_DIR / "lens2.wasm").read_bytes()
 if sha256(KERNEL2_ATOM) != H_LENS_KERNEL_V2:

@@ -2,8 +2,8 @@
 
 Design note for VARS-1-SPEC.md §4.3 ("Changing the rules", "Results", "Evidence"). The normative text is the spec;
 this note gives the reasons, the alternatives not taken and what is still open. Status: implemented on the host
-(`vars1.py`, `meter.py`, `tools/minds_chain.py`), tested (`test_vars1.py` 62–70, mutants `m-amend-*`). Nothing is
-active on `refs/vars/heads/minds`: that chain stays on v1 until its members decide otherwise.
+(`vars1.py`, `meter.py`, `tools/minds_chain.py`), tested (`test_vars1.py` 62–70, mutants `m-amend-*`). On
+`refs/vars/heads/minds` one change is active: the move to v2 on 2026-10-28, a correction (RULES-V2.md §7).
 
 ## The problem
 
@@ -160,7 +160,8 @@ already replays what each class needs. A node can always recompute the manifest 
 - The offline verifier (`verify/minds_verify.py`) reads a v1b projection as a v1 one (v1's encoding and output) since
   roadmap O4c; before it, a v1b projection was reported unsupported, as a v2 one was.
 
-To activate it on `refs/vars/heads/minds` (the members' decision, not done here):
+It can no longer be activated on `refs/vars/heads/minds`, which moved to v2 on 2026-10-28: no rotation leaves v2
+for rules that read as v1 (E-25). A scope still under v1 would reach it by:
 
 ```
 .venv/bin/python tools/minds_chain.py shadow 2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd --out shadow.json
@@ -200,4 +201,5 @@ budget here is evidence about one input, not a bound on the rules.
 - `evidence_closure` re-walks nested counterexample chains at every level that checks them: the work across a nesting
   of depth d grows about as d² (Codex review r2 measured 1, 6 and 28 entries at depths 2, 4 and 8). Real chains nest
   rarely; a memo per (scope, commit) would make it linear.
-- The live chain is untouched.
+- The live chain's one rules change is the move to v2 (2026-10-28, RULES-V2.md §7); none of the hardenings here
+  is active on it.

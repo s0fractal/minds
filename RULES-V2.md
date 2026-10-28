@@ -1,8 +1,8 @@
 # VARS-1 rules v2: typed cell references
 
-Status: **dormant support on main, not adopted.** The host implements both rules; v1 is the default, and a scope
-moves to v2 only by a rotation admitted with a rules-change decision (VARS-1-SPEC.md §4.3). The live chain
-`refs/vars/heads/minds` keeps `H_LENS_KERNEL` (v1): the owner decided so. Nothing here changes v1.
+Status: **adopted on the live chain.** `refs/vars/heads/minds` moved to v2 on 2026-10-28: rotation commit `370cbf4`, rules-change decision `a68e8e32…` of class correction, counterexample Codex R2-03 at `refs/vars/heads/cx` (`f5e22f9`); the owner decided so (roadmap O4d). The host implements
+both rules; v1 is the default for a new genesis, and a scope moves to v2 only by a rotation admitted with a
+rules-change decision (VARS-1-SPEC.md §4.3). Nothing here changes v1.
 
 `H_LENS_KERNEL_V2 = 1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e`. Since 2026-10-28 v2 is the
 one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
@@ -175,9 +175,15 @@ every tip (I9 and I10 compare a model of v1's input). It starts under v2 rather 
 in the generator would need a rules-change decision. Not carried over from the prototype: `proofs/Vars1/Refs.lean`;
 no Lean statement is about v2.
 
-## 7. Adoption (not done)
+## 7. Adoption (done 2026-10-28)
 
-Adopting v2 for `refs/vars/heads/minds` needs: the owner's explicit go-ahead; a rotation whose new scope names
+`refs/vars/heads/minds` moved to v2 on 2026-10-28: rotation commit `370cbf4`, rules-change decision `a68e8e32…` of class correction, counterexample Codex R2-03 at `refs/vars/heads/cx` (`f5e22f9`). Before the rotation, `tools/minds_chain.py shadow` replayed every one of the chain's 67 tips under v2:
+0 differences (manifest `ce09bbf4…`); the gate replayed the decision's computations, and a fresh clone of GitHub that
+fetched only `refs/vars/heads/minds` and `refs/vars/evidence/*` replays it again (`minds_chain.py replay-changes`:
+REPLAYED). The admission quorum is 1 of the roster's 2 keys, so the maintainer's seal admitted it. The rotation is
+one-way: no rotation leaves v2 for rules that read as v1 (E-25).
+
+What adoption needed: the owner's explicit go-ahead; a rotation whose new scope names
 `H_LENS_KERNEL_V2`, sealed by the admission quorum, with a rules-change decision (VARS-1-SPEC.md §4.3) whose
 counterexample chain is published under `refs/vars/heads/<its scope>`; `kernel2/lens2.wasm` stored as an atom; and
 every member's verifier updated to a host that implements v2 first. The offline verifier reads v2 since roadmap O4c,
