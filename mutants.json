@@ -1699,16 +1699,16 @@
  },
  "m-4a-kernel-consent": {
   "file": "kernel2/src/lib.rs",
-  "find": "            if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {",
-  "replace": "            if at >= t + ROTATION_DELAY {",
+  "find": "            } else if at >= t + ROTATION_DELAY || (!change && !g.waits(base, s, at, ends)?) {",
+  "replace": "            } else if at >= t + ROTATION_DELAY {",
   "kills": [
    "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
   ]
  },
  "m-4a-kernel-defer": {
   "file": "kernel2/src/lib.rs",
-  "find": "            if waiting.map_or(false, |(x, _)| x == w) || (pending == Some(w) && pending_waits) {\n                continue;\n            }",
-  "replace": "            if false {\n                continue;\n            }",
+  "find": "            if waiting.map_or(false, |(x, _, _)| x == w) || (pending == Some(w) && pending_waits) || cancelled[w] != 0 {",
+  "replace": "            if cancelled[w] != 0 {",
   "kills": [
    "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
   ]
@@ -1723,8 +1723,8 @@
  },
  "m-4a-kernel-pending": {
   "file": "kernel2/src/lib.rs",
-  "find": "                if waiting.is_some() || (pending_waits &&",
-  "replace": "                if false || (pending_waits &&",
+  "find": "                if waiting.is_some() {\n                    return Err(SCOPE_PENDING);",
+  "replace": "                if false {\n                    return Err(SCOPE_PENDING);",
   "kills": [
    "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
   ]
@@ -1733,14 +1733,6 @@
   "file": "kernel2/src/lib.rs",
   "find": "            if (0..self.sets.kw).any(|w| old[w] & !new[w] & !ends[w] != 0) {",
   "replace": "            if (0..self.sets.kw).any(|w| old[w] & !ends[w] != 0) {",
-  "kills": [
-   "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
-  ]
- },
- "m-4a-kernel-rules": {
-  "file": "kernel2/src/lib.rs",
-  "find": " && g.slot(s, 2)? != g.slot(base, 2)?) {",
-  "replace": " && false) {",
   "kills": [
    "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
   ]
@@ -1763,8 +1755,8 @@
  },
  "m-4a-twin-consent": {
   "file": "vars1.py",
-  "find": "                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay or not waits(s_base_id, w_id):",
-  "replace": "                if idx >= w_at + RULES[s_base.slots[2]].rotation_delay:",
+  "find": "                      or (not w_change and not waits(s_base_id, w_id))):",
+  "replace": "                      or False):",
   "kills": [
    "test_85_a_rotation_that_removes_keys_without_consent_waits"
   ]
@@ -1801,22 +1793,6 @@
    "test_85_a_rotation_that_removes_keys_without_consent_waits"
   ]
  },
- "m-4a-twin-rules": {
-  "file": "vars1.py",
-  "find": "                    if pending_waits and s_next.slots[2] != s_base.slots[2]:",
-  "replace": "                    if False:",
-  "kills": [
-   "test_85_a_rotation_that_removes_keys_without_consent_waits"
-  ]
- },
- "m-4a-twin-v1": {
-  "file": "vars1.py",
-  "find": "            if len(base_c.slots) < 3 or not RULES[base_c.slots[2]].rotation_delay:",
-  "replace": "            if len(base_c.slots) < 3:",
-  "kills": [
-   "test_85_a_rotation_that_removes_keys_without_consent_waits"
-  ]
- },
  "m-v2-bound": {
   "file": "kernel2/src/lib.rs",
   "find": "    if commits as usize > input.len() {\n        return Err(COMMIT_BOUND);\n    }",
@@ -1831,6 +1807,110 @@
   "replace": "    H_LENS_KERNEL_V2: Rules(KERNEL2_DIR / \"lens2.wasm\", \"v2\", frozenset(), rotation_delay=16),",
   "kills": [
    "test_63_the_bound_refuses_a_chain_of_empty_commits"
+  ]
+ },
+ "m-4b-kernel-change": {
+  "file": "kernel2/src/lib.rs",
+  "find": "                pending_change = !names_v1(base)? && g.slot(s, 2)? != g.slot(base, 2)?;",
+  "replace": "                pending_change = false;",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-4b-kernel-veto": {
+  "file": "kernel2/src/lib.rs",
+  "find": "                            vetoed = true;",
+  "replace": "                            vetoed = false;",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-4b-kernel-cancelled": {
+  "file": "kernel2/src/lib.rs",
+  "find": " || (pending == Some(w) && pending_waits) || cancelled[w] != 0 {",
+  "replace": " || (pending == Some(w) && pending_waits) {",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-4b-twin-change": {
+  "file": "vars1.py",
+  "find": "                    pending_change = bool(RULES[s_base.slots[2]].rotation_delay) and s_next.slots[2] != s_base.slots[2]",
+  "replace": "                    pending_change = False",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-4b-twin-veto": {
+  "file": "vars1.py",
+  "find": "                vetoed = w_change and any(",
+  "replace": "                vetoed = False and any(",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-4b-twin-cancelled": {
+  "file": "vars1.py",
+  "find": "                    open_edges.pop(w_id, None)  # the scope never governs, and its supersedes edge never latches",
+  "replace": "                    pass",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-epochs-veto": {
+  "file": "vars1.py",
+  "find": "            waiting = None  # vetoed",
+  "replace": "            pass  # vetoed",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-epochs-wait": {
+  "file": "vars1.py",
+  "find": "            if delay and rules_of(new[0]) != rules_of(cur):",
+  "replace": "            if False:",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-veto-schema": {
+  "file": "vars1.py",
+  "find": "            if c.h_schema != vschema or len(c.slots) != 2 or c.slots[0] != w_id:",
+  "replace": "            if False:",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-veto-young": {
+  "file": "vars1.py",
+  "find": "            if born.get(target, w_at + 1) > w_at:",
+  "replace": "            if False:",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-veto-difference": {
+  "file": "vars1.py",
+  "find": "            if reads[0] == reads[1]:",
+  "replace": "            if False:",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-rules-window": {
+  "file": "vars1.py",
+  "find": "        except KernelRefusal as e:\n            raise VarsError(f\"a commit in a rules change's window must be read by the new rules too: {e}\") from None",
+  "replace": "        except KernelRefusal:\n            pass",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
+ "m-rc-reads-rotation": {
+  "file": "vars1.py",
+  "find": "        except KernelRefusal as e:\n            raise VarsError(f\"the new rules must read the commit that rotates to them: {e}\") from None",
+  "replace": "        except KernelRefusal:\n            pass",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
   ]
  }
 }

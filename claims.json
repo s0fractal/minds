@@ -107,7 +107,7 @@
   },
   {
    "id": "rules.v2-hash",
-   "quote": "`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e` is the id of `kernel2/lens2.wasm`",
+   "quote": "`H_LENS_KERNEL_V2 = 1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e` is the id of `kernel2/lens2.wasm`",
    "status": "tested",
    "witnesses": [
     "ci:Rebuild the v2 rules kernel; it must hash to H_LENS_KERNEL_V2",
@@ -120,7 +120,7 @@
   },
   {
    "id": "rules.v2-bound",
-   "quote": "the commit bound of v1b (−7) and the rotation delay of §4.1 latch 4a",
+   "quote": "the commit bound of v1b (−7), the rotation delay of §4.1 latch 4a",
    "status": "differential",
    "witnesses": [
     "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
@@ -701,8 +701,7 @@
     "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-4a-kernel-v1",
-    "m-4a-twin-v1"
+    "m-4a-kernel-v1"
    ]
   },
   {
@@ -750,15 +749,88 @@
   },
   {
    "id": "fold.rotation-pending",
-   "quote": "While a rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules than `S` (E-24)",
+   "quote": "While a rotation waits (here or under 4b), a new local scope refuses its commit (E-24)",
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
     "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
    ],
    "mutants": [
-    "m-4a-twin-pending",
-    "m-4a-twin-rules"
+    "m-4a-kernel-pending",
+    "m-4a-twin-pending"
+   ]
+  },
+  {
+   "id": "fold.rules-wait",
+   "quote": "a rotation whose `S'` names other rules than `S` waits 16 commits whatever its consent",
+   "status": "differential",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-4b-kernel-change",
+    "m-4b-twin-change"
+   ]
+  },
+  {
+   "id": "fold.rules-veto",
+   "quote": "A new local cell of the commits `t+1 … t+16` that references `S'`, sealed under `S` by a key of `S`'s admission policy, cancels it before the wait can end",
+   "status": "differential",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-4b-kernel-veto",
+    "m-4b-twin-veto",
+    "m-4b-kernel-cancelled",
+    "m-4b-twin-cancelled"
+   ]
+  },
+  {
+   "id": "gate.veto-evidence",
+   "quote": "The gate admits such a cell only as a veto",
+   "status": "tested",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-veto-schema",
+    "m-veto-young",
+    "m-veto-difference"
+   ]
+  },
+  {
+   "id": "gate.rules-rotation-read",
+   "quote": "The rotation commit is read by the rules of `S'` too",
+   "status": "tested",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-rc-reads-rotation"
+   ]
+  },
+  {
+   "id": "gate.rules-window",
+   "quote": "while a rules change waits, the gate admits a commit only if the rules of `S'` also accept the chain with it",
+   "status": "tested",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-rules-window"
+   ]
+  },
+  {
+   "id": "rules.epochs-quarantine",
+   "quote": "Which rules evaluate each commit is read from the rotations and vetoes (`commit_rules`) and checked against the twin's fold",
+   "status": "tested",
+   "witnesses": [
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+   ],
+   "mutants": [
+    "m-epochs-veto",
+    "m-epochs-wait"
    ]
   },
   {
@@ -1283,7 +1355,6 @@
    ],
    "mutants": [
     "m-4a-kernel-pending",
-    "m-4a-kernel-rules",
     "m-v2-bound"
    ]
   },

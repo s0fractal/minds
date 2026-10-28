@@ -62,9 +62,9 @@ are stored, and storing them changes no result.
 `H_LENS_KERNEL = 874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb` is not intrinsic: it is the
 id of `kernel/lens.wasm`, stored as an atom in every genesis (§4.3).
 
-`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e` is the id of
-`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md), the commit bound of v1b (−7) and the
-rotation delay of §4.1 latch 4a. A scope names them from its genesis or reaches them by a rules change (§4.3); v1
+`H_LENS_KERNEL_V2 = 1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e` is the id of
+`kernel2/lens2.wasm`, the rules with typed cell references (RULES-V2.md), the commit bound of v1b (−7), the
+rotation delay of §4.1 latch 4a and the rules-change quarantine of latch 4b. A scope names them from its genesis or reaches them by a rules change (§4.3); v1
 stays the default.
 
 `H_LENS_KERNEL_V1B = 2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd` is the id of
@@ -253,8 +253,17 @@ Latches (never undone):
     its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which
     every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A
     key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a
-    rotation waits, a new local scope refuses its commit, as does a rotation that would wait and names other rules
-    than `S` (E-24).
+    rotation waits (here or under 4b), a new local scope refuses its commit (E-24).
+4b. Under `H_LENS_KERNEL_V2`, a rotation whose `S'` names other rules than `S` waits 16 commits whatever its
+    consent, its supersedes edge withheld as in 4a; `t` is the commit that admitted it. A new local cell of the
+    commits `t+1 … t+16` that references `S'`, sealed under `S` by a key of `S`'s admission policy, cancels it
+    before the wait can end: `S'` never governs, its supersedes edge never latches, and the wait is over. The gate
+    admits such a cell only as a veto, of the schema `<scope>/veto/schema` (`change:cell`, `cell:cell`): its
+    `change` is `S'` and its `cell` a cell born at or before `t`, to which the rules of `S` and those of `S'`, each
+    over the chain up to and including the veto's commit, give different status or Authorized bits. The rotation
+    commit is read by the rules of `S'` too, and while a rules change waits, the gate admits a commit only if the
+    rules of `S'` also accept the chain with it. Which rules evaluate each commit is read from the rotations
+    and vetoes (`commit_rules`) and checked against the twin's fold.
 
 ### 4.2 Lens (status at the tip)
 
@@ -329,7 +338,7 @@ invalidates, retires and supersedes edge in input order (authorized). A negative
 (−1…−5) or a refusal of the commit log (−10…−23: genesis shape and quorum, seal context, seal key, cross-seal,
 unsealed cell, evaluator policy, unscoped foreign cell, scope rotation, acceptance pin, rule 6, unknown policy).
 `H_LENS_KERNEL_V1B` adds −7, a resource refusal: more commits than input bytes. `H_LENS_KERNEL_V2` refuses
-with −7 too, and with −24: a new scope while a rotation waits, or a waiting rotation to other rules.
+with −7 too, and with −24: a new scope while a rotation waits.
 
 **Epochs and the v2 rules.** A commit is in the epoch of the rules its governing scope names, and a cell in that of
 its birth commit; a rotation commit is still in the old epoch. The host runs the rules of the last commit's epoch

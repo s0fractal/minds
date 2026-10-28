@@ -4,7 +4,7 @@ Status: **dormant support on main, not adopted.** The host implements both rules
 moves to v2 only by a rotation admitted with a rules-change decision (VARS-1-SPEC.md §4.3). The live chain
 `refs/vars/heads/minds` keeps `H_LENS_KERNEL` (v1): the owner decided so. Nothing here changes v1.
 
-`H_LENS_KERNEL_V2 = 0276c1657b1fee9dbea84ce7c51c4e224e068ba5857aa3b144bdb21588d45d3e`. Since 2026-10-28 v2 is the
+`H_LENS_KERNEL_V2 = 1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e`. Since 2026-10-28 v2 is the
 one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
 
 - **v1b's commit bound:** an input claiming more commits than it has bytes is refused, `−7`.
@@ -15,6 +15,13 @@ one successor of v1 (roadmap G4) and carries what the v1 line fixed separately:
   bound**: a v1 history with more commits than v2's input of it has bytes (a long run of empty commits) is refused
   by v2 (`−7`), so no v1 → v2 change can be made on it until the chain carries more content (`test_vars1.py` 63,
   at the bound and one commit past it; Codex review of PR #19).
+
+- **The rules-change quarantine** (VARS-1-SPEC.md §4.1 latch 4b): in a v2 epoch, a rotation to other rules waits 16
+  commits whatever its consent, both rules must read every commit of that window, and a veto cancels it for good. A
+  veto is admitted only with evidence on this chain: a record older than the rotation to which the old and the new
+  rules, read at the veto's own commit, give different bits. The rotation commit itself must be read by the new rules
+  too, as must every commit of the window. A cancelled change cannot come back as equivalent,
+  since the history then shows the difference. A rotation to v2 itself happens in a v1 epoch and is not quarantined.
 
 v1c, which carried the delay on v1 encoding, was retired before any chain used it. v1b stays, as the example of a
 resource hardening; a chain with a v1b epoch does not rotate to v2.

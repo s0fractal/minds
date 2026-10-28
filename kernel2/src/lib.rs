@@ -108,9 +108,10 @@ const RULES_DOWNGRADE: i32 = -25; // a rotation from a scope under these rules t
 // A resource bound, as the v1b rules have it: more commits than input bytes. The fold visits every commit, and the
 // commit count is the one count of the input not otherwise bounded by its length.
 const COMMIT_BOUND: i32 = -7;
-// Delayed rotation (VARS-1-SPEC.md §4.1 latch 4a): a new scope while another waits, or a waiting rotation to other rules.
+// Delayed rotation (VARS-1-SPEC.md §4.1 latches 4a and 4b): a new scope while another waits.
 const SCOPE_PENDING: i32 = -24;
-// How many commits a rotation that removes keys without their consent waits before its scope governs.
+// How many commits a rotation that removes keys without their consent, or that names other rules, waits before its
+// scope governs.
 const ROTATION_DELAY: u32 = 16;
 
 const MAGIC: u32 = 0x3252_4156; // "VAR2"
@@ -577,6 +578,12 @@ unsafe fn evaluate(input: &[u8]) -> Result<i32, i32> {
         seal_key,
         seal_commit,
     };
+    // `test-variant` refuses what v2 admits in one case, so the tests can show a rules change's window refusing a
+    // commit its new rules cannot read: a cell relying on three grounds or more
+    #[cfg(feature = "test-variant")]
+    if (0..n).any(|c| g.edge_count(c, RELIES) >= 3) {
+        return Err(-26);
+    }
     let latched = arr(lat_total, 0u8)?;
     let auth = arr(n, 0u8)?;
     let v1_epoch = arr(commits as usize, 0u8)?;
@@ -672,7 +679,9 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8], v1_
     }
 
     // A rotation admitted at commit `t` whose scope does not govern yet (latch 4a).
-    let mut waiting: Option<(usize, u32)> = None;
+    // (the scope, the commit that admitted it, whether it names other rules: a rules change, latch 4b)
+    let mut waiting: Option<(usize, u32, bool)> = None;
+    let cancelled = arr(n, 0u8)?; // vetoed scopes: their supersedes edge never latches
     for at in 0..commits {
         let present = |i: usize| g.c(i).birth <= at;
         let new = |i: usize| g.c(i).birth == at;
@@ -749,6 +758,7 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8], v1_
         // At most one new local scope, superseding exactly S_base, sealed by S_base's admission quorum.
         let mut pending = None;
         let mut pending_waits = false;
+        let mut pending_change = false;
         if at > 0 {
             for s in 0..n {
                 if !new(s) || !local_scope(s) {
@@ -773,8 +783,10 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8], v1_
                 if !names_v1(base)? && names_v1(s)? {
                     return Err(RULES_DOWNGRADE);
                 }
-                pending_waits = g.waits(base, s, at, ends)?;
-                if waiting.is_some() || (pending_waits && g.slot(s, 2)? != g.slot(base, 2)?) {
+                // under these rules a rotation to other rules always waits (latch 4b); a v1 epoch keeps v1's rotation
+                pending_change = !names_v1(base)? && g.slot(s, 2)? != g.slot(base, 2)?;
+                pending_waits = pending_change || g.waits(base, s, at, ends)?;
+                if waiting.is_some() {
                     return Err(SCOPE_PENDING);
                 }
                 pending = Some(s);
@@ -810,7 +822,7 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8], v1_
             }
             // a waiting scope supersedes nothing yet: its edge latches when it starts to govern (latch 4a), so the
             // Active local scope stays the governing one
-            if waiting.map_or(false, |(x, _)| x == w) || (pending == Some(w) && pending_waits) {
+            if waiting.map_or(false, |(x, _, _)| x == w) || (pending == Some(w) && pending_waits) || cancelled[w] != 0 {
                 continue;
             }
             g.endorsers(w, base, at, Some(adm), ends);
@@ -874,12 +886,31 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8], v1_
         // Latch 4: the new scope governs the next commit; under these rules a rotation that removes keys without
         // their consent waits, and governs after ROTATION_DELAY more commits or once every removed key has sealed it
         // (latch 4a).
+        // A rules change (latch 4b) waits the full ROTATION_DELAY, and a new local cell of its window that references
+        // the waiting scope, sealed under `base` by a key of its admission policy, cancels it for good: a veto (the
+        // gate admits such a cell only as a veto with its evidence). It is checked before the wait can end.
         if let Some(s) = pending {
             auth[s] = 1;
-            waiting = Some((s, at));
+            waiting = Some((s, at, pending_change));
         }
-        if let Some((s, t)) = waiting {
-            if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {
+        if let Some((s, t, change)) = waiting {
+            let mut vetoed = false;
+            if change {
+                for c in 0..n {
+                    if g.local(c) && g.c(c).birth > t && g.c(c).birth <= at
+                        && (0..g.ref_count(c)).any(|j| g.reference(c, j).1 == s)
+                    {
+                        g.endorsers(c, base, at, Some(adm), ends);
+                        if g.sets.count(ends) > 0 {
+                            vetoed = true;
+                        }
+                    }
+                }
+            }
+            if vetoed {
+                cancelled[s] = 1; // the scope never governs, and its supersedes edge never latches
+                waiting = None;
+            } else if at >= t + ROTATION_DELAY || (!change && !g.waits(base, s, at, ends)?) {
                 for j in 0..g.edge_count(s, SUP) {
                     latched[g.lat(s, SUP, j)] = 1; // its quorum under `base` was checked at admission (E-20)
                 }
@@ -1083,8 +1114,14 @@ unsafe fn lens(g: &Graph, scope: usize, latched: &[u8], auth: &[u8]) -> Result<i
         }
         let mut changed = false;
         for v in 0..n {
+            // `test-variant`: a second v2-encoded rules module for the tests of a rules change under v2, never pinned:
+            // a ground that is not active leaves its dependents as they are (only a stale ground stales them)
+            #[cfg(not(feature = "test-variant"))]
+            let ground_fails = |d: usize| !has(out, d, active) || has(out, d, stale);
+            #[cfg(feature = "test-variant")]
+            let ground_fails = |d: usize| has(out, d, stale);
             let now = has(out, v, active)
-                && (a(rel_l).of(v).iter().any(|&d| !has(out, d as usize, active) || has(out, d as usize, stale))
+                && (a(rel_l).of(v).iter().any(|&d| ground_fails(d as usize))
                     || (flags[v] & 1 == 0 && live[v] == 0));
             let was = has(out, v, stale);
             if now != was {
