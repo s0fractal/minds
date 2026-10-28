@@ -264,7 +264,9 @@ Latches (never undone):
     over the chain up to and including the veto's commit, give different status or Authorized bits. The rotation
     commit is read by the rules of `S'` too, and while a rules change waits, the gate admits a commit only if the
     rules of `S'` also accept the chain with it. Which rules evaluate each commit is read from the rotations
-    and vetoes (`commit_rules`) and checked against the twin's fold.
+    and vetoes (`commit_rules`) and checked against the twin's fold. The 16 commits of 4a and 4b are counted, not
+    timed: the admission quorum alone may make them at once, so they give a removed key or a vetoer an interval
+    only while it watches the chain; a reader who does not watch is protected by its pin (§4.4), not by the wait.
 
 ### 4.2 Lens (status at the tip)
 

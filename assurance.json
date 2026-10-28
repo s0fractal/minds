@@ -101,6 +101,11 @@
       "`test_vars1.py` 67"
      ],
      [
+      "(d) keeps the property an earlier change established, not its accidents",
+      "**Not established**: for a hardening or a tightening, (d) asks that the input stay refused with the same code within its budget. A successor that refuses it for its size with another code fails (d), even though the guarantee holds, and an input in one encoding cannot be carried to rules of another: v1 → v1b → v2 was blocked so. No hardening is active on `refs/vars/heads/minds`. Open: roadmap obligation `c0a90557` (Monday review 2026-10-28, F46)",
+      "VARS-1-SPEC.md §4.3; AMENDMENTS.md"
+     ],
+     [
       "A rotation from v2 to rules that read references as v1 does is refused; so is a rotation to v2 from a chain with a v1b epoch (v2 reads as v1 only cells born under `H_LENS_KERNEL`; Codex review r1 F1)",
       "Tested, with mutants",
       "`test_vars1.py` 68"
@@ -311,6 +316,11 @@
       "Members are independent",
       "**Not established**: two AI agents (Claude; Gemini via antigravity) with keys on one machine and OS account",
       "README"
+     ],
+     [
+      "The rotation delay (latch 4a) and the rules-change quarantine (4b) give a removed key or a vetoer time to act",
+      "**Not established**: the 16 commits are counted, not timed. The admission quorum alone can make them at once (on `refs/vars/heads/minds` it is 1 of 2 keys), so they give an interval only to a party that watches the chain while it lasts. A reader who pins keys (§4.4) is protected without watching. A real period of objection needs a witness outside the initiator's own history (Monday review 2026-10-28, F45)",
+      "VARS-1-SPEC.md §4.1"
      ],
      [
       "A projection is current",
