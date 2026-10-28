@@ -30,3 +30,8 @@ root = "Vars1FoldMain"
 [[lean_exe]]
 name = "vars1cycle"
 root = "Vars1CycleMain"
+
+# The F42 oracle (Vars1/Mask.lean): descriptor -> mask -> reference positions, compiled, to produce vectors/f42.json.
+[[lean_exe]]
+name = "vars1mask"
+root = "Vars1MaskMain"

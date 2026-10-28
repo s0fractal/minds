@@ -78,7 +78,11 @@ jobs:
           lake build vars1exec
           lake build vars1fold
           lake build vars1cycle
+          lake build vars1mask
           lake build Vars1Sigma
+
+      - name: F42 vectors are the oracle's
+        run: python tools/f42_vectors.py --check
 
       - name: Conformance
         run: python -m unittest -v test_vars1
