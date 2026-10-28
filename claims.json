@@ -738,13 +738,17 @@
    "status": "differential",
    "witnesses": [
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+    "prop:I3b",
+    "prop:I7b"
    ],
    "mutants": [
     "m-4a-kernel-consent",
     "m-4a-kernel-delay",
     "m-4a-twin-consent",
-    "m-4a-twin-delay"
+    "m-4a-twin-delay",
+    "m-props-v2-delay",
+    "m-props-model-expiry"
    ]
   },
   {
@@ -939,7 +943,8 @@
     "prop:I11"
    ],
    "mutants": [
-    "m-pass3-threshold"
+    "m-pass3-threshold",
+    "m-props-v2-reading"
    ]
   },
   {

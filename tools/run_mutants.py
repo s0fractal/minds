@@ -11,6 +11,8 @@ default kernel-mutants-target in the checkout's git directory) and its tests rec
 
     .venv/bin/python tools/run_mutants.py            # all
     .venv/bin/python tools/run_mutants.py ID...      # some
+
+A kill names a test of test_vars1.TestVars1Conformance by its method, or any other test by its dotted name.
 """
 from __future__ import annotations
 
@@ -103,7 +105,7 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
         wording = ""
         for t in m["kills"]:
             env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
-            how, message = verdict(f"test_vars1.TestVars1Conformance.{t}", ROOT, env)
+            how, message = verdict(t if "." in t else f"test_vars1.TestVars1Conformance.{t}", ROOT, env)
             if how == "kill":
                 return True, f"killed by {t}"
             if how == "twin":

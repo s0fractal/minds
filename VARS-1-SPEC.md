@@ -252,7 +252,8 @@ Latches (never undone):
     latch 3 while it waits and is authorized when `S'` becomes governing, by the admission quorum of `S` checked at
     its admission (E-20), so the Active local scope is the governing one throughout. `S'` becomes governing after the commit in which
     every removed key has sealed it, or after the 16th commit following its admission, whichever comes first. A
-    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. While a
+    key of the acceptance policy alone cannot seal a scope, so its removal always waits the 16 commits. `S'` is
+    Authorized from its admission, whose quorum E-20 checks, whether it waits or not. While a
     rotation waits (here or under 4b), a new local scope refuses its commit (E-24).
 4b. Under `H_LENS_KERNEL_V2`, a rotation whose `S'` names other rules than `S` waits 16 commits whatever its
     consent, its supersedes edge withheld as in 4a; `t` is the commit that admitted it. A new local cell of the
@@ -534,9 +535,13 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
-  (`proofs/Vars1/Cycle.lean`, compiled) (I12). The generator writes chains under the v1 rules, whose rotations
-  take effect at once: for a rotation that waits under `H_LENS_KERNEL_V2` (§4.1 latch 4a) I7 is test 85's, and
-  the model fold of I10 has no delay.
+  (`proofs/Vars1/Cycle.lean`, compiled) (I12). A second run writes chains whose genesis names `H_LENS_KERNEL_V2` and
+  checks I0–I8 and I11 on them (I9 and I10 compare a model of v1's input): there the interpreter keeps the rotation
+  delay of §4.1 latch 4a from its words and its governing scope is the fold's at every tip (I7b), the edge oracle
+  withholds a waiting scope's supersedes edge, the Stale
+  oracle reads typed references, and the generator writes a peer contract that names a foreign verdict in a `hash`
+  slot; the run must reach tips where reading the input by value, as v1 does, changes Pass 3, and waits ended
+  both by consent and by the 16 commits.
 - `test_vars1.py` test 36: `verify/minds_verify.py` alone, in a fresh folder with no `.git` and no siblings and
   run with `python3 -I -S`, verifies real exported bundles and refuses or rejects mutated output bytes, an omitted
   INVALID verdict, a substituted rotated scope, a witness withdrawn after the tip, a pinned withdrawn key and an
