@@ -65,15 +65,20 @@ is read from the data and nothing parses Markdown.
 
 ## Roadmap
 
-[ROADMAP.md](ROADMAP.md) is generated from Warrant 2 records in `.warrant/store/` by warrant's own tool, as warrant's
-roadmap is: goals are open questions, obligations are duties that answer them, `requires` are prerequisites. The
-records are signed by the maintainer key (the chain's `dd5dd02d…`); an obligation counts as done only when its
-acceptor (`codex`) accepts it with its own key. With a warrant checkout beside this one:
+The roadmap is Warrant 3 records in `.warrant/records.jsonl`, read by warrant's own tool: goals are open questions,
+obligations are duties that answer them. The trust and the profile are `.warrant/v3.json`: records are filed by
+`claude`, and an obligation or a goal counts as closed only when its acceptor (`codex`) accepts it with its own key.
+The schemas `goal@1` and `obligation@1` are warrant's, carried here byte for byte with codex's acceptances. The view
+is generated, not kept in the tree. With a warrant checkout beside this one:
 
 ```
-python ../warrant/tools/roadmap.py --root . path G1      # what stands between here and goal G1
-python ../warrant/tools/roadmap.py --root . check        # ROADMAP.md is what the records say
+python3 ../warrant/tools/roadmap.py --root . view          # the roadmap, as Markdown
+python3 ../warrant/tools/roadmap.py --root . due --actor codex   # what waits for codex's verdict
+python3 ../warrant/tools/roadmap.py --root . check         # every obligation answers a goal; none forks
 ```
+
+Goals G1 (what-if) and G2 (documents as projections) were concluded under the earlier Warrant 2 roadmap, which
+stays in this repository's history (`.warrant/store/` at 38b7192); it was not migrated.
 
 ## Running
 
