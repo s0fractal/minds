@@ -97,18 +97,6 @@ const SCOPE_QUORUM: i32 = -20; // a new scope lacks the governing admission quor
 const ACCEPTANCE_PIN: i32 = -21; // an acceptance names a foreign scope cell that is not self-sealed
 const BINDING: i32 = -22; // §1.2 rule 6: a new local binding does not reach a prior binding of its name
 const UNKNOWN_POLICY: i32 = -23; // a policy slot the fold needs is not a well-formed POL1
-// Delayed rotation (feature `rotation-delay`, the rules H_LENS_KERNEL_V1C): a new scope while another waits, or a
-// rotation that would wait and names other rules.
-#[cfg(feature = "rotation-delay")]
-const SCOPE_PENDING: i32 = -24;
-// How many commits a rotation that removes keys without their consent waits before its scope governs.
-#[cfg(feature = "rotation-delay")]
-const ROTATION_DELAY: u32 = 16;
-// Rotations under these rules take effect at once, as v1 has them do: the delay is a rule of the epoch it governs.
-#[cfg(feature = "rotation-delay")]
-const H_LENS_KERNEL_V1: H = h("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb");
-#[cfg(feature = "rotation-delay")]
-const H_LENS_KERNEL_V1B: H = h("2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd");
 
 type H = [u8; 32];
 
@@ -306,28 +294,6 @@ impl Graph<'_> {
             return Err(MALFORMED);
         }
         Ok(self.input[c.slots + 32 * s..c.slots + 32 * s + 32].try_into().unwrap())
-    }
-    /// Must the rotation from `base` to `s` wait (§4.1, delayed rotation)? Only under rules with the delay (a scope
-    /// naming v1 or v1b rotates at once), and only while some key of `base`'s admission or acceptance policy that
-    /// `s`'s same policy lacks has not sealed `s` under `base` by commit `at`.
-    #[cfg(feature = "rotation-delay")]
-    fn waits(&self, base: usize, s: usize, at: u32, ends: &mut [u32]) -> Result<bool, i32> {
-        if (self.c(base).k as usize) < 3 {
-            return Ok(false);
-        }
-        let rules = self.slot(base, 2)?;
-        if rules == &H_LENS_KERNEL_V1 || rules == &H_LENS_KERNEL_V1B {
-            return Ok(false);
-        }
-        self.endorsers(s, base, at, None, ends);
-        for p in 0..2 {
-            let (_, old) = self.pol(self.slot(base, p)?)?;
-            let (_, new) = self.pol(self.slot(s, p)?)?;
-            if (0..self.sets.kw).any(|w| old[w] & !new[w] & !ends[w] != 0) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
     }
     fn edge_count(&self, i: usize, k: usize) -> usize {
         self.c(i).edges[k].1 as usize
@@ -566,9 +532,6 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
         auth[cur] = 1;
     }
 
-    // A rotation admitted at commit `t` whose scope does not govern yet (feature `rotation-delay`).
-    #[cfg(feature = "rotation-delay")]
-    let mut waiting: Option<(usize, u32)> = None;
     for at in 0..commits {
         let present = |i: usize| g.c(i).birth <= at;
         let new = |i: usize| g.c(i).birth == at;
@@ -643,8 +606,6 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
 
         // At most one new local scope, superseding exactly S_base, sealed by S_base's admission quorum.
         let mut pending = None;
-        #[cfg(feature = "rotation-delay")]
-        let mut pending_waits = false;
         if at > 0 {
             for s in 0..n {
                 if !new(s) || !local_scope(s) {
@@ -665,13 +626,6 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
                 g.endorsers(s, base, at, Some(adm), ends);
                 if g.sets.count(ends) < adm_thr {
                     return Err(SCOPE_QUORUM);
-                }
-                #[cfg(feature = "rotation-delay")]
-                {
-                    pending_waits = g.waits(base, s, at, ends)?;
-                    if waiting.is_some() || (pending_waits && g.slot(s, 2)? != g.slot(base, 2)?) {
-                        return Err(SCOPE_PENDING);
-                    }
                 }
                 pending = Some(s);
             }
@@ -702,12 +656,6 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
         // Latch 3: edges w -> v under Pol_i(v), or by an author of a local v.
         for w in 0..n {
             if !present(w) || g.is(w, &H_META_SCHEMA) {
-                continue;
-            }
-            // a waiting scope supersedes nothing yet: its edge latches when it starts to govern (latch 4a), so the
-            // Active local scope stays the governing one
-            #[cfg(feature = "rotation-delay")]
-            if waiting.map_or(false, |(x, _)| x == w) || (pending == Some(w) && pending_waits) {
                 continue;
             }
             g.endorsers(w, base, at, Some(adm), ends);
@@ -768,28 +716,10 @@ unsafe fn fold(g: &Graph, commits: u32, latched: &mut [u8], auth: &mut [u8]) -> 
             }
         }
 
-        // Latch 4: the new scope governs the next commit; under the delay, a rotation that removes keys without
-        // their consent waits, and governs after ROTATION_DELAY more commits or once every removed key has sealed it.
+        // Latch 4: the new scope governs the next commit.
         if let Some(s) = pending {
             auth[s] = 1;
-            #[cfg(feature = "rotation-delay")]
-            {
-                waiting = Some((s, at));
-            }
-            #[cfg(not(feature = "rotation-delay"))]
-            {
-                cur = s;
-            }
-        }
-        #[cfg(feature = "rotation-delay")]
-        if let Some((s, t)) = waiting {
-            if at >= t + ROTATION_DELAY || !g.waits(base, s, at, ends)? {
-                for j in 0..g.edge_count(s, SUP) {
-                    latched[g.lat(s, SUP, j)] = 1; // its quorum under `base` was checked at admission (E-20)
-                }
-                cur = s;
-                waiting = None;
-            }
+            cur = s;
         }
     }
     Ok(cur)
