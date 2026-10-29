@@ -31,28 +31,31 @@ This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub a
 `decision` naming `main@<sha>`, the rules kernel, the release profile (the SHA-256 of the bytes of every file
 that commit tracks: `tools/minds_chain.py profile <sha>`) and the checks that passed, attested by the maintainer's key, with a
 witnessed projection of the chain. `tools/minds_chain.py release` refuses unless HEAD is `main` and the tree is
-clean, before and after; it runs every check on that commit in a fresh worktree, so nothing left from earlier builds
+clean, before and after; it runs every check on that commit in a fresh checkout, so nothing left from earlier builds
 counts. `tools/minds_chain.py show` lists releases; `status` says, read only, whether `main` is released and which
 members have not yet attested each release or witnessed each projection (merged is not Settled); `bundle <projection>` gives a bundle for `vars1.py
 verify-projection`; `attest <decision>` gives one for `vars1.py verify-attestation`, with the latest witnessed
 projection that covers the release. A client accepts a release only from a witnessed projection's complete
 evidence, so the latest release is accepted once a later projection covers it.
 
-Member keys never leave `.git/vars/`. The roster has two members, Claude (the maintainer) and antigravity, both
-AI agents on the same machine and OS account: their keys separate who signed, not who could have.
+The roster has three members. Claude (the maintainer) and antigravity are AI agents on the same machine and OS
+account, whose keys never leave `.git/vars/`: their keys separate who signed, not who could have. The third is the
+GitHub Actions witness (below), whose key is on GitHub.
 
 | member | Ed25519 public key |
 | --- | --- |
 | Claude (maintainer) | `dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a` |
 | antigravity | `a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7` |
+| github-actions | `1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4` |
 
-Any one member may admit cells, including a scope rotation, so one member could rotate the other out and release
-alone after that. To give both a veto, pin both keys when you verify:
-`vars1.py verify-attestation BUNDLE.json --require <key> --require <key>`.
+Any one member may admit cells, including a scope rotation, so one member could rotate the others out and release
+alone after that. To give each a veto, pin every key when you verify:
+`vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 
 `join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every
 member. A member runs `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the
-checks at the commit the release names, in its own worktree, recomputes the release profile there,
+checks at the commit the release names, in a fresh checkout that reads the chain as it stood when the release was
+recorded (so a member who joined since changes nothing they check), recomputes the release profile there,
 records ATTESTED or INVALID under its own key, and witnesses the projections that name
 it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
 member's own ATTESTED.
@@ -62,7 +65,7 @@ GitHub runner (`witness-key.yml`) and kept as a secret of the environment `witne
 so it never was on the maintainer's machine. Every three hours, and on demand, it runs `minds_chain.py witness`:
 `verify-release` for each release waiting for its key, with nothing cached, then it pushes the verdicts. Like any
 member it may admit cells; what it does is what `main`'s workflow says, and whoever controls the owner's GitHub
-account controls that. It is not on the roster yet: its key joins once the environment exists.
+account controls that. Its key joined the roster on 2026-10-29 (chain commit `35a2a467`).
 
 ## The spec and the assurance map are renderings
 

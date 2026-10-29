@@ -1756,6 +1756,20 @@
    ]
   },
   {
+   "id": "assurance.checks-recorded-chain",
+   "source": "ASSURANCE.md",
+   "quote": "`verify-release` reruns a release's checks against the chain as it stood when the release was recorded, in a clone that shares this repository's objects but not its refs: a member who joined or left since is not in the roster they read, and `release` reads the chain as it is",
+   "status": "tested",
+   "witnesses": [
+    "test:test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
+   ],
+   "mutants": [
+    "m-checks-recorded-chain",
+    "m-checks-chain-refs",
+    "m-verify-chain-tip"
+   ]
+  },
+  {
    "id": "assurance.status",
    "source": "ASSURANCE.md",
    "quote": "`status` tells merged from Settled",

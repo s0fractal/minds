@@ -2233,5 +2233,29 @@
   "kills": [
    "test_84_the_mutant_runner_counts_only_lost_behaviour"
   ]
+ },
+ "m-checks-recorded-chain": {
+  "file": "tools/minds_chain.py",
+  "find": "        if chain is not None:\n",
+  "replace": "        if chain is not None and False:\n",
+  "kills": [
+   "test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
+  ]
+ },
+ "m-checks-chain-refs": {
+  "file": "tools/minds_chain.py",
+  "find": "\"+refs/vars/*:refs/vars/*\")",
+  "replace": "\"+refs/vars/none/*:refs/vars/none/*\")",
+  "kills": [
+   "test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
+  ]
+ },
+ "m-verify-chain-tip": {
+  "file": "tools/minds_chain.py",
+  "find": "    then = recorded_at(repo, decision_id)",
+  "replace": "    then = tip",
+  "kills": [
+   "test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
+  ]
  }
 }

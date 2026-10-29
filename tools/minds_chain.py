@@ -6,14 +6,14 @@ passed, attested by the maintainer's verdict, together with a projection of the 
 repository. The maintainer key lives in `.git/vars/maintainer.key` (never committed or pushed); the scope's roster
 is that key until `join` adds others. With more than one key, every release needs a verdict and a projection seal
 from every key on the roster: another member runs `verify-release`, which reruns the checks on the released commit
-in its own worktree and records that member's verdict.
+in a fresh checkout and records that member's verdict.
 
 Run it with the interpreter that has requirements.txt installed (`.venv/bin/python tools/minds_chain.py ...`):
 the checks run the test suites with that same interpreter.
 
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
     tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check on main in a
-                                              # fresh worktree, then record main
+                                              # fresh checkout, then record main
     tools/minds_chain.py join PUBKEY NAME     # rotate the roster to add a member's Ed25519 public key (hex)
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
@@ -651,12 +651,26 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
     return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 
-def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
-    """Run every check on commit `sha` in a fresh worktree under `.git/vars/verify/`. A commit now carries
-    its dependencies (sigma-glyph from PyPI by requirements.txt, run by this interpreter; vendored Lean sources and
-    vectors), so nothing sits beside the worktree. An older release that pinned sibling commits (`siblings`) gets
-    each extracted at that commit beside it (read from the sibling repository with `git archive`), and Book I is
-    compared with the spec's pin. The worktree and any extracted siblings are removed afterwards."""
+def recorded_at(repo: V.GitVarsRepo, cid: bytes) -> str:
+    """The commit of the chain that admitted cell `cid`: the chain as it stood when that cell was recorded."""
+    chain = repo.commit_chain(repo.ref_commit(SCOPE))
+    for commit, (_, cells, _) in zip(chain, repo.chain_deltas(chain)):
+        if cid in cells:
+            return commit
+    raise V.VarsError("not a cell of this chain")
+
+
+def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None,
+              chain: Optional[str] = None) -> Tuple[List[str], bool]:
+    """Run every check on commit `sha` in a fresh checkout under `.git/vars/verify/`: a clone sharing this
+    repository's objects, not a worktree, so that its refs are its own. They are this repository's `refs/vars/*`,
+    except that `refs/vars/heads/minds` is `chain` when one is given: `verify-release` passes the chain as it stood
+    when the release was recorded, so a member who joined or left since does not change what the checks read (test
+    25 compares README's keys with the roster). A commit now carries its dependencies (sigma-glyph from PyPI by
+    requirements.txt, run by this interpreter; vendored Lean sources and vectors), so nothing sits beside the
+    checkout. An older release that pinned sibling commits (`siblings`) gets each extracted at that commit beside it
+    (read from the sibling repository with `git archive`), and Book I is compared with the spec's pin. The checkout
+    and any extracted siblings are removed afterwards."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True)
     # every commit checked out or compared is named by its canonical id in its own repository, never by a ref
     if not V.canonical_commit_id(repo_dir, sha):
@@ -688,12 +702,18 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
         pre.append((f"sigma-glyph Book I equals the spec's pin {SIGMA_PIN}", same))
     wt = base / "minds"
     if wt.exists():
-        git("worktree", "remove", "--force", str(wt))
-    git("worktree", "add", "-q", "--detach", str(wt), sha)
+        shutil.rmtree(wt)
+    src = str(Path(repo_dir).resolve())
+    git("clone", "-q", "--shared", "--no-checkout", "--no-tags", src, str(wt))
     try:
+        sub = lambda *a: subprocess.run(["git", "-C", str(wt), *a], capture_output=True, text=True, check=True)
+        sub("fetch", "-q", "--no-tags", src, "+refs/vars/*:refs/vars/*")
+        if chain is not None:
+            sub("update-ref", f"refs/vars/heads/{SCOPE}", chain)
+        sub("checkout", "-q", "--detach", sha)
         lines, ok = run_checks(wt, rules)
     finally:
-        git("worktree", "remove", "--force", str(wt))
+        shutil.rmtree(wt, ignore_errors=True)
         for sib in SIBLINGS:
             dst = base / sib
             if dst.exists() and not dst.is_symlink():
@@ -720,7 +740,9 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     if d is None or d.h_schema != V.H_SCHEMA["decision"]:
         raise V.VarsError("not a decision of this chain")
     sha, rules, profile, pins = parse_release_profile(V.parse_utf8(atoms[d.h_payload]))
-    lines, ok = checks(repo_dir, sha, rules, siblings=pins) if pins else checks(repo_dir, sha, rules)
+    then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
+    lines, ok = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
+                 else checks(repo_dir, sha, rules, chain=then))
     if profile is not None:  # the files the release names are the files at its commit, recomputed here
         try:
             same = profile_at(repo_dir, sha)["id"] == profile
@@ -890,7 +912,7 @@ def _main(argv: List[str]) -> int:
         if why:
             print(f"refused: {why}", file=sys.stderr)
             return 1
-        checks, ok = checks_at(repo_dir, main_sha, governing_rules(V.GitVarsRepo(repo_dir)))  # fresh worktree
+        checks, ok = checks_at(repo_dir, main_sha, governing_rules(V.GitVarsRepo(repo_dir)))  # fresh checkout
         print("\n".join(checks))
         if not ok:
             print("refused: a check failed", file=sys.stderr)

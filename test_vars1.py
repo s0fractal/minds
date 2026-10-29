@@ -1768,7 +1768,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertFalse(V.verify_attestation(b)["accepted"])
 
         seen = []
-        def fake(repo_dir, sha, rules, ok=True):
+        def fake(repo_dir, sha, rules, ok=True, **kw):
             seen.append((sha, rules))
             return ["test_vars1 OK" if ok else "test_vars1 FAILED"], ok
         with self.assertRaisesRegex(V.VarsError, "not on the roster"):
@@ -1790,7 +1790,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.covering_projection(repo, r1["decision"]), r2["projection"],
                          "a witnessed projection is preferred over a later unwitnessed one")
         _, ok, _ = mc.verify_release(self.repo_path, sk2, r3["decision"], "second",
-                                     checks=lambda *a: fake(*a, ok=False))
+                                     checks=lambda *a, **kw: fake(*a, ok=False))
         self.assertFalse(ok)
         lens = repo.lens("minds")
         self.assertFalse(lens["settled"][r3["decision"]])
@@ -1800,7 +1800,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(r["accepted"])
         self.assertEqual(len(r["endorsers_at_tip"]), 2)
 
-    def test_20_checks_at_runs_in_a_worktree_at_the_released_commit(self) -> None:
+    def test_20_checks_at_runs_in_a_fresh_checkout_at_the_released_commit(self) -> None:
         mc = self._minds_chain()
         work = Path(self.tmp.name) / "proj" / "minds"
         work.mkdir(parents=True)
@@ -1917,7 +1917,7 @@ class TestVars1Conformance(unittest.TestCase):
         # Bob rejoins and witnesses a later projection without having attested r2: still missing for the pin
         mc.join(self.repo_path, ska, pkb, "bob")
         _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["test_vars1 OK"])
-        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a: (["ok"], True))
+        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
         b4 = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r4["projection"])))
         self.assertIn(pkb.hex(), V.verify_projection(b4["projection"])["witnesses"])
         self.assertEqual(V.verify_attestation(b4, require=[pka, pkb])["required_missing"], [pkb.hex()])
@@ -1939,8 +1939,8 @@ class TestVars1Conformance(unittest.TestCase):
         repo = V.GitVarsRepo(self.repo_path)
         mc.join(self.repo_path, ska, V.ed25519_pubkey(skb), "bob")
         _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])
-        ok_checks = lambda *a: (["test_vars1 OK"], True)
-        bad_checks = lambda *a: (["test_vars1 FAILED"], False)
+        ok_checks = lambda *a, **kw: (["test_vars1 OK"], True)
+        bad_checks = lambda *a, **kw: (["test_vars1 FAILED"], False)
         mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=ok_checks)
         self.assertTrue(repo.lens("minds")["settled"][r1["decision"]])
         with self.assertRaisesRegex(V.VarsError, "already recorded"):
@@ -2024,7 +2024,9 @@ class TestVars1Conformance(unittest.TestCase):
         got = []
         mc.verify_release(self.repo_path, skb, r["decision"], "bob",
                           checks=lambda *a, **kw: (got.append((a[1:], kw)), (["ok"], True))[1])
-        self.assertEqual(got, [((m1, V.H_LENS_KERNEL), {"siblings": {"sigma-glyph": s_same, "primitives": p1}})])
+        then = V.GitVarsRepo(self.repo_path).commit_chain(V.GitVarsRepo(self.repo_path).ref_commit("minds"))[-2]
+        self.assertEqual(got, [((m1, V.H_LENS_KERNEL), {"siblings": {"sigma-glyph": s_same, "primitives": p1},
+                                                        "chain": then})])
 
     def test_25_readme_keys_are_the_chain_roster(self) -> None:
         """The member keys README.md publishes for pinning are the roster of this repository's own chain."""
@@ -4350,7 +4352,7 @@ class TestVars1Conformance(unittest.TestCase):
         stmt = V.parse_utf8(atoms[cells[good["decision"]].h_payload])
         self.assertEqual(mc.parse_release_profile(stmt)[:3], (b, V.H_LENS_KERNEL, pb["id"]))
         self.assertEqual(mc.parse_release(stmt), (b, V.H_LENS_KERNEL, None), "older readers still parse it")
-        fake = lambda repo_dir, sha, rules: (["test_vars1 OK"], True)
+        fake = lambda repo_dir, sha, rules, **kw: (["test_vars1 OK"], True)
         _, ok, lines = mc.verify_release(self.repo_path, sk2, good["decision"], "second", checks=fake)
         self.assertTrue(ok)
         self.assertIn(f"release profile {pb['id'][:12]} is the commit's OK", lines)
@@ -4466,7 +4468,7 @@ class TestVars1Conformance(unittest.TestCase):
         waiting = mc.status(self.repo_path)["unwitnessed_projections"]
         self.assertEqual({w["id"] for w in waiting}, {r2["projection"].hex(), r3["projection"].hex()})
         self.assertTrue(all(w["unwitnessed_by"] == [pk2] for w in waiting))
-        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a: (["x FAILED"], False))
+        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a, **kw: (["x FAILED"], False))
         before = subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"], capture_output=True).stdout
         st = mc.status(self.repo_path)
         self.assertEqual(subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"],
@@ -4510,7 +4512,7 @@ class TestVars1Conformance(unittest.TestCase):
             return next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == did.hex())
 
         def answer(did: bytes, ok: bool) -> V.Cell:
-            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a: (["x OK"], ok))
+            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a, **kw: (["x OK"], ok))
             atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
             return next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == did
                         and V.parse_utf8(atoms[c.slots[2]]) == "second")
@@ -4814,7 +4816,7 @@ class TestVars1Conformance(unittest.TestCase):
         mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
         _, r = mc.release(self.repo_path, sk, "a" * 40, ["lake build OK", "test_vars1 OK"])
         mc.verify_release(self.repo_path, sk2, r["decision"], "second",
-                          checks=lambda *a: (["kernel rebuild hashes to H_LENS_KERNEL OK", "test_vars1 OK"], True))
+                          checks=lambda *a, **kw: (["kernel rebuild hashes to H_LENS_KERNEL OK", "test_vars1 OK"], True))
         repo = V.GitVarsRepo(self.repo_path)
         lens = repo.lens("minds")
         atoms, cells = lens["atoms"], lens["cells"]
@@ -5862,7 +5864,7 @@ class TestVars1Conformance(unittest.TestCase):
         mc.init(self.repo_path, sk)
         repo = V.GitVarsRepo(self.repo_path)
         _, r0 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
-        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a, **kw: self.fail("ran")), [],
                          "a key not on the roster has nothing to do")
         mc.join(self.repo_path, sk, pkw, "github-actions")
         _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
@@ -5872,7 +5874,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.awaiting(self.repo_path, V.ed25519_pubkey(sk)), [], "the maintainer has answered all")
         ran = []
 
-        def checks(repo_dir, sha, rules):
+        def checks(repo_dir, sha, rules, **kw):
             ran.append(sha)
             return ["test_vars1 OK"], True
         done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
@@ -5881,11 +5883,11 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(ran, ["b" * 40, "c" * 40])
         lens = repo.lens("minds")
         self.assertTrue(lens["settled"][r1["decision"]] and lens["settled"][r2["decision"]])
-        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a, **kw: self.fail("ran")), [],
                          "an attested release waits no longer")
 
         _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["test_vars1 OK"])
-        done = mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: (["test_vars1 FAILED"], False))
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a, **kw: (["test_vars1 FAILED"], False))
         self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r3["decision"].hex(), "INVALID")])
         self.assertFalse(repo.lens("minds")["settled"][r3["decision"]])
         self.assertEqual(mc.awaiting(self.repo_path, pkw), [], "an INVALID is an answer")
@@ -5904,7 +5906,7 @@ class TestVars1Conformance(unittest.TestCase):
         mc.init(self.repo_path, sk)
         mc.join(self.repo_path, sk, pkw, "github-actions")
         _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
-        checks = lambda *a: (["x OK"], True)  # noqa: E731
+        checks = lambda *a, **kw: (["x OK"], True)  # noqa: E731
         self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
                          ["ATTESTED"])
         repo = V.GitVarsRepo(self.repo_path)
@@ -5957,13 +5959,53 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn(r1["decision"], mc.awaiting(self.repo_path, pkw), "a verdict attesting nothing answers nothing")
         ran = []
 
-        def checks(repo_dir, sha, rules):
+        def checks(repo_dir, sha, rules, **kw):
             ran.append(sha)
             return ["x OK"], True
         done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
         self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r1["decision"].hex(), "ATTESTED")])
         self.assertEqual(ran, ["a" * 40])
         self.assertTrue(repo.lens("minds")["settled"][r1["decision"]])
+
+    def test_96_a_release_is_verified_against_the_chain_as_it_was_recorded(self) -> None:
+        """`verify-release` reruns a release's checks against the chain as it stood when the release was recorded:
+        test 25 compares README's keys with the roster the checks read, so a member who joined since must not be on
+        it, or every member still to verify an older release would record INVALID. `release` reads the chain as it
+        is. Either way the repository's own chain ref and checkout are untouched."""
+        mc = self._minds_chain()
+        work = Path(self.tmp.name) / "proj" / "minds"
+        work.mkdir(parents=True)
+        g = lambda *a: subprocess.run(["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+        g("init", "-q", "-b", "main")
+        (work / "f").write_text("one")
+        g("add", "f")
+        g("commit", "-q", "-m", "one")
+        sha = g("rev-parse", "HEAD")
+        sk, skw = b"\x07" * 32, b"\x0a" * 32
+        pk, pkw = V.ed25519_pubkey(sk), V.ed25519_pubkey(skw)
+        mc.init(work, sk)
+        _, r0 = mc.release(work, sk, sha, ["test_vars1 OK"])
+        mc.join(work, sk, pkw, "github-actions")
+        live = V.GitVarsRepo(work).ref_commit(mc.SCOPE)
+        seen = []
+
+        def spy(root, rules):
+            there = V.GitVarsRepo(root)
+            seen.append((g("-C", str(root), "rev-parse", "HEAD"), there.ref_commit(mc.SCOPE) and mc.roster(there)))
+            return ["spy OK"], True
+        real, mc.run_checks = mc.run_checks, spy
+        try:
+            mc.verify_release(work, skw, r0["decision"], "github-actions")
+            self.assertEqual(V.GitVarsRepo(work).commit_chain(V.GitVarsRepo(work).ref_commit(mc.SCOPE))[-2], live,
+                             "the verdict follows the live chain")
+            self.assertEqual(mc.checks_at(work, sha, V.H_LENS_KERNEL), (["spy OK"], True))
+        finally:
+            mc.run_checks = real
+        self.assertEqual(seen, [(sha, [pk]), (sha, sorted([pk, pkw]))],
+                         "verify-release reads the roster the release was recorded under; release reads today's")
+        self.assertFalse((work / ".git" / "vars" / "verify" / sha[:12] / "minds").exists(), "the checkout is removed")
+        self.assertEqual((g("status", "--porcelain"), (work / "f").read_text()), ("", "one"))
 
 
 if __name__ == "__main__":
