@@ -1,6 +1,6 @@
 # The witness member (REVIEWING.md §1): on a GitHub runner, under a key that never was on the maintainer's machine
 # (witness-key.yml), `tools/minds_chain.py witness` reruns every check of each release waiting for its verdict, in a
-# fresh worktree with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
+# fresh checkout with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
 # environment `witness`, which only main may deploy to.
 name: witness
 
