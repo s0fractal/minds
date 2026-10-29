@@ -534,7 +534,7 @@
       "`test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict`"
      ],
      [
-      "A refusal that a named check and the gate's net for crashes both hold says the named check's reason, not the net's; a mutant that removes only that reason is declared `diagnostic`, burns only this claim, and `tools/run_mutants.py` refuses the declaration both ways: a mutant a test catches with only the refusal asked is not diagnostic, and one caught only by the reason is not a burn of what is refused",
+      "A refusal that a named check and the gate's net for crashes both hold says the named check's reason, not the net's; a mutant that removes only that reason is declared `diagnostic`, burns only this claim, and `tools/run_mutants.py` refuses the declaration both ways: a mutant any of its tests catches with only the refusal asked, in any order, is not diagnostic; one caught only by the reason is not a burn of what is refused; and a run asking only for the refusal that crashes is no ground to call a later catch a lost reason (Codex, P27-F1 and P27-F2)",
       "Tested, with mutants (diagnostic): four named reasons, each lost while its input stays refused; the runner's two modes on fixtures",
       "`test_vars1.py` 50, 78, 88, 84; `tools/run_mutants.py` `classify`; `tools/check_claims.py`"
      ]
