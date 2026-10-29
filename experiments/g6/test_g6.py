@@ -278,6 +278,18 @@ class T(unittest.TestCase):
         finally:
             g6.kinds, g6.closure_truth = real_k, real_t
 
+    def test_14_the_key_holds_the_cap(self) -> None:
+        """A key with no credit limit, or one above the cap, is refused; the budget is what the key has left, at most
+        the cap."""
+        info = lambda d: (lambda key: d)
+        with self.assertRaisesRegex(SystemExit, "no credit limit"):
+            g6.key_budget("k", 5, info({"limit": None, "limit_remaining": None, "usage": 1.0}))
+        with self.assertRaisesRegex(SystemExit, "above the cap"):
+            g6.key_budget("k", 5, info({"limit": 20, "limit_remaining": 4.0, "usage": 16.0}))
+        self.assertEqual(g6.key_budget("k", 5, info({"limit": 5, "limit_remaining": 4.948, "usage": 0.052})), 4.948)
+        self.assertEqual(g6.key_budget("k", 5, info({"limit": 5, "limit_remaining": 5.0, "usage": 0})), 5.0)
+        self.assertEqual(g6.key_budget("k", 3, info({"limit": 3, "limit_remaining": 3.0, "usage": 0})), 3.0)
+
     def test_11_the_order_mixes_the_arms(self) -> None:
         """Every (history, model, arm) once, in an order fixed by the seed, not arm after arm."""
         ts = {f"h{i:02d}": {} for i in range(4)}

@@ -442,6 +442,26 @@ def call(model: str, text: str, key: str, max_tokens: int) -> Dict[str, object]:
         return json.loads(r.read())
 
 
+def key_info(key: str) -> Dict[str, object]:
+    """OpenRouter's account of the key itself (GET /api/v1/key): its limit, usage and what is left."""
+    req = urllib.request.Request("https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())["data"]
+
+
+def key_budget(key: str, cap: float, info=key_info) -> float:
+    """The run's budget: what the key has left, at most `cap`. A key with no credit limit, or a limit above `cap`, is
+    refused: the owner's cap is held by the key as well as by the runner."""
+    d = info(key)
+    limit, left = d.get("limit"), d.get("limit_remaining")
+    print(f"key: limit {limit}, used {d.get('usage')}, left {left}", file=sys.stderr)
+    if limit is None or left is None:
+        raise SystemExit("refused: the key has no credit limit; use one limited to the cap")
+    if float(limit) > cap:
+        raise SystemExit(f"refused: the key allows {limit}, above the cap {cap}")
+    return min(cap, float(left))
+
+
 def plan(tasks: Dict[str, Dict[str, object]], models: List[str], order_seed: str) -> List[Tuple[str, str, str]]:
     """Every (history, model, arm) once, in an order drawn from `order_seed`, so no arm runs in a block of its own."""
     calls = [(t, m, a) for t in sorted(tasks) for m in models for a in ARMS]
@@ -597,12 +617,19 @@ def main(argv: List[str]) -> int:
     r.add_argument("--models", type=Path, default=Path(__file__).with_name("models.json"))
     r.add_argument("--budget", type=float, default=5.0)
     r.add_argument("--max-tokens", type=int, default=8000)
+    b = sub.add_parser("budget")
+    b.add_argument("--cap", type=float, required=True)
     s = sub.add_parser("score")
     s.add_argument("--tasks", type=Path, required=True)
     s.add_argument("--results", type=Path, required=True)
     a = ap.parse_args(argv)
     if a.cmd == "generate":
         generate(a.seed, a.count, a.out)
+    elif a.cmd == "budget":
+        key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not key:
+            raise SystemExit("set OPENROUTER_API_KEY")
+        print(key_budget(key, a.cap))
     elif a.cmd == "run":
         print(json.dumps(run(a.tasks, a.out, json.loads(a.models.read_text())["models"], a.budget, a.max_tokens),
                          indent=1))

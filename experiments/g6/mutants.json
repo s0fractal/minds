@@ -83,5 +83,20 @@
   "find": "    random.Random(hashlib.sha256(f\"g6/order/{order_seed}\".encode()).digest()).shuffle(calls)\n",
   "replace": "",
   "kills": "test_11_the_order_mixes_the_arms"
+ },
+ "m-key-unlimited": {
+  "find": "        raise SystemExit(\"refused: the key has no credit limit; use one limited to the cap\")",
+  "replace": "        return cap",
+  "kills": "test_14_the_key_holds_the_cap"
+ },
+ "m-key-above-cap": {
+  "find": "    if float(limit) > cap:",
+  "replace": "    if float(limit) > 10 * cap:",
+  "kills": "test_14_the_key_holds_the_cap"
+ },
+ "m-key-budget-left": {
+  "find": "    return min(cap, float(left))",
+  "replace": "    return cap",
+  "kills": "test_14_the_key_holds_the_cap"
  }
 }

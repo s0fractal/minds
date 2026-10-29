@@ -135,9 +135,10 @@ The pilot's answer to G6 is the primary verdict. A null result is reported as su
 ## Budget and stopping
 
 **Budget:**
-- The owner's cap is $5. It is enforced twice: by the operator's OpenRouter key, which carries a $5 limit, and by the
-  runner.
-- The runner stops before a request once less than $0.25 is left, counting the cost OpenRouter reports.
+- The owner's cap is $5. It is enforced twice: by the operator's OpenRouter key, and by the runner.
+- `g6.py budget` asks OpenRouter for the key's own limit before the run. It refuses a key with no credit limit, or
+  with a limit above $5. The run's budget is what the key has left, at most $5.
+- The runner stops before a request once less than $0.25 of that budget is left, counting the cost OpenRouter reports.
 - A stopped run is reported as incomplete, and its replies are scored as they are.
 - The estimate is about $1.50.
 
@@ -183,7 +184,8 @@ These are stated before any reply:
 - `g6.py`: generator, renderings, runner, scorer.
 - `test_g6.py`: the tests, and `--mutants`, which fails each mutant in `mutants.json` on its named test.
 - `models.json`.
-- `run.sh`: the owner's one command for the run; it reads the key without echo and never writes it down.
+- `run.sh`: the owner's one command for the run. It reads the key from a file of mode 600 named on the command line,
+  or else without echo, and never writes it down.
 
 The run's files go to `experiments/g6/run/` (tasks, raw replies, ledger, status, scores) with `REPORT.md`, in a
 pull request of their own.
