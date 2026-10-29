@@ -18,7 +18,10 @@ the checks run the test suites with that same interpreter.
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
                                               # verdict, and witness the projections that name your key
-    tools/minds_chain.py show                 # releases and projections with their status
+    tools/minds_chain.py witness --key FILE --name NAME
+                                              # as a member: verify-release every release awaiting your key
+                                              # (the GitHub Actions witness, .github/workflows/witness.yml)
+    tools/minds_chain.py show                # releases and projections with their status
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
@@ -459,6 +462,25 @@ def show(repo_dir: Path) -> List[Dict[str, object]]:
 RULES_NAMES = {V.H_LENS_KERNEL: "v1", V.H_LENS_KERNEL_V1B: "v1b", V.H_LENS_KERNEL_V2: "v2"}
 
 
+def unanswered(lens: Dict[str, object], cid: bytes) -> set:
+    """The evaluators a release still waits for, as Pass 3 reads it: none once it is settled or no longer live;
+    else its evaluators less those whose endorsement Pass 3 counts and those with a live INVALID on it (an INVALID
+    is an answer)."""
+    if lens["settled"].get(cid) or cid not in lens["evaluators"]:
+        return set()
+    return lens["evaluators"][cid][1] - lens["endorsers"][cid] - lens["invalidators"][cid]
+
+
+def awaiting(repo_dir: Path, pk: bytes) -> List[bytes]:
+    """The releases of the chain that wait for the verdict of `pk`, in the order the lens holds them."""
+    repo = V.GitVarsRepo(repo_dir)
+    lens = repo.lens(SCOPE)
+    cells, atoms = lens["cells"], lens["atoms"]
+    return [cid for cid, c in cells.items()
+            if c.h_schema == V.H_SCHEMA["decision"] and V.parse_utf8(atoms[c.h_slot_name]).startswith(f"{SCOPE}/release/")
+            and pk in unanswered(lens, cid)]
+
+
 def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
     """Where the release process stands, read only: whether `main` is released, and for each release whether it is
     Settled and, as Pass 3 reads it, which evaluators' endorsements count, which have a live INVALID on it, and which
@@ -498,7 +520,7 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
             row.update(threshold=thr, evaluators=sorted(k.hex() for k in evaluators),
                        attested_by=sorted(k.hex() for k in counted),
                        invalid_by=sorted(k.hex() for k in invalid),
-                       awaiting=[] if row["settled"] else sorted(k.hex() for k in evaluators - counted - invalid))
+                       awaiting=sorted(k.hex() for k in unanswered(lens, cid)))
         releases.append(row)
     released = {r["commit"] for r in releases}
     last = None
@@ -738,6 +760,32 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     return c, ok, lines
 
 
+def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict[str, Optional[str]]]:
+    """As a member on a host of its own (the GitHub Actions witness, `.github/workflows/witness.yml`, whose key is
+    made on its runner and never leaves GitHub): `verify-release` every release that waits for this key's verdict,
+    one after another. A key not on the roster, or one every release has its answer from, has nothing to do.
+    A release this key answered before (a verdict it sealed whose attests name the release) and that still waits
+    for it in Pass 3 has lost that answer since: withdrawn (superseded by NOT_ASSESSED), or stale. Answering it
+    again is the member's own act, and `verify-release` could only remake the verdict the chain has: it is left to
+    the member, as ANSWERED_BEFORE, and the others are verified (Codex, finding 83a5c151 on PR #36). A verdict that
+    attests nothing is no answer (finding 37972d20). Returns each decision, its outcome and the chain commit that
+    records it (none for ANSWERED_BEFORE)."""
+    pk = V.ed25519_pubkey(sk)
+    repo = V.GitVarsRepo(repo_dir)
+    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    mine = [cells[x.h_target] for x in seals.values()
+            if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
+    answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
+    out: List[Dict[str, Optional[str]]] = []
+    for d in awaiting(repo_dir, pk):
+        if d in answered:
+            out.append({"decision": d.hex(), "verdict": "ANSWERED_BEFORE", "commit": None})
+            continue
+        commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        out.append({"decision": d.hex(), "verdict": "ATTESTED" if ok else "INVALID", "commit": commit})
+    return out
+
+
 def what_if_args(repo_dir: Path, args: List[str]) -> Tuple[List[bytes], Optional[bytes], Optional[bytes]]:
     """`what-if CELL... [--key FILE | --assume PUBKEY] [--restore]`: the cells, the seed that seals the hypothesis
     (FILE, a member's own key, else the maintainer key if it exists) and, with `--assume`, no seed but the public
@@ -863,6 +911,10 @@ def _main(argv: List[str]) -> int:
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
+    if cmd == "witness" and len(argv) == 5 and argv[1] == "--key" and argv[3] == "--name":
+        done = witness(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip()), argv[4])
+        print(json.dumps(done, indent=2))
+        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0  # ANSWERED_BEFORE is the member's to answer
     if cmd == "shadow" and len(argv) in (2, 4) and argv[2:3] in ([], ["--out"]):
         doc = json.dumps(shadow(repo_dir, bytes.fromhex(argv[1])), indent=2)
         if len(argv) == 4:

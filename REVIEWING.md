@@ -58,6 +58,8 @@ git push origin refs/vars/heads/minds
 
 `verify-release` reruns every check on the released commit in a fresh worktree and records your verdict under your
 own key. It shows that the checks pass; it does not show that what the commits claim is true. That is step 2.
+`minds_chain.py witness --key <file> --name <id>` does it for every release waiting for your key; the GitHub
+Actions witness runs it (README, "The GitHub Actions witness").
 
 ## 2. Try to refute the claims
 

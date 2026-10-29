@@ -5851,6 +5851,120 @@ class TestVars1Conformance(unittest.TestCase):
         self._commit("core", cand2, s2, a, [self._axiom(a, "core/after", "after the change")])
         self.assertEqual(self.repo.lens("core")["rules"], h)
 
+    def test_93_a_witness_verifies_every_release_that_waits_for_its_key(self) -> None:
+        """`witness` (the GitHub Actions member, .github/workflows/witness.yml): a key on the roster verifies every
+        release that waits for its verdict, and only those. A release before the key joined does not wait for it; a
+        release it attested, or found INVALID, waits no longer; a key not on the roster has nothing to do. Its
+        verdicts settle what they should, as `status` reads them."""
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x0a" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r0 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+                         "a key not on the roster has nothing to do")
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        _, r2 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [r1["decision"], r2["decision"]],
+                         "the releases after the join wait for the new key, the one before it does not")
+        self.assertEqual(mc.awaiting(self.repo_path, V.ed25519_pubkey(sk)), [], "the maintainer has answered all")
+        ran = []
+
+        def checks(repo_dir, sha, rules):
+            ran.append(sha)
+            return ["test_vars1 OK"], True
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done],
+                         [(r1["decision"].hex(), "ATTESTED"), (r2["decision"].hex(), "ATTESTED")])
+        self.assertEqual(ran, ["b" * 40, "c" * 40])
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][r1["decision"]] and lens["settled"][r2["decision"]])
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+                         "an attested release waits no longer")
+
+        _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["test_vars1 OK"])
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: (["test_vars1 FAILED"], False))
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r3["decision"].hex(), "INVALID")])
+        self.assertFalse(repo.lens("minds")["settled"][r3["decision"]])
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [], "an INVALID is an answer")
+        row = next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == r3["decision"].hex())
+        self.assertEqual((row["invalid_by"], row["awaiting"]), ([pkw.hex()], []))
+
+    def test_94_a_withdrawn_answer_does_not_stop_the_witness(self) -> None:
+        """A member's answer superseded by NOT_ASSESSED leaves the release waiting for it in Pass 3 (test 79), but
+        `verify-release` would make the same verdict again, whose id the chain has (Codex, finding 83a5c151 on PR
+        #36). `witness` leaves such a release to the member (ANSWERED_BEFORE), and verifies every other release
+        waiting for it, whatever their order; the withdrawn release stays unsettled."""
+        import dataclasses
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x08" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        checks = lambda *a: (["x OK"], True)  # noqa: E731
+        self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
+                         ["ATTESTED"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tip = repo.ref_commit("minds")
+        atoms, cells, _ = repo.read_cas_tree(tip)
+        old = next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == r1["decision"]
+                   and V.parse_utf8(atoms[c.slots[2]]) == "github-actions")
+        new: dict[bytes, bytes] = {}
+        withdrawn = dataclasses.replace(old, h_supersedes=mc._put(new, V.atom_hvec([old.id])),
+                                        h_loss=mc._put(new, V.atom_utf8("withdrawn")),
+                                        slots=(V.H_EMPTY, V.H_NOT_ASSESSED, old.slots[2]))
+        cand = repo.build_candidate_commit("minds", new, [withdrawn],
+                                           [V.Seal.sign(skw, withdrawn.id, mc.governing_scope(repo))], parent_commit=tip)
+        repo.admit_and_advance("minds", cand, expected_old=tip)
+        self.assertIn(r1["decision"], mc.awaiting(self.repo_path, pkw), "Pass 3 waits for the withdrawn answer")
+        fresh = [mc.release(self.repo_path, sk, str(n) * 40, ["x OK"])[1]["decision"] for n in range(2, 6)]
+        pending = mc.awaiting(self.repo_path, pkw)
+        self.assertTrue(any(pending.index(d) > pending.index(r1["decision"]) for d in fresh),
+                        "some fresh release comes after the withdrawn one")
+        try:
+            done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        except V.VarsError as e:
+            self.fail(f"a withdrawn answer stopped the witness: {e}")
+        got = {bytes.fromhex(x["decision"]): x["verdict"] for x in done}
+        self.assertEqual(got, {**{d: "ATTESTED" for d in fresh}, r1["decision"]: "ANSWERED_BEFORE"})
+        lens = repo.lens("minds")
+        self.assertTrue(all(lens["settled"][d] for d in fresh))
+        self.assertFalse(lens["settled"][r1["decision"]], "the member's withdrawal stands")
+        self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
+                         ["ANSWERED_BEFORE"], "a later run leaves it to the member again, and does nothing else")
+
+    def test_95_a_verdict_that_attests_nothing_is_no_answer(self) -> None:
+        """Only an answer is left to its member: a verdict of this key whose attests name the release. A verdict
+        that names the release as its payload and attests nothing (Pass 3 counts it for no one, test 79) is no
+        answer, and `witness` verifies the release (Codex, finding 37972d20 on PR #36)."""
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x08" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tip = repo.ref_commit("minds")
+        a: dict[bytes, bytes] = {}
+        nothing = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/no-attests")), r1["decision"],
+                         slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("github-actions"))))
+        cand = repo.build_candidate_commit("minds", a, [nothing],
+                                           [V.Seal.sign(skw, nothing.id, mc.governing_scope(repo))], parent_commit=tip)
+        repo.admit_and_advance("minds", cand, expected_old=tip)
+        self.assertIn(r1["decision"], mc.awaiting(self.repo_path, pkw), "a verdict attesting nothing answers nothing")
+        ran = []
+
+        def checks(repo_dir, sha, rules):
+            ran.append(sha)
+            return ["x OK"], True
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r1["decision"].hex(), "ATTESTED")])
+        self.assertEqual(ran, ["a" * 40])
+        self.assertTrue(repo.lens("minds")["settled"][r1["decision"]])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

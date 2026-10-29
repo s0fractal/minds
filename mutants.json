@@ -887,10 +887,11 @@
  },
  "m-status-invalid-answer": {
   "file": "tools/minds_chain.py",
-  "find": "else sorted(k.hex() for k in evaluators - counted - invalid))",
-  "replace": "else sorted(k.hex() for k in evaluators - counted))",
+  "find": "    return lens[\"evaluators\"][cid][1] - lens[\"endorsers\"][cid] - lens[\"invalidators\"][cid]",
+  "replace": "    return lens[\"evaluators\"][cid][1] - lens[\"endorsers\"][cid]",
   "kills": [
-   "test_79_status_reads_pass_3"
+   "test_79_status_reads_pass_3",
+   "test_93_a_witness_verifies_every_release_that_waits_for_its_key"
   ]
  },
  "m-status-behind": {
@@ -1015,10 +1016,51 @@
  },
  "m-status-settled-awaits": {
   "file": "tools/minds_chain.py",
-  "find": "awaiting=[] if row[\"settled\"] else sorted(",
-  "replace": "awaiting=sorted(",
+  "find": "    if lens[\"settled\"].get(cid) or cid not in lens[\"evaluators\"]:",
+  "replace": "    if cid not in lens[\"evaluators\"]:",
   "kills": [
    "test_79_status_reads_pass_3"
+  ]
+ },
+ "m-status-endorsed-answer": {
+  "file": "tools/minds_chain.py",
+  "find": "    return lens[\"evaluators\"][cid][1] - lens[\"endorsers\"][cid] - lens[\"invalidators\"][cid]",
+  "replace": "    return lens[\"evaluators\"][cid][1] - lens[\"invalidators\"][cid]",
+  "kills": [
+   "test_79_status_reads_pass_3",
+   "test_93_a_witness_verifies_every_release_that_waits_for_its_key"
+  ]
+ },
+ "m-witness-whose": {
+  "file": "tools/minds_chain.py",
+  "find": "            and pk in unanswered(lens, cid)]",
+  "replace": "            and bool(unanswered(lens, cid))]",
+  "kills": [
+   "test_93_a_witness_verifies_every_release_that_waits_for_its_key"
+  ]
+ },
+ "m-witness-withdrawn": {
+  "file": "tools/minds_chain.py",
+  "find": "        if d in answered:",
+  "replace": "        if False:",
+  "kills": [
+   "test_94_a_withdrawn_answer_does_not_stop_the_witness"
+  ]
+ },
+ "m-witness-answered-by": {
+  "file": "tools/minds_chain.py",
+  "find": "            if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA[\"verdict\"]]",
+  "replace": "            if x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA[\"verdict\"]]",
+  "kills": [
+   "test_94_a_withdrawn_answer_does_not_stop_the_witness"
+  ]
+ },
+ "m-witness-attests": {
+  "file": "tools/minds_chain.py",
+  "find": "    answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}",
+  "replace": "    answered = {v.h_payload for v in mine}",
+  "kills": [
+   "test_95_a_verdict_that_attests_nothing_is_no_answer"
   ]
  },
  "m-profile-regular": {
