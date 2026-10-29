@@ -117,6 +117,13 @@ Each result has an `explain` trace (counted witnesses and keys, blocked verifier
 epoch, the policy, why a pinned key is missing, and whether the rules identity is one it interprets). It is derived
 from the bundle, not authority; `vars1.py` delegates to the same file (spec §4.4).
 
+## Direction (not implemented)
+
+[AGENT-SPORE-DIRECTION.md](AGENT-SPORE-DIRECTION.md) records where minds is going: agents that hand each other
+addressed units of metered computation ("spores") which fetch their dependencies on demand and say exactly what
+they checked and what they took on others' word, with separate responsibilities for minds and Warrant. It is design
+intent agreed with the owner, built first from the parts above; nothing in it is a claim of this repository.
+
 ## Status
 
 Experimental. CI (`.github/workflows/check.yml`) runs every release check on a fresh Ubuntu runner: the kernel
