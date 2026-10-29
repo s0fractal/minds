@@ -87,15 +87,29 @@ that decision established for the rules it introduced.
 
 - a correction: its named status bit of its cell (found by id, since encodings differ in order) is still `right` on its
   counterexample;
-- a hardening or a tightening: its input is still refused with its code within its budget.
+- a hardening or a tightening: its input is still refused within its budget, with any code.
+
+**What is kept is the refusal, not its code** (Monday review 2026-10-28, F46: keep the property an earlier change
+established, not the accidents of the rules that established it). A hardening established that its input no longer
+exhausts the budget or traps; a tightening, that it no longer gets an output. Either holds whichever code refuses the
+input. The code is the reason the change gave, which its decision keeps for its reader; a successor may refuse the
+input for another reason, for its meaning where the change refused it for its size, or the other way. This is the
+distinction the G3 review drew for the gate's own checks (ASSURANCE.md, "Not burned, and why": a mutant that loses
+only the named reason loses no refusal). Nothing is lost by it: (d) runs at every later change, so a successor
+whose new reason later falls away is refused then, when the input stops being refused. `test_vars1.py` 92: a
+successor refusing the fuzzer's input with another code is admitted; one refusing it only with more steps than the
+hardening's budget, or giving it an output, is refused.
 
 The chain's past rules changes become its regression corpus: the protocol changes under evidence, and evidence once
 admitted constrains every later change. Consequences, stated rather than hidden:
 
-- After v1 → v1b, a later v1b → v2 is refused twice over: v2 cannot read the hardening's v1-encoded input, and v2
-  reads v1b-born cells by type (below). Activating v1b first closes the road to v2 until a v2 that knows v1b, with the
-  commit bound and a way to carry the input into v2's encoding, exists. The order matters, and it is the members'
-  choice.
+- After v1 → v1b, a later v1b → v2 is refused, and the reason is a property, not an accident: v2 reads v1b-born cells
+  by type (below), so a cell v1b accepted would lose its v1 references. (d) would refuse it second, since v2 cannot
+  read the hardening's v1-encoded input and no carrier between the encodings exists. Between v1 and v2 those two
+  refusals of the reading rules always come first, so (d) never meets an input of the other encoding alone: a
+  v1-encoded change puts an epoch of v1-reading rules other than `H_LENS_KERNEL` on the chain, and a v2 epoch never
+  rotates back. Activating v1b first closes the road to v2 until a v2 that knows v1b exists; that build would also
+  need a carrier of v1b's input into v2's encoding. The order matters, and it is the members' choice.
 - (d) re-runs every earlier counterexample at every rules change; the cost grows with the number of changes, not with
   the chain.
 
@@ -197,7 +211,8 @@ budget here is evidence about one input, not a bound on the rules.
 - The step rewriter is one implementation; a second, independent one would make the count a checked agreement rather
   than a definition.
 - The kernel fuzzer builds without `commit-bound` and still skips C > 4096; a v1b fuzz target is not set up.
-- A hardening's input cannot yet move between encodings (v1 → v2), which blocks v1b → v2 under (d).
+- A hardening's input cannot move between encodings: no carrier exists. Between v1 and v2 none is needed, since
+  the reading rules refuse first (above); rules of a new encoding that read an older epoch need one, built with them.
 - `evidence_closure` re-walks nested counterexample chains at every level that checks them: the work across a nesting
   of depth d grows about as d² (Codex review r2 measured 1, 6 and 28 entries at depths 2, 4 and 8). Real chains nest
   rarely; a memo per (scope, commit) would make it linear.

@@ -1678,8 +1678,9 @@ class GitVarsRepo:
     def _check_earlier_changes(self, scope: str, prior_chain: List[str], new_rules: bytes, decision: bytes) -> None:
         """(d) Every earlier rules change of this chain is kept: its counterexample gets, under the new rules, the
         result that change established for the rules it introduced. A correction: the named status of the named cell
-        (by id) is still right. A hardening or a tightening: the input is still refused with the same code within
-        its budget. An implementation-equivalent change has no counterexample."""
+        (by id) is still right. A hardening or a tightening: the input is still refused within its budget, with any
+        code: the code is the reason that change gave, not what it established (F46), as a refusal held by two checks
+        is one refusal (`ASSURANCE.md`, `diagnostic`). An implementation-equivalent change has no counterexample."""
         atoms: Dict[bytes, bytes] = {}
         for d_atoms, d_cells, _ in self.chain_deltas(prior_chain):
             atoms.update(d_atoms)
@@ -1702,12 +1703,14 @@ class GitVarsRepo:
                     if status is None or (status >> bit & 1) != right:
                         raise VarsError(f"{what} is undone: the new rules no longer give its counterexample's verdict")
                 else:
-                    if RULES[then].encoding != RULES[new_rules].encoding:
-                        raise VarsError(f"{what}: its input is encoded for other rules than the new rules read")
+                    if RULES[then].encoding != RULES[new_rules].encoding:  # never alone here: tests 67, 68
+                        raise VarsError(f"{what}: its input is in the {RULES[then].encoding} encoding and the new "
+                                        f"rules read {RULES[new_rules].encoding}; no carrier between them exists")
                     code = -u64_of(f["refusal"], atoms)
                     got = metered_runner(new_rules).run(atoms[f["input"]][4:], u64_of(f["budget"], atoms))
-                    if got != RulesResult("refusal", code=code):
-                        raise VarsError(f"{what} is undone: the new rules no longer refuse its input with E{code}")
+                    if got.kind != "refusal":
+                        raise VarsError(f"{what} is undone: the new rules no longer refuse its input within its budget "
+                                        f"(they give {got.kind}; it was refused with E{code})")
 
     def require_evidence_commit(self, name: str, what: str) -> None:
         """`name` is the canonical id of a commit whose whole history is in this repository. A string that has the

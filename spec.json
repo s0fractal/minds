@@ -1077,9 +1077,10 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "(d) Every rules change keeps the earlier ones: on every rules-change decision earlier in the chain, the new rules\ngive the result it established. A correction's status bit `status` of its cell, found by id, is still `right` on its\ncounterexample; a hardening's or a tightening's input is still refused with its code within its budget, which needs\nrules that read its encoding. A rotation from v2 to rules that read references as v1 does is refused, and so is a\nrotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only\nthe cells born under `H_LENS_KERNEL`.",
+   "text": "(d) Every rules change keeps the earlier ones: on every rules-change decision earlier in the chain, the new rules\ngive the result it established. A correction's status bit `status` of its cell, found by id, is still `right` on its\ncounterexample; a hardening's or a tightening's input is still refused within its budget, with any code: its code is\nthe reason that change gave, not what it established. This needs rules that read its encoding. A rotation from v2 to\nrules that read references as v1 does is refused, and so is a rotation to v2 from a chain with an epoch of rules other\nthan `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only the cells born under `H_LENS_KERNEL`. Between the two\nencodings this host reads, these refusals come first, so (d) never meets an input of the other encoding alone; rules\nof a new encoding that read an older epoch need a carrier of the inputs of its changes, and none exists.",
    "carries": [
     "rules.change.d",
+    "rules.change.d.reason",
     "rules.change.v2-to-v1-reading"
    ]
   },

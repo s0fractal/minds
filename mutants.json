@@ -669,10 +669,27 @@
  },
  "m-amend-d-refusal": {
   "file": "vars1.py",
-  "find": "                    if got != RulesResult(\"refusal\", code=code):",
+  "find": "                    if got.kind != \"refusal\":",
   "replace": "                    if False:",
   "kills": [
-   "test_67_earlier_counterexamples_stay_decided"
+   "test_67_earlier_counterexamples_stay_decided",
+   "test_92_a_later_change_keeps_an_earlier_refusal_not_its_code"
+  ]
+ },
+ "m-amend-d-same-code": {
+  "file": "vars1.py",
+  "find": "                    if got.kind != \"refusal\":",
+  "replace": "                    if got != RulesResult(\"refusal\", code=code):",
+  "kills": [
+   "test_92_a_later_change_keeps_an_earlier_refusal_not_its_code"
+  ]
+ },
+ "m-amend-d-budget": {
+  "file": "vars1.py",
+  "find": "                    got = metered_runner(new_rules).run(atoms[f[\"input\"]][4:], u64_of(f[\"budget\"], atoms))",
+  "replace": "                    got = metered_runner(new_rules).run(atoms[f[\"input\"]][4:], MAX_RULES_BUDGET)",
+  "kills": [
+   "test_92_a_later_change_keeps_an_earlier_refusal_not_its_code"
   ]
  },
  "m-amend-evidence-ref": {

@@ -3780,14 +3780,14 @@ class TestVars1Conformance(unittest.TestCase):
         cand, s1, _ = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)
         self.repo.admit_and_advance("core", cand, expected_old=c1)
         self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer refuse its "
-                           "input with E-7", "core",
+                           r"input within its budget \(they give exhausted; it was refused with E-7\)", "core",
                            self._change("equivalent", "core", cand, s1, V.H_LENS_KERNEL, label="back")[0], cand)
-        # v1b -> v2 is refused before (d) (test 68: v2 reads v1b-born cells by type); (d) would refuse it too, since v2
-        # cannot read the hardening's v1-encoded input
+        # v1b -> v2 is refused before (d) (test 68: v2 reads v1b-born cells by type, which loses their v1 references);
+        # (d) would refuse it second, since v2 cannot read the hardening's v1-encoded input and no carrier exists
         self._gate_refuses("v2 reads as v1 only the cells born under H_LENS_KERNEL", "core",
                            self._change_rules("core", cand, s1, V.H_LENS_KERNEL_V2, [self.sk1], cx)[0], cand)
-        with self.assertRaisesRegex(V.VarsError, r"\(d\): the earlier rules change [0-9a-f]{12}: its input is encoded for "
-                                                 "other rules"):
+        with self.assertRaisesRegex(V.VarsError, r"\(d\): the earlier rules change [0-9a-f]{12}: its input is in the v1 "
+                                                 "encoding and the new rules read v2; no carrier between them exists"):
             self.repo._check_earlier_changes("core", self.repo.commit_chain(cand), V.H_LENS_KERNEL_V2, b"")
 
         cand2, t1, _ = self._change_rules("q", c1b, t0, V.H_LENS_KERNEL_V2, [self.sk1], cx)
@@ -5809,6 +5809,47 @@ class TestVars1Conformance(unittest.TestCase):
                 except Exception as e:  # noqa: BLE001
                     self.fail(f"a reply {reply!r} raised {type(e).__name__}: {e}")
             self.assertEqual(how, want, reply)
+
+    def test_92_a_later_change_keeps_an_earlier_refusal_not_its_code(self) -> None:
+        """(d) keeps what an earlier hardening or tightening established, not its accidents (Monday review F46): its
+        input is still refused within its budget, with any code. After the hardening v1 -> v1b, v1b' (v1b's bytes and
+        a custom section, the same output over the chain) whose metered run is the test's: one that refuses the
+        fuzzer's input with another code is admitted as an equivalent change; one that refuses it only with more
+        steps than the hardening's budget is refused, and so is one that gives it an output."""
+        inp = self._fuzz_counterexample()
+        c1, s0 = self._core()
+        cand, s1, _ = self._change("hardening", "core", c1, s0, V.H_LENS_KERNEL_V1B, label="v1b", inp=inp)
+        self.repo.admit_and_advance("core", cand, expected_old=c1)
+        raw = V.KERNEL1B_ATOM + b"\x00\x0b\x05minds" + b"other"
+        path = Path(self.tmp.name) / "lens1b-other.wasm"
+        path.write_bytes(raw)
+        h = V.sha256(raw)
+        self._register_rules(h, V.Rules(path, "v1", frozenset({-7})), raw)
+        self.addCleanup(V._METERED.pop, h, None)
+
+        class Metered:  # the successor's run on the hardening's input, as `gives` says for a budget
+            def __init__(self, gives) -> None:
+                self.gives = gives
+
+            def run(self, kernel_input: bytes, budget: int) -> V.RulesResult:
+                return self.gives(budget)
+
+        attempt = lambda: self._change("equivalent", "core", cand, s1, h, label="v1b-other")[0]  # noqa: E731
+        V._METERED[h] = Metered(lambda b: V.RulesResult("refusal", code=-9) if b > self.BUDGET else V.RulesResult("exhausted"))
+        self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer refuse its "
+                           r"input within its budget \(they give exhausted; it was refused with E-7\)", "core", attempt(), cand)
+        V._METERED[h] = Metered(lambda b: V.RulesResult("output", output=b"\x00"))
+        self._gate_refuses(r"\(d\): the earlier rules change [0-9a-f]{12} is undone: the new rules no longer refuse its "
+                           r"input within its budget \(they give output", "core", attempt(), cand)
+        V._METERED[h] = Metered(lambda b: V.RulesResult("refusal", code=-9))
+        cand2, s2, _ = self._change("equivalent", "core", cand, s1, h, label="v1b-other")
+        try:
+            self.repo.admit_and_advance("core", cand2, expected_old=cand)
+        except V.VarsError as e:
+            self.fail(f"a successor refusing the hardening's input with another code was refused: {e}")
+        a: dict[bytes, bytes] = {}
+        self._commit("core", cand2, s2, a, [self._axiom(a, "core/after", "after the change")])
+        self.assertEqual(self.repo.lens("core")["rules"], h)
 
 
 if __name__ == "__main__":
