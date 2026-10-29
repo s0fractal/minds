@@ -98,5 +98,35 @@
   "find": "    return min(cap, float(left))",
   "replace": "    return cap",
   "kills": "test_14_the_key_holds_the_cap"
+ },
+ "m-run-spend-twice": {
+  "find": "    spent = 0.0  # by this invocation\n",
+  "replace": "    spent = before\n",
+  "kills": "test_15_a_resumed_run_spends_what_the_key_has_left"
+ },
+ "m-run-unbound": {
+  "find": "    ident = _bound(tasks_dir, out)\n",
+  "replace": "    ident = tasks_identity(tasks_dir)\n",
+  "kills": "test_16_results_belong_to_the_tasks_they_were_made_from"
+ },
+ "m-score-unbound": {
+  "find": "        raise SystemExit(f\"refused: {results} names no tasks (RUN.json)\")\n    _bound(tasks_dir, results)\n",
+  "replace": "        raise SystemExit(f\"refused: {results} names no tasks (RUN.json)\")\n",
+  "kills": "test_16_results_belong_to_the_tasks_they_were_made_from"
+ },
+ "m-bind-seed": {
+  "find": "    if (m.get(\"seed\"), m.get(\"count\")) != (seed, count):",
+  "replace": "    if m.get(\"count\") != count:",
+  "kills": "test_17_tasks_bind_to_their_seed_count_and_bytes"
+ },
+ "m-bind-digest": {
+  "find": "        if hashlib.sha256((tasks_dir / name).read_bytes()).hexdigest() != digest:",
+  "replace": "        if False:",
+  "kills": "test_17_tasks_bind_to_their_seed_count_and_bytes"
+ },
+ "m-bind-files": {
+  "find": "    if sorted(files) != sorted(p.name for p in tasks_dir.glob(\"h*.json\")) or len(files) != count:",
+  "replace": "    if len(files) != count:",
+  "kills": "test_17_tasks_bind_to_their_seed_count_and_bytes"
  }
 }

@@ -469,19 +469,55 @@ def plan(tasks: Dict[str, Dict[str, object]], models: List[str], order_seed: str
     return calls
 
 
+def tasks_identity(tasks_dir: Path) -> str:
+    """The tasks' identity: the SHA-256 of their MANIFEST.json, which names the seed, the count and every file's
+    SHA-256."""
+    return hashlib.sha256((tasks_dir / "MANIFEST.json").read_bytes()).hexdigest()
+
+
+def bind(tasks_dir: Path, seed: str, count: int) -> str:
+    """The tasks of `seed` and `count`, or a refusal: the manifest must name that seed and count, and the task files
+    must be exactly the files it names, each with its SHA-256. Returns the tasks' identity."""
+    m = json.loads((tasks_dir / "MANIFEST.json").read_text())
+    if (m.get("seed"), m.get("count")) != (seed, count):
+        raise SystemExit(f"refused: {tasks_dir} holds the tasks of seed {m.get('seed')!r} and count {m.get('count')}, "
+                         f"not {seed!r} and {count}; move them away")
+    files = m.get("files") or {}
+    if sorted(files) != sorted(p.name for p in tasks_dir.glob("h*.json")) or len(files) != count:
+        raise SystemExit(f"refused: the task files in {tasks_dir} are not the ones its manifest names")
+    for name, digest in files.items():
+        if hashlib.sha256((tasks_dir / name).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f"refused: {name} is not the file its manifest names")
+    return tasks_identity(tasks_dir)
+
+
+def _bound(tasks_dir: Path, out: Path) -> str:
+    """Results belong to the tasks they were made from: `out/RUN.json` names the tasks' identity; a refusal when it
+    names other tasks."""
+    ident, run_file = tasks_identity(tasks_dir), out / "RUN.json"
+    if run_file.exists() and json.loads(run_file.read_text()).get("tasks") != ident:
+        raise SystemExit(f"refused: {out} holds replies to other tasks than {tasks_dir}; move them away")
+    return ident
+
+
 def run(tasks_dir: Path, out: Path, models: List[str], budget: float, max_tokens: int,
         caller=call, key: Optional[str] = None) -> Dict[str, object]:
     """Ask each reader each prompt once. A recorded reply is never asked again, so an interrupted run resumes; an
-    HTTP or network failure is retried twice, then recorded as no answer. Before each call the spend so far, as
-    OpenRouter reports it, must leave a quarter of a dollar under `budget`, or the run stops."""
+    HTTP or network failure is retried twice, then recorded as no answer. `budget` is what this invocation may
+    spend (what the key has left when it starts, at most the cap): before each call, what this invocation has spent,
+    as OpenRouter reports it, must leave a quarter of a dollar under it, or the run stops. `out` belongs to the tasks
+    it was first run on, and refuses others."""
     key = key if key is not None else os.environ.get("OPENROUTER_API_KEY", "")
     if not key and caller is call:
         raise SystemExit("set OPENROUTER_API_KEY")
+    ident = _bound(tasks_dir, out)
     tasks = {p.stem: json.loads(p.read_text()) for p in sorted(tasks_dir.glob("h*.json"))}
     raw = out / "raw"
     raw.mkdir(parents=True, exist_ok=True)
+    (out / "RUN.json").write_text(json.dumps({"tasks": ident}, indent=1) + "\n")
     ledger = out / "ledger.jsonl"
-    spent = sum(json.loads(x).get("cost", 0.0) for x in ledger.read_text().splitlines()) if ledger.exists() else 0.0
+    before = sum(json.loads(x).get("cost", 0.0) for x in ledger.read_text().splitlines()) if ledger.exists() else 0.0
+    spent = 0.0  # by this invocation
     manifest = json.loads((tasks_dir / "MANIFEST.json").read_text())
     stopped = None
     for t, m, a in plan(tasks, models, manifest["seed"]):
@@ -489,7 +525,7 @@ def run(tasks_dir: Path, out: Path, models: List[str], budget: float, max_tokens
         if dest.exists():
             continue
         if spent > budget - 0.25:
-            stopped = f"budget: {spent:.4f} of {budget} spent"
+            stopped = f"budget: {spent:.4f} of {budget} spent by this invocation"
             break
         rec = {"task": t, "model": m, "arm": a, "attempts": []}
         for attempt in range(3):
@@ -509,7 +545,7 @@ def run(tasks_dir: Path, out: Path, models: List[str], budget: float, max_tokens
         with ledger.open("a") as f:
             f.write(json.dumps({"task": t, "model": m, "arm": a, "cost": cost,
                                 "served": (rec.get("response") or {}).get("model")}) + "\n")
-    status = {"spent": round(spent, 6), "budget": budget, "stopped": stopped,
+    status = {"spent": round(before + spent, 6), "spent_now": round(spent, 6), "budget": budget, "stopped": stopped,
               "recorded": len(list(raw.glob("*.json"))), "planned": len(tasks) * len(models) * len(ARMS)}
     (out / "STATUS.json").write_text(json.dumps(status, indent=1) + "\n")
     return status
@@ -570,6 +606,9 @@ def contrast(cells: Dict[Tuple[str, str, str], Optional[Dict[str, float]]], arm:
 
 
 def score(tasks_dir: Path, results: Path) -> Dict[str, object]:
+    if not (results / "RUN.json").exists():
+        raise SystemExit(f"refused: {results} names no tasks (RUN.json)")
+    _bound(tasks_dir, results)
     tasks = {p.stem: json.loads(p.read_text()) for p in sorted(tasks_dir.glob("h*.json"))}
     cells: Dict[Tuple[str, str, str], Optional[Dict[str, float]]] = {}
     by_kind: Dict[Tuple[str, str], List[int]] = {}
@@ -617,6 +656,10 @@ def main(argv: List[str]) -> int:
     r.add_argument("--models", type=Path, default=Path(__file__).with_name("models.json"))
     r.add_argument("--budget", type=float, default=5.0)
     r.add_argument("--max-tokens", type=int, default=8000)
+    k = sub.add_parser("bind")
+    k.add_argument("--tasks", type=Path, required=True)
+    k.add_argument("--seed", required=True)
+    k.add_argument("--count", type=int, required=True)
     b = sub.add_parser("budget")
     b.add_argument("--cap", type=float, required=True)
     s = sub.add_parser("score")
@@ -625,6 +668,8 @@ def main(argv: List[str]) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "generate":
         generate(a.seed, a.count, a.out)
+    elif a.cmd == "bind":
+        print(bind(a.tasks, a.seed, a.count))
     elif a.cmd == "budget":
         key = os.environ.get("OPENROUTER_API_KEY", "")
         if not key:

@@ -290,6 +290,79 @@ class T(unittest.TestCase):
         self.assertEqual(g6.key_budget("k", 5, info({"limit": 5, "limit_remaining": 5.0, "usage": 0})), 5.0)
         self.assertEqual(g6.key_budget("k", 3, info({"limit": 3, "limit_remaining": 3.0, "usage": 0})), 3.0)
 
+    def _tasks(self, d: Path, seed: str, n: int) -> Path:
+        """Stub tasks with a manifest as `generate` writes it."""
+        tasks = d / "tasks"
+        tasks.mkdir()
+        for i in range(n):
+            (tasks / f"h{i:02d}.json").write_text(json.dumps({"prompts": {a: f"{seed} {i} {a}" for a in g6.ARMS},
+                                                              "truth": {"D01": g6.RELY, "D02": g6.DROP},
+                                                              "kinds": {"D01": "untouched", "D02": "own"},
+                                                              "history": {"size": "S"}}))
+        files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(tasks.glob("h*.json"))}
+        (tasks / "MANIFEST.json").write_text(json.dumps({"seed": seed, "count": n, "files": files}, indent=1) + "\n")
+        return tasks
+
+    def test_15_a_resumed_run_spends_what_the_key_has_left(self) -> None:
+        """Codex F1 (PR #40): an interrupted run resumes against what the key has left, counting only what it spends
+        from then on, so an interruption does not change where the run stops."""
+        with tempfile.TemporaryDirectory(dir=WORK) as d:
+            d = Path(d)
+            tasks = self._tasks(d, "freeze", 16)
+            models, made = ["one/m", "two/m", "three/m"], []
+            reply = {"usage": {"cost": 0.03}, "choices": [{"message": {"content": ""}}]}
+
+            def interrupted(model, text, key, max_tokens):
+                if len(made) == 80:
+                    raise KeyboardInterrupt()
+                made.append(text)
+                return reply
+            with self.assertRaises(KeyboardInterrupt):
+                g6.run(tasks, d / "out", models, 5.0, 100, caller=interrupted, key="k")
+            st = g6.run(tasks, d / "out", models, 5.0 - 80 * 0.03, 100, caller=lambda *a: reply, key="k")
+            self.assertEqual((st["recorded"], st["stopped"]), (144, None))
+            self.assertAlmostEqual(st["spent"], 144 * 0.03)
+
+    def test_16_results_belong_to_the_tasks_they_were_made_from(self) -> None:
+        """Codex F2 (PR #40): replies recorded for one set of tasks are neither resumed nor scored against another."""
+        with tempfile.TemporaryDirectory(dir=WORK) as d:
+            d = Path(d)
+            tasks = self._tasks(d, "smoke-old", 2)
+            reply = lambda *a: {"usage": {"cost": 0.0},
+                                "choices": [{"message": {"content": '```json\n{"D01": "RELY", "D02": "RELY"}\n```'}}]}
+            g6.run(tasks, d / "out", ["a/m"], 5.0, 100, caller=reply, key="k")
+            shutil.rmtree(tasks)
+            tasks = self._tasks(d, "smoke-new", 2)
+            asked = []
+            with self.assertRaisesRegex(SystemExit, "other tasks"):
+                g6.run(tasks, d / "out", ["a/m"], 5.0, 100, caller=lambda *a: asked.append(a) or reply(), key="k")
+            self.assertEqual(asked, [])
+            with self.assertRaisesRegex(SystemExit, "other tasks"):
+                g6.score(tasks, d / "out")
+
+    def test_17_tasks_bind_to_their_seed_count_and_bytes(self) -> None:
+        """`bind` returns the tasks' identity only for the seed and count asked, and only while every task file is the
+        one its manifest names."""
+        with tempfile.TemporaryDirectory(dir=WORK) as d:
+            tasks = self._tasks(Path(d), "smoke-f", 2)
+            self.assertEqual(g6.bind(tasks, "smoke-f", 2), g6.tasks_identity(tasks))
+            with self.assertRaisesRegex(SystemExit, "seed"):
+                g6.bind(tasks, "smoke-g", 2)
+            with self.assertRaisesRegex(SystemExit, "count"):
+                g6.bind(tasks, "smoke-f", 3)
+            (tasks / "h01.json").write_text((tasks / "h01.json").read_text().replace("smoke-f 1", "smoke-f 9"))
+            with self.assertRaisesRegex(SystemExit, "not the file its manifest names"):
+                g6.bind(tasks, "smoke-f", 2)
+            (tasks / "h01.json").write_text((tasks / "h01.json").read_text().replace("smoke-f 9", "smoke-f 1"))
+            self.assertEqual(g6.bind(tasks, "smoke-f", 2), g6.tasks_identity(tasks), "restored, it binds again")
+            (tasks / "h02.json").write_text((tasks / "h01.json").read_text())
+            with self.assertRaisesRegex(SystemExit, "not the ones its manifest names"):
+                g6.bind(tasks, "smoke-f", 2)
+            (tasks / "h02.json").unlink()
+            (tasks / "h01.json").unlink()
+            with self.assertRaisesRegex(SystemExit, "not the ones its manifest names"):
+                g6.bind(tasks, "smoke-f", 2)
+
     def test_11_the_order_mixes_the_arms(self) -> None:
         """Every (history, model, arm) once, in an order fixed by the seed, not arm after arm."""
         ts = {f"h{i:02d}": {} for i in range(4)}

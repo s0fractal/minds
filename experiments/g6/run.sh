@@ -23,6 +23,8 @@ case "${1:-}" in
     *) echo "usage: run.sh smoke|confirm" >&2; exit 2 ;;
 esac
 [ -e "$out/tasks" ] || .venv/bin/python experiments/g6/g6.py generate --seed "$seed" --count "$count" --out "$out/tasks"
+# tasks left from another freeze, or changed since, are refused before any key is read
+.venv/bin/python experiments/g6/g6.py bind --tasks "$out/tasks" --seed "$seed" --count "$count" >/dev/null
 if [ -n "${2:-}" ]; then
     [ "$(stat -f %Lp "$2")" = 600 ] || { echo "$2 must be mode 600" >&2; exit 1; }
     IFS= read -r OPENROUTER_API_KEY < "$2"

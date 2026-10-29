@@ -136,13 +136,20 @@ The pilot's answer to G6 is the primary verdict. A null result is reported as su
 
 **Budget:**
 - The owner's cap is $5. It is enforced twice: by the operator's OpenRouter key, and by the runner.
-- `g6.py budget` asks OpenRouter for the key's own limit before the run. It refuses a key with no credit limit, or
-  with a limit above $5. The run's budget is what the key has left, at most $5.
-- The runner stops before a request once less than $0.25 of that budget is left, counting the cost OpenRouter reports.
+- `g6.py budget` asks OpenRouter for the key's own limit before each invocation of the run. It refuses a key with no
+  credit limit, or with a limit above $5. That invocation's budget is what the key has left, at most $5.
+- The runner stops before a request once less than $0.25 of that budget is left, counting only what this invocation
+  has spent, as OpenRouter reports it. The key's own limit holds the whole run to $5 across invocations.
 - A stopped run is reported as incomplete, and its replies are scored as they are.
 - The estimate is about $1.50.
 
 **Interruption:** an interrupted run resumes. A recorded reply is never asked again.
+
+**Binding:**
+- `run.sh` checks the tasks before it reads a key. They must be the tasks of this freeze's seed and count (`g6.py
+  bind`), and every task file must be the one the manifest names, byte for byte.
+- A results directory names the tasks it was made from (`RUN.json`, the SHA-256 of their manifest). The runner
+  refuses to resume it, and the scorer refuses to score it, against other tasks.
 
 **Harness defects:** after the confirmatory run, nothing is re-asked and nothing is re-scored differently. A harness
 defect found after it voids the run. The protocol then repeats from a new freeze, and every run is reported.
