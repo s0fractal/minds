@@ -1,0 +1,29 @@
+# minds PR #31 — ACCEPT (code review)
+
+Head: `0b24a6a8a909456d3fd1a2529455e3f6023a13b5`.
+PR base: `6d97512bafa160eb7c0c15fffe249154fc11de3f`.
+Fetched main: `4edd14751127b59884e3e999322ca493707b6fd9` (only one added Warrant record relative to the PR base).
+One scoped review round, 2026-10-29. No actionable P1–P3 findings.
+
+## Scope and result
+
+Reviewed the moved claim `rules.change.d.reason`, existing retained-counterexample checks, the initial hardening/tightening classification, encoding barriers, tests, mutations and normative changes. Preserving a controlled refusal under the original budget is coherent with the new specification; preserving the old code or its resource/non-resource classification is not necessary to preserve that property. Initial admission still separately checks the named code and its class. No implementation change allows output, exhaustion or trap to count as a controlled refusal.
+
+This accepts the bounded PR change. It does not close a roadmap obligation whose wording differs, establish an encoding carrier, or establish arbitrary future encodings are compatible. The existing v1/v2 reading barriers remain in force before the retained-input check.
+
+## Evidence
+
+- `targeted-corrected.log`: 8/8 targeted conformance tests pass (62, 64–69, 92). The first invocation in `targeted.log` had a reviewer typo in test 68's method name; corrected and rerun successfully.
+- `mutants.log`: 5/5 selected mutants killed: skip earlier changes, lose correction, lose refusal, restore same-code comparison, substitute gate ceiling for original budget.
+- `claims.log`: claims checker passes, 158 claims, 270 mutants listed; two pre-existing unburned claims remain explicit.
+- `countervectors.py` / `countervectors.log`: an independent integration control changes the actual v1b WASM instruction `i32.const -7` to `-9` and then `-10`. Both real metered runs refuse the original input with the new codes, neither declared a resource code for its test module. Both equivalent successors are admitted through the actual gate. No metered result is mocked for these admissions.
+- After those two successors, direct controls on the retained-evidence check inject output, exhausted and fault results: all are refused, and the exact original input and original budget are observed at the runner. Another refusal code is accepted under that same budget. These controls use a runner stub and are not claims about real WASM traps.
+- `pr-final.json`: exact head unchanged, OPEN, all three GitHub checks SUCCESS. Full conformance/property/kernel/Lean and full mutation suites were not repeated locally; current CI supplies the broader regression evidence.
+- Added the bounded property-versus-diagnostic lesson to `primitives/patterns.json`, regenerated its view and passed its checker (`primitives.log`), preserving prior local edits.
+- PR worktree is clean after the mutant runner restored its edits. No PR code changed, no merge and no GitHub approval posted.
+
+## Signed review transport unavailable
+
+The warrant-review skill requires a due head version and trusted base configuration before filing a PR verdict. At both the PR base and current fetched main, `warrant.review due` is refused with `BASE_CONFIG`: `.warrant/merge.json` is absent. The repository profile also contains no `pr/acceptor` role. Consequently this file is the code-review verdict, not a signed Warrant head acceptance. No head record, role or gate configuration was invented, and no roadmap record was used as a substitute.
+
+Evidence: `due.log` contains the current-main refusal. The review itself is complete; the unavailable signed transport does not turn green CI into a recorded acceptance.
