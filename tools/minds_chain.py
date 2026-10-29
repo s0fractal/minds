@@ -764,20 +764,22 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
     """As a member on a host of its own (the GitHub Actions witness, `.github/workflows/witness.yml`, whose key is
     made on its runner and never leaves GitHub): `verify-release` every release that waits for this key's verdict,
     one after another. A key not on the roster, or one every release has its answer from, has nothing to do.
-    A release this key answered before, whose answer was withdrawn since (superseded by NOT_ASSESSED), waits for
-    it in Pass 3, but answering it again is the member's own act, and `verify-release` would make the verdict the
-    chain already has: it is left to the member, as WITHDRAWN, and the others are verified (Codex, finding
-    83a5c151 on PR #36). Returns each decision, its outcome and the chain commit that records it (none for a
-    WITHDRAWN)."""
+    A release this key answered before (a verdict it sealed whose attests name the release) and that still waits
+    for it in Pass 3 has lost that answer since: withdrawn (superseded by NOT_ASSESSED), or stale. Answering it
+    again is the member's own act, and `verify-release` could only remake the verdict the chain has: it is left to
+    the member, as ANSWERED_BEFORE, and the others are verified (Codex, finding 83a5c151 on PR #36). A verdict that
+    attests nothing is no answer (finding 37972d20). Returns each decision, its outcome and the chain commit that
+    records it (none for ANSWERED_BEFORE)."""
     pk = V.ed25519_pubkey(sk)
     repo = V.GitVarsRepo(repo_dir)
-    _, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
-    answered = {cells[x.h_target].h_payload for x in seals.values()
-                if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]}
+    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    mine = [cells[x.h_target] for x in seals.values()
+            if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
+    answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
     out: List[Dict[str, Optional[str]]] = []
     for d in awaiting(repo_dir, pk):
         if d in answered:
-            out.append({"decision": d.hex(), "verdict": "WITHDRAWN", "commit": None})
+            out.append({"decision": d.hex(), "verdict": "ANSWERED_BEFORE", "commit": None})
             continue
         commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
         out.append({"decision": d.hex(), "verdict": "ATTESTED" if ok else "INVALID", "commit": commit})
@@ -912,7 +914,7 @@ def _main(argv: List[str]) -> int:
     if cmd == "witness" and len(argv) == 5 and argv[1] == "--key" and argv[3] == "--name":
         done = witness(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip()), argv[4])
         print(json.dumps(done, indent=2))
-        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0  # a WITHDRAWN is the member's to answer
+        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0  # ANSWERED_BEFORE is the member's to answer
     if cmd == "shadow" and len(argv) in (2, 4) and argv[2:3] in ([], ["--out"]):
         doc = json.dumps(shadow(repo_dir, bytes.fromhex(argv[1])), indent=2)
         if len(argv) == 4:

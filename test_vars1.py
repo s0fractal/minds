@@ -5895,8 +5895,8 @@ class TestVars1Conformance(unittest.TestCase):
     def test_94_a_withdrawn_answer_does_not_stop_the_witness(self) -> None:
         """A member's answer superseded by NOT_ASSESSED leaves the release waiting for it in Pass 3 (test 79), but
         `verify-release` would make the same verdict again, whose id the chain has (Codex, finding 83a5c151 on PR
-        #36). `witness` leaves such a release to the member, says so, and verifies every other release waiting for
-        it, whatever their order; the withdrawn release stays unsettled."""
+        #36). `witness` leaves such a release to the member (ANSWERED_BEFORE), and verifies every other release
+        waiting for it, whatever their order; the withdrawn release stays unsettled."""
         import dataclasses
         mc = self._minds_chain()
         sk, skw = b"\x07" * 32, b"\x08" * 32
@@ -5929,12 +5929,41 @@ class TestVars1Conformance(unittest.TestCase):
         except V.VarsError as e:
             self.fail(f"a withdrawn answer stopped the witness: {e}")
         got = {bytes.fromhex(x["decision"]): x["verdict"] for x in done}
-        self.assertEqual(got, {**{d: "ATTESTED" for d in fresh}, r1["decision"]: "WITHDRAWN"})
+        self.assertEqual(got, {**{d: "ATTESTED" for d in fresh}, r1["decision"]: "ANSWERED_BEFORE"})
         lens = repo.lens("minds")
         self.assertTrue(all(lens["settled"][d] for d in fresh))
         self.assertFalse(lens["settled"][r1["decision"]], "the member's withdrawal stands")
         self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
-                         ["WITHDRAWN"], "a later run leaves it to the member again, and does nothing else")
+                         ["ANSWERED_BEFORE"], "a later run leaves it to the member again, and does nothing else")
+
+    def test_95_a_verdict_that_attests_nothing_is_no_answer(self) -> None:
+        """Only an answer is left to its member: a verdict of this key whose attests name the release. A verdict
+        that names the release as its payload and attests nothing (Pass 3 counts it for no one, test 79) is no
+        answer, and `witness` verifies the release (Codex, finding 37972d20 on PR #36)."""
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x08" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tip = repo.ref_commit("minds")
+        a: dict[bytes, bytes] = {}
+        nothing = V.Cell(V.H_SCHEMA["verdict"], mc._put(a, V.atom_utf8("minds/no-attests")), r1["decision"],
+                         slots=(V.H_EMPTY, V.H_ATTESTED, mc._put(a, V.atom_utf8("github-actions"))))
+        cand = repo.build_candidate_commit("minds", a, [nothing],
+                                           [V.Seal.sign(skw, nothing.id, mc.governing_scope(repo))], parent_commit=tip)
+        repo.admit_and_advance("minds", cand, expected_old=tip)
+        self.assertIn(r1["decision"], mc.awaiting(self.repo_path, pkw), "a verdict attesting nothing answers nothing")
+        ran = []
+
+        def checks(repo_dir, sha, rules):
+            ran.append(sha)
+            return ["x OK"], True
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r1["decision"].hex(), "ATTESTED")])
+        self.assertEqual(ran, ["a" * 40])
+        self.assertTrue(repo.lens("minds")["settled"][r1["decision"]])
 
 
 if __name__ == "__main__":

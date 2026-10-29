@@ -1739,18 +1739,20 @@
   {
    "id": "assurance.witness",
    "source": "ASSURANCE.md",
-   "quote": "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster; a release whose answer it withdrew is left to it, and the others are still verified",
+   "quote": "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster; a release it answered before and whose answer Pass 3 no longer counts is left to it, and the others are still verified; a verdict that attests nothing is no answer",
    "status": "tested",
    "witnesses": [
     "test:test_93_a_witness_verifies_every_release_that_waits_for_its_key",
-    "test:test_94_a_withdrawn_answer_does_not_stop_the_witness"
+    "test:test_94_a_withdrawn_answer_does_not_stop_the_witness",
+    "test:test_95_a_verdict_that_attests_nothing_is_no_answer"
    ],
    "mutants": [
     "m-witness-whose",
     "m-status-endorsed-answer",
     "m-status-invalid-answer",
     "m-witness-withdrawn",
-    "m-witness-answered-by"
+    "m-witness-answered-by",
+    "m-witness-attests"
    ]
   },
   {
