@@ -1,0 +1,21 @@
+{
+  "gate": "warrant-review/gate@1",
+  "base": "main",
+  "required": [
+    {
+      "check": "check",
+      "workflow": ".github/workflows/check.yml"
+    },
+    {
+      "check": "mutants",
+      "workflow": ".github/workflows/check.yml"
+    }
+  ],
+  "hold_label": "hold",
+  "owner_paths": [
+    ".github/",
+    ".warrant/merge.json",
+    ".warrant/v3.json",
+    "REVIEWING.md"
+  ]
+}

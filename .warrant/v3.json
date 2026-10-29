@@ -4,6 +4,12 @@
    "schema/author": 2
   },
   "roles": {
+   "pr/acceptor": [
+    "codex"
+   ],
+   "pr/owner": [
+    "s0fractal"
+   ],
    "roadmap/acceptor": [
     "codex"
    ],
