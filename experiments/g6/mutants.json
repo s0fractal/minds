@@ -125,8 +125,13 @@
   "kills": "test_17_tasks_bind_to_their_seed_count_and_bytes"
  },
  "m-bind-files": {
-  "find": "    if sorted(files) != sorted(p.name for p in tasks_dir.glob(\"h*.json\")) or len(files) != count:",
-  "replace": "    if len(files) != count:",
+  "find": "    if sorted(files) != sorted(p.name for p in tasks_dir.glob(\"h*.json\")) or len(files) != m.get(\"count\"):",
+  "replace": "    if len(files) != m.get(\"count\"):",
   "kills": "test_17_tasks_bind_to_their_seed_count_and_bytes"
+ },
+ "m-bound-unverified": {
+  "find": "    ident, run_file = verify(tasks_dir), out / \"RUN.json\"",
+  "replace": "    ident, run_file = tasks_identity(tasks_dir), out / \"RUN.json\"",
+  "kills": "test_18_the_runner_and_scorer_check_the_task_bytes"
  }
 }

@@ -475,15 +475,13 @@ def tasks_identity(tasks_dir: Path) -> str:
     return hashlib.sha256((tasks_dir / "MANIFEST.json").read_bytes()).hexdigest()
 
 
-def bind(tasks_dir: Path, seed: str, count: int) -> str:
-    """The tasks of `seed` and `count`, or a refusal: the manifest must name that seed and count, and the task files
-    must be exactly the files it names, each with its SHA-256. Returns the tasks' identity."""
+def verify(tasks_dir: Path) -> str:
+    """The tasks' identity, once the task files are exactly the files their manifest names, as many as it counts, each
+    with its SHA-256; else a refusal. Everything that reads tasks (`bind`, the runner, the scorer) reads them through
+    this, so a manifest's identity is never trusted for bytes it does not match."""
     m = json.loads((tasks_dir / "MANIFEST.json").read_text())
-    if (m.get("seed"), m.get("count")) != (seed, count):
-        raise SystemExit(f"refused: {tasks_dir} holds the tasks of seed {m.get('seed')!r} and count {m.get('count')}, "
-                         f"not {seed!r} and {count}; move them away")
     files = m.get("files") or {}
-    if sorted(files) != sorted(p.name for p in tasks_dir.glob("h*.json")) or len(files) != count:
+    if sorted(files) != sorted(p.name for p in tasks_dir.glob("h*.json")) or len(files) != m.get("count"):
         raise SystemExit(f"refused: the task files in {tasks_dir} are not the ones its manifest names")
     for name, digest in files.items():
         if hashlib.sha256((tasks_dir / name).read_bytes()).hexdigest() != digest:
@@ -491,10 +489,20 @@ def bind(tasks_dir: Path, seed: str, count: int) -> str:
     return tasks_identity(tasks_dir)
 
 
+def bind(tasks_dir: Path, seed: str, count: int) -> str:
+    """The tasks of `seed` and `count`, or a refusal: the manifest must name that seed and count, and `verify` must
+    hold. Returns the tasks' identity."""
+    m = json.loads((tasks_dir / "MANIFEST.json").read_text())
+    if (m.get("seed"), m.get("count")) != (seed, count):
+        raise SystemExit(f"refused: {tasks_dir} holds the tasks of seed {m.get('seed')!r} and count {m.get('count')}, "
+                         f"not {seed!r} and {count}; move them away")
+    return verify(tasks_dir)
+
+
 def _bound(tasks_dir: Path, out: Path) -> str:
-    """Results belong to the tasks they were made from: `out/RUN.json` names the tasks' identity; a refusal when it
-    names other tasks."""
-    ident, run_file = tasks_identity(tasks_dir), out / "RUN.json"
+    """Results belong to the tasks they were made from: the tasks must `verify`, and `out/RUN.json` names their
+    identity; a refusal when it names other tasks."""
+    ident, run_file = verify(tasks_dir), out / "RUN.json"
     if run_file.exists() and json.loads(run_file.read_text()).get("tasks") != ident:
         raise SystemExit(f"refused: {out} holds replies to other tasks than {tasks_dir}; move them away")
     return ident

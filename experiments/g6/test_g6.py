@@ -212,7 +212,8 @@ class T(unittest.TestCase):
             tasks.mkdir()
             for i in range(2):
                 (tasks / f"h{i:02d}.json").write_text(json.dumps(task(i)))
-            (tasks / "MANIFEST.json").write_text(json.dumps({"seed": "test"}))
+            files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(tasks.glob("h*.json"))}
+            (tasks / "MANIFEST.json").write_text(json.dumps({"seed": "test", "count": 2, "files": files}))
             asked, flaky = [], {"left": 2}
 
             def caller(model, text, key, max_tokens):
@@ -362,6 +363,27 @@ class T(unittest.TestCase):
             (tasks / "h01.json").unlink()
             with self.assertRaisesRegex(SystemExit, "not the ones its manifest names"):
                 g6.bind(tasks, "smoke-f", 2)
+
+    def test_18_the_runner_and_scorer_check_the_task_bytes(self) -> None:
+        """Codex F3 (PR #40): a task file changed under an unchanged manifest is refused by the runner and the scorer
+        themselves, not only by `bind`: no reply is reused for another prompt or scored against another answer."""
+        with tempfile.TemporaryDirectory(dir=WORK) as d:
+            d = Path(d)
+            tasks = self._tasks(d, "freeze", 2)
+            reply = lambda *a: {"usage": {"cost": 0.0},
+                                "choices": [{"message": {"content": '```json\n{"D01": "RELY", "D02": "DO_NOT_RELY"}\n```'}}]}
+            g6.run(tasks, d / "out", ["a/m"], 5.0, 100, caller=reply, key="k")
+            ident = g6.tasks_identity(tasks)
+            t = json.loads((tasks / "h00.json").read_text())
+            t["truth"] = {"D01": g6.DROP, "D02": g6.RELY}
+            (tasks / "h00.json").write_text(json.dumps(t))
+            self.assertEqual(g6.tasks_identity(tasks), ident, "the manifest itself is unchanged")
+            asked = []
+            with self.assertRaisesRegex(SystemExit, "not the file its manifest names"):
+                g6.run(tasks, d / "out", ["a/m"], 5.0, 100, caller=lambda *a: asked.append(a) or reply(), key="k")
+            self.assertEqual(asked, [])
+            with self.assertRaisesRegex(SystemExit, "not the file its manifest names"):
+                g6.score(tasks, d / "out")
 
     def test_11_the_order_mixes_the_arms(self) -> None:
         """Every (history, model, arm) once, in an order fixed by the seed, not arm after arm."""

@@ -150,6 +150,8 @@ The pilot's answer to G6 is the primary verdict. A null result is reported as su
   bind`), and every task file must be the one the manifest names, byte for byte.
 - A results directory names the tasks it was made from (`RUN.json`, the SHA-256 of their manifest). The runner
   refuses to resume it, and the scorer refuses to score it, against other tasks.
+- The runner and the scorer check the task files' bytes against the manifest themselves (`verify`, which `bind` also
+  uses), so neither trusts the manifest's identity for files it does not match.
 
 **Harness defects:** after the confirmatory run, nothing is re-asked and nothing is re-scored differently. A harness
 defect found after it voids the run. The protocol then repeats from a new freeze, and every run is reported.
