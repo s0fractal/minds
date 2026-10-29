@@ -3458,8 +3458,9 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_61_release_checks_name_commits_by_canonical_id(self) -> None:
         """Review round 2: `checks_at` checks out a release commit, and extracts sibling pins, only by canonical ids of
-        their own repositories (in a SHA-256 repository a 40-hex name may be a ref), and the spec's Book I pin is a full
-        id, not the abbreviation a same-named ref would shadow."""
+        their own repositories (in a SHA-256 repository a 40-hex name may be a ref, or an abbreviation the check
+        checkout would resolve), and the spec's Book I pin is a full id, not the abbreviation a same-named ref would
+        shadow."""
         mc = self._minds_chain()
         proj = Path(self.tmp.name) / "proj256"
 
@@ -3482,6 +3483,9 @@ class TestVars1Conformance(unittest.TestCase):
         ran = []
         real, mc.run_checks = mc.run_checks, lambda root, rules: (ran.append(root), (["spy OK"], True))[1]
         try:
+            with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
+                mc.checks_at(minds, m1[:40], V.H_LENS_KERNEL)
+            self.assertEqual(ran, [], "no check ran at a commit named by an abbreviation")
             with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
                 mc.checks_at(minds, ref40, V.H_LENS_KERNEL)
             self.assertEqual(ran, [], "no check ran at a commit named by a ref")
