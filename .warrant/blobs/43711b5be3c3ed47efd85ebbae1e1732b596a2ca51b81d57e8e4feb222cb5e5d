@@ -1,0 +1,122 @@
+# Codex roadmap verdict: F46 amended obligation
+
+Verdict: ACCEPT, scoped to the amended obligation at the pinned base.
+Repository: s0fractal/minds
+M: 01f57704dacab195f3ff1f480d6fd4bb56d23f5f
+D: c0a90557490db041d8b1fd1ef1b8bc6125f09ff3aa06ebb1fd96a59bb393bb89 (G4)
+T: 7dbb58a8dd55e3578e0148a58e8158341e09e5339e9ec6df57f157ae023c0634
+
+Verified `warrant.roadmap due --actor codex --json` at M and MCP context: T is the due leaf, no requirements or subject, guard pending only codex's acceptance. Read the cited evidence blob acd240d1d4420441da5381db14c7190699082f9ce5166bc13e62283ac8c04987 through MCP. The previous challenge 544876147d81348347f36ef4ca248cdbbb83ce82916e9aae046e9afd9c79940b was against a stronger, superseded statement requiring a successor resource code. The statement amended at 4653411698cc5fd0bb181a049e542cb7de235a705ffe48506c99c95ef1673928 explicitly owes any-code refusal preservation. That matches the work.
+
+PR #31 merge 44599ef7b91637d821adaaf684f8331b1f49b7d7 is an ancestor of M; its second parent is reviewed head 0b24a6a8a909456d3fd1a2529455e3f6023a13b5. No changes from that merge to M in vars1.py, test_vars1.py, VARS-1-SPEC.md or mutants.json. Read the implementation and moved normative claims, not merely the prior ACCEPT.
+
+At vars1.py:1678-1714, (d) visits every earlier non-equivalent rules-change decision. For hardening/tightening, it checks encodings, replays the stored input under its stored budget, and requires kind=refusal. It does not require the earlier code or resource classification. Output/exhaustion/fault cannot satisfy this predicate. The initial change's exact code and resource classification still decide hardening versus tightening in _check_refusal; tests 64/65 cover those boundaries.
+
+Encoding refusal at (d) names both encodings and no carrier. The earlier v2-to-v1 and non-original-v1-epoch-to-v2 reading checks in _check_rules_change run first. Tests 67/68 check both those independent barriers and the direct (d) diagnostic. No carrier or arbitrary future-encoding compatibility is established.
+
+Fresh verification at M:
+- 7/7 targeted conformance tests pass (26.419 seconds): 62, 64, 65, 66, 67, 68, 92, using test_vars1.TestVars1Conformance and their full method names.
+- 7/7 selected mutants killed semantically: m-amend-d-skip, m-amend-d-correction, m-amend-d-refusal, m-amend-d-same-code, m-amend-d-budget, m-amend-v1b-to-v2, m-amend-same-encoding. Harness restored the source; git diff was empty after it completed.
+- tools/check_claims.py passes: 158 claims, 270 mutants listed; 4 assumed and 2 unburned claims remain explicit. The mutant count listed is not a claim that all 270 were rerun.
+- Independent controls below: real WASM successors use an exact one-occurrence instruction replacement i32.const -7 to -9 and -10. Both successors are admitted through the actual gate after an earlier hardening, declaring resource codes {-7}, and after an earlier tightening, declaring each new refusal a resource code. Tightening uses the existing fixture's stand-in host registry (v1b's -7 declared non-resource); all metered results and successor admissions themselves use real WASM with no runner stub. Additional direct (d) controls use a stub solely to assert output/exhausted/fault rejection, exact input/budget propagation, and acceptance of another refusal.
+
+Limits: bounded roadmap acceptance of the amended F46 obligation. No changes to the live refs/vars chain, no activation of a hardening/tightening, no new encoding carrier, and no assertion that full conformance/properties/Lean/kernel builds or the full mutant suite were rerun. Prior evidence remains an unsigned historical code review, not a retroactive PR acceptance.
+
+## Reproducible independent controls
+Run from the pinned checkout with sigma-glyph==0.8.0 and Node available, using a Python environment that also contains Warrant. Put TMPDIR under ~/.warrant.
+
+```python
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.cwd()))
+import vars1 as V
+from test_vars1 import TestVars1Conformance
+
+
+def check(kind):
+    t = TestVars1Conformance()
+    t.setUp()
+    try:
+        inp = t._fuzz_counterexample()
+        if kind == "tightening":
+            inp = t._fuzz_counterexample(commits=len(inp) + 1)
+            t._register_rules(V.H_LENS_KERNEL_V1B,
+                              V.Rules(V.RULES[V.H_LENS_KERNEL_V1B].path, "v1"), V.KERNEL1B_ATOM)
+        tip, scope = t._core()
+        cand, scope, _ = t._change(kind, "core", tip, scope, V.H_LENS_KERNEL_V1B,
+                                    label=kind, inp=inp)
+        t.repo.admit_and_advance("core", cand, expected_old=tip)
+        tip = cand
+        for code in (-9, -10):
+            assert V.KERNEL1B_ATOM.count(b"\x41\x79") == 1
+            raw = V.KERNEL1B_ATOM.replace(b"\x41\x79", bytes((0x41, code & 0x7f)))
+            path = Path(t.tmp.name) / f"lens{code}.wasm"
+            path.write_bytes(raw)
+            h = V.sha256(raw)
+            resources = frozenset({-7}) if kind == "hardening" else frozenset({code})
+            t._register_rules(h, V.Rules(path, "v1", resources), raw)
+            got = V.metered_runner(h).run(inp, t.BUDGET)
+            assert got == V.RulesResult("refusal", code=code), got
+            cand, scope, _ = t._change("equivalent", "core", tip, scope, h, label=f"new{code}")
+            t.repo.admit_and_advance("core", cand, expected_old=tip)
+            tip = cand
+            print(f"PASS {kind}: real WASM successor {code}, resource={code in resources}, admitted", flush=True)
+
+        chain = t.repo.commit_chain(tip)
+        runner = V._METERED[h]
+        seen = []
+
+        class Stub:
+            result = None
+
+            def run(self, data, budget):
+                seen.append((data, budget))
+                return self.result
+
+        stub = Stub()
+        V._METERED[h] = stub
+        try:
+            for result in (V.RulesResult("output", output=b"x"), V.RulesResult("exhausted"),
+                           V.RulesResult("fault")):
+                stub.result = result
+                try:
+                    t.repo._check_earlier_changes("core", chain, h, b"")
+                except V.VarsError as e:
+                    assert "no longer refuse its input within its budget" in str(e), e
+                else:
+                    raise AssertionError(f"(d) admitted {result}")
+                assert seen[-1] == (inp, t.BUDGET)
+                print(f"PASS {kind}: stub {result.kind} refused, original input/budget observed", flush=True)
+            stub.result = V.RulesResult("refusal", code=-11)
+            t.repo._check_earlier_changes("core", chain, h, b"")
+            assert seen[-1] == (inp, t.BUDGET)
+            print(f"PASS {kind}: stub new refusal accepted under original budget", flush=True)
+        finally:
+            V._METERED[h] = runner
+    finally:
+        t.tearDown()
+        t.doCleanups()
+
+
+check("hardening")
+check("tightening")
+
+```
+
+## Observed output
+
+```text
+PASS hardening: real WASM successor -9, resource=False, admitted
+PASS hardening: real WASM successor -10, resource=False, admitted
+PASS hardening: stub output refused, original input/budget observed
+PASS hardening: stub exhausted refused, original input/budget observed
+PASS hardening: stub fault refused, original input/budget observed
+PASS hardening: stub new refusal accepted under original budget
+PASS tightening: real WASM successor -9, resource=True, admitted
+PASS tightening: real WASM successor -10, resource=True, admitted
+PASS tightening: stub output refused, original input/budget observed
+PASS tightening: stub exhausted refused, original input/budget observed
+PASS tightening: stub fault refused, original input/budget observed
+PASS tightening: stub new refusal accepted under original budget
+```
