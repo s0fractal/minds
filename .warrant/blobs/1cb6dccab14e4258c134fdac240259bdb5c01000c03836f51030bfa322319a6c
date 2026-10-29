@@ -1,0 +1,89 @@
+# Challenge of G4 obligation closure e92deef70755
+
+Repository: s0fractal/minds
+Base M: ba8ca1ca8fe55cdf3993a09c583e5f224fe305b8
+Obligation D: c0a90557490db041d8b1fd1ef1b8bc6125f09ff3aa06ebb1fd96a59bb393bb89
+Version T: e92deef7075556a4d4a5b07033d20160e6246c930f66994534f72347b12b5726
+Date: 2026-10-29
+
+Verdict: challenge the claim that D is done as written.
+
+D explicitly requires preservation "within its budget for its size, by a resource code of the successor rather than by the same code". PR #31 instead implements preservation by any refusal code. At M, vars1.py:1710-1713 checks the original budget and got.kind == "refusal", but does not check got.code against RULES[new_rules].resource_codes. Test 92 (test_vars1.py:5827,5844-5847) positively requires admission of E-9 when the successor's declared resource codes are {-7}. The changed normative specification and claims intentionally describe this broader behavior.
+
+T's residual acknowledges this departure. The cited prior code-review blob acd240d1d4420441da5381db14c7190699082f9ce5166bc13e62283ac8c04987 explicitly says its bounded PR acceptance does not close a roadmap obligation whose wording differs. The actual GitHub PR #31 description also acknowledges the departure. Its head is 0b24a6a8a909456d3fd1a2529455e3f6023a13b5 and merge is 44599ef7b91637d821adaaf684f8331b1f49b7d7. The merge-to-M delta consists solely of one Warrant record and its evidence blob; the reviewed implementation remains present.
+
+This is a closure-contract objection, not a claim that the merged implementation contradicts its revised specification. Supporting arbitrary controlled refusals is a defensible design, but does not establish D's explicitly narrower condition. Preserve resource classification with tests and mutants, or obtain an explicit revision of the owed condition before claiming completion. Do not restore equality with the historical code.
+
+The encoding barrier and no-carrier explanation are present and exercised by tests 67 and 68. No separate encoding blocker is asserted here. No general carrier is established by this review.
+
+Verification at M:
+- Installed Warrant CLI roadmap due --actor codex --json exactly matched D, T, G4, evidence, references, absent subject and empty requires.
+- MCP workspace/context confirmed signer codex with roadmap/acceptor role; T was PENDING, waiting only for its acceptance, without attests or challenges.
+- Existing evidence blob was read through MCP and its SHA-256 verified.
+- Targeted conformance tests 62, 64, 67, 68 and 92: 5/5 passed (20.172s).
+- Five selected (d) mutants: 5/5 killed semantically by their harness, output below.
+- tools/check_claims.py passed: 158 claims, 270 mutants, 2 existing unburned claims.
+- warrant.roadmap check: 13 lineages, 0 problems before verdict.
+- warrant.claims check is inapplicable: this repository uses root claims.json and tools/check_claims.py; there is no .warrant/claims.json (the generic command returned CONFIG).
+- Full conformance, property, kernel rebuild and Lean suites were not rerun for this bounded closure check.
+
+Independent real-WASM integration probe:
+The script below uses the repository's conformance fixture to register test-only successor rule modules. It replaces the actual v1b WASM i32.const -7 instruction, uses the real metered runner and gate, and admits an equivalent rotation followed by an ordinary commit. It does not stub metered results. The E-9 successor declares only {-7}, so its admitted code is not a resource code under the host's own classification. The E-10 positive control declares {-10} and is admitted as well. This demonstrates the generic admission behavior for test-registered successors, not the activation of a new production rules module or a v2 hardening on a live chain. One preliminary probe asserted the governing rules immediately at the rotation tip; the corrected probe below adds the following commit, matching the conformance fixture's observation point.
+
+Run from the checkout using Python with sigma-glyph==0.8.0 installed and node on PATH. Set TMPDIR to a writable scratch directory. The script and its output follow.
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()))
+import vars1 as V
+from test_vars1 import TestVars1Conformance
+
+t = TestVars1Conformance()
+t.setUp()
+try:
+    inp = t._fuzz_counterexample()
+    c1, s0 = t._core()
+    prior, s1, _ = t._change('hardening', 'core', c1, s0, V.H_LENS_KERNEL_V1B, label='v1b', inp=inp)
+    t.repo.admit_and_advance('core', prior, expected_old=c1)
+    assert V.KERNEL1B_ATOM.count(b'\x41\x79') == 1
+    for code, declared in [(-9, {-7}), (-10, {-10})]:
+        raw = V.KERNEL1B_ATOM.replace(b'\x41\x79', bytes([0x41, code & 0x7f]))
+        path = Path(t.tmp.name) / f'successor-{abs(code)}.wasm'
+        path.write_bytes(raw)
+        h = V.sha256(raw)
+        t._register_rules(h, V.Rules(path, 'v1', frozenset(declared)), raw)
+        got = V.metered_runner(h).run(inp, t.BUDGET)
+        assert got == V.RulesResult('refusal', code=code), got
+        next_tip, next_scope, _ = t._change('equivalent', 'core', prior, s1, h, label=f'next-{abs(code)}')
+        t.repo.admit_and_advance('core', next_tip, expected_old=prior)
+        atoms = {}
+        next_tip = t._commit('core', next_tip, next_scope, atoms, [t._axiom(atoms, f'core/after-{abs(code)}', 'after successor')])
+        assert t.repo.lens('core')['rules'] == h
+        print(f'ADMITTED actual WASM successor: code={got.code}, resource_codes={sorted(declared)}, resource={got.code in declared}, budget={t.BUDGET}', flush=True)
+        prior, s1 = next_tip, next_scope
+finally:
+    t.doCleanups()
+    t.tearDown()
+    for runner in list(V._KERNELS.values()) + list(V._METERED.values()):
+        runner.proc.stdin.close()
+        runner.proc.stdout.close()
+        runner.proc.wait(timeout=10)
+
+```
+
+```text
+ADMITTED actual WASM successor: code=-9, resource_codes=[-7], resource=False, budget=10000000
+ADMITTED actual WASM successor: code=-10, resource_codes=[-10], resource=True, budget=10000000
+```
+
+Selected mutation output:
+
+```text
+killed   m-amend-d-skip: killed by test_67_earlier_counterexamples_stay_decided
+killed   m-amend-d-correction: killed by test_67_earlier_counterexamples_stay_decided
+killed   m-amend-d-refusal: killed by test_67_earlier_counterexamples_stay_decided
+killed   m-amend-d-same-code: killed by test_92_a_later_change_keeps_an_earlier_refusal_not_its_code
+killed   m-amend-d-budget: killed by test_92_a_later_change_keeps_an_earlier_refusal_not_its_code
+5/5 killed
+```
