@@ -5892,6 +5892,50 @@ class TestVars1Conformance(unittest.TestCase):
         row = next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == r3["decision"].hex())
         self.assertEqual((row["invalid_by"], row["awaiting"]), ([pkw.hex()], []))
 
+    def test_94_a_withdrawn_answer_does_not_stop_the_witness(self) -> None:
+        """A member's answer superseded by NOT_ASSESSED leaves the release waiting for it in Pass 3 (test 79), but
+        `verify-release` would make the same verdict again, whose id the chain has (Codex, finding 83a5c151 on PR
+        #36). `witness` leaves such a release to the member, says so, and verifies every other release waiting for
+        it, whatever their order; the withdrawn release stays unsettled."""
+        import dataclasses
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x08" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        checks = lambda *a: (["x OK"], True)  # noqa: E731
+        self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
+                         ["ATTESTED"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tip = repo.ref_commit("minds")
+        atoms, cells, _ = repo.read_cas_tree(tip)
+        old = next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == r1["decision"]
+                   and V.parse_utf8(atoms[c.slots[2]]) == "github-actions")
+        new: dict[bytes, bytes] = {}
+        withdrawn = dataclasses.replace(old, h_supersedes=mc._put(new, V.atom_hvec([old.id])),
+                                        h_loss=mc._put(new, V.atom_utf8("withdrawn")),
+                                        slots=(V.H_EMPTY, V.H_NOT_ASSESSED, old.slots[2]))
+        cand = repo.build_candidate_commit("minds", new, [withdrawn],
+                                           [V.Seal.sign(skw, withdrawn.id, mc.governing_scope(repo))], parent_commit=tip)
+        repo.admit_and_advance("minds", cand, expected_old=tip)
+        self.assertIn(r1["decision"], mc.awaiting(self.repo_path, pkw), "Pass 3 waits for the withdrawn answer")
+        fresh = [mc.release(self.repo_path, sk, str(n) * 40, ["x OK"])[1]["decision"] for n in range(2, 6)]
+        pending = mc.awaiting(self.repo_path, pkw)
+        self.assertTrue(any(pending.index(d) > pending.index(r1["decision"]) for d in fresh),
+                        "some fresh release comes after the withdrawn one")
+        try:
+            done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        except V.VarsError as e:
+            self.fail(f"a withdrawn answer stopped the witness: {e}")
+        got = {bytes.fromhex(x["decision"]): x["verdict"] for x in done}
+        self.assertEqual(got, {**{d: "ATTESTED" for d in fresh}, r1["decision"]: "WITHDRAWN"})
+        lens = repo.lens("minds")
+        self.assertTrue(all(lens["settled"][d] for d in fresh))
+        self.assertFalse(lens["settled"][r1["decision"]], "the member's withdrawal stands")
+        self.assertEqual([x["verdict"] for x in mc.witness(self.repo_path, skw, "github-actions", checks=checks)],
+                         ["WITHDRAWN"], "a later run leaves it to the member again, and does nothing else")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

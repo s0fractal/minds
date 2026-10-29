@@ -338,9 +338,9 @@
       "`test_vars1.py` 76"
      ],
      [
-      "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster",
+      "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster; a release whose answer it withdrew is left to it, and the others are still verified",
       "Tested, with mutants",
-      "`test_vars1.py` 93; `tools/minds_chain.py` `witness`, `awaiting`, `unanswered`"
+      "`test_vars1.py` 93, 94; `tools/minds_chain.py` `witness`, `awaiting`, `unanswered`"
      ],
      [
       "The GitHub Actions witness's key never was on the maintainer's machine",
