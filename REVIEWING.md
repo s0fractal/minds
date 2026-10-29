@@ -31,6 +31,23 @@ cost of a mistake, not the size of the diff.
   that moved (minutes); the full suites and every mutant run in CI on each push (a few minutes there, twenty or more
   here, serially), and a pull request merges only on green CI.
 
+### How a model's review is recorded
+
+A pull request that gets a strong review carries its review as Warrant 3 records in `.warrant/records.jsonl`, as
+s0fractal/warrant does (its docs/REPOSITORY.md, "Reviews as records"). `.warrant/v3.json` names `codex` the
+`pr/acceptor` and the owner the `pr/owner`; `.warrant/merge.json` names the base, the required checks and the owner
+paths.
+
+- The author pushes the change (commit X), then files the review's root and a head version naming X, from a checkout
+  of the branch: `python3 -m warrant.review open --pr N --title T` and `python3 -m warrant.review head --pr N`, each
+  `--actor claude --key <its seed>`. The record commit after X adds record lines only.
+- Once that head version is at the pull request's head and CI is green, the review waker wakes the reviewer. The
+  reviewer files its acceptance (an `attest` with `{"verdict": "accept"}` on the head version) or `finding@1`
+  challenges, and pushes them onto the pull request. Fixes go into a new head version.
+- No workflow merges on acceptance here: the owner merges, after the acceptance and green CI. Changes to the owner
+  paths are the owner's in any case; the label `hold` holds a pull request.
+- A pull request with no model review (above) has no review lineage.
+
 ## 1. Verify releases (members only)
 
 ```
