@@ -1,0 +1,162 @@
+{
+  "base": "fade23fdfd1d6681d9b857753f3f04d1e4050a53",
+  "checks": {
+    "tools/check_claims.py": "PASS: 160 claims, 278 mutants; 4 assumed and 2 unburned remain",
+    "warrant.claims check": "not applicable: repository uses root claims.json with tools/check_claims.py; no .warrant/claims.json",
+    "warrant.roadmap check": "13 lineages, 0 problems"
+  },
+  "lineage": "cd7e1b89702755522adf3731c07328a844403cb591993ef7b5e45988a1163e80",
+  "live_chain": {
+    "basis": "2bb3da0880827491118befe0f2dc5150c2e3687f",
+    "basis_statuses_preserved": true,
+    "counterexample": "f5e22f9fe10ff3373444c3be8da9b416edce6592",
+    "decision": "a68e8e32d76f6fb1dd2a9ae18aaa58cc3c941fe42d7e841438e33feae0a0473b",
+    "evidence_manifest_digest": "03f821971125ded24fd24cfada319a4e81015d00a42c840f14489499bfa585df",
+    "full_check_chain": "PASS",
+    "replay_changes": "REPLAYED",
+    "rotation": "370cbf488953f4804ad6eee84f3bf1383b855d65",
+    "rules": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e",
+    "tip": "ef7246c16f967d7868e53027fb84e0e173bfaddd"
+  },
+  "local_tests": {
+    "command": "python -m unittest test_vars1.TestVars1Conformance.test_47_rules_change_admits_a_rotation_whose_decision_replays test_vars1.TestVars1Conformance.test_48_rules_change_needs_its_decision test_vars1.TestVars1Conformance.test_49_rules_change_a_reproduces_the_history test_vars1.TestVars1Conformance.test_50_rules_change_b_refutes_the_old_rules test_vars1.TestVars1Conformance.test_51_rules_change_c_latches_only_grow test_vars1.TestVars1Conformance.test_52_rules_never_rotate_back_to_v1 test_vars1.TestVars1Conformance.test_53_v1_releases_survive_a_rules_change test_vars1.TestVars1Conformance.test_54_rules_v2_keep_an_opaque_digest_opaque test_vars1.TestVars1Conformance.test_55_rules_v2_read_references_by_type test_vars1.TestVars1Conformance.test_56_rules_v2_kernel_checks_the_reference_list test_vars1.TestVars1Conformance.test_57_rules_v2_from_genesis test_vars1.TestVars1Conformance.test_58_release_checks_rebuild_every_rules_module test_vars1.TestVars1Conformance.test_61_release_checks_name_commits_by_canonical_id test_vars1.TestVars1Conformance.test_67_earlier_counterexamples_stay_decided test_vars1.TestVars1Conformance.test_68_no_rotation_from_v2_to_rules_that_read_as_v1 test_vars1.TestVars1Conformance.test_69_a_fresh_clone_replays_a_past_rules_change test_vars1.TestVars1Conformance.test_70_a_rotation_is_recorded_only_after_its_shadow_replay test_vars1.TestVars1Conformance.test_74_a_metered_run_does_not_depend_on_earlier_runs test_vars1.TestVars1Conformance.test_85_a_rotation_that_removes_keys_without_consent_waits test_vars1.TestVars1Conformance.test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations test_vars1.TestVars1Conformance.test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain test_vars1.TestVars1Conformance.test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements test_vars1.TestVars1Conformance.test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for test_vars1.TestVars1Conformance.test_92_a_later_change_keeps_an_earlier_refusal_not_its_code test_vars1.TestVars1Conformance.test_93_a_witness_verifies_every_release_that_waits_for_its_key test_vars1.TestVars1Conformance.test_94_a_withdrawn_answer_does_not_stop_the_witness test_vars1.TestVars1Conformance.test_95_a_verdict_that_attests_nothing_is_no_answer test_vars1.TestVars1Conformance.test_96_a_release_is_verified_against_the_chain_as_it_was_recorded",
+    "elapsed_seconds": 113.525,
+    "result": "28/28 pass",
+    "tests": [
+      "test_47_rules_change_admits_a_rotation_whose_decision_replays",
+      "test_48_rules_change_needs_its_decision",
+      "test_49_rules_change_a_reproduces_the_history",
+      "test_50_rules_change_b_refutes_the_old_rules",
+      "test_51_rules_change_c_latches_only_grow",
+      "test_52_rules_never_rotate_back_to_v1",
+      "test_53_v1_releases_survive_a_rules_change",
+      "test_54_rules_v2_keep_an_opaque_digest_opaque",
+      "test_55_rules_v2_read_references_by_type",
+      "test_56_rules_v2_kernel_checks_the_reference_list",
+      "test_57_rules_v2_from_genesis",
+      "test_58_release_checks_rebuild_every_rules_module",
+      "test_61_release_checks_name_commits_by_canonical_id",
+      "test_67_earlier_counterexamples_stay_decided",
+      "test_68_no_rotation_from_v2_to_rules_that_read_as_v1",
+      "test_69_a_fresh_clone_replays_a_past_rules_change",
+      "test_70_a_rotation_is_recorded_only_after_its_shadow_replay",
+      "test_74_a_metered_run_does_not_depend_on_earlier_runs",
+      "test_85_a_rotation_that_removes_keys_without_consent_waits",
+      "test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+      "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain",
+      "test_90_the_offline_verifier_reads_every_rules_identity_the_host_implements",
+      "test_91_a_reader_who_runs_the_rules_checks_what_the_witnesses_vouch_for",
+      "test_92_a_later_change_keeps_an_earlier_refusal_not_its_code",
+      "test_93_a_witness_verifies_every_release_that_waits_for_its_key",
+      "test_94_a_withdrawn_answer_does_not_stop_the_witness",
+      "test_95_a_verdict_that_attests_nothing_is_no_answer",
+      "test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
+    ]
+  },
+  "negative_controls": [
+    "A fresh repository fetching only refs/vars/heads/minds reports EVIDENCE MISSING for the historical correction; fetching refs/vars/evidence/* restores REPLAYED.",
+    "A one-byte alteration of a witness signature is rejected by Seal.decode.",
+    "Targeted conformance tests exercise absent/wrong rules-change decisions, wrong computations, history loss, downgrade, lost earlier evidence, quarantine/veto, opaque references, untyped offline input, withdrawn/no-attests witness answers, and recorded-chain isolation."
+  ],
+  "owed": "The live chain changes its rules under evidence, verified on more than one host.",
+  "rationale": "The live v1-to-v2 rules correction is present and replays from published Git evidence; the current gate validates the complete live chain. A separate GitHub runner rebuilt the rules, ran the release checks, recomputed the profile and filed its own signed grounds and ATTESTED verdict. This fulfills G4 as decomposed into its six accepted obligations, including verify-release on a second host. It does not establish independent judgment or two-host replay of the historical rotation computations.",
+  "repository": "s0fractal/minds",
+  "residual": [
+    "The GitHub witness did not replay the historical rotation decision computations; this review replayed them locally.",
+    "The runner executes main workflow and maintainer code; separate host and key do not establish independent judgment.",
+    "Release 756eee58 is not Settled: antigravity a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7 remains outstanding.",
+    "The v1-to-v2 rotation is one-way; v1b is dormant on this live chain; the Lean v1 model, Kani and fuzzer do not establish v2 equivalence.",
+    "Local validation was scoped to 28 tests and 14 mutants; the full Lean/property/kernel rebuild was verified as the signed GitHub release result, not rerun locally."
+  ],
+  "reviewed_merged_prs": {
+    "19": "dddd3aef569d7ad5bb8d5ae7d0d859ff8ca68bf7",
+    "20": "a303feed9a0ac5880b9e98114816da863747e261",
+    "22": "87faf6cb4bea05679ec589c85e25304aa47fe484",
+    "25": "b033f6ec3a6b51e5eba18a9e69320072e0de1f82",
+    "31": "44599ef7b91637d821adaaf684f8331b1f49b7d7",
+    "36": "12b15e3f94cd56e3b9700e7424fe4a0016575a28",
+    "37": "8f0195b499775418e97d15d9aee26a5b7008cfcc"
+  },
+  "roadmap": {
+    "due_rechecked": true,
+    "guard_before": "PENDING; only codex acceptance outstanding",
+    "requires": [],
+    "six_referenced_obligations": {
+      "234d8cd49103a26df84fa662187e02f02839f5ebf94ffd53ceaf47e909e56e9c": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      },
+      "4866fe63fb20f5100a093d2719e4e80479503e8008a7d3862e35306f1e26feeb": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      },
+      "609ba64be1ea0286c60706305f1fc6e4b7cf11f0677b8ac3ec134fbe0842eed5": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      },
+      "7dbb58a8dd55e3578e0148a58e8158341e09e5339e9ec6df57f157ae023c0634": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      },
+      "d7632ee8213e0b37cba709e83d8ac3f7a10c03880fd47c659c4caa3bc1606116": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      },
+      "fd498764ff9eb23718a930f87d547c187a3b41a90a1d6883e4f1000b606dc02d": {
+        "accepted_by": [
+          "codex"
+        ],
+        "guard": "MET",
+        "state": "done"
+      }
+    }
+  },
+  "second_host": {
+    "conclusion": "success",
+    "deployment_branch_policy": "main only, branch; verified using GitHub API",
+    "grounds": 12,
+    "head": "8f0195b499775418e97d15d9aee26a5b7008cfcc",
+    "individually_verified_witness_seals": 14,
+    "public_key": "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+    "release": "756eee58a67d1dcf8ad470b12567e1d60be2c906093591e1537b8645db120946",
+    "release_profile_recomputed": "da481ef75712ddfa4140e66f8bbeaf5afc918b4d3958102ab20464b572e0f4ac",
+    "run": "https://github.com/s0fractal/minds/actions/runs/40900580804",
+    "runner": "GitHub Actions 1000054462; ubuntu-24.04",
+    "verdict": "090660b1fc4a772ed465eba84f4da33f25850e0df0179120fe7dc245436cb480"
+  },
+  "target": "7ee7c102baab720d819864a6e08a544990f773b7715a905d51b46ae17d233789",
+  "targeted_mutants": [
+    "killed   m-rc-needs-decision: killed by test_48_rules_change_needs_its_decision",
+    "killed   m-rc-a-status: killed by test_49_rules_change_a_reproduces_the_history",
+    "killed   m-rc-b-old: killed by test_50_rules_change_b_refutes_the_old_rules",
+    "killed   m-rc-c-lost: killed by test_51_rules_change_c_latches_only_grow",
+    "killed   m-amend-d-skip: killed by test_67_earlier_counterexamples_stay_decided",
+    "killed   m-amend-d-same-code: killed by test_92_a_later_change_keeps_an_earlier_refusal_not_its_code",
+    "killed   m-amend-d-budget: killed by test_92_a_later_change_keeps_an_earlier_refusal_not_its_code",
+    "killed   m-witness-whose: killed by test_93_a_witness_verifies_every_release_that_waits_for_its_key",
+    "killed   m-witness-withdrawn: killed by test_94_a_withdrawn_answer_does_not_stop_the_witness",
+    "killed   m-witness-answered-by: killed by test_94_a_withdrawn_answer_does_not_stop_the_witness",
+    "killed   m-witness-attests: killed by test_95_a_verdict_that_attests_nothing_is_no_answer",
+    "killed   m-checks-recorded-chain: killed by test_96_a_release_is_verified_against_the_chain_as_it_was_recorded",
+    "killed   m-checks-chain-refs: killed by test_96_a_release_is_verified_against_the_chain_as_it_was_recorded",
+    "killed   m-verify-chain-tip: killed by test_96_a_release_is_verified_against_the_chain_as_it_was_recorded",
+    "14/14 killed"
+  ],
+  "type": "codex-roadmap-verdict-evidence/1",
+  "verdict": "accept"
+}
