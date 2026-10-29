@@ -1,0 +1,32 @@
+#!/bin/bash
+# The G6 pilot's run (PREREG.md), started by the owner from the repository root at the freeze:
+#
+#   bash experiments/g6/run.sh smoke     # the smoke run: 2 histories, 18 requests
+#   bash experiments/g6/run.sh confirm   # the confirmatory run: 16 histories, 144 requests
+#
+# The OpenRouter key (one with a $5 limit) is read without echo and lives only in this process's environment.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+# the freeze: the last merge into main that changed the pilot itself, not its run's files
+code=(experiments/g6 ':!experiments/g6/run' ':!experiments/g6/smoke' ':!experiments/g6/REPORT.md')
+freeze=$(git log --first-parent --merges --format=%H -1 main -- "${code[@]}")
+[ -n "$freeze" ] || { echo "no freeze: the pilot has not been merged into main" >&2; exit 1; }
+git diff --quiet "$freeze" HEAD -- "${code[@]}" || { echo "the pilot's code differs from the freeze $freeze" >&2; exit 1; }
+[ -z "$(git status --porcelain -- . ':!experiments/g6/run' ':!experiments/g6/smoke')" ] || {
+    echo "the tree is not clean" >&2; exit 1; }
+echo "freeze $freeze" >&2
+case "${1:-}" in
+    smoke) seed="smoke-$freeze"; count=2; out=experiments/g6/smoke ;;
+    confirm) seed="$freeze"; count=16; out=experiments/g6/run ;;
+    *) echo "usage: run.sh smoke|confirm" >&2; exit 2 ;;
+esac
+[ -e "$out/tasks" ] || .venv/bin/python experiments/g6/g6.py generate --seed "$seed" --count "$count" --out "$out/tasks"
+printf 'OpenRouter key (not shown), then Enter: ' >&2
+IFS= read -rs OPENROUTER_API_KEY
+printf '\n' >&2
+export OPENROUTER_API_KEY
+pbcopy </dev/null 2>/dev/null || true
+.venv/bin/python experiments/g6/g6.py run --tasks "$out/tasks" --out "$out/results" --budget 5
+unset OPENROUTER_API_KEY
+.venv/bin/python experiments/g6/g6.py score --tasks "$out/tasks" --results "$out/results" > "$out/score.json"
+echo "scored: $out/score.json" >&2
