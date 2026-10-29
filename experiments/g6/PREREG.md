@@ -91,7 +91,7 @@ Three models, reached through OpenRouter, from families other than the designer'
 **Requests:**
 - One request per history, model and arm: 16 × 3 × 3 = 144 requests.
 - One user message and no system message.
-- Temperature 0, at most 8000 tokens out.
+- Temperature 0, at most 32000 tokens out (reasoning included; see the first smoke run below).
 - The order of the 144 requests is shuffled by the seed, so no arm runs in a block of its own.
 
 **Failures:**
@@ -124,7 +124,7 @@ decisions still in force that the reader would drop.
 - WR with an invalid reply counted as wrong on every decision (sensitivity).
 
 **Also reported:**
-- invalid replies per arm;
+- invalid replies per arm, and by reason: truncated at the token cap, not in the asked format, or no answer;
 - accuracy by case (own, approvals, margin, untouched) and arm;
 - mean WR and OC per model and arm, and per size.
 
@@ -141,7 +141,7 @@ The pilot's answer to G6 is the primary verdict. A null result is reported as su
 - The runner stops before a request once less than $0.25 of that budget is left, counting only what this invocation
   has spent, as OpenRouter reports it. The key's own limit holds the whole run to $5 across invocations.
 - A stopped run is reported as incomplete, and its replies are scored as they are.
-- The estimate is about $1.50.
+- The estimate is about $1.50: the first smoke run cost $0.167 for one history of each size, and the confirmatory run has eight of each.
 
 **Interruption:** an interrupted run resumes. A recorded reply is never asked again.
 
@@ -164,6 +164,24 @@ smoke run.
 
 If it shows a harness defect, the fix goes through a pull request, review and a new freeze. Nothing else changes
 between the smoke run and the confirmatory run.
+
+### The first smoke run, at freeze `16b727b`
+
+Its tasks, replies and scores are kept in `smoke-16b727b/`.
+- All 18 requests were answered, by the models asked, for $0.167.
+- All three readers reason before they answer, and their reasoning counts toward the output cap. Their replies used
+  1831 to 6592 tokens.
+- One reply spent the whole cap of 8000 on reasoning and returned no answer: qwen, on the large history, arm C. It
+  stopped at the cap and was invalid.
+
+The cap was a harness parameter, chosen for replies without reasoning. Left at 8000, the confirmatory run's 72 large
+requests would have made invalidity measure the cap rather than the reader. The cap is now 32000. Each model allows at
+least 65536: deepseek 943718, qwen 131072, gemini 65536.
+
+The scorer now also says why a reply is invalid. Nothing else changed.
+
+Those replies are not observations. They were read only for their validity, finish reasons and token counts, not for
+whether their answers were right.
 
 ## The designer's predictions
 

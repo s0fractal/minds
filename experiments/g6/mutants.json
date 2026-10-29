@@ -133,5 +133,10 @@
   "find": "    ident, run_file = verify(tasks_dir), out / \"RUN.json\"",
   "replace": "    ident, run_file = tasks_identity(tasks_dir), out / \"RUN.json\"",
   "kills": "test_18_the_runner_and_scorer_check_the_task_bytes"
+ },
+ "m-invalid-reason": {
+  "find": "    return \"truncated\" if choice.get(\"finish_reason\") == \"length\" else \"format\"",
+  "replace": "    return \"format\"",
+  "kills": "test_19_an_invalid_reply_says_why"
  }
 }

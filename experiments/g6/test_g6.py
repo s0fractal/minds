@@ -385,6 +385,25 @@ class T(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "not the file its manifest names"):
                 g6.score(tasks, d / "out")
 
+    def test_19_an_invalid_reply_says_why(self) -> None:
+        """A reply cut off at the token cap is `truncated`, one that answered otherwise than asked is `format`, and a
+        request with no response is `no answer`; the scorer counts them by arm."""
+        cut = {"response": {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}}
+        bad = {"response": {"choices": [{"finish_reason": "stop", "message": {"content": "RELY"}}]}}
+        self.assertEqual([g6.invalid_reason(r) for r in (cut, bad, {"attempts": []})],
+                         ["truncated", "format", "no answer"])
+        with tempfile.TemporaryDirectory(dir=WORK) as d:
+            d = Path(d)
+            tasks = self._tasks(d, "freeze", 2)
+            replies = iter([cut["response"], bad["response"]] + [{"choices": [{"finish_reason": "stop", "message": {
+                "content": '```json\n{"D01": "RELY", "D02": "DO_NOT_RELY"}\n```'}}]}] * 4)
+            order = g6.plan({"h00": {}, "h01": {}}, ["a/m"], "freeze")
+            g6.run(tasks, d / "out", ["a/m"], 5.0, 100, caller=lambda *x: next(replies), key="k")
+            s = g6.score(tasks, d / "out")
+            self.assertEqual(s["invalid_reasons"], {f"{order[0][2]} truncated": 1, f"{order[1][2]} format": 1}
+                             if order[0][2] != order[1][2] else {f"{order[0][2]} format": 1, f"{order[0][2]} truncated": 1})
+            self.assertEqual(sum(s["invalid"].values()), 2)
+
     def test_11_the_order_mixes_the_arms(self) -> None:
         """Every (history, model, arm) once, in an order fixed by the seed, not arm after arm."""
         ts = {f"h{i:02d}": {} for i in range(4)}

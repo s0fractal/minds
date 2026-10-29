@@ -552,7 +552,9 @@ def run(tasks_dir: Path, out: Path, models: List[str], budget: float, max_tokens
         dest.write_text(json.dumps(rec, indent=1) + "\n")
         with ledger.open("a") as f:
             f.write(json.dumps({"task": t, "model": m, "arm": a, "cost": cost,
-                                "served": (rec.get("response") or {}).get("model")}) + "\n")
+                                "served": (rec.get("response") or {}).get("model"),
+                                "finish": (((rec.get("response") or {}).get("choices") or [{}])[0]).get("finish_reason")})
+                    + "\n")
     status = {"spent": round(before + spent, 6), "spent_now": round(spent, 6), "budget": budget, "stopped": stopped,
               "recorded": len(list(raw.glob("*.json"))), "planned": len(tasks) * len(models) * len(ARMS)}
     (out / "STATUS.json").write_text(json.dumps(status, indent=1) + "\n")
@@ -560,6 +562,16 @@ def run(tasks_dir: Path, out: Path, models: List[str], budget: float, max_tokens
 
 
 # --- scoring -------------------------------------------------------------------------------------------------------
+
+def invalid_reason(rec: Dict[str, object]) -> str:
+    """Why a reply is invalid: `no answer` (no response was recorded), `truncated` (it stopped at the token cap), or
+    `format` (it answered, but not as asked)."""
+    try:
+        choice = rec["response"]["choices"][0]
+    except (KeyError, IndexError, TypeError):
+        return "no answer"
+    return "truncated" if choice.get("finish_reason") == "length" else "format"
+
 
 def reply_text(rec: Dict[str, object]) -> Optional[str]:
     try:
@@ -621,6 +633,7 @@ def score(tasks_dir: Path, results: Path) -> Dict[str, object]:
     cells: Dict[Tuple[str, str, str], Optional[Dict[str, float]]] = {}
     by_kind: Dict[Tuple[str, str], List[int]] = {}
     invalid: Dict[str, int] = {a: 0 for a in ARMS}
+    why: Dict[str, int] = {}
     for p in sorted((results / "raw").glob("*.json")):
         rec = json.loads(p.read_text())
         t, m, a = rec["task"], rec["model"], rec["arm"]
@@ -629,6 +642,8 @@ def score(tasks_dir: Path, results: Path) -> Dict[str, object]:
         cells[(t, m, a)] = rates(ans, truth)
         if ans is None:
             invalid[a] += 1
+            r = invalid_reason(rec)
+            why[f"{a} {r}"] = why.get(f"{a} {r}", 0) + 1
             continue
         for d, k in tasks[t]["kinds"].items():
             by_kind.setdefault((a, k), []).append(int(ans[d] == truth[d]))
@@ -645,6 +660,7 @@ def score(tasks_dir: Path, results: Path) -> Dict[str, object]:
                       contrast(cells, "C", "over_caution")],
         "sensitivity": [contrast(cells, "W", "wrong_reliance", True), contrast(cells, "C", "wrong_reliance", True)],
         "invalid": invalid,
+        "invalid_reasons": dict(sorted(why.items())),
         "accuracy_by_case": {f"{a} {k}": round(sum(v) / len(v), 4) for (a, k), v in sorted(by_kind.items())},
         "per_model_arm": mean(per),
         "per_size_arm": mean(per_size),
@@ -663,7 +679,7 @@ def main(argv: List[str]) -> int:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--models", type=Path, default=Path(__file__).with_name("models.json"))
     r.add_argument("--budget", type=float, default=5.0)
-    r.add_argument("--max-tokens", type=int, default=8000)
+    r.add_argument("--max-tokens", type=int, default=32000)
     k = sub.add_parser("bind")
     k.add_argument("--tasks", type=Path, required=True)
     k.add_argument("--seed", required=True)
