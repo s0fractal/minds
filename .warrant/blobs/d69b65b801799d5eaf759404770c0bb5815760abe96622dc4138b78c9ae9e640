@@ -1,0 +1,122 @@
+{
+  "base": "13a65008ed82283ff8be3b881dc9a1da3223f541",
+  "basis": "The current witness/mutant ledger and rendered assurance state their limits. No blocking counterexample to the obligation was found. Acceptance covers the evidence-accounting goal, not universal implementation correctness.",
+  "checks": {
+    "additional_baselines": "test_87_each_layer_of_a_layered_refusal_refuses_on_its_own (test_vars1.TestVars1Conformance.test_87_each_layer_of_a_layered_refusal_refuses_on_its_own)\nA refusal two layers hold is burned layer by layer (G3): each layer is asked alone, on an input that ... ok\ntest_83_a_kernel_build_answers_what_the_rules_answer (test_vars1.TestVars1Conformance.test_83_a_kernel_build_answers_what_the_rules_answer)\nThe rules kernel decides the fold and Passes 1\u20132 (\u00a74.3): a build of it (the one in kernel/, or, with ... ok\ntest_48_rules_change_needs_its_decision (test_vars1.TestVars1Conformance.test_48_rules_change_needs_its_decision)\nA rotation to other rules without a rules-change decision is refused, and so is one whose decision lacks ... ok\ntest_50_rules_change_b_refutes_the_old_rules (test_vars1.TestVars1Conformance.test_50_rules_change_b_refutes_the_old_rules)\n(b): the counterexample must be a chain the gate admits, its digest the replay's, and the named status ... ok\ntest_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain (test_vars1.TestVars1Conformance.test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain)\nUnder v2 (\u00a74.1 latch 4b) a rotation to other rules waits 16 commits whatever its consent, and both rules ... ok\n\n----------------------------------------------------------------------\nRan 5 tests in 32.561s\n\nOK\n",
+    "claims": "tools/check_claims.py passes: 157 claims, 268 mutants; 114 tested, 21 differential, 15 proved, 1 bounded, 4 assumed, 2 unburned.",
+    "focused_tests": "test_45_the_spec_is_a_projection_of_its_witnesses (test_vars1.TestVars1Conformance.test_45_the_spec_is_a_projection_of_its_witnesses)\ntools/check_claims.py passes on the repository, and refuses each way the spec could go green over nothing: ... ok\ntest_78_each_structural_refusal_has_its_own_input (test_vars1.TestVars1Conformance.test_78_each_structural_refusal_has_its_own_input)\nEach refusal below is reached by its own input (the claims' earlier witnesses never reached them, so a ... ok\ntest_84_the_mutant_runner_counts_only_lost_behaviour (test_vars1.TestVars1Conformance.test_84_the_mutant_runner_counts_only_lost_behaviour)\ntools/run_mutants.py counts a test as a kill only when an assertion fails on what the code does: an ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 11.619s\n\nOK\n",
+    "mutant_results": "killed   m-amend-kin1-type: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-append-reader: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-cas-path: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-claims-debt-table: killed by test_45_the_spec_is_a_projection_of_its_witnesses\nkilled   m-claims-diagnostic: killed by test_45_the_spec_is_a_projection_of_its_witnesses\nkilled   m-claims-reason-only-debt: killed by test_45_the_spec_is_a_projection_of_its_witnesses\nkilled   m-claims-reason-required: killed by test_45_the_spec_is_a_projection_of_its_witnesses\nkilled   m-cycle-bound-gate: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-cycle-bound-high: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-cycle-bound-low: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-intrinsic-empty: refused at import by 'an intrinsic atom does not hash to an intrinsic id'\nkilled   m-net-admit: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-net-chain: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-rc-b-range: killed by test_50_rules_change_b_refutes_the_old_rules, by its named reason only (declared diagnostic)\nkilled   m-rc-cx-admitted: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-rc-needs-decision: killed by test_48_rules_change_needs_its_decision\nkilled   m-rc-refusal: killed by test_50_rules_change_b_refutes_the_old_rules, by its named reason only (declared diagnostic)\nkilled   m-refs-seal: killed by test_78_each_structural_refusal_has_its_own_input, by its named reason only (declared diagnostic)\nkilled   m-roster-veto-kernel: killed by test_83_a_kernel_build_answers_what_the_rules_answer\nkilled   m-roster-veto-twin: killed by test_22_one_member_can_rotate_the_other_out_but_a_reader_pin_holds (kernel and twin diverge)\nkilled   m-rules-hash: refused at import by 'kernel/lens.wasm does not hash to H_LENS_KERNEL'\nkilled   m-runner-crash: killed by test_84_the_mutant_runner_counts_only_lost_behaviour\nkilled   m-runner-declared: killed by test_84_the_mutant_runner_counts_only_lost_behaviour\nkilled   m-runner-import-check: killed by test_84_the_mutant_runner_counts_only_lost_behaviour\nkilled   m-runner-semantic: killed by test_84_the_mutant_runner_counts_only_lost_behaviour\nkilled   m-runner-undeclared: killed by test_84_the_mutant_runner_counts_only_lost_behaviour\nkilled   m-scope-rules-host: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-seal-key-kernel: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-seal-signer-twin: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-store-mode: killed by test_87_each_layer_of_a_layered_refusal_refuses_on_its_own\nkilled   m-veto-schema: killed by test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain, by its named reason only (declared diagnostic)\nkilled   m-whatif-escapes: killed by test_81_what_if_reports_what_a_failed_ground_takes_with_it\n32/32 killed\n",
+    "mutant_selection": "Union of mutants added or modified by the three cited merge diffs against their first parents, restricted to mutants present at M.",
+    "roadmap": "warrant.roadmap check: 13 lineages, 0 problems",
+    "selected_mutants": [
+      "m-amend-kin1-type",
+      "m-append-reader",
+      "m-cas-path",
+      "m-claims-debt-table",
+      "m-claims-diagnostic",
+      "m-claims-reason-only-debt",
+      "m-claims-reason-required",
+      "m-cycle-bound-gate",
+      "m-cycle-bound-high",
+      "m-cycle-bound-low",
+      "m-intrinsic-empty",
+      "m-net-admit",
+      "m-net-chain",
+      "m-rc-b-range",
+      "m-rc-cx-admitted",
+      "m-rc-needs-decision",
+      "m-rc-refusal",
+      "m-refs-seal",
+      "m-roster-veto-kernel",
+      "m-roster-veto-twin",
+      "m-rules-hash",
+      "m-runner-crash",
+      "m-runner-declared",
+      "m-runner-import-check",
+      "m-runner-semantic",
+      "m-runner-undeclared",
+      "m-scope-rules-host",
+      "m-seal-key-kernel",
+      "m-seal-signer-twin",
+      "m-store-mode",
+      "m-veto-schema",
+      "m-whatif-escapes"
+    ],
+    "warrant_claims": "warrant.claims check is not configured here (.warrant/claims.json absent); repository claims use root claims.json and tools/check_claims.py."
+  },
+  "disclosed_debt": [
+    {
+      "id": "store.radicle",
+      "mutants": [],
+      "quote": "**Radicle.** A node's `refs/vars/heads/<scope>` replicates as",
+      "status": "assumed",
+      "witnesses": []
+    },
+    {
+      "id": "gate.references",
+      "mutants": [],
+      "quote": "4. **References and replay.** Every referenced hash is present",
+      "reason": "Held twice: by Check #4 and, beneath it, by the lookups that read each reference, whose KeyError the gate's net for crashes turns into a refusal. Either alone refuses a missing reference, so no single-site mutant admits one; m-refs-seal removes only Check #4's named reason (Codex, challenge of the G3 closure, 2026-10-28).",
+      "status": "unburned",
+      "witnesses": [
+        "test:test_05_signatures_names_dependencies_verdicts_acceptance",
+        "test:test_09_unassessed_parent_cannot_root_a_replayed_child",
+        "test:test_78_each_structural_refusal_has_its_own_input"
+      ]
+    },
+    {
+      "id": "rules.change.refusal",
+      "mutants": [],
+      "quote": "either rules refusing either log refuses the rotation",
+      "reason": "Held twice: by the named refusal and, beneath it, by the four digests that read every run, whose missing output is an IndexError the gate's net turns into a refusal. Either alone refuses the rotation, so no single-site mutant admits it; m-rc-refusal removes only the named reason (Codex, challenge of the G3 closure, 2026-10-28).",
+      "status": "unburned",
+      "witnesses": [
+        "test:test_50_rules_change_b_refutes_the_old_rules"
+      ]
+    },
+    {
+      "id": "rules.change-text",
+      "mutants": [],
+      "quote": "The specification's text changes in that same decision; nothing checks the text.",
+      "status": "assumed",
+      "witnesses": []
+    },
+    {
+      "id": "rules.contradiction",
+      "mutants": [],
+      "quote": "**Contradictions.** Two rules that give one input two verdicts are recorded",
+      "status": "assumed",
+      "witnesses": []
+    },
+    {
+      "id": "privacy.commitments",
+      "mutants": [],
+      "quote": "**Personal data.** No atom carries data about a person in the clear, nor a bare hash of it",
+      "status": "assumed",
+      "witnesses": []
+    }
+  ],
+  "limits": [
+    "Proof and bounded statuses name their own witnesses; they are distinct from mutation-tested claims.",
+    "Four diagnostic mutants burn assurance.named-refusals only; they do not prove removal of semantic refusal.",
+    "The checker checks carried quotes and metadata, not every normative character or the meaning of every witness; ASSURANCE.md explicitly discloses this limit.",
+    "No full conformance/property/proof build rerun locally; exact-M check and mutants CI conclusions were read, and 8 focused baseline tests and 32 changed mutants were rerun locally."
+  ],
+  "lineage": "6489b2a6e0116685381c60239259d8f3dacf5e3660eaefe1ff84e8216d58f842",
+  "repository": "s0fractal/minds",
+  "review": "G3 roadmap verdict by codex",
+  "target": "9623f93c9aef3c27535b9e51952edc244fb09e15f6342163a0df96f212a8bfd2",
+  "verdict": "accept",
+  "verified_inputs": {
+    "cited_merges": [
+      "38b7192fbb1bbb41bacd86a50b10cf33fcf1ac4f",
+      "d26de64f9e78bc46e2315aa251b254d6fa53100f",
+      "e6e2f9f598de7155eaf2db80bdd2e45b00633801"
+    ],
+    "github_check_runs_at_base": {
+      "check": "success",
+      "mutants": "success"
+    },
+    "roadmap_due": "Target, lineage, goal G3, statement, empty evidence/requires and absent subject match the waker; target guard PENDING only for a roadmap/acceptor accept."
+  }
+}
