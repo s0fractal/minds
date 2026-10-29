@@ -1,0 +1,70 @@
+# The witness member (REVIEWING.md §1): on a GitHub runner, under a key that never was on the maintainer's machine
+# (witness-key.yml), `tools/minds_chain.py witness` reruns every check of each release waiting for its verdict, in a
+# fresh worktree with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
+# environment `witness`, which only main may deploy to.
+name: witness
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: witness
+  cancel-in-progress: false
+
+jobs:
+  witness:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: witness
+    timeout-minutes: 240
+    permissions:
+      contents: write # to push refs/vars/heads/minds
+    env:
+      # the checks build chain commits with git commit-tree, and so does the verdict
+      GIT_AUTHOR_NAME: minds-witness
+      GIT_AUTHOR_EMAIL: witness@invalid
+      GIT_COMMITTER_NAME: minds-witness
+      GIT_COMMITTER_EMAIL: witness@invalid
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fetch the self-governance chain (refs/vars/*)
+        run: git fetch --no-tags origin '+refs/vars/*:refs/vars/*'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install Book I (sigma-glyph, hash-pinned)
+        run: python -m pip install --require-hashes -r requirements.txt
+      - name: Install elan (Lean toolchain from proofs/lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Verify every release waiting for this key, and record the verdicts
+        env:
+          SEED: ${{ secrets.MINDS_WITNESS_SEED }}
+        run: |
+          if [ -z "$SEED" ]; then
+            echo "the environment witness holds no MINDS_WITNESS_SEED: run witness-key first" >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/witness.key"
+          (umask 077 && printf %s "$SEED" > "$key")
+          outcome=0
+          python tools/minds_chain.py witness --key "$key" --name github-actions || outcome=$?
+          rm -f "$key"
+          # an INVALID is a verdict too: it is recorded, and the run then fails
+          git push origin refs/vars/heads/minds
+          exit "$outcome"

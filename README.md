@@ -57,6 +57,13 @@ records ATTESTED or INVALID under its own key, and witnesses the projections tha
 it after recomputing their digests. `NAME` is the member's verifier id: a later INVALID under it withdraws the
 member's own ATTESTED.
 
+**The GitHub Actions witness** (`.github/workflows/witness.yml`) is a member on a host of its own. Its key is made on a
+GitHub runner (`witness-key.yml`) and kept as a secret of the environment `witness`, which only `main` may deploy to,
+so it never was on the maintainer's machine. Every three hours, and on demand, it runs `minds_chain.py witness`:
+`verify-release` for each release waiting for its key, with nothing cached, then it pushes the verdicts. Like any
+member it may admit cells; what it does is what `main`'s workflow says, and whoever controls the owner's GitHub
+account controls that. It is not on the roster yet: its key joins once the environment exists.
+
 ## The spec and the assurance map are renderings
 
 `VARS-1-SPEC.md` is rendered from `spec.json` and `ASSURANCE.md` from `assurance.json`; edit the data, then

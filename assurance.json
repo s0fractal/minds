@@ -338,6 +338,16 @@
       "`test_vars1.py` 76"
      ],
      [
+      "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster",
+      "Tested, with mutants",
+      "`test_vars1.py` 93; `tools/minds_chain.py` `witness`, `awaiting`, `unanswered`"
+     ],
+     [
+      "The GitHub Actions witness's key never was on the maintainer's machine",
+      "By construction, not tested here: `witness-key.yml` makes it on a runner and refuses unless the environment `witness` deploys from `main` alone. It rests on GitHub's environment protection and on the owner's GitHub account, whose holder controls what `main`'s workflows do with it",
+      "`.github/workflows/witness-key.yml`, `witness.yml`"
+     ],
+     [
       "The profile names the interpreters (Python, node, Lean, cargo)",
       "**Not established**: they come from the host; a release's checks ran on one host's interpreters",
       "—"

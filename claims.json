@@ -1737,6 +1737,20 @@
    ]
   },
   {
+   "id": "assurance.witness",
+   "source": "ASSURANCE.md",
+   "quote": "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster",
+   "status": "tested",
+   "witnesses": [
+    "test:test_93_a_witness_verifies_every_release_that_waits_for_its_key"
+   ],
+   "mutants": [
+    "m-witness-whose",
+    "m-status-endorsed-answer",
+    "m-status-invalid-answer"
+   ]
+  },
+  {
    "id": "assurance.status",
    "source": "ASSURANCE.md",
    "quote": "`status` tells merged from Settled",

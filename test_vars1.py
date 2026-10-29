@@ -5851,6 +5851,47 @@ class TestVars1Conformance(unittest.TestCase):
         self._commit("core", cand2, s2, a, [self._axiom(a, "core/after", "after the change")])
         self.assertEqual(self.repo.lens("core")["rules"], h)
 
+    def test_93_a_witness_verifies_every_release_that_waits_for_its_key(self) -> None:
+        """`witness` (the GitHub Actions member, .github/workflows/witness.yml): a key on the roster verifies every
+        release that waits for its verdict, and only those. A release before the key joined does not wait for it; a
+        release it attested, or found INVALID, waits no longer; a key not on the roster has nothing to do. Its
+        verdicts settle what they should, as `status` reads them."""
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x0a" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r0 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+                         "a key not on the roster has nothing to do")
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        _, r2 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [r1["decision"], r2["decision"]],
+                         "the releases after the join wait for the new key, the one before it does not")
+        self.assertEqual(mc.awaiting(self.repo_path, V.ed25519_pubkey(sk)), [], "the maintainer has answered all")
+        ran = []
+
+        def checks(repo_dir, sha, rules):
+            ran.append(sha)
+            return ["test_vars1 OK"], True
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=checks)
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done],
+                         [(r1["decision"].hex(), "ATTESTED"), (r2["decision"].hex(), "ATTESTED")])
+        self.assertEqual(ran, ["b" * 40, "c" * 40])
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][r1["decision"]] and lens["settled"][r2["decision"]])
+        self.assertEqual(mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: self.fail("ran")), [],
+                         "an attested release waits no longer")
+
+        _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["test_vars1 OK"])
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=lambda *a: (["test_vars1 FAILED"], False))
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done], [(r3["decision"].hex(), "INVALID")])
+        self.assertFalse(repo.lens("minds")["settled"][r3["decision"]])
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [], "an INVALID is an answer")
+        row = next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == r3["decision"].hex())
+        self.assertEqual((row["invalid_by"], row["awaiting"]), ([pkw.hex()], []))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
