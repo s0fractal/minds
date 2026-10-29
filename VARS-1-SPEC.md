@@ -404,10 +404,12 @@ is refused.
 
 (d) Every rules change keeps the earlier ones: on every rules-change decision earlier in the chain, the new rules
 give the result it established. A correction's status bit `status` of its cell, found by id, is still `right` on its
-counterexample; a hardening's or a tightening's input is still refused with its code within its budget, which needs
-rules that read its encoding. A rotation from v2 to rules that read references as v1 does is refused, and so is a
-rotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only
-the cells born under `H_LENS_KERNEL`.
+counterexample; a hardening's or a tightening's input is still refused within its budget, with any code: its code is
+the reason that change gave, not what it established. This needs rules that read its encoding. A rotation from v2 to
+rules that read references as v1 does is refused, and so is a rotation to v2 from a chain with an epoch of rules other
+than `H_LENS_KERNEL` that read as v1 does: v2 reads as v1 only the cells born under `H_LENS_KERNEL`. Between the two
+encodings this host reads, these refusals come first, so (d) never meets an input of the other encoding alone; rules
+of a new encoding that read an older epoch need a carrier of the inputs of its changes, and none exists.
 
 **Evidence.** In the transaction that moves the scope's ref, the gate writes `refs/vars/evidence/<scope>/<decision>/<commit>`
 for a correction's counterexample commit and for every counterexample the corrections on its chain name, transitively,

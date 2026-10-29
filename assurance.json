@@ -96,14 +96,14 @@
       "`test_vars1.py` 62, 71, 74"
      ],
      [
-      "(d) A rules change keeps every earlier one: each earlier counterexample gets the result its change established (a correction's bit by cell id; a hardening's or tightening's refusal within its budget); so v1b → v1 \"as equivalent\" is refused, and so is v1b → v2 (v2 cannot read the v1-encoded input)",
+      "(d) A rules change keeps every earlier one: each earlier counterexample gets the result its change established (a correction's bit by cell id; a hardening's or tightening's refusal within its budget); so v1b → v1 \"as equivalent\" is refused, and so is v1b → v2 (v2 reads v1b-born cells by type; (d) would refuse it second, since v2 cannot read the v1-encoded input)",
       "Tested, with mutants",
       "`test_vars1.py` 67"
      ],
      [
-      "(d) keeps the property an earlier change established, not its accidents",
-      "**Not established**: for a hardening or a tightening, (d) asks that the input stay refused with the same code within its budget. A successor that refuses it for its size with another code fails (d), even though the guarantee holds, and an input in one encoding cannot be carried to rules of another: v1 → v1b → v2 was blocked so. No hardening is active on `refs/vars/heads/minds`. Open: roadmap obligation `c0a90557` (Monday review 2026-10-28, F46)",
-      "VARS-1-SPEC.md §4.3; AMENDMENTS.md"
+      "(d) keeps the property an earlier change established, not its accidents: a hardening's or a tightening's input stays refused within its budget, with any code (Monday review 2026-10-28, F46)",
+      "Tested, with mutants: a successor refusing the fuzzer's input with another code is admitted; one refusing it only with more steps than the hardening's budget, or giving it an output, is refused. An input of another encoding is not carried, since no carrier exists; between v1 and v2 the reading rules refuse first (tests 67, 68), so (d) never meets one alone. Rules of a new encoding that read an older epoch need a carrier built with them",
+      "`test_vars1.py` 67, 92; VARS-1-SPEC.md §4.3; AMENDMENTS.md"
      ],
      [
       "A rotation from v2 to rules that read references as v1 does is refused; so is a rotation to v2 from a chain with a v1b epoch (v2 reads as v1 only cells born under `H_LENS_KERNEL`; Codex review r1 F1)",

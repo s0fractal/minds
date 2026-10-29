@@ -1520,6 +1520,20 @@
    ]
   },
   {
+   "id": "rules.change.d.reason",
+   "quote": "a hardening's or a tightening's input is still refused within its budget, with any code: its code is the reason that change gave, not what it established.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_92_a_later_change_keeps_an_earlier_refusal_not_its_code",
+    "test:test_67_earlier_counterexamples_stay_decided"
+   ],
+   "mutants": [
+    "m-amend-d-same-code",
+    "m-amend-d-budget",
+    "m-amend-d-refusal"
+   ]
+  },
+  {
    "id": "rules.change.v2-to-v1-reading",
    "quote": "A rotation from v2 to rules that read references as v1 does is refused, and so is a rotation to v2 from a chain with an epoch of rules other than `H_LENS_KERNEL` that read as v1 does",
    "status": "tested",
