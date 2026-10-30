@@ -1226,6 +1226,18 @@
    ]
   },
   {
+   "id": "att.inspect-word",
+   "quote": "so its result names that acceptance `accepted_under_own_policy`, never `accepted`, the word of `verify-attestation`.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word",
+    "test:test_36_offline_verifier_in_a_fresh_folder"
+   ],
+   "mutants": [
+    "m-inspect-word"
+   ]
+  },
+  {
    "id": "rules.change",
    "quote": "**Changing the rules.** A scope moves to new rules only by a rotation whose new scope names them",
    "status": "tested",
@@ -1637,6 +1649,28 @@
    ],
    "mutants": [
     "m-offline-stdlib"
+   ]
+  },
+  {
+   "id": "offline.one-reading",
+   "quote": "A bundle must read one way: one that is not UTF-8 JSON, or in which an object names a key twice, is refused (exit 2), since readers differ on which value of a repeated key counts.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+   ],
+   "mutants": [
+    "m-verify-one-reading"
+   ]
+  },
+  {
+   "id": "offline.crash-code",
+   "quote": "A crash of the verifier exits 3, which no verdict uses.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+   ],
+   "mutants": [
+    "m-verify-crash-code"
    ]
   },
   {
@@ -2057,6 +2091,72 @@
     "m-f42-refs-offset",
     "m-f42-refs-payload",
     "m-f42-refs-known"
+   ]
+  },
+  {
+   "id": "assurance.witness-held",
+   "source": "ASSURANCE.md",
+   "quote": "answers `HELD` for a witness term only if the lens holds its decision Settled at the term's tip",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_01_ed25519_is_rfc8032_strict_and_cofactorless",
+    "witness:test_02_the_checker_uses_nothing_of_vars1",
+    "witness:test_03_before_the_failure_every_decision_is_held",
+    "witness:test_04_after_the_failure_held_only_what_the_lens_settles",
+    "witness:test_05_a_term_that_hides_part_of_its_cone_is_refused",
+    "witness:test_06_a_wrong_term_is_refused_for_its_reason",
+    "witness:test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count",
+    "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
+    "witness:test_09_the_store_is_read_from_bytes",
+    "witness:test_10_the_checker_runs_alone"
+   ],
+   "mutants": [
+    "m-ed-small-order",
+    "m-ed-s-bound",
+    "m-ed-equation",
+    "m-ed-canonical-y",
+    "m-tip-self",
+    "m-store-entry",
+    "m-store-hash",
+    "m-scopes",
+    "m-scope-pin",
+    "m-scope-origin",
+    "m-rules",
+    "m-foreign",
+    "m-decision",
+    "m-computation",
+    "m-invalid-verdict",
+    "m-cone-missing",
+    "m-cone-decision",
+    "m-cone-verdict",
+    "m-cone-closed",
+    "m-kill-outgoing",
+    "m-kill-incoming",
+    "m-policy-own",
+    "m-verdict-schema",
+    "m-verdict-attested",
+    "m-verdict-payload",
+    "m-verdict-attests",
+    "m-seal-target",
+    "m-seal-scope",
+    "m-seal-signature",
+    "m-key",
+    "m-threshold",
+    "m-threshold-distinct"
+   ]
+  },
+  {
+   "id": "assurance.witness-one-reading",
+   "source": "ASSURANCE.md",
+   "quote": "a witness term that is not UTF-8 JSON, or whose object names a key twice, is refused (`FORMAT`)",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+   ],
+   "mutants": [
+    "m-term-one-reading",
+    "m-term-json",
+    "m-crash-code"
    ]
   }
  ],

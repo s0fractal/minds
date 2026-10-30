@@ -7,8 +7,10 @@ A mutant must fail its named test on an assertion (an error is not a kill), and 
 first. Chains are built through the real gate (vars1.py); the checker under test is check.py, or the file named by
 WITNESS_SOURCE (a mutant).
 """
+import contextlib
 import hashlib
 import importlib.util
+import io
 import itertools
 import json
 import os
@@ -448,6 +450,39 @@ class T(unittest.TestCase):
         self.assertEqual((r.returncode, json.loads(r.stdout)["result"]), (0, "HELD"), r.stderr)
         r = run("--scope-cell", "00" * 32)
         self.assertEqual((r.returncode, json.loads(r.stdout)["code"]), (1, "SCOPE"), r.stderr)
+
+    def test_11_a_term_reads_one_way_and_a_crash_is_no_verdict(self):
+        """Decision 0008 of open-ontologies: an object that names a key twice has two readings (Python keeps the last
+        value, other readers the first), so the term is refused rather than read by one convention; so is a term that
+        is not UTF-8 JSON. A crash of the checker exits 3, which no verdict uses."""
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        t = PR.prove(c.repo, SCOPE, d.id)
+        text = json.dumps(t)
+        f = scratch() / "term.json"
+
+        def cli(raw):
+            f.write_bytes(raw)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = CK.main([str(c.path), str(f)])
+            return rc, (json.loads(out.getvalue()) if out.getvalue() else {}).get("code")
+
+        self.assertEqual(cli(text.encode()), (0, None))
+        # the held decision named last, another first: the last value alone would be HELD
+        twice = text.replace('"decision": ', f'"decision": "{"00" * 32}", "decision": ', 1)
+        self.assertEqual(cli(twice.encode()), (1, "FORMAT"))
+        seal = t["endorsements"][0]["seal"]
+        twice = text.replace(f'"seal": "{seal}"', f'"seal": "{"00" * 32}", "seal": "{seal}"', 1)
+        self.assertEqual(cli(twice.encode()), (1, "FORMAT"))
+        for raw in (text.encode()[:-1], b"\xff" + text.encode(), b"[]"):
+            self.assertEqual(cli(raw), (1, "FORMAT"), raw[:8])
+        crash = CK.check_text
+        CK.check_text = lambda *a: 1 // 0
+        try:
+            self.assertEqual(cli(text.encode()), (3, None))
+        finally:
+            CK.check_text = crash
 
 
 def mutants() -> int:

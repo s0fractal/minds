@@ -2281,5 +2281,29 @@
   "kills": [
    "test_98_one_initial_endorser_alone_may_evict_under_v2"
   ]
+ },
+ "m-verify-one-reading": {
+  "file": "verify/minds_verify.py",
+  "find": "        if len({k for k, _ in pairs}) != len(pairs):",
+  "replace": "        if False:",
+  "kills": [
+   "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+  ]
+ },
+ "m-inspect-word": {
+  "file": "verify/minds_verify.py",
+  "find": "        result[\"accepted_under_own_policy\"] = result.pop(\"accepted\")",
+  "replace": "        result[\"accepted_under_own_policy\"] = result[\"accepted\"]",
+  "kills": [
+   "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+  ]
+ },
+ "m-verify-crash-code": {
+  "file": "verify/minds_verify.py",
+  "find": "        return 3",
+  "replace": "        return 1",
+  "kills": [
+   "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+  ]
  }
 }

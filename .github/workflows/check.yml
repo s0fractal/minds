@@ -85,6 +85,8 @@ jobs:
         run: python tools/f42_vectors.py --check
 
       - name: Conformance
+        env:
+          MINDS_REQUIRE_CHAIN: "1" # the chain was fetched above: test 25 fails here rather than skip
         run: python -m unittest -v test_vars1
       - name: G6 pilot harness (experiments/g6/PREREG.md)
         run: python experiments/g6/test_g6.py

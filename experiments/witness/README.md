@@ -33,6 +33,11 @@ a closed-world assumption.
 python3 -I experiments/witness/check.py REPO TERM.json [--scope-cell HEX]
 ```
 
+The term must read one way. A term that is not UTF-8 JSON, or whose object names a key twice, is `REFUSED`
+(`FORMAT`): Python keeps the last value of a repeated key and other readers the first, so it has no single reading.
+Exit 0 is `HELD`, 1 `REFUSED` or `NOT_COVERED`, 2 a wrong command line; 3 is an error of the checker, which no
+verdict uses (an uncaught Python error would exit 1, the code of a refusal).
+
 ```json
 {"format": "minds.witness.held@1", "scope": "proj", "tip": "<commit id>", "decision": "<cell id>",
  "cone": ["<cell id>", "..."], "endorsements": [{"verdict": "<cell id>", "seal": "<seal id>"}]}
@@ -126,8 +131,9 @@ is outside too. So is the live minds chain: it rotated to v2.
 | 08 | Outside the fragment the answer is NOT_COVERED. A decision left not Active by an unauthorized supersedes edge is not HELD. |
 | 09 | A store the gate never saw: a seal that does not verify, a seal under another scope, bytes that do not hash to their name, a missing object, an entry outside `cas/`, a decision requiring a computation, a foreign cell. |
 | 10 | `check.py`, copied alone into an empty folder and run with `-I`, works. |
+| 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8 and one that is not an object. A crash exits 3. |
 
-**Mutants.** `mutants.json` has one mutant per check: 32, all killed. `--mutants` runs the named tests unmutated first and
+**Mutants.** `mutants.json` has one mutant per check: 35, all killed. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 
@@ -153,6 +159,15 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
   reads everything.
 
 ## What would take it further (not done)
+
+`ASSURANCE.md` carries what this spike establishes as two claims (`assurance.witness-held`,
+`assurance.witness-one-reading`). Roadmap goal G7 is the first item below.
+
+- **A proof of soundness.** A checker written in Lean, run as the checker, with a theorem: if it accepts a term, then
+  the decision is Settled at the tip under a Lean model of §4.2. open-ontologies' `OOCert.horn_certificate_sound` is
+  the template. Its certificate is one line per step: the rule, the conclusion and the premises, each of them
+  asserted or concluded by an earlier line. The positive part here is of that form: closure under `relies`, plus a
+  count of distinct keys against a threshold. `assurance.witness-held` would then be `proved`.
 
 - **The negative part as data.** A projection's kernel input already commits, by a witnessed digest, to every cell
   and seal at its tip. Read from there instead of a git store, the absences would rest on the projection's witnesses

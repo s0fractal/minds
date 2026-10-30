@@ -488,14 +488,17 @@ witness the projection. A verdict or seal about another
 cell is a refusal. A decision that requires a computation needs replay, hence the repository.
 The bundled scope's policy is likewise self-declared: `vars1.py verify-attestation BUNDLE.json --require PUBKEY...`
 needs at least one pinned key and exits 0 only on acceptance with every pinned key endorsing and witnessing;
-`inspect-attestation` reports acceptance under the bundle's own policies and claims no trust. `export_attestation`
+`inspect-attestation` reports acceptance under the bundle's own policies and claims no trust, so its result names that
+acceptance `accepted_under_own_policy`, never `accepted`, the word of `verify-attestation`. `export_attestation`
 builds a bundle.
 
 **Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
 that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
 PUBKEY...` or `inspect-projection|inspect-attestation BUNDLE.json` (same arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;
-no bundle check reads one. The verifier reads every rules identity the host implements, by its table
+no bundle check reads one. A bundle must read one way: one that is not UTF-8 JSON, or in which an object names a
+key twice, is refused (exit 2), since readers differ on which value of a repeated key counts. A crash of the
+verifier exits 3, which no verdict uses. The verifier reads every rules identity the host implements, by its table
 `KNOWN_RULES`: `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B` in v1's input encoding, `H_LENS_KERNEL_V2` in v2's, whose
 references are the input's own list (RULES-V2.md §3), each entry checked to name an older cell whose id is the value
 at its position; an input not in the encoding of the rules its projection names is refused. `vars1.py` refuses to

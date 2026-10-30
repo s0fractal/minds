@@ -145,6 +145,18 @@ the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V
 | `what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement | Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key) | `test_vars1.py` 82; `tools/minds_chain.py` `what_if` |
 | Releases recorded before this format rest on their checks | **Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts | — |
 
+## A witness checked without the lens (experiments/witness)
+
+A spike: a decision's cone and the seals that settle it, as a proof term that `experiments/witness/check.py`
+checks against the store's bytes, sharing no code with `vars1.py` or the offline verifier. What it does not
+cover is in its README: the negative part (no edge kills the cone) is read over the store at the tip, which
+the reader pins as the admitted chain.
+
+| Claim | Evidence | Where |
+|---|---|---|
+| `check.py` answers `HELD` for a witness term only if the lens holds its decision Settled at the term's tip, provided the store at the tip is that scope's admitted chain; outside its fragment the answer is `NOT_COVERED` | Tested, exhaustively over every subset of verdicts on two G6 histories after a failure, with a mutant for every check; the argument from §4.2 is prose, not proved (roadmap G7) | `experiments/witness/test_witness.py` 01–10; README.md |
+| The term reads one way: a witness term that is not UTF-8 JSON, or whose object names a key twice, is refused (`FORMAT`), and a crash of the checker exits 3, which no verdict uses | Tested, with mutants | `experiments/witness/test_witness.py` 11 |
+
 ## How a mutant counts
 
 | Claim | Evidence | Where |
