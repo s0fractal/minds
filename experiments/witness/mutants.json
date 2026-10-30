@@ -1,0 +1,162 @@
+{
+ "m-ed-small-order": {
+  "find": "    if _encode(_mul(8, a)) == _encode(ZERO):",
+  "replace": "    if False:",
+  "kills": "test_01_ed25519_is_rfc8032_strict_and_cofactorless"
+ },
+ "m-ed-s-bound": {
+  "find": "    if a is None or r is None or s >= L:",
+  "replace": "    if a is None or r is None:",
+  "kills": "test_01_ed25519_is_rfc8032_strict_and_cofactorless"
+ },
+ "m-ed-equation": {
+  "find": "    return _encode(_mul(s, B)) == _encode(_add(r, _mul(k, a)))",
+  "replace": "    return True",
+  "kills": "test_01_ed25519_is_rfc8032_strict_and_cofactorless"
+ },
+ "m-ed-canonical-y": {
+  "find": "    if y >= P:\n        return None",
+  "replace": "    if False:\n        return None",
+  "kills": "test_01_ed25519_is_rfc8032_strict_and_cofactorless"
+ },
+ "m-tip-self": {
+  "find": "    if _git(repo, \"rev-parse\", \"--verify\", \"--end-of-options\", tip + \"^{commit}\").decode().strip() != tip:",
+  "replace": "    if False:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-store-entry": {
+  "find": "            raise refuse(\"STORE\", f\"not a store entry: {line}\")",
+  "replace": "            continue",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-store-hash": {
+  "find": "        if hashlib.sha256(raw).digest() != name:",
+  "replace": "        if False:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-scopes": {
+  "find": "    if len(scopes) != 1:",
+  "replace": "    if len(scopes) < 1:",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-scope-pin": {
+  "find": "    if pin is not None and scopes[0] != pin:",
+  "replace": "    if False:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-scope-origin": {
+  "find": "    if origin(atoms, sc) != term[\"scope\"]:",
+  "replace": "    if False:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-rules": {
+  "find": "    if sc[\"slots\"][2] != H_LENS_KERNEL:",
+  "replace": "    if False:",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-foreign": {
+  "find": "    if any(cid not in STANDARD and origin(atoms, c) != term[\"scope\"] for cid, c in cells.items()):",
+  "replace": "    if False:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-decision": {
+  "find": "    if dc is None or dc[\"schema\"] not in (SCHEMA[\"decision\"], SCHEMA[\"contract\"]):",
+  "replace": "    if dc is None:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-computation": {
+  "find": "    if dc[\"slots\"][1:2] != [H_EMPTY]:",
+  "replace": "    if False:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-invalid-verdict": {
+  "find": "    if any(c[\"schema\"] == SCHEMA[\"verdict\"] and c[\"payload\"] == d",
+  "replace": "    if any(False and c[\"payload\"] == d",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-cone-missing": {
+  "find": "    if missing:\n",
+  "replace": "    if False:\n",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-cone-decision": {
+  "find": "    if d not in cone:\n",
+  "replace": "    if False:\n",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-cone-verdict": {
+  "find": "    if any(w not in cone for w, _ in ends):",
+  "replace": "    if False:",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-cone-closed": {
+  "find": "        if any(r not in cone for r in hvec(atoms, cells[x][\"relies\"])):",
+  "replace": "        if False:",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-kill-outgoing": {
+  "find": "        if hvec(atoms, cells[x][\"supersedes\"]):",
+  "replace": "        if False:",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-kill-incoming": {
+  "find": "            if hit:",
+  "replace": "            if False:",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-policy-own": {
+  "find": "    thr, keys = policy(atoms, own[0] if own and own[0] != H_EMPTY else sc[\"slots\"][0])",
+  "replace": "    thr, keys = policy(atoms, sc[\"slots\"][0])",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-verdict-schema": {
+  "find": "        if v[\"schema\"] != SCHEMA[\"verdict\"] or v[\"slots\"][1:2] != [H_ATTESTED]:",
+  "replace": "        if v[\"slots\"][1:2] != [H_ATTESTED]:",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-verdict-code": {
+  "find": "        if v[\"schema\"] != SCHEMA[\"verdict\"] or v[\"slots\"][1:2] != [H_ATTESTED]:",
+  "replace": "        if v[\"schema\"] != SCHEMA[\"verdict\"]:",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-verdict-payload": {
+  "find": "        if v[\"payload\"] != d or d not in hvec(atoms, v[\"attests\"]):",
+  "replace": "        if d not in hvec(atoms, v[\"attests\"]):",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-verdict-attests": {
+  "find": "        if v[\"payload\"] != d or d not in hvec(atoms, v[\"attests\"]):",
+  "replace": "        if v[\"payload\"] != d:",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-seal-target": {
+  "find": "        if x[\"target\"] != w:",
+  "replace": "        if False:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-seal-scope": {
+  "find": "        if x[\"ctx\"] != scopes[0]:",
+  "replace": "        if False:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-seal-signature": {
+  "find": "        if not ed25519_verify(x[\"key\"], x[\"signed\"], x[\"signature\"]):",
+  "replace": "        if False:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-key": {
+  "find": "        if x[\"key\"] not in keys:",
+  "replace": "        if False:",
+  "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
+ },
+ "m-threshold": {
+  "find": "    if len(counted) < thr:",
+  "replace": "    if len(counted) < 1:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-threshold-distinct": {
+  "find": "    if len(counted) < thr:",
+  "replace": "    if len(ends) < thr:",
+  "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ }
+}
