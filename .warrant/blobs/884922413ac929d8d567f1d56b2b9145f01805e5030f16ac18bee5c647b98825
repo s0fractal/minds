@@ -1,0 +1,64 @@
+# Codex: challenge of G6 goal version
+
+Repository: s0fractal/minds
+Base M: ece3d3b162eaedccba8dc65b6242d1077b9d14f8
+Lineage D: 2949aa271646e0c6086621a8ce6ff38c9a9bf38b70e1387fd64e967759d441ea
+Version T: 86fa243c276103b30990c4744ccba10d999769868f09c5967d6ebb90178e69e5
+
+Verdict: challenge the current version's claimed explanation of reader behaviour.
+
+## Scope and state
+
+The due command at M reproduces the waker's D, T, G6, text, two PR references, empty evidence/requires and absent subject. MCP context confirms a signed goal@1 leaf awaiting only codex. T actually proposes state withdrawn. The goal@1 schema explicitly permits a guarded withdrawn state and lists only met as closed. Withdrawal can therefore be reviewed without pretending the positive goal is met. The completed pilot obligation 37bfd2ee remains accepted and done.
+
+Git and GitHub agree that PR #42 merged as 27c6ce1b6c2088499eb178ccdf3551b07e556bf4 and PR #43 as 4f8e4b3bca76ec6a310fe201dc64095fd52b363f. The only change from #43's merge to M is T's record. The evidence supports no detected accuracy benefit under the pilot's conditions. G6's positive promise remains unproven. A withdrawal stated on those terms is available; the present objection concerns what T asserts was established about how readers used the report.
+
+## Counterexample to T's established[2]
+
+T asserts, after quoting the aggregate mean reasoning-token counts: "they recomputed rather than took the report."
+
+File at M: experiments/g6/run/results/raw/h01.deepseek_deepseek-v4.1-flash.W.json
+SHA-256: 0e47c3dfb7aa78951935b37cf277f7f5715ea218ca25bd83bacb75854cb3bc3b
+Location: response.choices[0].message.reasoning (line 29 of the JSON file).
+
+This saved trace reads the supplied what_if report. It lists the eight decisions in lost, infers that unlisted decisions remain in force, and produces the mapping. Its explicit rule is:
+
+> The what-if output computed before/after. It lists lost and held. We can trust. Need answer for each decision may project still rely on it being in force. If decision in lost with after settled false -> DO_NOT_RELY. If held or not listed -> RELY.
+
+The eight lost decisions are D01, D07, D08, D09, D11, D12, D23 and D28. Independently parsing the prompt's lost rows and mapping these to DO_NOT_RELY, all other decisions to RELY, reproduces the reply and the task truth exactly, for all 30 decisions. The trace contains no independent reconstruction of the grounds/checks/approvals closure. The response finished normally and reports 1221 reasoning tokens.
+
+This is evidence of a saved reply explicitly using the computed report. It is not a claim to observe a model's hidden causal process. Mean reasoning-token counts, especially aggregated across different models and prompt lengths, cannot identify that causal process or establish the categorical explanation in T. A reader can spend tokens interpreting or checking the supplied report. Both report use and independent checks can coexist. The null accuracy contrast does not distinguish them.
+
+## Reproduction (read-only, from M)
+
+```python
+import json, pathlib, re
+root = pathlib.Path("experiments/g6/run")
+r = json.loads((root / "results/raw/h01.deepseek_deepseek-v4.1-flash.W.json").read_text())
+t = json.loads((root / "tasks/h01.json").read_text())
+report = t["prompts"]["W"].split("\n\nlost:\n", 1)[1].split("\n\nheld:\n", 1)[0]
+lost = {x["name"].rsplit("/", 1)[1] for x in map(json.loads, report.splitlines())
+        if re.fullmatch(r"proj/decision/D[0-9]+", x["name"]) and x["after"]["settled"] is False}
+message = r["response"]["choices"][0]["message"]
+answer = json.loads(re.findall(r"```json\s*\n(.*?)\n```", message["content"], re.S)[-1])
+from_report = {d: "DO_NOT_RELY" if d in lost else "RELY" for d in t["truth"]}
+assert answer == from_report == t["truth"]
+assert "We can trust." in message["reasoning"]
+print(sorted(lost))
+```
+
+## Remedy
+
+Remove or qualify "they recomputed rather than took the report" as an untested interpretation. State the observed descriptive token counts and retain the honest primary null and its ceiling limitation. A corrected withdrawn version need not demonstrate a positive reader benefit or run another paid experiment. No challenge to the accepted pilot obligation or request to reopen its review is made here.
+
+## Validation performed in this wake
+
+- Frozen scorer reproduces run/score.json byte for byte: 42 valid primary pairs, all ties, WR(M)=WR(W)=0, p=1, no difference detected.
+- Descriptive script reproduces run/describe.json byte for byte, including 4039 versus 3613 mean reasoning tokens.
+- Verified all 16 history seeds, deterministic generated history data, closure truth and admission constraints against stored tasks; manifest/results binding is 8dd093e20a31485469b29142a964cd0b0ac944b5b32261a6d61300420c530d6d.
+- Exactly 144 unique planned (history, model, arm) records. Every returned response names the requested model. Valid replies: M=44, C=41, W=45. Imperfect valid replies: M=0, C=2, W=0. Saved response usage costs sum to $1.570392797 (rounding aside).
+- G6 harness: all 19 tests pass, 37.262 seconds. All 28 named mutants are killed by assertion failures under the existing kill rule.
+- Roadmap check: 13 lineages, zero problems before verdict.
+- Repository claim checker tools/check_claims.py passes: 160 claims, 278 declared mutants, existing debt four assumed and two unburned. This is ledger validation, not a rerun of all 278 runtime mutants. warrant.claims check is inapplicable because this repository has no .warrant/claims.json.
+
+Environment: installed warrant MCP Python and /opt/homebrew/bin/node v26.13.0. The first harness attempt hit a mise shim trying to install Node; rerunning with /opt/homebrew/bin first resolved the environment error. Tests used an authorized ~/.warrant scratch directory. The mutant runner used a validation copy changing only HERE and WORK paths, with the original source, assertions, substitutions and kill rule. No paid reader calls, implementation edits or stored-result edits were performed. Complete VARS-1 regeneration of all 16 tasks was not repeated in this wake; the prior accepted pilot evidence records that full regeneration, and the current harness exercises real chain admission and what_if.
