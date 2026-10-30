@@ -1,0 +1,552 @@
+{
+ "history": {
+  "approvals": [
+   {
+    "by": "ana",
+    "decision": "D01",
+    "relies": [
+     "K10",
+     "K13"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D01",
+    "relies": [
+     "K13"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D02",
+    "relies": [
+     "K14"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D02",
+    "relies": [
+     "K5"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D03",
+    "relies": [
+     "K11"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D03",
+    "relies": [
+     "K4",
+     "K11"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D03",
+    "relies": [
+     "K14"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D04",
+    "relies": [
+     "K10"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D04",
+    "relies": [
+     "K10"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D04",
+    "relies": [
+     "K1"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D05",
+    "relies": [
+     "K4",
+     "K7"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D05",
+    "relies": [
+     "K2",
+     "K12"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D05",
+    "relies": [
+     "K2",
+     "K5"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D06",
+    "relies": [
+     "K14"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D06",
+    "relies": [
+     "K3",
+     "K6"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D06",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D07",
+    "relies": [
+     "K3"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D07",
+    "relies": [
+     "K7",
+     "K11"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D07",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D08",
+    "relies": [
+     "K3",
+     "K14"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D08",
+    "relies": [
+     "K9",
+     "K14"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D08",
+    "relies": [
+     "K14"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D09",
+    "relies": [
+     "K3"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D09",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D09",
+    "relies": [
+     "K7"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D10",
+    "relies": [
+     "K10"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D10",
+    "relies": [
+     "K8",
+     "K14"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D11",
+    "relies": [
+     "K5"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D11",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D11",
+    "relies": [
+     "K4",
+     "K5"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D12",
+    "relies": [
+     "K6"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D12",
+    "relies": [
+     "K4",
+     "K8"
+    ]
+   }
+  ],
+  "checks": [
+   {
+    "by": "ana",
+    "id": "K1",
+    "name": "load-shedding",
+    "rests": [
+     "G4",
+     "G6"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K2",
+    "name": "replay-orders",
+    "rests": [
+     "G2",
+     "G7"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K3",
+    "name": "schema-migration",
+    "rests": [
+     "G1",
+     "G6"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K4",
+    "name": "search-relevance",
+    "rests": [
+     "G4",
+     "G5"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K5",
+    "name": "timezone-dst",
+    "rests": [
+     "G7"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K6",
+    "name": "cold-start",
+    "rests": [
+     "G5"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K7",
+    "name": "api-compat-v2",
+    "rests": [
+     "G3",
+     "G5"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K8",
+    "name": "rate-limit-burst",
+    "rests": [
+     "G3",
+     "G4"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K9",
+    "name": "parser-fuzz-24h",
+    "rests": [
+     "G3"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K10",
+    "name": "billing-reconcile",
+    "rests": [
+     "G1",
+     "G6"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K11",
+    "name": "clock-skew",
+    "rests": [
+     "G2"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K12",
+    "name": "latency-p99",
+    "rests": [
+     "G2",
+     "G7"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K13",
+    "name": "upgrade-in-place",
+    "rests": [
+     "G1",
+     "G5"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K14",
+    "name": "auth-regression",
+    "rests": [
+     "G1"
+    ]
+   }
+  ],
+  "decisions": [
+   {
+    "by": "bo",
+    "id": "D01",
+    "rests": [
+     "K13"
+    ],
+    "title": "raise the burst rate limit"
+   },
+   {
+    "by": "ana",
+    "id": "D02",
+    "rests": [
+     "K5",
+     "K10"
+    ],
+    "title": "enable crash-safe writes"
+   },
+   {
+    "by": "ana",
+    "id": "D03",
+    "rests": [
+     "K2",
+     "K11"
+    ],
+    "title": "rotate the signing key yearly"
+   },
+   {
+    "by": "bo",
+    "id": "D04",
+    "rests": [
+     "K10",
+     "K13"
+    ],
+    "title": "allow upgrades in place"
+   },
+   {
+    "by": "bo",
+    "id": "D05",
+    "rests": [
+     "K2",
+     "K7"
+    ],
+    "title": "merge the billing service"
+   },
+   {
+    "by": "bo",
+    "id": "D06",
+    "rests": [
+     "K3",
+     "K6"
+    ],
+    "title": "accept CSV imports"
+   },
+   {
+    "by": "cy",
+    "id": "D07",
+    "rests": [
+     "K11"
+    ],
+    "title": "remove the legacy importer"
+   },
+   {
+    "by": "ana",
+    "id": "D08",
+    "rests": [
+     "K14"
+    ],
+    "title": "make index rebuild incremental"
+   },
+   {
+    "by": "bo",
+    "id": "D09",
+    "rests": [
+     "K3"
+    ],
+    "title": "split the monolith's auth module"
+   },
+   {
+    "by": "ana",
+    "id": "D10",
+    "rests": [
+     "K9",
+     "K14"
+    ],
+    "title": "switch the parser to streaming"
+   },
+   {
+    "by": "bo",
+    "id": "D11",
+    "rests": [
+     "K5",
+     "K9"
+    ],
+    "title": "accept TLS 1.3 only"
+   },
+   {
+    "by": "ana",
+    "id": "D12",
+    "rests": [
+     "K6",
+     "K8"
+    ],
+    "title": "turn on load shedding"
+   }
+  ],
+  "failed": "G6",
+  "grounds": [
+   {
+    "by": "bo",
+    "id": "G1",
+    "name": "audit of `libfoo-3.2`",
+    "text": "a security audit found no open issue in the library"
+   },
+   {
+    "by": "cy",
+    "id": "G2",
+    "name": "toolchain `llvm-21`",
+    "text": "built from source; its hash matched the published one"
+   },
+   {
+    "by": "ana",
+    "id": "G3",
+    "name": "fixture `fx-18`",
+    "text": "recorded from the production database"
+   },
+   {
+    "by": "ana",
+    "id": "G4",
+    "name": "bench machine `bench-a`",
+    "text": "measured and pinned as the benchmark host"
+   },
+   {
+    "by": "ana",
+    "id": "G5",
+    "name": "dataset `orders-2026Q3`",
+    "text": "its checksum matched the warehouse export"
+   },
+   {
+    "by": "ana",
+    "id": "G6",
+    "name": "dataset `events-v4`",
+    "text": "its checksum matched the warehouse export"
+   },
+   {
+    "by": "ana",
+    "id": "G7",
+    "name": "dataset `users-2026Q3`",
+    "text": "its checksum matched the warehouse export"
+   }
+  ],
+  "size": "S"
+ },
+ "kinds": {
+  "D01": "approvals",
+  "D02": "own",
+  "D03": "untouched",
+  "D04": "own",
+  "D05": "untouched",
+  "D06": "own",
+  "D07": "margin",
+  "D08": "margin",
+  "D09": "own",
+  "D10": "approvals",
+  "D11": "untouched",
+  "D12": "untouched"
+ },
+ "prompts": {
+  "C": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's minds chain (refs/vars/heads/proj): every cell it holds, in the order admitted, each\nsealed by the maintainer named. Cells refer to each other by id (the first 12 hex digits of the cell's hash). An axiom\nis a ground or a check; `relies_on` lists the cells it rests on. A decision lists the checks it rests on in\n`relies_on`; its evaluators are 2 of ana, bo, cy. A verdict is an approval: it `attests` the decision it approves and\n`relies_on` the checks its maintainer ran. The last cell is the notice: it `invalidates` the ground found invalid.\n\n{\"id\": \"833fb0e6ca38\", \"schema\": \"axiom\", \"name\": \"proj/ground/G1\", \"payload\": \"audit of `libfoo-3.2`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"e78927d1efab\", \"schema\": \"axiom\", \"name\": \"proj/ground/G2\", \"payload\": \"toolchain `llvm-21`: built from source; its hash matched the published one\", \"relies_on\": [], \"sealed_by\": \"cy\"}\n{\"id\": \"52e91162fe43\", \"schema\": \"axiom\", \"name\": \"proj/ground/G3\", \"payload\": \"fixture `fx-18`: recorded from the production database\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"706845b091d0\", \"schema\": \"axiom\", \"name\": \"proj/ground/G4\", \"payload\": \"bench machine `bench-a`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"7e82ac038b2c\", \"schema\": \"axiom\", \"name\": \"proj/ground/G5\", \"payload\": \"dataset `orders-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"cc111bdde5c7\", \"schema\": \"axiom\", \"name\": \"proj/ground/G6\", \"payload\": \"dataset `events-v4`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"2d2ad4574aab\", \"schema\": \"axiom\", \"name\": \"proj/ground/G7\", \"payload\": \"dataset `users-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"ae43c88e6460\", \"schema\": \"axiom\", \"name\": \"proj/check/K1\", \"payload\": \"`load-shedding` passed\", \"relies_on\": [\"706845b091d0\", \"cc111bdde5c7\"], \"sealed_by\": \"ana\"}\n{\"id\": \"6f83da8c52da\", \"schema\": \"axiom\", \"name\": \"proj/check/K2\", \"payload\": \"`replay-orders` passed\", \"relies_on\": [\"2d2ad4574aab\", \"e78927d1efab\"], \"sealed_by\": \"ana\"}\n{\"id\": \"1f7d1c86531d\", \"schema\": \"axiom\", \"name\": \"proj/check/K3\", \"payload\": \"`schema-migration` passed\", \"relies_on\": [\"833fb0e6ca38\", \"cc111bdde5c7\"], \"sealed_by\": \"bo\"}\n{\"id\": \"e3f2ac724889\", \"schema\": \"axiom\", \"name\": \"proj/check/K4\", \"payload\": \"`search-relevance` passed\", \"relies_on\": [\"706845b091d0\", \"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"72dce1200121\", \"schema\": \"axiom\", \"name\": \"proj/check/K5\", \"payload\": \"`timezone-dst` passed\", \"relies_on\": [\"2d2ad4574aab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"5e9296fc8821\", \"schema\": \"axiom\", \"name\": \"proj/check/K6\", \"payload\": \"`cold-start` passed\", \"relies_on\": [\"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"f2eecbbe4b42\", \"schema\": \"axiom\", \"name\": \"proj/check/K7\", \"payload\": \"`api-compat-v2` passed\", \"relies_on\": [\"52e91162fe43\", \"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"55e8e92c23eb\", \"schema\": \"axiom\", \"name\": \"proj/check/K8\", \"payload\": \"`rate-limit-burst` passed\", \"relies_on\": [\"52e91162fe43\", \"706845b091d0\"], \"sealed_by\": \"bo\"}\n{\"id\": \"a62dcde348dd\", \"schema\": \"axiom\", \"name\": \"proj/check/K9\", \"payload\": \"`parser-fuzz-24h` passed\", \"relies_on\": [\"52e91162fe43\"], \"sealed_by\": \"cy\"}\n{\"id\": \"c5d051b73b63\", \"schema\": \"axiom\", \"name\": \"proj/check/K10\", \"payload\": \"`billing-reconcile` passed\", \"relies_on\": [\"833fb0e6ca38\", \"cc111bdde5c7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"abd7d852409b\", \"schema\": \"axiom\", \"name\": \"proj/check/K11\", \"payload\": \"`clock-skew` passed\", \"relies_on\": [\"e78927d1efab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"aabe9c1789c4\", \"schema\": \"axiom\", \"name\": \"proj/check/K12\", \"payload\": \"`latency-p99` passed\", \"relies_on\": [\"2d2ad4574aab\", \"e78927d1efab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"21a667fff825\", \"schema\": \"axiom\", \"name\": \"proj/check/K13\", \"payload\": \"`upgrade-in-place` passed\", \"relies_on\": [\"7e82ac038b2c\", \"833fb0e6ca38\"], \"sealed_by\": \"bo\"}\n{\"id\": \"e1ca0ba4cda2\", \"schema\": \"axiom\", \"name\": \"proj/check/K14\", \"payload\": \"`auth-regression` passed\", \"relies_on\": [\"833fb0e6ca38\"], \"sealed_by\": \"bo\"}\n{\"id\": \"0f24359e17f5\", \"schema\": \"decision\", \"name\": \"proj/decision/D01\", \"payload\": \"D01: raise the burst rate limit\", \"relies_on\": [\"21a667fff825\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"34d5ebe2ee16\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-ana\", \"attests\": [\"0f24359e17f5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"21a667fff825\", \"c5d051b73b63\"], \"sealed_by\": \"ana\"}\n{\"id\": \"613c1442526f\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-bo\", \"attests\": [\"0f24359e17f5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"21a667fff825\"], \"sealed_by\": \"bo\"}\n{\"id\": \"9374903ae5e8\", \"schema\": \"decision\", \"name\": \"proj/decision/D02\", \"payload\": \"D02: enable crash-safe writes\", \"relies_on\": [\"72dce1200121\", \"c5d051b73b63\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"366a2c60ed55\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-bo\", \"attests\": [\"9374903ae5e8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"bo\"}\n{\"id\": \"7554550001ab\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-cy\", \"attests\": [\"9374903ae5e8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\"], \"sealed_by\": \"cy\"}\n{\"id\": \"1664aac3ebb4\", \"schema\": \"decision\", \"name\": \"proj/decision/D03\", \"payload\": \"D03: rotate the signing key yearly\", \"relies_on\": [\"6f83da8c52da\", \"abd7d852409b\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"2e3b0b8facfa\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-ana\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\"], \"sealed_by\": \"ana\"}\n{\"id\": \"dd9bfa5963e4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-bo\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\", \"e3f2ac724889\"], \"sealed_by\": \"bo\"}\n{\"id\": \"2dbcd4955557\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-cy\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"64b45765f635\", \"schema\": \"decision\", \"name\": \"proj/decision/D04\", \"payload\": \"D04: allow upgrades in place\", \"relies_on\": [\"21a667fff825\", \"c5d051b73b63\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"6d71f8f837a3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-ana\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"ana\"}\n{\"id\": \"d3d5f6c35d79\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-bo\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"bo\"}\n{\"id\": \"062bd2fe9124\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-cy\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ae43c88e6460\"], \"sealed_by\": \"cy\"}\n{\"id\": \"72e621f13f17\", \"schema\": \"decision\", \"name\": \"proj/decision/D05\", \"payload\": \"D05: merge the billing service\", \"relies_on\": [\"6f83da8c52da\", \"f2eecbbe4b42\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"7578d18cf028\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-ana\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e3f2ac724889\", \"f2eecbbe4b42\"], \"sealed_by\": \"ana\"}\n{\"id\": \"9599660db927\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-bo\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"6f83da8c52da\", \"aabe9c1789c4\"], \"sealed_by\": \"bo\"}\n{\"id\": \"59eee6bf6e0e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-cy\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"6f83da8c52da\", \"72dce1200121\"], \"sealed_by\": \"cy\"}\n{\"id\": \"8c7bd20b78f8\", \"schema\": \"decision\", \"name\": \"proj/decision/D06\", \"payload\": \"D06: accept CSV imports\", \"relies_on\": [\"1f7d1c86531d\", \"5e9296fc8821\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"1d72c269397e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-ana\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ffbfe23dc9f4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-bo\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\", \"5e9296fc8821\"], \"sealed_by\": \"bo\"}\n{\"id\": \"b1335125e5eb\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-cy\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"cy\"}\n{\"id\": \"8aa69799ddb5\", \"schema\": \"decision\", \"name\": \"proj/decision/D07\", \"payload\": \"D07: remove the legacy importer\", \"relies_on\": [\"abd7d852409b\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"d83d61489cb7\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-ana\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a0bebdb167d4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-bo\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\", \"f2eecbbe4b42\"], \"sealed_by\": \"bo\"}\n{\"id\": \"07050c874e3a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-cy\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"cy\"}\n{\"id\": \"cbccca69da9c\", \"schema\": \"decision\", \"name\": \"proj/decision/D08\", \"payload\": \"D08: make index rebuild incremental\", \"relies_on\": [\"e1ca0ba4cda2\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"e18bb2432698\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-ana\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\", \"e1ca0ba4cda2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"2c7c10c8a9ee\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-bo\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\", \"e1ca0ba4cda2\"], \"sealed_by\": \"bo\"}\n{\"id\": \"7dcac1e53121\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-cy\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"b40f6c9aad72\", \"schema\": \"decision\", \"name\": \"proj/decision/D09\", \"payload\": \"D09: split the monolith's auth module\", \"relies_on\": [\"1f7d1c86531d\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"42c67dfe950c\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-ana\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\"], \"sealed_by\": \"ana\"}\n{\"id\": \"7804c39746ff\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-bo\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"bo\"}\n{\"id\": \"b47cc7beda11\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-cy\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f2eecbbe4b42\"], \"sealed_by\": \"cy\"}\n{\"id\": \"f28cb9256e9b\", \"schema\": \"decision\", \"name\": \"proj/decision/D10\", \"payload\": \"D10: switch the parser to streaming\", \"relies_on\": [\"a62dcde348dd\", \"e1ca0ba4cda2\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"a94b230bc182\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-bo\", \"attests\": [\"f28cb9256e9b\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"bo\"}\n{\"id\": \"f78850e45f2a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-cy\", \"attests\": [\"f28cb9256e9b\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"55e8e92c23eb\", \"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"0258a82d4301\", \"schema\": \"decision\", \"name\": \"proj/decision/D11\", \"payload\": \"D11: accept TLS 1.3 only\", \"relies_on\": [\"72dce1200121\", \"a62dcde348dd\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"3b0477fbdd0d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-ana\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\"], \"sealed_by\": \"ana\"}\n{\"id\": \"19ff7a01ca34\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-bo\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"bo\"}\n{\"id\": \"46aeef23520b\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-cy\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\", \"e3f2ac724889\"], \"sealed_by\": \"cy\"}\n{\"id\": \"4df72ae67639\", \"schema\": \"decision\", \"name\": \"proj/decision/D12\", \"payload\": \"D12: turn on load shedding\", \"relies_on\": [\"55e8e92c23eb\", \"5e9296fc8821\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"998ab5466bd8\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-ana\", \"attests\": [\"4df72ae67639\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"5e9296fc8821\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a6d3a0e83548\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-cy\", \"attests\": [\"4df72ae67639\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"55e8e92c23eb\", \"e3f2ac724889\"], \"sealed_by\": \"cy\"}\n{\"id\": \"79e8e41b164b\", \"schema\": \"axiom\", \"name\": \"proj/notice/G6\", \"payload\": \"G6 was found invalid\", \"invalidates\": [\"cc111bdde5c7\"], \"relies_on\": [], \"sealed_by\": \"bo\"}\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else.",
+  "M": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's repository: its Markdown files, CI history, pull requests and issues.\n\n### docs/GROUNDS.md\n\n| ground | recorded by | what was established |\n|---|---|---|\n| G1 audit of `libfoo-3.2` | bo | a security audit found no open issue in the library |\n| G2 toolchain `llvm-21` | cy | built from source; its hash matched the published one |\n| G3 fixture `fx-18` | ana | recorded from the production database |\n| G4 bench machine `bench-a` | ana | measured and pinned as the benchmark host |\n| G5 dataset `orders-2026Q3` | ana | its checksum matched the warehouse export |\n| G6 dataset `events-v4` | ana | its checksum matched the warehouse export |\n| G7 dataset `users-2026Q3` | ana | its checksum matched the warehouse export |\n\n### docs/CHECKS.md (from the CI history)\n\n| check | run by | result | rests on grounds |\n|---|---|---|---|\n| K1 `load-shedding` | ana | passed | G4, G6 |\n| K2 `replay-orders` | ana | passed | G2, G7 |\n| K3 `schema-migration` | bo | passed | G1, G6 |\n| K4 `search-relevance` | bo | passed | G4, G5 |\n| K5 `timezone-dst` | cy | passed | G7 |\n| K6 `cold-start` | bo | passed | G5 |\n| K7 `api-compat-v2` | bo | passed | G3, G5 |\n| K8 `rate-limit-burst` | bo | passed | G3, G4 |\n| K9 `parser-fuzz-24h` | cy | passed | G3 |\n| K10 `billing-reconcile` | cy | passed | G1, G6 |\n| K11 `clock-skew` | cy | passed | G2 |\n| K12 `latency-p99` | cy | passed | G2, G7 |\n| K13 `upgrade-in-place` | bo | passed | G1, G5 |\n| K14 `auth-regression` | bo | passed | G1 |\n\n### Pull request #101: D01 raise the burst rate limit (merged)\n\nOpened by bo.\nRests on checks: K13 `upgrade-in-place`.\n\nReviews:\n- ana approved: \"I ran K10 `billing-reconcile` and K13 `upgrade-in-place`; approving.\"\n- bo approved: \"I ran K13 `upgrade-in-place`; approving.\"\n\n### Pull request #102: D02 enable crash-safe writes (merged)\n\nOpened by ana.\nRests on checks: K5 `timezone-dst`, K10 `billing-reconcile`.\n\nReviews:\n- bo approved: \"I ran K14 `auth-regression`; approving.\"\n- cy approved: \"I ran K5 `timezone-dst`; approving.\"\n\n### Pull request #103: D03 rotate the signing key yearly (merged)\n\nOpened by ana.\nRests on checks: K2 `replay-orders`, K11 `clock-skew`.\n\nReviews:\n- ana approved: \"I ran K11 `clock-skew`; approving.\"\n- bo approved: \"I ran K4 `search-relevance` and K11 `clock-skew`; approving.\"\n- cy approved: \"I ran K14 `auth-regression`; approving.\"\n\n### Pull request #104: D04 allow upgrades in place (merged)\n\nOpened by bo.\nRests on checks: K10 `billing-reconcile`, K13 `upgrade-in-place`.\n\nReviews:\n- ana approved: \"I ran K10 `billing-reconcile`; approving.\"\n- bo approved: \"I ran K10 `billing-reconcile`; approving.\"\n- cy approved: \"I ran K1 `load-shedding`; approving.\"\n\n### Pull request #105: D05 merge the billing service (merged)\n\nOpened by bo.\nRests on checks: K2 `replay-orders`, K7 `api-compat-v2`.\n\nReviews:\n- ana approved: \"I ran K4 `search-relevance` and K7 `api-compat-v2`; approving.\"\n- bo approved: \"I ran K2 `replay-orders` and K12 `latency-p99`; approving.\"\n- cy approved: \"I ran K2 `replay-orders` and K5 `timezone-dst`; approving.\"\n\n### Pull request #106: D06 accept CSV imports (merged)\n\nOpened by bo.\nRests on checks: K3 `schema-migration`, K6 `cold-start`.\n\nReviews:\n- ana approved: \"I ran K14 `auth-regression`; approving.\"\n- bo approved: \"I ran K3 `schema-migration` and K6 `cold-start`; approving.\"\n- cy approved: \"I ran K9 `parser-fuzz-24h`; approving.\"\n\n### Pull request #107: D07 remove the legacy importer (merged)\n\nOpened by cy.\nRests on checks: K11 `clock-skew`.\n\nReviews:\n- ana approved: \"I ran K3 `schema-migration`; approving.\"\n- bo approved: \"I ran K7 `api-compat-v2` and K11 `clock-skew`; approving.\"\n- cy approved: \"I ran K9 `parser-fuzz-24h`; approving.\"\n\n### Pull request #108: D08 make index rebuild incremental (merged)\n\nOpened by ana.\nRests on checks: K14 `auth-regression`.\n\nReviews:\n- ana approved: \"I ran K3 `schema-migration` and K14 `auth-regression`; approving.\"\n- bo approved: \"I ran K9 `parser-fuzz-24h` and K14 `auth-regression`; approving.\"\n- cy approved: \"I ran K14 `auth-regression`; approving.\"\n\n### Pull request #109: D09 split the monolith's auth module (merged)\n\nOpened by bo.\nRests on checks: K3 `schema-migration`.\n\nReviews:\n- ana approved: \"I ran K3 `schema-migration`; approving.\"\n- bo approved: \"I ran K9 `parser-fuzz-24h`; approving.\"\n- cy approved: \"I ran K7 `api-compat-v2`; approving.\"\n\n### Pull request #110: D10 switch the parser to streaming (merged)\n\nOpened by ana.\nRests on checks: K9 `parser-fuzz-24h`, K14 `auth-regression`.\n\nReviews:\n- bo approved: \"I ran K10 `billing-reconcile`; approving.\"\n- cy approved: \"I ran K8 `rate-limit-burst` and K14 `auth-regression`; approving.\"\n\n### Pull request #111: D11 accept TLS 1.3 only (merged)\n\nOpened by bo.\nRests on checks: K5 `timezone-dst`, K9 `parser-fuzz-24h`.\n\nReviews:\n- ana approved: \"I ran K5 `timezone-dst`; approving.\"\n- bo approved: \"I ran K9 `parser-fuzz-24h`; approving.\"\n- cy approved: \"I ran K4 `search-relevance` and K5 `timezone-dst`; approving.\"\n\n### Pull request #112: D12 turn on load shedding (merged)\n\nOpened by ana.\nRests on checks: K6 `cold-start`, K8 `rate-limit-burst`.\n\nReviews:\n- ana approved: \"I ran K6 `cold-start`; approving.\"\n- cy approved: \"I ran K4 `search-relevance` and K8 `rate-limit-burst`; approving.\"\n\n### Issue #113: G6 dataset `events-v4` is invalid\n\nOpened by bo: \"G6 was found invalid.\"\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else.",
+  "W": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's minds chain (refs/vars/heads/proj): every cell it holds, in the order admitted, each\nsealed by the maintainer named. Cells refer to each other by id (the first 12 hex digits of the cell's hash). An axiom\nis a ground or a check; `relies_on` lists the cells it rests on. A decision lists the checks it rests on in\n`relies_on`; its evaluators are 2 of ana, bo, cy. A verdict is an approval: it `attests` the decision it approves and\n`relies_on` the checks its maintainer ran. The last cell is the notice: it `invalidates` the ground found invalid.\n\n{\"id\": \"833fb0e6ca38\", \"schema\": \"axiom\", \"name\": \"proj/ground/G1\", \"payload\": \"audit of `libfoo-3.2`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"e78927d1efab\", \"schema\": \"axiom\", \"name\": \"proj/ground/G2\", \"payload\": \"toolchain `llvm-21`: built from source; its hash matched the published one\", \"relies_on\": [], \"sealed_by\": \"cy\"}\n{\"id\": \"52e91162fe43\", \"schema\": \"axiom\", \"name\": \"proj/ground/G3\", \"payload\": \"fixture `fx-18`: recorded from the production database\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"706845b091d0\", \"schema\": \"axiom\", \"name\": \"proj/ground/G4\", \"payload\": \"bench machine `bench-a`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"7e82ac038b2c\", \"schema\": \"axiom\", \"name\": \"proj/ground/G5\", \"payload\": \"dataset `orders-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"cc111bdde5c7\", \"schema\": \"axiom\", \"name\": \"proj/ground/G6\", \"payload\": \"dataset `events-v4`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"2d2ad4574aab\", \"schema\": \"axiom\", \"name\": \"proj/ground/G7\", \"payload\": \"dataset `users-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"ae43c88e6460\", \"schema\": \"axiom\", \"name\": \"proj/check/K1\", \"payload\": \"`load-shedding` passed\", \"relies_on\": [\"706845b091d0\", \"cc111bdde5c7\"], \"sealed_by\": \"ana\"}\n{\"id\": \"6f83da8c52da\", \"schema\": \"axiom\", \"name\": \"proj/check/K2\", \"payload\": \"`replay-orders` passed\", \"relies_on\": [\"2d2ad4574aab\", \"e78927d1efab\"], \"sealed_by\": \"ana\"}\n{\"id\": \"1f7d1c86531d\", \"schema\": \"axiom\", \"name\": \"proj/check/K3\", \"payload\": \"`schema-migration` passed\", \"relies_on\": [\"833fb0e6ca38\", \"cc111bdde5c7\"], \"sealed_by\": \"bo\"}\n{\"id\": \"e3f2ac724889\", \"schema\": \"axiom\", \"name\": \"proj/check/K4\", \"payload\": \"`search-relevance` passed\", \"relies_on\": [\"706845b091d0\", \"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"72dce1200121\", \"schema\": \"axiom\", \"name\": \"proj/check/K5\", \"payload\": \"`timezone-dst` passed\", \"relies_on\": [\"2d2ad4574aab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"5e9296fc8821\", \"schema\": \"axiom\", \"name\": \"proj/check/K6\", \"payload\": \"`cold-start` passed\", \"relies_on\": [\"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"f2eecbbe4b42\", \"schema\": \"axiom\", \"name\": \"proj/check/K7\", \"payload\": \"`api-compat-v2` passed\", \"relies_on\": [\"52e91162fe43\", \"7e82ac038b2c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"55e8e92c23eb\", \"schema\": \"axiom\", \"name\": \"proj/check/K8\", \"payload\": \"`rate-limit-burst` passed\", \"relies_on\": [\"52e91162fe43\", \"706845b091d0\"], \"sealed_by\": \"bo\"}\n{\"id\": \"a62dcde348dd\", \"schema\": \"axiom\", \"name\": \"proj/check/K9\", \"payload\": \"`parser-fuzz-24h` passed\", \"relies_on\": [\"52e91162fe43\"], \"sealed_by\": \"cy\"}\n{\"id\": \"c5d051b73b63\", \"schema\": \"axiom\", \"name\": \"proj/check/K10\", \"payload\": \"`billing-reconcile` passed\", \"relies_on\": [\"833fb0e6ca38\", \"cc111bdde5c7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"abd7d852409b\", \"schema\": \"axiom\", \"name\": \"proj/check/K11\", \"payload\": \"`clock-skew` passed\", \"relies_on\": [\"e78927d1efab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"aabe9c1789c4\", \"schema\": \"axiom\", \"name\": \"proj/check/K12\", \"payload\": \"`latency-p99` passed\", \"relies_on\": [\"2d2ad4574aab\", \"e78927d1efab\"], \"sealed_by\": \"cy\"}\n{\"id\": \"21a667fff825\", \"schema\": \"axiom\", \"name\": \"proj/check/K13\", \"payload\": \"`upgrade-in-place` passed\", \"relies_on\": [\"7e82ac038b2c\", \"833fb0e6ca38\"], \"sealed_by\": \"bo\"}\n{\"id\": \"e1ca0ba4cda2\", \"schema\": \"axiom\", \"name\": \"proj/check/K14\", \"payload\": \"`auth-regression` passed\", \"relies_on\": [\"833fb0e6ca38\"], \"sealed_by\": \"bo\"}\n{\"id\": \"0f24359e17f5\", \"schema\": \"decision\", \"name\": \"proj/decision/D01\", \"payload\": \"D01: raise the burst rate limit\", \"relies_on\": [\"21a667fff825\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"34d5ebe2ee16\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-ana\", \"attests\": [\"0f24359e17f5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"21a667fff825\", \"c5d051b73b63\"], \"sealed_by\": \"ana\"}\n{\"id\": \"613c1442526f\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-bo\", \"attests\": [\"0f24359e17f5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"21a667fff825\"], \"sealed_by\": \"bo\"}\n{\"id\": \"9374903ae5e8\", \"schema\": \"decision\", \"name\": \"proj/decision/D02\", \"payload\": \"D02: enable crash-safe writes\", \"relies_on\": [\"72dce1200121\", \"c5d051b73b63\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"366a2c60ed55\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-bo\", \"attests\": [\"9374903ae5e8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"bo\"}\n{\"id\": \"7554550001ab\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-cy\", \"attests\": [\"9374903ae5e8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\"], \"sealed_by\": \"cy\"}\n{\"id\": \"1664aac3ebb4\", \"schema\": \"decision\", \"name\": \"proj/decision/D03\", \"payload\": \"D03: rotate the signing key yearly\", \"relies_on\": [\"6f83da8c52da\", \"abd7d852409b\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"2e3b0b8facfa\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-ana\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\"], \"sealed_by\": \"ana\"}\n{\"id\": \"dd9bfa5963e4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-bo\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\", \"e3f2ac724889\"], \"sealed_by\": \"bo\"}\n{\"id\": \"2dbcd4955557\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-cy\", \"attests\": [\"1664aac3ebb4\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"64b45765f635\", \"schema\": \"decision\", \"name\": \"proj/decision/D04\", \"payload\": \"D04: allow upgrades in place\", \"relies_on\": [\"21a667fff825\", \"c5d051b73b63\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"6d71f8f837a3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-ana\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"ana\"}\n{\"id\": \"d3d5f6c35d79\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-bo\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"bo\"}\n{\"id\": \"062bd2fe9124\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-cy\", \"attests\": [\"64b45765f635\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ae43c88e6460\"], \"sealed_by\": \"cy\"}\n{\"id\": \"72e621f13f17\", \"schema\": \"decision\", \"name\": \"proj/decision/D05\", \"payload\": \"D05: merge the billing service\", \"relies_on\": [\"6f83da8c52da\", \"f2eecbbe4b42\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"7578d18cf028\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-ana\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e3f2ac724889\", \"f2eecbbe4b42\"], \"sealed_by\": \"ana\"}\n{\"id\": \"9599660db927\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-bo\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"6f83da8c52da\", \"aabe9c1789c4\"], \"sealed_by\": \"bo\"}\n{\"id\": \"59eee6bf6e0e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-cy\", \"attests\": [\"72e621f13f17\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"6f83da8c52da\", \"72dce1200121\"], \"sealed_by\": \"cy\"}\n{\"id\": \"8c7bd20b78f8\", \"schema\": \"decision\", \"name\": \"proj/decision/D06\", \"payload\": \"D06: accept CSV imports\", \"relies_on\": [\"1f7d1c86531d\", \"5e9296fc8821\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"1d72c269397e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-ana\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ffbfe23dc9f4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-bo\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\", \"5e9296fc8821\"], \"sealed_by\": \"bo\"}\n{\"id\": \"b1335125e5eb\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-cy\", \"attests\": [\"8c7bd20b78f8\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"cy\"}\n{\"id\": \"8aa69799ddb5\", \"schema\": \"decision\", \"name\": \"proj/decision/D07\", \"payload\": \"D07: remove the legacy importer\", \"relies_on\": [\"abd7d852409b\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"d83d61489cb7\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-ana\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a0bebdb167d4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-bo\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"abd7d852409b\", \"f2eecbbe4b42\"], \"sealed_by\": \"bo\"}\n{\"id\": \"07050c874e3a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-cy\", \"attests\": [\"8aa69799ddb5\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"cy\"}\n{\"id\": \"cbccca69da9c\", \"schema\": \"decision\", \"name\": \"proj/decision/D08\", \"payload\": \"D08: make index rebuild incremental\", \"relies_on\": [\"e1ca0ba4cda2\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"e18bb2432698\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-ana\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\", \"e1ca0ba4cda2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"2c7c10c8a9ee\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-bo\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\", \"e1ca0ba4cda2\"], \"sealed_by\": \"bo\"}\n{\"id\": \"7dcac1e53121\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-cy\", \"attests\": [\"cbccca69da9c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"b40f6c9aad72\", \"schema\": \"decision\", \"name\": \"proj/decision/D09\", \"payload\": \"D09: split the monolith's auth module\", \"relies_on\": [\"1f7d1c86531d\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"42c67dfe950c\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-ana\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1f7d1c86531d\"], \"sealed_by\": \"ana\"}\n{\"id\": \"7804c39746ff\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-bo\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"bo\"}\n{\"id\": \"b47cc7beda11\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-cy\", \"attests\": [\"b40f6c9aad72\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f2eecbbe4b42\"], \"sealed_by\": \"cy\"}\n{\"id\": \"f28cb9256e9b\", \"schema\": \"decision\", \"name\": \"proj/decision/D10\", \"payload\": \"D10: switch the parser to streaming\", \"relies_on\": [\"a62dcde348dd\", \"e1ca0ba4cda2\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"a94b230bc182\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-bo\", \"attests\": [\"f28cb9256e9b\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"c5d051b73b63\"], \"sealed_by\": \"bo\"}\n{\"id\": \"f78850e45f2a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-cy\", \"attests\": [\"f28cb9256e9b\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"55e8e92c23eb\", \"e1ca0ba4cda2\"], \"sealed_by\": \"cy\"}\n{\"id\": \"0258a82d4301\", \"schema\": \"decision\", \"name\": \"proj/decision/D11\", \"payload\": \"D11: accept TLS 1.3 only\", \"relies_on\": [\"72dce1200121\", \"a62dcde348dd\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"3b0477fbdd0d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-ana\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\"], \"sealed_by\": \"ana\"}\n{\"id\": \"19ff7a01ca34\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-bo\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"a62dcde348dd\"], \"sealed_by\": \"bo\"}\n{\"id\": \"46aeef23520b\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-cy\", \"attests\": [\"0258a82d4301\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"72dce1200121\", \"e3f2ac724889\"], \"sealed_by\": \"cy\"}\n{\"id\": \"4df72ae67639\", \"schema\": \"decision\", \"name\": \"proj/decision/D12\", \"payload\": \"D12: turn on load shedding\", \"relies_on\": [\"55e8e92c23eb\", \"5e9296fc8821\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"998ab5466bd8\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-ana\", \"attests\": [\"4df72ae67639\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"5e9296fc8821\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a6d3a0e83548\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-cy\", \"attests\": [\"4df72ae67639\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"55e8e92c23eb\", \"e3f2ac724889\"], \"sealed_by\": \"cy\"}\n{\"id\": \"79e8e41b164b\", \"schema\": \"axiom\", \"name\": \"proj/notice/G6\", \"payload\": \"G6 was found invalid\", \"invalidates\": [\"cc111bdde5c7\"], \"relies_on\": [], \"sealed_by\": \"bo\"}\n\nminds' own reading of the notice (`minds_chain.py what-if`): the gate admitted the notice on a\ncandidate commit and the lens was computed before and after it. `lost` lists every cell whose status changes, with\nits statuses before and after and what it needs that no longer stands; `held` lists the cells near the notice that\nkeep their status, with a decision's counted approvals before and after. Each row's `path` runs from the notice\nthrough the cells it depends on.\n\nlost:\n{\"id\": \"062bd2fe9124\", \"name\": \"proj/decision/D04/approved-by-cy\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"ae43c88e6460\", \"062bd2fe9124\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"ae43c88e6460\"]}}\n{\"id\": \"0f24359e17f5\", \"name\": \"proj/decision/D01\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"34d5ebe2ee16\", \"0f24359e17f5\"], \"before\": {\"settled\": true}, \"after\": {\"settled\": false}, \"needs\": {\"endorsements\": {\"threshold\": 2, \"standing\": [\"1ca4f90db4b6\"], \"fell_away\": [\"9e095a3097d3\"]}}}\n{\"id\": \"1f7d1c86531d\", \"name\": \"proj/check/K3\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"cc111bdde5c7\"]}}\n{\"id\": \"34d5ebe2ee16\", \"name\": \"proj/decision/D01/approved-by-ana\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"34d5ebe2ee16\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"]}}\n{\"id\": \"42c67dfe950c\", \"name\": \"proj/decision/D09/approved-by-ana\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"42c67dfe950c\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"]}}\n{\"id\": \"64b45765f635\", \"name\": \"proj/decision/D04\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"64b45765f635\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"], \"endorsements\": {\"threshold\": 2, \"standing\": [], \"fell_away\": [\"1ca4f90db4b6\", \"3a2c2394b6fb\", \"9e095a3097d3\"]}}}\n{\"id\": \"6d71f8f837a3\", \"name\": \"proj/decision/D04/approved-by-ana\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"6d71f8f837a3\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"]}}\n{\"id\": \"8c7bd20b78f8\", \"name\": \"proj/decision/D06\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"8c7bd20b78f8\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"3a2c2394b6fb\", \"9e095a3097d3\"], \"fell_away\": [\"1ca4f90db4b6\"]}}}\n{\"id\": \"9374903ae5e8\", \"name\": \"proj/decision/D02\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"9374903ae5e8\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"1ca4f90db4b6\", \"3a2c2394b6fb\"], \"fell_away\": []}}}\n{\"id\": \"a94b230bc182\", \"name\": \"proj/decision/D10/approved-by-bo\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"a94b230bc182\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"]}}\n{\"id\": \"ae43c88e6460\", \"name\": \"proj/check/K1\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"ae43c88e6460\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"cc111bdde5c7\"]}}\n{\"id\": \"b40f6c9aad72\", \"name\": \"proj/decision/D09\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"b40f6c9aad72\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"1ca4f90db4b6\", \"3a2c2394b6fb\"], \"fell_away\": [\"9e095a3097d3\"]}}}\n{\"id\": \"c5d051b73b63\", \"name\": \"proj/check/K10\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"cc111bdde5c7\"]}}\n{\"id\": \"cc111bdde5c7\", \"name\": \"proj/ground/G6\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\"], \"before\": {\"invalidated\": false, \"effective\": true, \"active\": true, \"settled\": true}, \"after\": {\"invalidated\": true, \"effective\": false, \"active\": false, \"settled\": false}, \"needs\": {}}\n{\"id\": \"d3d5f6c35d79\", \"name\": \"proj/decision/D04/approved-by-bo\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"d3d5f6c35d79\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"c5d051b73b63\"]}}\n{\"id\": \"d83d61489cb7\", \"name\": \"proj/decision/D07/approved-by-ana\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"d83d61489cb7\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"]}}\n{\"id\": \"e18bb2432698\", \"name\": \"proj/decision/D08/approved-by-ana\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"e18bb2432698\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"]}}\n{\"id\": \"f28cb9256e9b\", \"name\": \"proj/decision/D10\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"c5d051b73b63\", \"a94b230bc182\", \"f28cb9256e9b\"], \"before\": {\"settled\": true}, \"after\": {\"settled\": false}, \"needs\": {\"endorsements\": {\"threshold\": 2, \"standing\": [\"3a2c2394b6fb\"], \"fell_away\": [\"1ca4f90db4b6\"]}}}\n{\"id\": \"ffbfe23dc9f4\", \"name\": \"proj/decision/D06/approved-by-bo\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"ffbfe23dc9f4\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"1f7d1c86531d\"]}}\n\nheld:\n{\"id\": \"8aa69799ddb5\", \"name\": \"proj/decision/D07\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"d83d61489cb7\", \"8aa69799ddb5\"], \"endorsements\": {\"threshold\": 2, \"before\": 3, \"after\": 2}}\n{\"id\": \"cbccca69da9c\", \"name\": \"proj/decision/D08\", \"path\": [\"79e8e41b164b\", \"cc111bdde5c7\", \"1f7d1c86531d\", \"e18bb2432698\", \"cbccca69da9c\"], \"endorsements\": {\"threshold\": 2, \"before\": 3, \"after\": 2}}\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else."
+ },
+ "seed": "37c9e7998d539716d0aef22f9b678c7d7a964dc8f01382ae6d05437781bee6b5",
+ "truth": {
+  "D01": "DO_NOT_RELY",
+  "D02": "DO_NOT_RELY",
+  "D03": "RELY",
+  "D04": "DO_NOT_RELY",
+  "D05": "RELY",
+  "D06": "DO_NOT_RELY",
+  "D07": "RELY",
+  "D08": "RELY",
+  "D09": "DO_NOT_RELY",
+  "D10": "DO_NOT_RELY",
+  "D11": "RELY",
+  "D12": "RELY"
+ },
+ "whatif_digest": "68cc5d78e97f489be7702515e35c2da4fe1c8010c685088b7294f0329d5b7e77"
+}

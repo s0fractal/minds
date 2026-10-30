@@ -1,0 +1,71 @@
+{
+ "task": "h06",
+ "model": "google/gemini-3.8-flash",
+ "arm": "W",
+ "attempts": [
+  {
+   "ok": true,
+   "seconds": 11.92
+  }
+ ],
+ "response": {
+  "id": "gen-1793313848-j2kBmdnv6GFTIUiiKOXD",
+  "object": "chat.completion",
+  "created": 1793313848,
+  "model": "google/gemini-3.8-flash",
+  "provider": "Google",
+  "system_fingerprint": null,
+  "service_tier": "default",
+  "choices": [
+   {
+    "index": 0,
+    "logprobs": null,
+    "finish_reason": "stop",
+    "native_finish_reason": "STOP",
+    "message": {
+     "role": "assistant",
+     "content": "```json\n{\n  \"D01\": \"DO_NOT_RELY\",\n  \"D02\": \"DO_NOT_RELY\",\n  \"D03\": \"DO_NOT_RELY\",\n  \"D04\": \"RELY\",\n  \"D05\": \"DO_NOT_RELY\",\n  \"D06\": \"RELY\",\n  \"D07\": \"RELY\",\n  \"D08\": \"DO_NOT_RELY\",\n  \"D09\": \"RELY\",\n  \"D10\": \"DO_NOT_RELY\",\n  \"D11\": \"DO_NOT_RELY\",\n  \"D12\": \"DO_NOT_RELY\"\n}\n```",
+     "refusal": null,
+     "reasoning": "**Analyzing Decision Reliance**\n\nI'm currently evaluating each project decision (D01 to D12) to determine if it remains reliably in effect. My focus is on how checks depend on established grounds, and I'm assessing whether each decision's continued viability is sound.\n\n**Updating Decision Status**\n\nMy analysis reveals that G7's invalidation by Notice 46ded8606490 has directly impacted checks K1 and K4, causing them to fall. This has downstream implications for decisions that rely on these specific checks, which I am now re-evaluating for their current standing.\n\n**Re-evaluating Decision Validity**\n\nI'm now checking the remaining decisions. My current assessment confirms that decisions D01, D02, D03, D05, and D08 have transitioned from 'settled' to 'unsettled' states based on recent findings. I'm actively investigating the remaining decisions and their dependencies to determine their current validity.\n\n**Confirming Decision States**\n\nI've confirmed that D09 remains settled, as its dependencies and approvals are unaffected by the invalidated G7. I am now carefully verifying the remaining decisions to ascertain their current settled or unsettled status.\n\n**Validating Decision Status**\n\nI'm continuing to meticulously validate each remaining decision. My current analysis confirms that D04, D06, and D07 are indeed in force. I'm now focusing on the final decisions to complete this reassessment.\n\n",
+     "reasoning_details": [
+      {
+       "type": "reasoning.text",
+       "text": "**Analyzing Decision Reliance**\n\nI'm currently evaluating each project decision (D01 to D12) to determine if it remains reliably in effect. My focus is on how checks depend on established grounds, and I'm assessing whether each decision's continued viability is sound.\n\n**Updating Decision Status**\n\nMy analysis reveals that G7's invalidation by Notice 46ded8606490 has directly impacted checks K1 and K4, causing them to fall. This has downstream implications for decisions that rely on these specific checks, which I am now re-evaluating for their current standing.\n\n**Re-evaluating Decision Validity**\n\nI'm now checking the remaining decisions. My current assessment confirms that decisions D01, D02, D03, D05, and D08 have transitioned from 'settled' to 'unsettled' states based on recent findings. I'm actively investigating the remaining decisions and their dependencies to determine their current validity.\n\n**Confirming Decision States**\n\nI've confirmed that D09 remains settled, as its dependencies and approvals are unaffected by the invalidated G7. I am now carefully verifying the remaining decisions to ascertain their current settled or unsettled status.\n\n**Validating Decision Status**\n\nI'm continuing to meticulously validate each remaining decision. My current analysis confirms that D04, D06, and D07 are indeed in force. I'm now focusing on the final decisions to complete this reassessment.\n\n",
+       "format": "google-gemini-v1",
+       "index": 0
+      },
+      {
+       "type": "reasoning.encrypted",
+       "data": "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",
+       "format": "google-gemini-v1",
+       "index": 1
+      }
+     ]
+    }
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 10159,
+   "completion_tokens": 2366,
+   "total_tokens": 12525,
+   "cost": 0.01649175,
+   "is_byok": false,
+   "prompt_tokens_details": {
+    "cached_tokens": 0,
+    "cache_write_tokens": 0,
+    "audio_tokens": 0,
+    "video_tokens": 0
+   },
+   "cost_details": {
+    "upstream_inference_cost": 0.01649175,
+    "upstream_inference_prompt_cost": 0.00761925,
+    "upstream_inference_completions_cost": 0.0088725
+   },
+   "completion_tokens_details": {
+    "reasoning_tokens": 2194,
+    "image_tokens": 0,
+    "audio_tokens": 0
+   }
+  }
+ }
+}
