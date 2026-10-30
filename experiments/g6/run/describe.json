@@ -163,6 +163,8 @@
    "task": "h00",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 50834,
    "tail_compression": 0.002
   },
@@ -170,6 +172,8 @@
    "task": "h02",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 48808,
    "tail_compression": 0.002
   },
@@ -177,6 +181,8 @@
    "task": "h02",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "W",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 48877,
    "tail_compression": 0.002
   },
@@ -184,6 +190,8 @@
    "task": "h03",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "M",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 12350,
    "reasoning_chars": 49383,
    "tail_compression": 0.002
   },
@@ -191,6 +199,8 @@
    "task": "h04",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 48915,
    "tail_compression": 0.002
   },
@@ -198,6 +208,8 @@
    "task": "h05",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "M",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 52857,
    "tail_compression": 0.002
   },
@@ -205,6 +217,8 @@
    "task": "h07",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "M",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 53281,
    "tail_compression": 0.002
   },
@@ -212,6 +226,8 @@
    "task": "h09",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 58451,
    "tail_compression": 0.002
   },
@@ -219,6 +235,8 @@
    "task": "h10",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 49239,
    "tail_compression": 0.002
   },
@@ -226,6 +244,8 @@
    "task": "h12",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "C",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 51116,
    "tail_compression": 0.002
   },
@@ -233,6 +253,8 @@
    "task": "h13",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "M",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 49226,
    "tail_compression": 0.002
   },
@@ -240,6 +262,8 @@
    "task": "h13",
    "model": "deepseek/deepseek-v4.1-flash",
    "arm": "W",
+   "completion_tokens": 32000,
+   "reasoning_tokens": 32000,
    "reasoning_chars": 48789,
    "tail_compression": 0.002
   }

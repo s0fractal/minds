@@ -43,12 +43,15 @@ There were 14 invalid replies, 130 valid.
 | no answer | 0 | 1 | 1 | qwen: HTTP 429 on all three attempts |
 | not in the asked format | 0 | 0 | 0 | |
 
-- **Every truncated reply is a repetition loop.**
-  - Each spent all 32000 tokens on reasoning and returned no answer text.
+- **Every truncated reply ends in repetition.**
+  - Each used the whole completion cap of 32000 tokens and returned no answer text.
+  - OpenRouter reports 32000 of those tokens as reasoning for 11 of the 12. For h03 deepseek M it reports 12350.
+    That reply's reasoning text is 49383 characters long, as long as the others'. The discrepancy is OpenRouter's
+    metadata, and is kept as recorded (`run/describe.json` lists both counts for every truncated reply).
   - The last 20000 bytes of each one's reasoning compress to 0.002 of their size, against about 0.3 for the reasoning
-    of an answered reply.
-  - A higher cap would not have ended them.
-  - deepseek looped on 12 of its 48 requests.
+    of an answered reply. Those tails are repetition loops.
+  - That a higher cap would not have ended them is an inference from those tails. The run has only capped replies.
+  - deepseek stopped this way on 12 of its 48 requests.
 - **gemini answered all 48 validly.**
 
 ## Results (the frozen scorer, `run/score.json`)
@@ -139,9 +142,10 @@ Their replies are not observations. They were read only for their validity, fini
   was within the range normal replies used (up to 6592), so it was a harness defect, fixed in #41.
 - **At `c042df8`** (`smoke/`): 18 of 18 answered, $0.186. Two deepseek replies, h00 C and h01 W, stopped at the new cap
   of 32000. Every other reply used at most 7940.
-  - The two were repetition loops: their tails compress to 0.002.
-  - So this was the reader's behaviour, not a harness defect, and the confirmatory run followed at the same freeze.
-  - This was a judgement, made before the confirmatory run, from those numbers only.
+  - Their reasoning ended in repetition loops: their tails compress to 0.002.
+  - From that, I inferred that a higher cap would not have ended them, so the stops were the reader's behaviour and
+    not a harness defect. The confirmatory run followed at the same freeze.
+  - This was a judgement, made before the confirmatory run, from those numbers only. No reply was run at a higher cap.
 
 ## Deviations
 

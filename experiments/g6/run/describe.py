@@ -5,8 +5,9 @@ the verdict, which is `g6.py score`'s alone.
 
 For every arm and every model: requests, valid replies, the invalid ones by reason, mean tokens (prompt, completion,
 reasoning; over valid replies only, so a reply stopped at the cap does not count) and cost (over all replies). For
-every truncated reply: how well the last 20000 bytes of its reasoning compress (a reply in a repetition loop compresses
-to almost nothing). And every valid reply that is not right on every decision.
+every truncated reply: its completion and reasoning tokens as OpenRouter reports them, and how well the last 20000
+bytes of its reasoning compress (a reply in a repetition loop compresses to almost nothing). And every valid reply that
+is not right on every decision.
 """
 import json
 import sys
@@ -51,7 +52,8 @@ def main() -> None:
                 g["reasoning"].append(reasoning)
         if ans is None and g6.invalid_reason(rec) == "truncated":
             msg = rec["response"]["choices"][0]["message"]
-            loops.append({"task": t, "model": m, "arm": a, "reasoning_chars": len(msg.get("reasoning") or ""),
+            loops.append({"task": t, "model": m, "arm": a, "completion_tokens": usage.get("completion_tokens"),
+                          "reasoning_tokens": reasoning, "reasoning_chars": len(msg.get("reasoning") or ""),
                           "tail_compression": tail_ratio(msg.get("reasoning") or "")})
         if ans is not None and any(ans[d] != truth[d] for d in truth):
             r = g6.rates(ans, truth)
