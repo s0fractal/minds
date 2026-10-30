@@ -680,6 +680,20 @@
    ]
   },
   {
+   "id": "fold.latch-edges-author",
+   "quote": "`Endorsers_i(w)` holds at least one key of `InitialEndorsers(v)`: one initial endorser alone may supersede or retire `v`.",
+   "status": "differential",
+   "witnesses": [
+    "test:test_97_one_initial_endorser_alone_may_evict_under_v1",
+    "test:test_98_one_initial_endorser_alone_may_evict_under_v2"
+   ],
+   "mutants": [
+    "m-twin-author-any",
+    "m-kernel-author-any",
+    "m-kernel2-author-any"
+   ]
+  },
+  {
    "id": "fold.latches-grow",
    "quote": "4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.",
    "status": "proved",

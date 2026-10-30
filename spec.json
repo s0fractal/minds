@@ -673,9 +673,10 @@
   {
    "kind": "block",
    "section": 4,
-   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets\n   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V2` a waiting scope's supersedes edge is the exception (4a).\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
+   "text": "3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind\n   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` holds at least one key\n   of `InitialEndorsers(v)`: one initial endorser alone may supersede or retire `v`. Under `H_LENS_KERNEL_V2` a\n   waiting scope's supersedes edge is the exception (4a).\n3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.",
    "carries": [
-    "fold.latch-edges"
+    "fold.latch-edges",
+    "fold.latch-edges-author"
    ]
   },
   {
