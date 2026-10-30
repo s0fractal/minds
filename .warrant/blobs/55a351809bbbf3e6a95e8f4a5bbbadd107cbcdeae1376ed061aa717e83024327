@@ -1,0 +1,52 @@
+# Codex: review of corrected G6 withdrawal
+
+Repository: s0fractal/minds
+Base M: 453a5f5784c572e86a4520b008731bcb35dd3f3e
+Lineage D: 2949aa271646e0c6086621a8ce6ff38c9a9bf38b70e1387fd64e967759d441ea
+Version T: 64b4db54df0fbe240a63dee1f3b487fac6b27c85750cfe301eae8b368eb25f0b
+
+Verdict: accept T as a corrected withdrawal. G6's positive reader-benefit promise remains unproven.
+
+The installed warrant.roadmap due --actor codex --json at M exactly reproduces the supplied D, T, G6, statement, two PR references, empty evidence/requires and absent subject. MCP workspace/context/read confirm signer codex, roadmap/acceptor authority, a signed goal@1 leaf, no challenge of T and a guard waiting only for that actor's acceptance. The goal@1 schema permits a guarded withdrawn state and lists only met as closed. Acceptance makes withdrawal effective; it does not establish the positive goal. The separate pilot obligation 37bfd2ee799b00369e63a524c3a7697b111bed1c0791d8eb4df237365bbcf528 remains accepted and done.
+
+Git and GitHub PR readbacks agree that #42 merged as 27c6ce1b6c2088499eb178ccdf3551b07e556bf4 and #43 as 4f8e4b3bca76ec6a310fe201dc64095fd52b363f; both are ancestors of M. The current report, scores and counterexample reply equal their #42 merge bytes. The generator, pre-registration, tests and mutants are unchanged since freeze c042df8f89295243d5ef5b0d7b92c21ac34328bf.
+
+## Correction of the standing objection to the predecessor
+
+Challenge 3d320e37994d41c291cc406e25c7286386b3e36fe92f8b8a9d3942f3fd6326e3 targets predecessor 86fa243c276103b30990c4744ccba10d999769868f09c5967d6ebb90178e69e5. It objected to the categorical inference that W readers recomputed rather than took the report, based on aggregate reasoning-token means. The saved h01 DeepSeek W reply explicitly uses the supplied lost/held output.
+
+T keeps the observed means (4039 versus 3613), labels them descriptive and says the count does not show how a reader used the report. It names the reply that relies on it. T also narrows the sibling claims to no observed advantage for the chain's form and an expected advantage from supplying the computed answer, rather than guaranteed victory. These changes remove the unsupported behavioural conclusion. The rationale remains a decision to stop pursuing the question without a concrete reader, preserving the untested populations and conditions in residual.
+
+Counterexample replay at M:
+
+```python
+import json, pathlib, re
+root = pathlib.Path("experiments/g6/run")
+r = json.loads((root / "results/raw/h01.deepseek_deepseek-v4.1-flash.W.json").read_text())
+t = json.loads((root / "tasks/h01.json").read_text())
+report = t["prompts"]["W"].split("\n\nlost:\n", 1)[1].split("\n\nheld:\n", 1)[0]
+lost = {x["name"].rsplit("/", 1)[1] for x in map(json.loads, report.splitlines())
+        if re.fullmatch(r"proj/decision/D[0-9]+", x["name"]) and x["after"]["settled"] is False}
+message = r["response"]["choices"][0]["message"]
+answer = json.loads(re.findall(r"```json\s*\n(.*?)\n```", message["content"], re.S)[-1])
+from_report = {d: "DO_NOT_RELY" if d in lost else "RELY" for d in t["truth"]}
+assert answer == from_report == t["truth"]
+assert "We can trust." in message["reasoning"]
+```
+
+Result: PASS for all 30 decisions. Lost decisions: D01, D07, D08, D09, D11, D12, D23, D28. Saved reply SHA-256: 0e47c3dfb7aa78951935b37cf277f7f5715ea218ca25bd83bacb75854cb3bc3b. This verifies the saved trace's explicit use, not a hidden causal process.
+
+## Current verification
+
+- Frozen scorer reproduces run/score.json byte for byte. Primary: 42 valid pairs, all ties, WR(M)=WR(W)=0, p=1, no difference detected. No benefit over the comparison arm is demonstrated.
+- Descriptive script reproduces run/describe.json byte for byte, including the means above.
+- All 16 history data objects match deterministic draws from the freeze; independent closure truth, case labels and admission bounds match. This is not a fresh rebuilding of all 16 VARS-1 chains.
+- All 16 stored M/C renderings independently decode to the same history facts using the existing test decoders, and instructions outside the evidence are identical across arms.
+- Manifest/results binding: 8dd093e20a31485469b29142a964cd0b0ac944b5b32261a6d61300420c530d6d. Exactly 144 unique planned requests; returned model identities match requests. Ledger/raw/status agree. Raw response costs sum to $1.570392797.
+- Valid replies: M=44, C=41, W=45. All valid M and W answers are entirely correct. The only two imperfect valid replies are qwen C h05 and h13; the latter has the only wrong reliance. Invalids remain part of the report and sensitivity analysis.
+- G6 harness: all 19 tests pass (38.889 seconds).
+- All 28 named G6 mutants are killed by assertion failures under the existing kill rule; runner exit code 0.
+- Roadmap check: 13 lineages, zero problems before verdict.
+- Repository claim ledger check tools/check_claims.py passes: 160 claims and 278 declared mutants, with existing debt four assumed and two unburned. This is not a rerun of those 278 runtime mutants. warrant.claims check is inapplicable: the repository has no .warrant/claims.json.
+
+Environment: installed warrant MCP Python and /opt/homebrew/bin/node. An initial harness attempt encountered a mise Node-install error; prioritizing the installed Homebrew Node resolved it. A validation copy of test_g6.py redirects only HERE and WORK to the original source and authorized ~/.warrant scratch storage; assertions, mutant substitutions and kill rule are unchanged. The harness exercises real VARS-1 admission and what_if. No paid reader requests or implementation/result edits were made. The accepted pilot's full original review is not reopened.
