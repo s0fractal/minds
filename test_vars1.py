@@ -6011,6 +6011,43 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertFalse((work / ".git" / "vars" / "verify" / sha[:12] / "minds").exists(), "the checkout is removed")
         self.assertEqual((g("status", "--porcelain"), (work / "f").read_text()), ("", "one"))
 
+    def _evict_alone(self, c0: str, s0: V.Cell, rules: bytes, variable: str) -> None:
+        """§4.1 latch 3: under its evaluator policy 2 of {pk1, pk2}, a provisional contract born sealed by both is
+        superseded, or retired, by a cell sealed by one of them alone; one born sealed by pk1 alone is not superseded
+        by a cell sealed by pk2 alone. `meets InitialEndorsers` was read as holding all of them by the witness spike's
+        first test (experiments/witness), against the kernels. A build of the rules (the pinned one, or with
+        `variable` a mutant built by tools/run_mutants.py) gives the twin's statuses."""
+        a: dict[bytes, bytes] = {}
+        pol = self._pol(a, 2, [self.pk1, self.pk2])
+        x, r, y = (self._contract(a, f"core/{n}", V.H_PROVISIONAL, pol) for n in "xry")
+        c1 = self._admit(a, [x, r, y], [V.Seal.sign(sk, c.id, s0.id) for c in (x, r) for sk in (self.sk1, self.sk2)]
+                         + [V.Seal.sign(self.sk1, y.id, s0.id)], c0)
+        a = {}
+        x2 = self._contract(a, "core/x", V.H_PROVISIONAL, pol, supersedes=[x.id])
+        z = self._axiom(a, "core/z", "r is withdrawn", retires=[r.id])
+        y2 = self._contract(a, "core/y", V.H_PROVISIONAL, pol, supersedes=[y.id])
+        self._admit(a, [x2, z, y2], [V.Seal.sign(self.sk1, x2.id, s0.id), V.Seal.sign(self.sk2, z.id, s0.id),
+                                     V.Seal.sign(self.sk2, y2.id, s0.id)], c1)
+        lens = self.repo.lens("core")
+        self.assertTrue(lens["superseded"][x.id] and lens["active"][x2.id],
+                        "pk1 alone, one of x's two initial endorsers, supersedes x")
+        self.assertTrue(lens["retired"][r.id], "pk2 alone, one of r's two initial endorsers, retires r")
+        self.assertFalse(lens["superseded"][y.id] or lens["active"][y2.id],
+                         "pk2 is no initial endorser of y and alone does not meet its policy, 2 of 2")
+        module = os.environ.get(variable)
+        built = V.KernelRunner(rules, Path(module) if module else None)
+        self.addCleanup(built.close)
+        bits = built.statuses(lens)
+        for c, b in ((x, "superseded"), (x2, "active"), (r, "retired"), (y, "superseded"), (y2, "active")):
+            self.assertEqual(bits[c.id][b], lens[b][c.id], f"the build of the rules on {b} of {c.id.hex()[:12]}")
+
+    def test_97_one_initial_endorser_alone_may_evict_under_v1(self) -> None:
+        self._evict_alone(*self._genesis([self.pk1, self.pk2], 1, [self.pk1, self.pk2], 1, [self.sk1]),
+                          V.H_LENS_KERNEL, "MINDS_KERNEL_WASM")
+
+    def test_98_one_initial_endorser_alone_may_evict_under_v2(self) -> None:
+        self._evict_alone(*self._v2_genesis()[:2], V.H_LENS_KERNEL_V2, "MINDS_KERNEL2_WASM")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

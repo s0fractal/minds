@@ -2257,5 +2257,29 @@
   "kills": [
    "test_96_a_release_is_verified_against_the_chain_as_it_was_recorded"
   ]
+ },
+ "m-twin-author-any": {
+  "file": "vars1.py",
+  "find": "                        and bool(w_ends & initial_endorsers.get(vid, set()))",
+  "replace": "                        and initial_endorsers.get(vid, set()) <= w_ends",
+  "kills": [
+   "test_97_one_initial_endorser_alone_may_evict_under_v1"
+  ]
+ },
+ "m-kernel-author-any": {
+  "file": "kernel/src/lib.rs",
+  "find": "                        && g.sets.any_and(w_ends, &initial[v * kw..v * kw + kw]);",
+  "replace": "                        && g.sets.subset(&initial[v * kw..v * kw + kw], w_ends);",
+  "kills": [
+   "test_97_one_initial_endorser_alone_may_evict_under_v1"
+  ]
+ },
+ "m-kernel2-author-any": {
+  "file": "kernel2/src/lib.rs",
+  "find": "                        && g.sets.any_and(w_ends, &initial[v * kw..v * kw + kw]);",
+  "replace": "                        && g.sets.subset(&initial[v * kw..v * kw + kw], w_ends);",
+  "kills": [
+   "test_98_one_initial_endorser_alone_may_evict_under_v2"
+  ]
  }
 }

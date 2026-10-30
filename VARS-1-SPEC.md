@@ -241,8 +241,9 @@ Latches (never undone):
 2. A local custom schema cell whose `Endorsers_i` meet `S_i`'s admission policy is **Authorized**. Foreign
    acceptance and schema cells are never Authorized in `<scope>`.
 3. An edge `w → v` of kind invalidates is **authorized** if `Endorsers_i(w)` meet `Pol_i(v)`. Of kind
-   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` meets
-   `InitialEndorsers(v)`. Under `H_LENS_KERNEL_V2` a waiting scope's supersedes edge is the exception (4a).
+   supersedes or retires, also if `AuthorCanEvict(v)`, `v` is local, and `Endorsers_i(w)` holds at least one key
+   of `InitialEndorsers(v)`: one initial endorser alone may supersede or retire `v`. Under `H_LENS_KERNEL_V2` a
+   waiting scope's supersedes edge is the exception (4a).
 3b. Every new local non-scope cell satisfies §1.2 rule 6, or `T_i` is refused.
 4. A new scope cell `S'` becomes `S_{i+1}` after steps 1–3.
 4a. Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1
