@@ -119,14 +119,16 @@ is outside too. So is the live minds chain: it rotated to v2.
 
 ## Evidence
 
-`test_witness.py` holds the tests; chains are admitted through the real gate.
+`test_witness.py` holds the tests; chains are admitted through the real gate. `histories.py` generates the
+histories: a project of three maintainers whose ground fails, the generator of the withdrawn G6 pilot
+(`experiments/g6/RETIRED.md`).
 
 | test | what it checks |
 |---|---|
 | 01 | RFC 8032 vectors and vars1's own signatures verify. A changed message, S + L, a key of small order and a non-canonical y do not. |
 | 02 | `check.py` imports the standard library only, and its constants equal vars1's. |
-| 03 | Before the failure, every decision of a G6 history (S and L) gets a witness that is HELD. |
-| 04 | **Soundness, exhaustively on two G6 histories after the failure.** A decision the lens settles gets a HELD witness; one it does not gets none. No term over any subset of a decision's verdicts, each with its whole cone, is HELD for a decision the lens does not settle. There are 222 such terms. Of the 93 for lost decisions, none is HELD: 86 are NOT_COVERED (`KILL_EDGE`) and 7 REFUSED (`THRESHOLD`). Of the 129 for settled decisions, 59 are HELD, 58 REFUSED (`THRESHOLD`, one key) and 12 NOT_COVERED (a stale verdict in the subset). |
+| 03 | Before the failure, every decision of a history of each size (S and L) gets a witness that is HELD. |
+| 04 | **Soundness, exhaustively on two histories after the failure.** A decision the lens settles gets a HELD witness; one it does not gets none. No term over any subset of a decision's verdicts, each with its whole cone, is HELD for a decision the lens does not settle. There are 222 such terms. Of the 93 for lost decisions, none is HELD: 86 are NOT_COVERED (`KILL_EDGE`) and 7 REFUSED (`THRESHOLD`). Of the 129 for settled decisions, 59 are HELD, 58 REFUSED (`THRESHOLD`, one key) and 12 NOT_COVERED (a stale verdict in the subset). |
 | 05 | A lost decision cannot be passed off by leaving the fallen ground, or a stale verdict, out of the cone. |
 | 06–07 | A wrong term is refused for its own reason, including verdicts that judge or attest another decision, a NOT_ASSESSED verdict, a custom-schema cell shaped like a verdict, and a key outside the evaluator policy. |
 | 08 | Outside the fragment the answer is NOT_COVERED. A decision left not Active by an unauthorized supersedes edge is not HELD. |

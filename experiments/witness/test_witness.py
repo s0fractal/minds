@@ -26,6 +26,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 import vars1 as V  # noqa: E402
+import histories as HI  # noqa: E402
 import prove as PR  # noqa: E402
 
 
@@ -38,7 +39,6 @@ def _load(name: str, path: Path):
 
 SOURCE = Path(os.environ.get("WITNESS_SOURCE", HERE / "check.py"))
 CK = _load("witness_check", SOURCE)
-g6 = _load("g6", ROOT / "experiments" / "g6" / "g6.py")
 WORK = Path.home() / "Projects" / ".worktrees" / "witness-work"
 WORK.mkdir(parents=True, exist_ok=True)
 MEMBERS = ("ana", "bo", "cy")
@@ -156,24 +156,24 @@ def term(repo, tip, decision: bytes, verdicts, cone=None, scope=SCOPE) -> dict:
             "endorsements": [{"verdict": w.hex(), "seal": s.hex()} for w in verdicts for s in seals_on(repo, tip, w)]}
 
 
-def g6_chain(i: int):
-    """History i of the seed `witness` (S, L, S, ...), built by the G6 generator through the gate, before and after
+def history_chain(i: int):
+    """History i of the seed `witness` (S, L, S, ...), built by histories.py through the gate, before and after
     its failed ground's notice is admitted."""
     if i not in _CACHE:
-        s, size = g6.seeds("witness", i + 1)[i]
-        h = g6.history(s, size)
+        s, size = HI.seeds("witness", i + 1)[i]
+        h = HI.history(s, size)
         path = scratch()
-        ch = g6.build_chain(h, s, path)
-        repo, before = ch["repo"], ch["repo"].ref_commit(g6.SCOPE)
+        ch = HI.build_chain(h, s, path)
+        repo, before = ch["repo"], ch["repo"].ref_commit(HI.SCOPE)
         a = {}
         put = lambda raw: (a.__setitem__(V.sha256(raw), raw), V.sha256(raw))[1]  # noqa: E731
-        notice = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=put(V.atom_utf8(f"{g6.SCOPE}/notice/{h['failed']}")),
+        notice = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=put(V.atom_utf8(f"{HI.SCOPE}/notice/{h['failed']}")),
                         h_payload=put(V.atom_utf8(f"{h['failed']} was found invalid")),
                         h_invalidates=put(V.atom_hvec([ch["ids"][h["failed"]]])))
-        ctx = repo._evaluate_commit_chain(g6.SCOPE, repo.commit_chain(before))["active_scope_id"]
-        after = repo.build_candidate_commit(g6.SCOPE, a, [notice], [V.Seal.sign(g6._key(s, ch["reporter"]), notice.id, ctx)],
+        ctx = repo._evaluate_commit_chain(HI.SCOPE, repo.commit_chain(before))["active_scope_id"]
+        after = repo.build_candidate_commit(HI.SCOPE, a, [notice], [V.Seal.sign(HI._key(s, ch["reporter"]), notice.id, ctx)],
                                             parent_commit=before)
-        repo.admit_and_advance(g6.SCOPE, after, expected_old=before)
+        repo.admit_and_advance(HI.SCOPE, after, expected_old=before)
         _CACHE[i] = (h, ch, path, before, after)
     return _CACHE[i]
 
@@ -240,11 +240,11 @@ class T(unittest.TestCase):
                          (V.H_EMPTY, V.H_ATTESTED, V.H_VERDICT_INVALID, V.H_LENS_KERNEL))
 
     def test_03_before_the_failure_every_decision_is_held(self):
-        """On a G6 history of each size, every decision in force before the notice gets a witness the checker holds."""
+        """On a history of each size, every decision in force before the notice gets a witness the checker holds."""
         for i in (0, 1):
-            h, ch, path, before, _ = g6_chain(i)
+            h, ch, path, before, _ = history_chain(i)
             for d in h["decisions"]:
-                r = CK.check(str(path), PR.prove(ch["repo"], g6.SCOPE, ch["ids"][d["id"]], before))
+                r = CK.check(str(path), PR.prove(ch["repo"], HI.SCOPE, ch["ids"][d["id"]], before))
                 self.assertEqual(r["result"], "HELD", (i, d["id"], r))
 
     def test_04_after_the_failure_held_only_what_the_lens_settles(self):
@@ -253,16 +253,16 @@ class T(unittest.TestCase):
         lens does not settle."""
         seen = set()
         for i in (0, 1):
-            h, ch, path, _, after = g6_chain(i)
-            repo, lens = ch["repo"], ch["repo"].lens(g6.SCOPE)
+            h, ch, path, _, after = history_chain(i)
+            repo, lens = ch["repo"], ch["repo"].lens(HI.SCOPE)
             for dd in h["decisions"]:
                 d = ch["ids"][dd["id"]]
                 settled = bool(lens["settled"].get(d) and lens["active"].get(d) and not lens["stale"].get(d))
                 if settled:
-                    self.assertEqual(CK.check(str(path), PR.prove(repo, g6.SCOPE, d, after))["result"], "HELD", dd)
+                    self.assertEqual(CK.check(str(path), PR.prove(repo, HI.SCOPE, d, after))["result"], "HELD", dd)
                 else:
                     with self.assertRaises(PR.NotHeld):
-                        PR.prove(repo, g6.SCOPE, d, after)
+                        PR.prove(repo, HI.SCOPE, d, after)
                 vs = verdicts_on(repo, after, d)
                 for r in range(1, len(vs) + 1):
                     for sub in itertools.combinations(vs, r):
@@ -274,8 +274,8 @@ class T(unittest.TestCase):
 
     def test_05_a_term_that_hides_part_of_its_cone_is_refused(self):
         """A lost decision cannot be passed off by leaving the fallen ground or a stale verdict out of the cone."""
-        h, ch, path, _, after = g6_chain(0)
-        repo, kinds = ch["repo"], g6.kinds(h)
+        h, ch, path, _, after = history_chain(0)
+        repo, kinds = ch["repo"], HI.kinds(h)
         fallen = ch["ids"][h["failed"]]
         own = next(ch["ids"][x] for x, k in kinds.items() if k == "own")
         cone = [x for x in closure(repo, after, [own, *verdicts_on(repo, after, own)]) if x != fallen]
