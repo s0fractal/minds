@@ -173,5 +173,10 @@
   "find": "        return 3",
   "replace": "        return 1",
   "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+ },
+ "m-term-constants": {
+  "find": "object_pairs_hook=one_reading, parse_constant=not_json)",
+  "replace": "object_pairs_hook=one_reading)",
+  "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
  }
 }

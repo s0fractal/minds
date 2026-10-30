@@ -6089,7 +6089,11 @@ class TestVars1Conformance(unittest.TestCase):
         twice = text.replace('"cell": ', f'"cell": "{other}", "cell": ', 1)
         i = text.rindex('"cell": ')  # the projection's own cell, nested
         nested = text[:i] + f'"cell": "{"00" * 32}", ' + text[i:]
-        for raw in (twice.encode(), nested.encode(), b"\xff" + text.encode()):
+        # NaN and the infinities are not JSON, though Python's json reads them (Codex finding fb410499)
+        constants = [(text[:-1] + f', "extra": {x}}}').encode()
+                     for t in ("NaN", "Infinity", "-Infinity") for x in (t, f'{{"nested": {t}}}')]
+        self.assertEqual(cli("verify-attestation", (text[:-1] + ', "extra": {"nested": 1.5}}').encode(), pk)[0], 0)
+        for raw in (twice.encode(), nested.encode(), b"\xff" + text.encode(), *constants):
             for cmd, pins in (("verify-attestation", (pk,)), ("inspect-attestation", ())):
                 self.assertEqual(cli(cmd, raw, *pins), (2, {}), (cmd, raw[:40]))
         # a crash of the verifier is no verdict: it exits 3, not 1

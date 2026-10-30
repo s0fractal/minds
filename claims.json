@@ -1659,7 +1659,8 @@
     "test:test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
    ],
    "mutants": [
-    "m-verify-one-reading"
+    "m-verify-one-reading",
+    "m-verify-constants"
    ]
   },
   {
@@ -2156,7 +2157,8 @@
    "mutants": [
     "m-term-one-reading",
     "m-term-json",
-    "m-crash-code"
+    "m-crash-code",
+    "m-term-constants"
    ]
   }
  ],

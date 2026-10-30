@@ -2305,5 +2305,13 @@
   "kills": [
    "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
   ]
+ },
+ "m-verify-constants": {
+  "file": "verify/minds_verify.py",
+  "find": "    return json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading, parse_constant=not_json)",
+  "replace": "    return json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading)",
+  "kills": [
+   "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
+  ]
  }
 }

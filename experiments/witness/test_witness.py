@@ -477,6 +477,12 @@ class T(unittest.TestCase):
         self.assertEqual(cli(twice.encode()), (1, "FORMAT"))
         for raw in (text.encode()[:-1], b"\xff" + text.encode(), b"[]"):
             self.assertEqual(cli(raw), (1, "FORMAT"), raw[:8])
+        # NaN and the infinities are not JSON, though Python's json reads them (Codex finding fb410499 on #48)
+        for token in ("NaN", "Infinity", "-Infinity"):
+            for extra in (token, f'{{"nested": {token}}}'):
+                raw = (text[:-1] + f', "extra": {extra}}}').encode()
+                self.assertEqual(cli(raw), (1, "FORMAT"), raw[-40:])
+        self.assertEqual(cli((text[:-1] + ', "extra": {"nested": 1.5}}').encode()), (0, None), "a number is JSON")
         crash = CK.check_text
         CK.check_text = lambda *a: 1 // 0
         try:

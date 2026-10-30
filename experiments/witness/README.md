@@ -34,7 +34,8 @@ python3 -I experiments/witness/check.py REPO TERM.json [--scope-cell HEX]
 ```
 
 The term must read one way. A term that is not UTF-8 JSON, or whose object names a key twice, is `REFUSED`
-(`FORMAT`): Python keeps the last value of a repeated key and other readers the first, so it has no single reading.
+(`FORMAT`): Python keeps the last value of a repeated key and other readers the first, so it has no single reading;
+`NaN`, `Infinity` and `-Infinity`, which Python's json reads, are not JSON.
 Exit 0 is `HELD`, 1 `REFUSED` or `NOT_COVERED`, 2 a wrong command line; 3 is an error of the checker, which no
 verdict uses (an uncaught Python error would exit 1, the code of a refusal).
 
@@ -131,9 +132,9 @@ is outside too. So is the live minds chain: it rotated to v2.
 | 08 | Outside the fragment the answer is NOT_COVERED. A decision left not Active by an unauthorized supersedes edge is not HELD. |
 | 09 | A store the gate never saw: a seal that does not verify, a seal under another scope, bytes that do not hash to their name, a missing object, an entry outside `cas/`, a decision requiring a computation, a foreign cell. |
 | 10 | `check.py`, copied alone into an empty folder and run with `-I`, works. |
-| 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8 and one that is not an object. A crash exits 3. |
+| 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8, one that is not an object, and one holding `NaN` or an infinity, which Python's json reads and JSON does not have. A crash exits 3. |
 
-**Mutants.** `mutants.json` has one mutant per check: 35, all killed. `--mutants` runs the named tests unmutated first and
+**Mutants.** `mutants.json` has one mutant per check: 36, all killed. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 

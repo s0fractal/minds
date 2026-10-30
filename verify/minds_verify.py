@@ -1057,12 +1057,16 @@ output is checked here, not taken on its witnesses' word; then every command als
 
 def read_bundle(raw: bytes) -> object:
     """The bundle in `raw`, read one way only: an object that names a key twice has two readings (Python keeps the
-    last value, other readers the first), so it is refused rather than read by one convention."""
+    last value, other readers the first), so it is refused rather than read by one convention; so are NaN, Infinity
+    and -Infinity, which Python's json reads and JSON does not have."""
     def one_reading(pairs: List[Tuple[str, object]]) -> Dict[str, object]:
         if len({k for k, _ in pairs}) != len(pairs):
             raise VarsError("an object of the bundle names a key twice")
         return dict(pairs)
-    return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading)
+
+    def not_json(token: str) -> object:
+        raise VarsError(f"{token} is not JSON")
+    return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
 
 
 def main(argv: List[str]) -> int:

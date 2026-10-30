@@ -238,15 +238,18 @@ def _ids(xs, what: str) -> List[bytes]:
 
 
 def read_term(raw: bytes) -> object:
-    """The term in `raw`, read one way only: bytes that are not UTF-8 JSON, or an object that names a key twice, are
-    REFUSED (FORMAT)."""
+    """The term in `raw`, read one way only: bytes that are not UTF-8 JSON (Python's json would read NaN, Infinity
+    and -Infinity, which are not JSON), or an object that names a key twice, are REFUSED (FORMAT)."""
     def one_reading(pairs: List[Tuple[str, object]]) -> Dict[str, object]:
         keys = [k for k, _ in pairs]
         if len(set(keys)) != len(keys):
             raise refuse("FORMAT", "an object of the term names a key twice")
         return dict(pairs)
+
+    def not_json(token: str) -> object:
+        raise refuse("FORMAT", f"{token} is not JSON")
     try:
-        return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading)
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
     except ValueError:
         raise refuse("FORMAT", "the term is not UTF-8 JSON") from None
 
