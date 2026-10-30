@@ -2,6 +2,7 @@
 """Check a witness that a decision is Settled at a tip of a VARS-1 chain, without the lens.
 
     python3 -I check.py REPO TERM.json [--scope-cell HEX]
+    python3 -I check.py --lean REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness
 
 A witness (format `minds.witness.held@1`) is a proof term for one decision at one commit: the decision's cone (the
 cells it and its counted verdicts rely on, closed under `relies`) and seals, by distinct keys of its evaluator
@@ -36,6 +37,7 @@ H_EMPTY = bytes.fromhex("f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329
 H_ATTESTED = bytes.fromhex("7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c")
 H_VERDICT_INVALID = bytes.fromhex("b3966965c112d6d2613255fc018e34774dbc17c8517705b95946ea925b95096d")
 H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
+H_META_SCHEMA = bytes.fromhex("7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
 SCHEMA = {name: bytes.fromhex(h) for name, h in {
     "axiom": "aaf70509e078bf1f833492eb82a116e4122232d424cf1668c05a9dd25855dcda",
     "contract": "391bbd2090d93f580fe033df9109cff948d46a07db24b9db05d55dc84e84277b",
@@ -272,7 +274,9 @@ def check(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None
         return {"result": e.result, "code": e.code, "detail": e.detail}
 
 
-def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str, object]:
+def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
+    """The term's parts and the store at its tip, decoded, within the fragment: one scope (the pinned one, which the
+    term names), the v1 rules, no foreign cell. Both checkers read the store through here."""
     if not isinstance(term, dict) or term.get("format") != FORMAT or not isinstance(term.get("scope"), str):
         raise refuse("FORMAT", f"not a {FORMAT} term")
     d = _ids([term.get("decision")], "decision")[0]
@@ -301,7 +305,11 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
         raise uncovered("RULES", "the scope names rules other than v1")
     if any(cid not in STANDARD and origin(atoms, c) != term["scope"] for cid, c in cells.items()):
         raise uncovered("FOREIGN", "the store holds foreign cells")
+    return d, cone, ends, atoms, cells, seals, scopes, sc
 
+
+def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str, object]:
+    d, cone, ends, atoms, cells, seals, scopes, sc = _read(repo, term, pin)
     dc = cells.get(d)
     if dc is None or dc["schema"] not in (SCHEMA["decision"], SCHEMA["contract"]):
         raise refuse("DECISION", "not a contract or decision cell of the store")
@@ -358,14 +366,100 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
             "endorsers": sorted(k.hex() for k in counted), "cone": len(cone), "store_cells": len(cells)}
 
 
+# --- the Lean checker's input --------------------------------------------------------------------------------------
+
+LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 2, SCHEMA["decision"]: 3,
+               SCHEMA["question"]: 4, SCHEMA["verdict"]: 5, H_META_SCHEMA: 6, SCHEMA["checkpoint"]: 7,
+               SCHEMA["cycle_witness"]: 8, SCHEMA["computation"]: 9, SCHEMA["axiom"]: 10}  # anything else: 11
+
+
+def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None) -> str:
+    """The store at the term's tip and the term as a derivation, in the line `vars1witness` reads
+    (proofs/Vars1WitnessMain.lean). The decode is this file's: what `_read` refuses is refused here, and only seals that
+    verify are written. The rest is the Lean checker's to judge: the cone, the kill edges, the verdicts, the keys.
+
+    The derivation: a `stand` line per cone cell, each after the cells it relies on, whose premises are that each of
+    them stands; an `endorse` line per endorsement; and a `settle` line for the decision whose premises are that it
+    and each endorsing verdict stand and every endorsement."""
+    d, cone, ends, atoms, cells, seals, scopes, sc = _read(repo, term, scope_cell)
+    order = sorted(cells)
+    ids = {cid: i for i, cid in enumerate(order)}
+    num = lambda h: ids.setdefault(h, len(ids))  # noqa: E731  an id the store does not hold gets a number >= N
+    keys: Dict[object, int] = {}
+    key = lambda k: keys.setdefault(k, len(keys))  # noqa: E731
+    pols: Dict[bytes, int] = {}
+    pol = lambda h: pols.setdefault(h, len(pols))  # noqa: E731
+    out: List[int] = [len(order)]
+    for cid in order:
+        c = cells[cid]
+        slots = c["slots"]
+        kind = LEAN_SCHEMA.get(c["schema"], 11)
+        custom = slots[3] if kind in (2, 3) and len(slots) > 3 else slots[1] if kind == 4 and len(slots) > 1 else H_EMPTY
+        local = cid in STANDARD or origin(atoms, c) == term["scope"]
+        out += [kind, int(local), ids[c["payload"]] + 1 if c["payload"] in cells else 0,
+                0 if custom == H_EMPTY else pol(custom) + 1, int(slots[1:2] == [H_ATTESTED]),
+                int(slots[1:2] == [H_VERDICT_INVALID]), int(slots[:1] in ([], [H_EMPTY])),
+                int(kind not in (2, 3) or slots[1:2] == [H_EMPTY])]
+        for edge in EDGES:
+            items = hvec(atoms, c[edge])
+            out += [len(items), *map(num, items)]
+    pol0 = sc["slots"][0]
+    used = [pol0] + ([cells[d]["slots"][3]] if d in cells and LEAN_SCHEMA.get(cells[d]["schema"]) in (2, 3)
+                     and len(cells[d]["slots"]) > 3 and cells[d]["slots"][3] != H_EMPTY else [])
+    out += [ids[scopes[0]], pol(pol0), len(set(used))]
+    for h in dict.fromkeys(used):
+        thr, ks = policy(atoms, h)
+        out += [pol(h), thr, len(ks), *(key(k) for k in sorted(ks))]
+    good = []
+    for w, s in ends:
+        x = seals.get(s)
+        if x is not None and ed25519_verify(x["key"], x["signed"], x["signature"]):
+            good.append((num(x["target"]), num(x["ctx"]), key(x["key"])))
+    good = list(dict.fromkeys(good))
+    out += [len(good), *(n for g in good for n in g)]
+
+    stands, seen = [], set()
+
+    def visit(x: bytes) -> None:
+        if x in seen:
+            return
+        seen.add(x)
+        if x in cells:
+            for r in hvec(atoms, cells[x]["relies"]):
+                if r in cone:
+                    visit(r)
+        stands.append(x)
+    for x in sorted(cone):
+        visit(x)
+    by = [(w, seals[s]["key"] if s in seals else ("absent", s)) for w, s in ends]
+    lines = [[0, 0, num(x), *([len(hvec(atoms, cells[x]["relies"]))] + [n for r in hvec(atoms, cells[x]["relies"])
+                                                                         for n in (0, num(r))]
+                              if x in cells else [0])] for x in stands]
+    lines += [[1, 1, num(w), key(k), 0] for w, k in by]
+    prem = [[0, num(d)]] + [p for w, k in by for p in ([0, num(w)], [1, num(w), key(k)])]
+    lines.append([2, 2, num(d), len(prem), *(n for p in prem for n in p)])
+    out += [len(lines), *(n for ln in lines for n in ln), num(d)]
+    return " ".join(map(str, out))
+
+
 def main(argv: List[str]) -> int:
+    lean = argv[:1] == ["--lean"]
+    argv = argv[1:] if lean else argv
     if len(argv) not in (2, 4) or (len(argv) == 4 and (argv[2] != "--scope-cell"
                                                        or not re.fullmatch(r"[0-9a-f]{64}", argv[3]))):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
     try:
         with open(argv[1], "rb") as f:
-            out = check_text(argv[0], f.read(), bytes.fromhex(argv[3]) if len(argv) == 4 else None)
+            raw, pin = f.read(), bytes.fromhex(argv[3]) if len(argv) == 4 else None
+        if lean:
+            try:
+                print(lean_line(argv[0], read_term(raw), pin))
+                return 0
+            except Refused as e:
+                out = {"result": e.result, "code": e.code, "detail": e.detail}
+        else:
+            out = check_text(argv[0], raw, pin)
     except Exception as e:  # a crash is not a verdict: Python would exit 1, which reads as REFUSED
         print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
         return 3

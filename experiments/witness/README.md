@@ -20,7 +20,8 @@ Here the term is the decision's **cone** together with its **endorsements**:
   the decision.
 
 `prove.py` makes such a term from the lens. `check.py` checks it at a commit and answers `HELD`, `REFUSED` or
-`NOT_COVERED`. `check.py` uses no code of minds:
+`NOT_COVERED`. A checker written in Lean checks the same term as a derivation, and its acceptance carries a theorem
+(The Lean checker, below). `check.py` uses no code of minds:
 - its constants are the spec's tables;
 - its parsers and its Ed25519 check are its own;
 - it uses the standard library only.
@@ -31,6 +32,7 @@ a closed-world assumption.
 
 ```
 python3 -I experiments/witness/check.py REPO TERM.json [--scope-cell HEX]
+python3 -I experiments/witness/check.py --lean REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness
 ```
 
 The term must read one way. A term that is not UTF-8 JSON, or whose object names a key twice, is `REFUSED`
@@ -47,7 +49,8 @@ verdict uses (an uncaught Python error would exit 1, the code of a refusal).
 ## What HELD establishes
 
 `HELD` means that the decision is Settled at the tip under the v1 rules, provided the store at the tip is that scope's
-admitted chain. The argument below follows §4.2. It is prose, not a proof; test 04 checks it.
+admitted chain. The argument below follows §4.2. For `check.py` it is prose, which test 04 checks; for the Lean
+checker it is a theorem.
 
 1. **Every cone cell is Active.**
    - It is local, so it is Accepted.
@@ -77,7 +80,43 @@ no second scope and no foreign cell. `check.py` runs no gate: that the tip is th
 **One gate rule is relied on, not rechecked.** Evaluator keys lie within the admission roster (§3 step 3). So a seal
 by an evaluator key is an admitted endorsement.
 
-## The fragment
+## The Lean checker
+
+`proofs/Vars1/Witness.lean` holds a checker, `accepts`, and a theorem, `witness_sound`: if `accepts` holds for a
+derivation, the model of §4.2 (`proofs/Vars1`) holds its decision `Settled` at the tip. The checker is compiled as
+`vars1witness` (`lake build vars1witness`). It depends on the axioms `propext` and `Quot.sound` only.
+
+A derivation is a list of lines. Each names its rule, its conclusion and its premises, and every premise is the
+conclusion of an earlier line, as in open-ontologies' `OOCert.horn_certificate_sound`.
+
+| rule | concludes | checks |
+|---|---|---|
+| `stand c` | `c` stands (`Active`, not `Stale`) | `c` is a local cell of the store; no cell of the store invalidates, retires or supersedes it; it supersedes nothing; its premises are exactly that each cell it relies on stands |
+| `endorse w k` | `k` is among `w`'s endorsers | a seal of the store on the local cell `w`, under the scope cell, by `k`, a key of the admission roster |
+| `settle d` | `d` is `Settled` | `d` is a contract or decision that requires no computation and no INVALID verdict of the store judges; `d` stands; each endorsement among its premises is on a standing ATTESTED verdict, with an empty witness slot, that judges and attests `d`, by a key of `d`'s evaluator policy; the distinct keys meet its threshold |
+
+`check.py --lean` writes the line `vars1witness` reads: the store at the tip, decoded by `check.py`, and the term as
+a derivation. The decoder writes a `stand` line per cone cell, after the cells it relies on, an `endorse` line per
+endorsement and one `settle` line. It writes only the seals that verify. The Lean checker answers `ACCEPT` or `REJECT`.
+
+**What the theorem assumes** (`Pin`, hypotheses, not axioms):
+- **The decode is faithful.** On every cell of the store, the model agrees with what `check.py` decoded in the
+  fields the checker reads. A cell is present exactly when the store holds it. A decoded policy meets its quorum with
+  threshold many distinct keys.
+  Hashes, the cell layout and the signatures are `check.py`'s. They are tested, not proved.
+- **The store at the tip is the admitted chain.** This is the reader's pin, as for `check.py`, and it has these parts:
+  - the Pass 1 equations hold;
+  - an edge latches only from a present cell (`edge_present` proves this of the fold);
+  - `Stale` satisfies the Pass 2 equation (`stale_pin` proves this of the model's `Stale`);
+  - a verified seal under the scope cell, by a roster key, on a local cell is among that cell's cumulative
+    endorsers (§4.1).
+
+The proof never uses that `Stale` is the least fixed point. Each cell that stands is proved not stale from the cells
+it relies on, which earlier lines conclude. So soundness holds for any solution of the Pass 2 equation.
+
+The Lean checker checks two things that `check.py` leaves to the gate: a counted verdict's witness slot is empty, and
+an endorsing key is in the admission roster. On an admitted chain both hold, so the two checkers do not differ there.
+
 
 Outside the fragment the answer is `NOT_COVERED` and never `HELD`: there, the lens decides.
 
@@ -119,7 +158,9 @@ is outside too. So is the live minds chain: it rotated to v2.
 
 ## Evidence
 
-`test_witness.py` holds the tests; chains are admitted through the real gate. `histories.py` generates the
+`test_witness.py` holds the tests; chains are admitted through the real gate. Every check in tests 03–09 runs both
+checkers on the same term and requires that `vars1witness` answers `ACCEPT` exactly when `check.py` answers `HELD`. It
+does so wherever the Lean checker is built, and fails where `MINDS_REQUIRE_LEAN=1` and it is not, as in CI. `histories.py` generates the
 histories: a project of three maintainers whose ground fails, the generator of the withdrawn G6 pilot
 (`experiments/g6/RETIRED.md`).
 
@@ -136,7 +177,9 @@ histories: a project of three maintainers whose ground fails, the generator of t
 | 10 | `check.py`, copied alone into an empty folder and run with `-I`, works. |
 | 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8, one that is not an object, and one holding `NaN` or an infinity, which Python's json reads and JSON does not have. A crash exits 3. |
 
-**Mutants.** `mutants.json` has one mutant per check: 36, all killed. `--mutants` runs the named tests unmutated first and
+**Mutants.** `mutants.json` has one mutant per check: 40, all killed. Four of them break the decode that `check.py
+--lean` writes: kill edges dropped, INVALID verdicts not marked, seals written without verifying, a seal's scope
+replaced. The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 
@@ -156,21 +199,19 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
   audited. Weak keys are refused by `[8]A = 0`.
 - **The guards on a forged store's object layout** (cell length, HVEC order, POL1 bounds, UTF8) keep the checker
   total. They are not claims and no mutant burns them.
-- **A proof of soundness.** Nothing here is proved in Lean. The argument above is prose; test 04 checks it on two
-  histories.
+- **A proof of `check.py`.** Its soundness is tested, not proved. What is proved is the Lean checker, and only given
+  `Pin`. The decode that both checkers read the store through (hashes, layout, Ed25519) is Python, tested and not
+  proved.
 - **The cost of a check.** The check is linear in the store, not in the term: the term is short, but its negative part
   reads everything.
 
 ## What would take it further (not done)
 
-`ASSURANCE.md` carries what this spike establishes as two claims (`assurance.witness-held`,
-`assurance.witness-one-reading`). Roadmap goal G7 is the first item below.
+`ASSURANCE.md` carries what this spike establishes as three claims: `assurance.witness-held` and
+`assurance.witness-one-reading` (tested), and `assurance.witness-lean` (proved; roadmap G7).
 
-- **A proof of soundness.** A checker written in Lean, run as the checker, with a theorem: if it accepts a term, then
-  the decision is Settled at the tip under a Lean model of §4.2. open-ontologies' `OOCert.horn_certificate_sound` is
-  the template. Its certificate is one line per step: the rule, the conclusion and the premises, each of them
-  asserted or concluded by an earlier line. The positive part here is of that form: closure under `relies`, plus a
-  count of distinct keys against a threshold. `assurance.witness-held` would then be `proved`.
+- **The decode in Lean.** `vars1witness` reads what `check.py` decoded. Reading the git tree, hashing (Book I's
+  `SigmaEval/Sha256.lean`) and parsing cells in Lean would leave Ed25519 as the only part of the decode outside it.
 
 - **The negative part as data.** A projection's kernel input already commits, by a witnessed digest, to every cell
   and seal at its tip. Read from there instead of a git store, the absences would rest on the projection's witnesses

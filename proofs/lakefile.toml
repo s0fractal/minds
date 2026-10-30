@@ -35,3 +35,9 @@ root = "Vars1CycleMain"
 [[lean_exe]]
 name = "vars1mask"
 root = "Vars1MaskMain"
+
+# The witness checker (Vars1/Witness.lean `accepts`, proved sound as `witness_sound`) compiled: it reads a store and a
+# derivation from experiments/witness/check.py --lean and answers ACCEPT or REJECT.
+[[lean_exe]]
+name = "vars1witness"
+root = "Vars1WitnessMain"

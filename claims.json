@@ -2160,6 +2160,26 @@
     "m-crash-code",
     "m-term-constants"
    ]
+  },
+  {
+   "id": "assurance.witness-lean",
+   "source": "ASSURANCE.md",
+   "quote": "`vars1witness` answers `ACCEPT` for a derivation only if the model of §4.2 holds its decision `Settled` at the tip",
+   "status": "proved",
+   "witnesses": [
+    "lean:witness_sound",
+    "lean:edge_present",
+    "lean:stale_pin",
+    "witness:test_04_after_the_failure_held_only_what_the_lens_settles",
+    "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
+    "witness:test_09_the_store_is_read_from_bytes"
+   ],
+   "mutants": [
+    "m-lean-kill-edges",
+    "m-lean-invalid",
+    "m-lean-seal-verify",
+    "m-lean-seal-ctx"
+   ]
   }
  ],
  "informative": [

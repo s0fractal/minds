@@ -39,11 +39,30 @@ def _load(name: str, path: Path):
 
 SOURCE = Path(os.environ.get("WITNESS_SOURCE", HERE / "check.py"))
 CK = _load("witness_check", SOURCE)
+LEAN = ROOT / "proofs" / ".lake" / "build" / "bin" / "vars1witness"
 WORK = Path.home() / "Projects" / ".worktrees" / "witness-work"
 WORK.mkdir(parents=True, exist_ok=True)
 MEMBERS = ("ana", "bo", "cy")
 SCOPE = "proj"
 _CACHE = {}
+
+
+def held(path, term, pin=None):
+    """check.py's answer on a term. Where the Lean checker is built, and wherever MINDS_REQUIRE_LEAN=1, the same term
+    also goes through `check.py --lean` to `vars1witness`, and the two must agree: ACCEPT exactly when HELD."""
+    r = CK.check(str(path), term, pin)
+    if LEAN.exists() or os.environ.get("MINDS_REQUIRE_LEAN") == "1":
+        assert LEAN.exists(), "MINDS_REQUIRE_LEAN=1, but proofs/.lake/build/bin/vars1witness is not built"
+        try:
+            line = CK.lean_line(str(path), term, pin)
+        except CK.Refused:
+            lean = "REFUSED"
+        else:
+            lean = subprocess.run([str(LEAN)], input=line + "\n", capture_output=True, text=True,
+                                  check=True).stdout.strip()
+        assert lean in ("ACCEPT", "REJECT", "REFUSED"), lean
+        assert (lean == "ACCEPT") == (r["result"] == "HELD"), f"Lean {lean}, check.py {r}"
+    return r
 
 
 def scratch() -> Path:
@@ -130,7 +149,7 @@ class Chain:
         return g, k, d, vs
 
     def check(self, term, pin=None):
-        return CK.check(str(self.path), term, pin)
+        return held(self.path, term, pin)
 
 
 def seals_on(repo: V.GitVarsRepo, tip: str, cid: bytes):
@@ -236,15 +255,15 @@ class T(unittest.TestCase):
         self.assertLessEqual(mods, {"hashlib", "json", "re", "subprocess", "sys", "typing"})
         self.assertEqual(CK.SCHEMA, {k: V.H_SCHEMA[k] for k in CK.SCHEMA})
         self.assertEqual(CK.STANDARD, {c.id for c in V.STD_SCHEMAS.values()})
-        self.assertEqual((CK.H_EMPTY, CK.H_ATTESTED, CK.H_VERDICT_INVALID, CK.H_LENS_KERNEL),
-                         (V.H_EMPTY, V.H_ATTESTED, V.H_VERDICT_INVALID, V.H_LENS_KERNEL))
+        self.assertEqual((CK.H_EMPTY, CK.H_ATTESTED, CK.H_VERDICT_INVALID, CK.H_LENS_KERNEL, CK.H_META_SCHEMA),
+                         (V.H_EMPTY, V.H_ATTESTED, V.H_VERDICT_INVALID, V.H_LENS_KERNEL, V.H_META_SCHEMA))
 
     def test_03_before_the_failure_every_decision_is_held(self):
         """On a history of each size, every decision in force before the notice gets a witness the checker holds."""
         for i in (0, 1):
             h, ch, path, before, _ = history_chain(i)
             for d in h["decisions"]:
-                r = CK.check(str(path), PR.prove(ch["repo"], HI.SCOPE, ch["ids"][d["id"]], before))
+                r = held(path, PR.prove(ch["repo"], HI.SCOPE, ch["ids"][d["id"]], before))
                 self.assertEqual(r["result"], "HELD", (i, d["id"], r))
 
     def test_04_after_the_failure_held_only_what_the_lens_settles(self):
@@ -259,14 +278,14 @@ class T(unittest.TestCase):
                 d = ch["ids"][dd["id"]]
                 settled = bool(lens["settled"].get(d) and lens["active"].get(d) and not lens["stale"].get(d))
                 if settled:
-                    self.assertEqual(CK.check(str(path), PR.prove(repo, HI.SCOPE, d, after))["result"], "HELD", dd)
+                    self.assertEqual(held(path, PR.prove(repo, HI.SCOPE, d, after))["result"], "HELD", dd)
                 else:
                     with self.assertRaises(PR.NotHeld):
                         PR.prove(repo, HI.SCOPE, d, after)
                 vs = verdicts_on(repo, after, d)
                 for r in range(1, len(vs) + 1):
                     for sub in itertools.combinations(vs, r):
-                        out = CK.check(str(path), term(repo, after, d, sub))
+                        out = held(path, term(repo, after, d, sub))
                         seen.add((out["result"], out.get("code")))
                         if out["result"] == "HELD":
                             self.assertTrue(settled, (i, dd["id"], out))
@@ -279,13 +298,13 @@ class T(unittest.TestCase):
         fallen = ch["ids"][h["failed"]]
         own = next(ch["ids"][x] for x, k in kinds.items() if k == "own")
         cone = [x for x in closure(repo, after, [own, *verdicts_on(repo, after, own)]) if x != fallen]
-        r = CK.check(str(path), term(repo, after, own, verdicts_on(repo, after, own), cone=cone))
+        r = held(path, term(repo, after, own, verdicts_on(repo, after, own), cone=cone))
         self.assertEqual((r["result"], r.get("code")), ("REFUSED", "CONE_OPEN"))
         lost = next(ch["ids"][x] for x, k in kinds.items() if k == "approvals")
         vs = verdicts_on(repo, after, lost)
-        r = CK.check(str(path), term(repo, after, lost, vs, cone=closure(repo, after, [lost])))
+        r = held(path, term(repo, after, lost, vs, cone=closure(repo, after, [lost])))
         self.assertEqual((r["result"], r.get("code")), ("REFUSED", "CONE_OPEN"), "a stale verdict outside the cone")
-        r = CK.check(str(path), term(repo, after, own, verdicts_on(repo, after, own)))
+        r = held(path, term(repo, after, own, verdicts_on(repo, after, own)))
         self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "KILL_EDGE"), "the whole cone holds the fallen ground")
 
     def test_06_a_wrong_term_is_refused_for_its_reason(self):

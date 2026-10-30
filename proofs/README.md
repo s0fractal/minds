@@ -8,6 +8,7 @@ lake build              # library Vars1
 lake build vars1exec    # the executable lens, compiled (used by test_vars1_props.py, invariant I9)
 lake build vars1fold    # the model's own fold, compiled (invariant I10)
 lake build vars1cycle   # the model's cycle checker, compiled (invariant I12)
+lake build vars1witness # the witness checker, compiled (experiments/witness: every check runs it too)
 lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (three files copied in SigmaEval/)
 ```
 
@@ -39,6 +40,8 @@ and, for some theorems, `Classical.choice`.
 | | `book_cycle_no_normal_form` | for Book I: an accepted cycle witness means `_run` of `EvalMachine.step` from the start, at any budget, stops at a term that is a normal form at no budget (no Book I term with a state cycle is known) |
 | `ExecProof.lean` | `pass1_correct` | the executable Pass 1 (`Exec.lean`) satisfies `IsPass1`, and its `sup`/`act` bits are the model's `Superseded`/`Active`, on the world its facts describe |
 | | `stale_correct` | the executable Pass 2 is the model's `Stale = lfp Φ` |
+| `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
+| | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
 
 ## Executable lens
 
