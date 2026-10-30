@@ -1,0 +1,535 @@
+{
+ "history": {
+  "approvals": [
+   {
+    "by": "ana",
+    "decision": "D01",
+    "relies": [
+     "K4",
+     "K12"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D01",
+    "relies": [
+     "K1",
+     "K11"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D01",
+    "relies": [
+     "K2"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D02",
+    "relies": [
+     "K8"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D02",
+    "relies": [
+     "K8"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D03",
+    "relies": [
+     "K2"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D03",
+    "relies": [
+     "K1",
+     "K11"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D04",
+    "relies": [
+     "K3",
+     "K14"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D04",
+    "relies": [
+     "K4"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D05",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D05",
+    "relies": [
+     "K9"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D06",
+    "relies": [
+     "K12"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D06",
+    "relies": [
+     "K11",
+     "K14"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D06",
+    "relies": [
+     "K2",
+     "K13"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D07",
+    "relies": [
+     "K5"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D07",
+    "relies": [
+     "K3"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D07",
+    "relies": [
+     "K2",
+     "K5"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D08",
+    "relies": [
+     "K7",
+     "K8"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D08",
+    "relies": [
+     "K2"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D08",
+    "relies": [
+     "K1",
+     "K5"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D09",
+    "relies": [
+     "K11",
+     "K12"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D09",
+    "relies": [
+     "K6"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D10",
+    "relies": [
+     "K6"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D10",
+    "relies": [
+     "K3"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D10",
+    "relies": [
+     "K4"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D11",
+    "relies": [
+     "K7"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D11",
+    "relies": [
+     "K13"
+    ]
+   },
+   {
+    "by": "ana",
+    "decision": "D12",
+    "relies": [
+     "K13"
+    ]
+   },
+   {
+    "by": "bo",
+    "decision": "D12",
+    "relies": [
+     "K10"
+    ]
+   },
+   {
+    "by": "cy",
+    "decision": "D12",
+    "relies": [
+     "K2",
+     "K8"
+    ]
+   }
+  ],
+  "checks": [
+   {
+    "by": "ana",
+    "id": "K1",
+    "name": "failover-drill",
+    "rests": [
+     "G2"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K2",
+    "name": "latency-p99",
+    "rests": [
+     "G7"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K3",
+    "name": "disk-full",
+    "rests": [
+     "G7"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K4",
+    "name": "backup-restore",
+    "rests": [
+     "G1",
+     "G2"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K5",
+    "name": "unicode-names",
+    "rests": [
+     "G2",
+     "G3"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K6",
+    "name": "memory-ceiling",
+    "rests": [
+     "G5"
+    ]
+   },
+   {
+    "by": "bo",
+    "id": "K7",
+    "name": "export-roundtrip",
+    "rests": [
+     "G4",
+     "G5"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K8",
+    "name": "schema-migration",
+    "rests": [
+     "G6"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K9",
+    "name": "load-shedding",
+    "rests": [
+     "G3"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K10",
+    "name": "crash-recovery",
+    "rests": [
+     "G1",
+     "G3"
+    ]
+   },
+   {
+    "by": "cy",
+    "id": "K11",
+    "name": "auth-regression",
+    "rests": [
+     "G4"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K12",
+    "name": "upgrade-in-place",
+    "rests": [
+     "G6",
+     "G7"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K13",
+    "name": "clock-skew",
+    "rests": [
+     "G4"
+    ]
+   },
+   {
+    "by": "ana",
+    "id": "K14",
+    "name": "api-compat-v2",
+    "rests": [
+     "G1",
+     "G4"
+    ]
+   }
+  ],
+  "decisions": [
+   {
+    "by": "ana",
+    "id": "D01",
+    "rests": [
+     "K2"
+    ],
+    "title": "enable read replicas"
+   },
+   {
+    "by": "ana",
+    "id": "D02",
+    "rests": [
+     "K8",
+     "K11"
+    ],
+    "title": "move backups to hourly"
+   },
+   {
+    "by": "ana",
+    "id": "D03",
+    "rests": [
+     "K2"
+    ],
+    "title": "rotate the signing key yearly"
+   },
+   {
+    "by": "cy",
+    "id": "D04",
+    "rests": [
+     "K3",
+     "K4"
+    ],
+    "title": "ship the export API"
+   },
+   {
+    "by": "bo",
+    "id": "D05",
+    "rests": [
+     "K7",
+     "K9"
+    ],
+    "title": "raise the connection limit"
+   },
+   {
+    "by": "ana",
+    "id": "D06",
+    "rests": [
+     "K12",
+     "K13"
+    ],
+    "title": "raise the burst rate limit"
+   },
+   {
+    "by": "bo",
+    "id": "D07",
+    "rests": [
+     "K3",
+     "K5"
+    ],
+    "title": "store times in UTC"
+   },
+   {
+    "by": "cy",
+    "id": "D08",
+    "rests": [
+     "K2",
+     "K8"
+    ],
+    "title": "compress archived logs"
+   },
+   {
+    "by": "cy",
+    "id": "D09",
+    "rests": [
+     "K1"
+    ],
+    "title": "adopt libfoo 3.3"
+   },
+   {
+    "by": "ana",
+    "id": "D10",
+    "rests": [
+     "K7",
+     "K9"
+    ],
+    "title": "enable crash-safe writes"
+   },
+   {
+    "by": "cy",
+    "id": "D11",
+    "rests": [
+     "K7",
+     "K12"
+    ],
+    "title": "merge the billing service"
+   },
+   {
+    "by": "ana",
+    "id": "D12",
+    "rests": [
+     "K5",
+     "K10"
+    ],
+    "title": "make index rebuild incremental"
+   }
+  ],
+  "failed": "G2",
+  "grounds": [
+   {
+    "by": "bo",
+    "id": "G1",
+    "name": "bench machine `bench-a`",
+    "text": "measured and pinned as the benchmark host"
+   },
+   {
+    "by": "ana",
+    "id": "G2",
+    "name": "fixture `fx-22`",
+    "text": "recorded from the production database"
+   },
+   {
+    "by": "ana",
+    "id": "G3",
+    "name": "audit of `libbar-1.9`",
+    "text": "a security audit found no open issue in the library"
+   },
+   {
+    "by": "ana",
+    "id": "G4",
+    "name": "audit of `libfoo-3.3`",
+    "text": "a security audit found no open issue in the library"
+   },
+   {
+    "by": "bo",
+    "id": "G5",
+    "name": "dataset `users-2026Q3`",
+    "text": "its checksum matched the warehouse export"
+   },
+   {
+    "by": "bo",
+    "id": "G6",
+    "name": "bench machine `bench-c`",
+    "text": "measured and pinned as the benchmark host"
+   },
+   {
+    "by": "ana",
+    "id": "G7",
+    "name": "toolchain `llvm-22`",
+    "text": "built from source; its hash matched the published one"
+   }
+  ],
+  "size": "S"
+ },
+ "kinds": {
+  "D01": "approvals",
+  "D02": "untouched",
+  "D03": "approvals",
+  "D04": "own",
+  "D05": "untouched",
+  "D06": "untouched",
+  "D07": "own",
+  "D08": "margin",
+  "D09": "own",
+  "D10": "margin",
+  "D11": "untouched",
+  "D12": "own"
+ },
+ "prompts": {
+  "C": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's minds chain (refs/vars/heads/proj): every cell it holds, in the order admitted, each\nsealed by the maintainer named. Cells refer to each other by id (the first 12 hex digits of the cell's hash). An axiom\nis a ground or a check; `relies_on` lists the cells it rests on. A decision lists the checks it rests on in\n`relies_on`; its evaluators are 2 of ana, bo, cy. A verdict is an approval: it `attests` the decision it approves and\n`relies_on` the checks its maintainer ran. The last cell is the notice: it `invalidates` the ground found invalid.\n\n{\"id\": \"1da8e0c46e17\", \"schema\": \"axiom\", \"name\": \"proj/ground/G1\", \"payload\": \"bench machine `bench-a`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"d3f8c1a94930\", \"schema\": \"axiom\", \"name\": \"proj/ground/G2\", \"payload\": \"fixture `fx-22`: recorded from the production database\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"5d73fef9bfd9\", \"schema\": \"axiom\", \"name\": \"proj/ground/G3\", \"payload\": \"audit of `libbar-1.9`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"400a2e3b6350\", \"schema\": \"axiom\", \"name\": \"proj/ground/G4\", \"payload\": \"audit of `libfoo-3.3`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"87f2203fb7c4\", \"schema\": \"axiom\", \"name\": \"proj/ground/G5\", \"payload\": \"dataset `users-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"d35212a38c24\", \"schema\": \"axiom\", \"name\": \"proj/ground/G6\", \"payload\": \"bench machine `bench-c`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"a0ce84142c10\", \"schema\": \"axiom\", \"name\": \"proj/ground/G7\", \"payload\": \"toolchain `llvm-22`: built from source; its hash matched the published one\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"03168964cdc9\", \"schema\": \"axiom\", \"name\": \"proj/check/K1\", \"payload\": \"`failover-drill` passed\", \"relies_on\": [\"d3f8c1a94930\"], \"sealed_by\": \"ana\"}\n{\"id\": \"f4ca352f4bd7\", \"schema\": \"axiom\", \"name\": \"proj/check/K2\", \"payload\": \"`latency-p99` passed\", \"relies_on\": [\"a0ce84142c10\"], \"sealed_by\": \"ana\"}\n{\"id\": \"64d0bb0c1106\", \"schema\": \"axiom\", \"name\": \"proj/check/K3\", \"payload\": \"`disk-full` passed\", \"relies_on\": [\"a0ce84142c10\"], \"sealed_by\": \"ana\"}\n{\"id\": \"70224190c76c\", \"schema\": \"axiom\", \"name\": \"proj/check/K4\", \"payload\": \"`backup-restore` passed\", \"relies_on\": [\"1da8e0c46e17\", \"d3f8c1a94930\"], \"sealed_by\": \"bo\"}\n{\"id\": \"dc944fbfe053\", \"schema\": \"axiom\", \"name\": \"proj/check/K5\", \"payload\": \"`unicode-names` passed\", \"relies_on\": [\"5d73fef9bfd9\", \"d3f8c1a94930\"], \"sealed_by\": \"ana\"}\n{\"id\": \"47518cb66fb1\", \"schema\": \"axiom\", \"name\": \"proj/check/K6\", \"payload\": \"`memory-ceiling` passed\", \"relies_on\": [\"87f2203fb7c4\"], \"sealed_by\": \"ana\"}\n{\"id\": \"1a7e14b662bc\", \"schema\": \"axiom\", \"name\": \"proj/check/K7\", \"payload\": \"`export-roundtrip` passed\", \"relies_on\": [\"400a2e3b6350\", \"87f2203fb7c4\"], \"sealed_by\": \"bo\"}\n{\"id\": \"84e6ad22f5e9\", \"schema\": \"axiom\", \"name\": \"proj/check/K8\", \"payload\": \"`schema-migration` passed\", \"relies_on\": [\"d35212a38c24\"], \"sealed_by\": \"cy\"}\n{\"id\": \"604a363d2901\", \"schema\": \"axiom\", \"name\": \"proj/check/K9\", \"payload\": \"`load-shedding` passed\", \"relies_on\": [\"5d73fef9bfd9\"], \"sealed_by\": \"cy\"}\n{\"id\": \"890d8b8e392d\", \"schema\": \"axiom\", \"name\": \"proj/check/K10\", \"payload\": \"`crash-recovery` passed\", \"relies_on\": [\"1da8e0c46e17\", \"5d73fef9bfd9\"], \"sealed_by\": \"ana\"}\n{\"id\": \"3a737a51a24b\", \"schema\": \"axiom\", \"name\": \"proj/check/K11\", \"payload\": \"`auth-regression` passed\", \"relies_on\": [\"400a2e3b6350\"], \"sealed_by\": \"cy\"}\n{\"id\": \"10f3b52fecd2\", \"schema\": \"axiom\", \"name\": \"proj/check/K12\", \"payload\": \"`upgrade-in-place` passed\", \"relies_on\": [\"a0ce84142c10\", \"d35212a38c24\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ff18f6c0c1b5\", \"schema\": \"axiom\", \"name\": \"proj/check/K13\", \"payload\": \"`clock-skew` passed\", \"relies_on\": [\"400a2e3b6350\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a910df3c34b8\", \"schema\": \"axiom\", \"name\": \"proj/check/K14\", \"payload\": \"`api-compat-v2` passed\", \"relies_on\": [\"1da8e0c46e17\", \"400a2e3b6350\"], \"sealed_by\": \"ana\"}\n{\"id\": \"2960f40c3622\", \"schema\": \"decision\", \"name\": \"proj/decision/D01\", \"payload\": \"D01: enable read replicas\", \"relies_on\": [\"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"f5bb445493a9\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-ana\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\", \"70224190c76c\"], \"sealed_by\": \"ana\"}\n{\"id\": \"cc7d0f8bdce3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-bo\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"3a737a51a24b\"], \"sealed_by\": \"bo\"}\n{\"id\": \"2a4e223b82dc\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-cy\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"1a399f3a62ae\", \"schema\": \"decision\", \"name\": \"proj/decision/D02\", \"payload\": \"D02: move backups to hourly\", \"relies_on\": [\"3a737a51a24b\", \"84e6ad22f5e9\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"9b63fd7dde0d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-bo\", \"attests\": [\"1a399f3a62ae\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\"], \"sealed_by\": \"bo\"}\n{\"id\": \"ecf3bde99beb\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-cy\", \"attests\": [\"1a399f3a62ae\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\"], \"sealed_by\": \"cy\"}\n{\"id\": \"e906c300e337\", \"schema\": \"decision\", \"name\": \"proj/decision/D03\", \"payload\": \"D03: rotate the signing key yearly\", \"relies_on\": [\"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"5d9f0ef51fc6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-ana\", \"attests\": [\"e906c300e337\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"ana\"}\n{\"id\": \"db9dc0cb6ad6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-cy\", \"attests\": [\"e906c300e337\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"3a737a51a24b\"], \"sealed_by\": \"cy\"}\n{\"id\": \"51a05d262acc\", \"schema\": \"decision\", \"name\": \"proj/decision/D04\", \"payload\": \"D04: ship the export API\", \"relies_on\": [\"64d0bb0c1106\", \"70224190c76c\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"3637ba2d192e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-ana\", \"attests\": [\"51a05d262acc\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\", \"a910df3c34b8\"], \"sealed_by\": \"ana\"}\n{\"id\": \"18a5bd3a4b26\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-bo\", \"attests\": [\"51a05d262acc\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"70224190c76c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"0a0b38a9ab55\", \"schema\": \"decision\", \"name\": \"proj/decision/D05\", \"payload\": \"D05: raise the connection limit\", \"relies_on\": [\"1a7e14b662bc\", \"604a363d2901\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"333e975b0464\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-ana\", \"attests\": [\"0a0b38a9ab55\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"604a363d2901\"], \"sealed_by\": \"ana\"}\n{\"id\": \"84475ed2524d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-bo\", \"attests\": [\"0a0b38a9ab55\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"604a363d2901\"], \"sealed_by\": \"bo\"}\n{\"id\": \"a045af03bc3a\", \"schema\": \"decision\", \"name\": \"proj/decision/D06\", \"payload\": \"D06: raise the burst rate limit\", \"relies_on\": [\"10f3b52fecd2\", \"ff18f6c0c1b5\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"6ba2741b4d6e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-ana\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ba4b688788bf\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-bo\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"3a737a51a24b\", \"a910df3c34b8\"], \"sealed_by\": \"bo\"}\n{\"id\": \"33aee10bd0d5\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-cy\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\", \"ff18f6c0c1b5\"], \"sealed_by\": \"cy\"}\n{\"id\": \"c70acf71ed4c\", \"schema\": \"decision\", \"name\": \"proj/decision/D07\", \"payload\": \"D07: store times in UTC\", \"relies_on\": [\"64d0bb0c1106\", \"dc944fbfe053\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"10e3ec734f5d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-ana\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"dc944fbfe053\"], \"sealed_by\": \"ana\"}\n{\"id\": \"0d12c27fbeb4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-bo\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\"], \"sealed_by\": \"bo\"}\n{\"id\": \"8e056339dbca\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-cy\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"dc944fbfe053\", \"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"df6ddcf8c432\", \"schema\": \"decision\", \"name\": \"proj/decision/D08\", \"payload\": \"D08: compress archived logs\", \"relies_on\": [\"84e6ad22f5e9\", \"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"ee4b8f709dd6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-ana\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1a7e14b662bc\", \"84e6ad22f5e9\"], \"sealed_by\": \"ana\"}\n{\"id\": \"aa3687b41967\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-bo\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"bo\"}\n{\"id\": \"443a87fd16d7\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-cy\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"dc944fbfe053\"], \"sealed_by\": \"cy\"}\n{\"id\": \"ef800e3ff3a6\", \"schema\": \"decision\", \"name\": \"proj/decision/D09\", \"payload\": \"D09: adopt libfoo 3.3\", \"relies_on\": [\"03168964cdc9\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"72d648ce260e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-ana\", \"attests\": [\"ef800e3ff3a6\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\", \"3a737a51a24b\"], \"sealed_by\": \"ana\"}\n{\"id\": \"bcf17ef5b00a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-bo\", \"attests\": [\"ef800e3ff3a6\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"47518cb66fb1\"], \"sealed_by\": \"bo\"}\n{\"id\": \"fdf962e22bfd\", \"schema\": \"decision\", \"name\": \"proj/decision/D10\", \"payload\": \"D10: enable crash-safe writes\", \"relies_on\": [\"1a7e14b662bc\", \"604a363d2901\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"9ce3f9c3415b\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-ana\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"47518cb66fb1\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ed8b8b866fc4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-bo\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\"], \"sealed_by\": \"bo\"}\n{\"id\": \"6dd300cf170d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-cy\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"70224190c76c\"], \"sealed_by\": \"cy\"}\n{\"id\": \"0e28e04a79ce\", \"schema\": \"decision\", \"name\": \"proj/decision/D11\", \"payload\": \"D11: merge the billing service\", \"relies_on\": [\"10f3b52fecd2\", \"1a7e14b662bc\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"219c25434e60\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-ana\", \"attests\": [\"0e28e04a79ce\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1a7e14b662bc\"], \"sealed_by\": \"ana\"}\n{\"id\": \"5c3c0ef703f0\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-bo\", \"attests\": [\"0e28e04a79ce\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ff18f6c0c1b5\"], \"sealed_by\": \"bo\"}\n{\"id\": \"bf4c7df5b169\", \"schema\": \"decision\", \"name\": \"proj/decision/D12\", \"payload\": \"D12: make index rebuild incremental\", \"relies_on\": [\"890d8b8e392d\", \"dc944fbfe053\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"7827c02791b9\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-ana\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ff18f6c0c1b5\"], \"sealed_by\": \"ana\"}\n{\"id\": \"0106853b9ba0\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-bo\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"890d8b8e392d\"], \"sealed_by\": \"bo\"}\n{\"id\": \"73be74877eb3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-cy\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\", \"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"a7d72f16a5f0\", \"schema\": \"axiom\", \"name\": \"proj/notice/G2\", \"payload\": \"G2 was found invalid\", \"invalidates\": [\"d3f8c1a94930\"], \"relies_on\": [], \"sealed_by\": \"bo\"}\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else.",
+  "M": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's repository: its Markdown files, CI history, pull requests and issues.\n\n### docs/GROUNDS.md\n\n| ground | recorded by | what was established |\n|---|---|---|\n| G1 bench machine `bench-a` | bo | measured and pinned as the benchmark host |\n| G2 fixture `fx-22` | ana | recorded from the production database |\n| G3 audit of `libbar-1.9` | ana | a security audit found no open issue in the library |\n| G4 audit of `libfoo-3.3` | ana | a security audit found no open issue in the library |\n| G5 dataset `users-2026Q3` | bo | its checksum matched the warehouse export |\n| G6 bench machine `bench-c` | bo | measured and pinned as the benchmark host |\n| G7 toolchain `llvm-22` | ana | built from source; its hash matched the published one |\n\n### docs/CHECKS.md (from the CI history)\n\n| check | run by | result | rests on grounds |\n|---|---|---|---|\n| K1 `failover-drill` | ana | passed | G2 |\n| K2 `latency-p99` | ana | passed | G7 |\n| K3 `disk-full` | ana | passed | G7 |\n| K4 `backup-restore` | bo | passed | G1, G2 |\n| K5 `unicode-names` | ana | passed | G2, G3 |\n| K6 `memory-ceiling` | ana | passed | G5 |\n| K7 `export-roundtrip` | bo | passed | G4, G5 |\n| K8 `schema-migration` | cy | passed | G6 |\n| K9 `load-shedding` | cy | passed | G3 |\n| K10 `crash-recovery` | ana | passed | G1, G3 |\n| K11 `auth-regression` | cy | passed | G4 |\n| K12 `upgrade-in-place` | ana | passed | G6, G7 |\n| K13 `clock-skew` | ana | passed | G4 |\n| K14 `api-compat-v2` | ana | passed | G1, G4 |\n\n### Pull request #101: D01 enable read replicas (merged)\n\nOpened by ana.\nRests on checks: K2 `latency-p99`.\n\nReviews:\n- ana approved: \"I ran K4 `backup-restore` and K12 `upgrade-in-place`; approving.\"\n- bo approved: \"I ran K1 `failover-drill` and K11 `auth-regression`; approving.\"\n- cy approved: \"I ran K2 `latency-p99`; approving.\"\n\n### Pull request #102: D02 move backups to hourly (merged)\n\nOpened by ana.\nRests on checks: K8 `schema-migration`, K11 `auth-regression`.\n\nReviews:\n- bo approved: \"I ran K8 `schema-migration`; approving.\"\n- cy approved: \"I ran K8 `schema-migration`; approving.\"\n\n### Pull request #103: D03 rotate the signing key yearly (merged)\n\nOpened by ana.\nRests on checks: K2 `latency-p99`.\n\nReviews:\n- ana approved: \"I ran K2 `latency-p99`; approving.\"\n- cy approved: \"I ran K1 `failover-drill` and K11 `auth-regression`; approving.\"\n\n### Pull request #104: D04 ship the export API (merged)\n\nOpened by cy.\nRests on checks: K3 `disk-full`, K4 `backup-restore`.\n\nReviews:\n- ana approved: \"I ran K3 `disk-full` and K14 `api-compat-v2`; approving.\"\n- bo approved: \"I ran K4 `backup-restore`; approving.\"\n\n### Pull request #105: D05 raise the connection limit (merged)\n\nOpened by bo.\nRests on checks: K7 `export-roundtrip`, K9 `load-shedding`.\n\nReviews:\n- ana approved: \"I ran K9 `load-shedding`; approving.\"\n- bo approved: \"I ran K9 `load-shedding`; approving.\"\n\n### Pull request #106: D06 raise the burst rate limit (merged)\n\nOpened by ana.\nRests on checks: K12 `upgrade-in-place`, K13 `clock-skew`.\n\nReviews:\n- ana approved: \"I ran K12 `upgrade-in-place`; approving.\"\n- bo approved: \"I ran K11 `auth-regression` and K14 `api-compat-v2`; approving.\"\n- cy approved: \"I ran K2 `latency-p99` and K13 `clock-skew`; approving.\"\n\n### Pull request #107: D07 store times in UTC (merged)\n\nOpened by bo.\nRests on checks: K3 `disk-full`, K5 `unicode-names`.\n\nReviews:\n- ana approved: \"I ran K5 `unicode-names`; approving.\"\n- bo approved: \"I ran K3 `disk-full`; approving.\"\n- cy approved: \"I ran K2 `latency-p99` and K5 `unicode-names`; approving.\"\n\n### Pull request #108: D08 compress archived logs (merged)\n\nOpened by cy.\nRests on checks: K2 `latency-p99`, K8 `schema-migration`.\n\nReviews:\n- ana approved: \"I ran K7 `export-roundtrip` and K8 `schema-migration`; approving.\"\n- bo approved: \"I ran K2 `latency-p99`; approving.\"\n- cy approved: \"I ran K1 `failover-drill` and K5 `unicode-names`; approving.\"\n\n### Pull request #109: D09 adopt libfoo 3.3 (merged)\n\nOpened by cy.\nRests on checks: K1 `failover-drill`.\n\nReviews:\n- ana approved: \"I ran K11 `auth-regression` and K12 `upgrade-in-place`; approving.\"\n- bo approved: \"I ran K6 `memory-ceiling`; approving.\"\n\n### Pull request #110: D10 enable crash-safe writes (merged)\n\nOpened by ana.\nRests on checks: K7 `export-roundtrip`, K9 `load-shedding`.\n\nReviews:\n- ana approved: \"I ran K6 `memory-ceiling`; approving.\"\n- bo approved: \"I ran K3 `disk-full`; approving.\"\n- cy approved: \"I ran K4 `backup-restore`; approving.\"\n\n### Pull request #111: D11 merge the billing service (merged)\n\nOpened by cy.\nRests on checks: K7 `export-roundtrip`, K12 `upgrade-in-place`.\n\nReviews:\n- ana approved: \"I ran K7 `export-roundtrip`; approving.\"\n- bo approved: \"I ran K13 `clock-skew`; approving.\"\n\n### Pull request #112: D12 make index rebuild incremental (merged)\n\nOpened by ana.\nRests on checks: K5 `unicode-names`, K10 `crash-recovery`.\n\nReviews:\n- ana approved: \"I ran K13 `clock-skew`; approving.\"\n- bo approved: \"I ran K10 `crash-recovery`; approving.\"\n- cy approved: \"I ran K2 `latency-p99` and K8 `schema-migration`; approving.\"\n\n### Issue #113: G2 fixture `fx-22` is invalid\n\nOpened by bo: \"G2 was found invalid.\"\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else.",
+  "W": "You are reading the record of a software project kept by three maintainers: ana, bo and cy.\n\nThe project's rules:\n- A ground is something recorded as established, such as a dataset's checksum or a toolchain's build.\n- A check rests on one or more grounds. It stands only while every ground it rests on stands.\n- A decision rests on one or more checks. Each maintainer may approve a decision; an approval relies on the checks\n  that maintainer ran.\n- An approval counts only while every check it relies on stands.\n- A decision is in force while every check it rests on stands and approvals from at least two different maintainers\n  count.\n\n<record>\nThe project's minds chain (refs/vars/heads/proj): every cell it holds, in the order admitted, each\nsealed by the maintainer named. Cells refer to each other by id (the first 12 hex digits of the cell's hash). An axiom\nis a ground or a check; `relies_on` lists the cells it rests on. A decision lists the checks it rests on in\n`relies_on`; its evaluators are 2 of ana, bo, cy. A verdict is an approval: it `attests` the decision it approves and\n`relies_on` the checks its maintainer ran. The last cell is the notice: it `invalidates` the ground found invalid.\n\n{\"id\": \"1da8e0c46e17\", \"schema\": \"axiom\", \"name\": \"proj/ground/G1\", \"payload\": \"bench machine `bench-a`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"d3f8c1a94930\", \"schema\": \"axiom\", \"name\": \"proj/ground/G2\", \"payload\": \"fixture `fx-22`: recorded from the production database\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"5d73fef9bfd9\", \"schema\": \"axiom\", \"name\": \"proj/ground/G3\", \"payload\": \"audit of `libbar-1.9`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"400a2e3b6350\", \"schema\": \"axiom\", \"name\": \"proj/ground/G4\", \"payload\": \"audit of `libfoo-3.3`: a security audit found no open issue in the library\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"87f2203fb7c4\", \"schema\": \"axiom\", \"name\": \"proj/ground/G5\", \"payload\": \"dataset `users-2026Q3`: its checksum matched the warehouse export\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"d35212a38c24\", \"schema\": \"axiom\", \"name\": \"proj/ground/G6\", \"payload\": \"bench machine `bench-c`: measured and pinned as the benchmark host\", \"relies_on\": [], \"sealed_by\": \"bo\"}\n{\"id\": \"a0ce84142c10\", \"schema\": \"axiom\", \"name\": \"proj/ground/G7\", \"payload\": \"toolchain `llvm-22`: built from source; its hash matched the published one\", \"relies_on\": [], \"sealed_by\": \"ana\"}\n{\"id\": \"03168964cdc9\", \"schema\": \"axiom\", \"name\": \"proj/check/K1\", \"payload\": \"`failover-drill` passed\", \"relies_on\": [\"d3f8c1a94930\"], \"sealed_by\": \"ana\"}\n{\"id\": \"f4ca352f4bd7\", \"schema\": \"axiom\", \"name\": \"proj/check/K2\", \"payload\": \"`latency-p99` passed\", \"relies_on\": [\"a0ce84142c10\"], \"sealed_by\": \"ana\"}\n{\"id\": \"64d0bb0c1106\", \"schema\": \"axiom\", \"name\": \"proj/check/K3\", \"payload\": \"`disk-full` passed\", \"relies_on\": [\"a0ce84142c10\"], \"sealed_by\": \"ana\"}\n{\"id\": \"70224190c76c\", \"schema\": \"axiom\", \"name\": \"proj/check/K4\", \"payload\": \"`backup-restore` passed\", \"relies_on\": [\"1da8e0c46e17\", \"d3f8c1a94930\"], \"sealed_by\": \"bo\"}\n{\"id\": \"dc944fbfe053\", \"schema\": \"axiom\", \"name\": \"proj/check/K5\", \"payload\": \"`unicode-names` passed\", \"relies_on\": [\"5d73fef9bfd9\", \"d3f8c1a94930\"], \"sealed_by\": \"ana\"}\n{\"id\": \"47518cb66fb1\", \"schema\": \"axiom\", \"name\": \"proj/check/K6\", \"payload\": \"`memory-ceiling` passed\", \"relies_on\": [\"87f2203fb7c4\"], \"sealed_by\": \"ana\"}\n{\"id\": \"1a7e14b662bc\", \"schema\": \"axiom\", \"name\": \"proj/check/K7\", \"payload\": \"`export-roundtrip` passed\", \"relies_on\": [\"400a2e3b6350\", \"87f2203fb7c4\"], \"sealed_by\": \"bo\"}\n{\"id\": \"84e6ad22f5e9\", \"schema\": \"axiom\", \"name\": \"proj/check/K8\", \"payload\": \"`schema-migration` passed\", \"relies_on\": [\"d35212a38c24\"], \"sealed_by\": \"cy\"}\n{\"id\": \"604a363d2901\", \"schema\": \"axiom\", \"name\": \"proj/check/K9\", \"payload\": \"`load-shedding` passed\", \"relies_on\": [\"5d73fef9bfd9\"], \"sealed_by\": \"cy\"}\n{\"id\": \"890d8b8e392d\", \"schema\": \"axiom\", \"name\": \"proj/check/K10\", \"payload\": \"`crash-recovery` passed\", \"relies_on\": [\"1da8e0c46e17\", \"5d73fef9bfd9\"], \"sealed_by\": \"ana\"}\n{\"id\": \"3a737a51a24b\", \"schema\": \"axiom\", \"name\": \"proj/check/K11\", \"payload\": \"`auth-regression` passed\", \"relies_on\": [\"400a2e3b6350\"], \"sealed_by\": \"cy\"}\n{\"id\": \"10f3b52fecd2\", \"schema\": \"axiom\", \"name\": \"proj/check/K12\", \"payload\": \"`upgrade-in-place` passed\", \"relies_on\": [\"a0ce84142c10\", \"d35212a38c24\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ff18f6c0c1b5\", \"schema\": \"axiom\", \"name\": \"proj/check/K13\", \"payload\": \"`clock-skew` passed\", \"relies_on\": [\"400a2e3b6350\"], \"sealed_by\": \"ana\"}\n{\"id\": \"a910df3c34b8\", \"schema\": \"axiom\", \"name\": \"proj/check/K14\", \"payload\": \"`api-compat-v2` passed\", \"relies_on\": [\"1da8e0c46e17\", \"400a2e3b6350\"], \"sealed_by\": \"ana\"}\n{\"id\": \"2960f40c3622\", \"schema\": \"decision\", \"name\": \"proj/decision/D01\", \"payload\": \"D01: enable read replicas\", \"relies_on\": [\"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"f5bb445493a9\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-ana\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\", \"70224190c76c\"], \"sealed_by\": \"ana\"}\n{\"id\": \"cc7d0f8bdce3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-bo\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"3a737a51a24b\"], \"sealed_by\": \"bo\"}\n{\"id\": \"2a4e223b82dc\", \"schema\": \"verdict\", \"name\": \"proj/decision/D01/approved-by-cy\", \"attests\": [\"2960f40c3622\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"1a399f3a62ae\", \"schema\": \"decision\", \"name\": \"proj/decision/D02\", \"payload\": \"D02: move backups to hourly\", \"relies_on\": [\"3a737a51a24b\", \"84e6ad22f5e9\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"9b63fd7dde0d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-bo\", \"attests\": [\"1a399f3a62ae\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\"], \"sealed_by\": \"bo\"}\n{\"id\": \"ecf3bde99beb\", \"schema\": \"verdict\", \"name\": \"proj/decision/D02/approved-by-cy\", \"attests\": [\"1a399f3a62ae\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\"], \"sealed_by\": \"cy\"}\n{\"id\": \"e906c300e337\", \"schema\": \"decision\", \"name\": \"proj/decision/D03\", \"payload\": \"D03: rotate the signing key yearly\", \"relies_on\": [\"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"5d9f0ef51fc6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-ana\", \"attests\": [\"e906c300e337\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"ana\"}\n{\"id\": \"db9dc0cb6ad6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D03/approved-by-cy\", \"attests\": [\"e906c300e337\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"3a737a51a24b\"], \"sealed_by\": \"cy\"}\n{\"id\": \"51a05d262acc\", \"schema\": \"decision\", \"name\": \"proj/decision/D04\", \"payload\": \"D04: ship the export API\", \"relies_on\": [\"64d0bb0c1106\", \"70224190c76c\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"3637ba2d192e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-ana\", \"attests\": [\"51a05d262acc\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\", \"a910df3c34b8\"], \"sealed_by\": \"ana\"}\n{\"id\": \"18a5bd3a4b26\", \"schema\": \"verdict\", \"name\": \"proj/decision/D04/approved-by-bo\", \"attests\": [\"51a05d262acc\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"70224190c76c\"], \"sealed_by\": \"bo\"}\n{\"id\": \"0a0b38a9ab55\", \"schema\": \"decision\", \"name\": \"proj/decision/D05\", \"payload\": \"D05: raise the connection limit\", \"relies_on\": [\"1a7e14b662bc\", \"604a363d2901\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"333e975b0464\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-ana\", \"attests\": [\"0a0b38a9ab55\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"604a363d2901\"], \"sealed_by\": \"ana\"}\n{\"id\": \"84475ed2524d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D05/approved-by-bo\", \"attests\": [\"0a0b38a9ab55\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"604a363d2901\"], \"sealed_by\": \"bo\"}\n{\"id\": \"a045af03bc3a\", \"schema\": \"decision\", \"name\": \"proj/decision/D06\", \"payload\": \"D06: raise the burst rate limit\", \"relies_on\": [\"10f3b52fecd2\", \"ff18f6c0c1b5\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"6ba2741b4d6e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-ana\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ba4b688788bf\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-bo\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"3a737a51a24b\", \"a910df3c34b8\"], \"sealed_by\": \"bo\"}\n{\"id\": \"33aee10bd0d5\", \"schema\": \"verdict\", \"name\": \"proj/decision/D06/approved-by-cy\", \"attests\": [\"a045af03bc3a\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\", \"ff18f6c0c1b5\"], \"sealed_by\": \"cy\"}\n{\"id\": \"c70acf71ed4c\", \"schema\": \"decision\", \"name\": \"proj/decision/D07\", \"payload\": \"D07: store times in UTC\", \"relies_on\": [\"64d0bb0c1106\", \"dc944fbfe053\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"bo\"}\n{\"id\": \"10e3ec734f5d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-ana\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"dc944fbfe053\"], \"sealed_by\": \"ana\"}\n{\"id\": \"0d12c27fbeb4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-bo\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\"], \"sealed_by\": \"bo\"}\n{\"id\": \"8e056339dbca\", \"schema\": \"verdict\", \"name\": \"proj/decision/D07/approved-by-cy\", \"attests\": [\"c70acf71ed4c\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"dc944fbfe053\", \"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"df6ddcf8c432\", \"schema\": \"decision\", \"name\": \"proj/decision/D08\", \"payload\": \"D08: compress archived logs\", \"relies_on\": [\"84e6ad22f5e9\", \"f4ca352f4bd7\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"ee4b8f709dd6\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-ana\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1a7e14b662bc\", \"84e6ad22f5e9\"], \"sealed_by\": \"ana\"}\n{\"id\": \"aa3687b41967\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-bo\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"f4ca352f4bd7\"], \"sealed_by\": \"bo\"}\n{\"id\": \"443a87fd16d7\", \"schema\": \"verdict\", \"name\": \"proj/decision/D08/approved-by-cy\", \"attests\": [\"df6ddcf8c432\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"03168964cdc9\", \"dc944fbfe053\"], \"sealed_by\": \"cy\"}\n{\"id\": \"ef800e3ff3a6\", \"schema\": \"decision\", \"name\": \"proj/decision/D09\", \"payload\": \"D09: adopt libfoo 3.3\", \"relies_on\": [\"03168964cdc9\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"72d648ce260e\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-ana\", \"attests\": [\"ef800e3ff3a6\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"10f3b52fecd2\", \"3a737a51a24b\"], \"sealed_by\": \"ana\"}\n{\"id\": \"bcf17ef5b00a\", \"schema\": \"verdict\", \"name\": \"proj/decision/D09/approved-by-bo\", \"attests\": [\"ef800e3ff3a6\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"47518cb66fb1\"], \"sealed_by\": \"bo\"}\n{\"id\": \"fdf962e22bfd\", \"schema\": \"decision\", \"name\": \"proj/decision/D10\", \"payload\": \"D10: enable crash-safe writes\", \"relies_on\": [\"1a7e14b662bc\", \"604a363d2901\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"9ce3f9c3415b\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-ana\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"47518cb66fb1\"], \"sealed_by\": \"ana\"}\n{\"id\": \"ed8b8b866fc4\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-bo\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"64d0bb0c1106\"], \"sealed_by\": \"bo\"}\n{\"id\": \"6dd300cf170d\", \"schema\": \"verdict\", \"name\": \"proj/decision/D10/approved-by-cy\", \"attests\": [\"fdf962e22bfd\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"70224190c76c\"], \"sealed_by\": \"cy\"}\n{\"id\": \"0e28e04a79ce\", \"schema\": \"decision\", \"name\": \"proj/decision/D11\", \"payload\": \"D11: merge the billing service\", \"relies_on\": [\"10f3b52fecd2\", \"1a7e14b662bc\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"cy\"}\n{\"id\": \"219c25434e60\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-ana\", \"attests\": [\"0e28e04a79ce\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"1a7e14b662bc\"], \"sealed_by\": \"ana\"}\n{\"id\": \"5c3c0ef703f0\", \"schema\": \"verdict\", \"name\": \"proj/decision/D11/approved-by-bo\", \"attests\": [\"0e28e04a79ce\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ff18f6c0c1b5\"], \"sealed_by\": \"bo\"}\n{\"id\": \"bf4c7df5b169\", \"schema\": \"decision\", \"name\": \"proj/decision/D12\", \"payload\": \"D12: make index rebuild incremental\", \"relies_on\": [\"890d8b8e392d\", \"dc944fbfe053\"], \"evaluators\": \"2 of ana, bo, cy\", \"sealed_by\": \"ana\"}\n{\"id\": \"7827c02791b9\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-ana\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"ff18f6c0c1b5\"], \"sealed_by\": \"ana\"}\n{\"id\": \"0106853b9ba0\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-bo\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"890d8b8e392d\"], \"sealed_by\": \"bo\"}\n{\"id\": \"73be74877eb3\", \"schema\": \"verdict\", \"name\": \"proj/decision/D12/approved-by-cy\", \"attests\": [\"bf4c7df5b169\"], \"verdict\": \"ATTESTED\", \"relies_on\": [\"84e6ad22f5e9\", \"f4ca352f4bd7\"], \"sealed_by\": \"cy\"}\n{\"id\": \"a7d72f16a5f0\", \"schema\": \"axiom\", \"name\": \"proj/notice/G2\", \"payload\": \"G2 was found invalid\", \"invalidates\": [\"d3f8c1a94930\"], \"relies_on\": [], \"sealed_by\": \"bo\"}\n\nminds' own reading of the notice (`minds_chain.py what-if`): the gate admitted the notice on a\ncandidate commit and the lens was computed before and after it. `lost` lists every cell whose status changes, with\nits statuses before and after and what it needs that no longer stands; `held` lists the cells near the notice that\nkeep their status, with a decision's counted approvals before and after. Each row's `path` runs from the notice\nthrough the cells it depends on.\n\nlost:\n{\"id\": \"03168964cdc9\", \"name\": \"proj/check/K1\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"d3f8c1a94930\"]}}\n{\"id\": \"10e3ec734f5d\", \"name\": \"proj/decision/D07/approved-by-ana\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"dc944fbfe053\", \"10e3ec734f5d\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"dc944fbfe053\"]}}\n{\"id\": \"18a5bd3a4b26\", \"name\": \"proj/decision/D04/approved-by-bo\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\", \"18a5bd3a4b26\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"70224190c76c\"]}}\n{\"id\": \"2960f40c3622\", \"name\": \"proj/decision/D01\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"cc7d0f8bdce3\", \"2960f40c3622\"], \"before\": {\"settled\": true}, \"after\": {\"settled\": false}, \"needs\": {\"endorsements\": {\"threshold\": 2, \"standing\": [\"75d9b3029161\"], \"fell_away\": [\"4e295b8aa0e5\", \"b7d8f3bc6f0e\"]}}}\n{\"id\": \"443a87fd16d7\", \"name\": \"proj/decision/D08/approved-by-cy\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"443a87fd16d7\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"03168964cdc9\", \"dc944fbfe053\"]}}\n{\"id\": \"51a05d262acc\", \"name\": \"proj/decision/D04\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\", \"51a05d262acc\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"70224190c76c\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"4e295b8aa0e5\"], \"fell_away\": [\"b7d8f3bc6f0e\"]}}}\n{\"id\": \"6dd300cf170d\", \"name\": \"proj/decision/D10/approved-by-cy\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\", \"6dd300cf170d\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"70224190c76c\"]}}\n{\"id\": \"70224190c76c\", \"name\": \"proj/check/K4\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"d3f8c1a94930\"]}}\n{\"id\": \"8e056339dbca\", \"name\": \"proj/decision/D07/approved-by-cy\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"dc944fbfe053\", \"8e056339dbca\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"dc944fbfe053\"]}}\n{\"id\": \"bf4c7df5b169\", \"name\": \"proj/decision/D12\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"dc944fbfe053\", \"bf4c7df5b169\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"dc944fbfe053\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"4e295b8aa0e5\", \"75d9b3029161\", \"b7d8f3bc6f0e\"], \"fell_away\": []}}}\n{\"id\": \"c70acf71ed4c\", \"name\": \"proj/decision/D07\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"dc944fbfe053\", \"c70acf71ed4c\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"dc944fbfe053\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"b7d8f3bc6f0e\"], \"fell_away\": [\"4e295b8aa0e5\", \"75d9b3029161\"]}}}\n{\"id\": \"cc7d0f8bdce3\", \"name\": \"proj/decision/D01/approved-by-bo\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"cc7d0f8bdce3\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"03168964cdc9\"]}}\n{\"id\": \"d3f8c1a94930\", \"name\": \"proj/ground/G2\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\"], \"before\": {\"invalidated\": false, \"effective\": true, \"active\": true, \"settled\": true}, \"after\": {\"invalidated\": true, \"effective\": false, \"active\": false, \"settled\": false}, \"needs\": {}}\n{\"id\": \"db9dc0cb6ad6\", \"name\": \"proj/decision/D03/approved-by-cy\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"db9dc0cb6ad6\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"03168964cdc9\"]}}\n{\"id\": \"dc944fbfe053\", \"name\": \"proj/check/K5\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"dc944fbfe053\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"d3f8c1a94930\"]}}\n{\"id\": \"e906c300e337\", \"name\": \"proj/decision/D03\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"db9dc0cb6ad6\", \"e906c300e337\"], \"before\": {\"settled\": true}, \"after\": {\"settled\": false}, \"needs\": {\"endorsements\": {\"threshold\": 2, \"standing\": [\"4e295b8aa0e5\"], \"fell_away\": [\"75d9b3029161\"]}}}\n{\"id\": \"ef800e3ff3a6\", \"name\": \"proj/decision/D09\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"ef800e3ff3a6\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"03168964cdc9\"], \"endorsements\": {\"threshold\": 2, \"standing\": [\"4e295b8aa0e5\", \"b7d8f3bc6f0e\"], \"fell_away\": []}}}\n{\"id\": \"f5bb445493a9\", \"name\": \"proj/decision/D01/approved-by-ana\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\", \"f5bb445493a9\"], \"before\": {\"stale\": false, \"settled\": true}, \"after\": {\"stale\": true, \"settled\": false}, \"needs\": {\"grounds\": [\"70224190c76c\"]}}\n\nheld:\n{\"id\": \"df6ddcf8c432\", \"name\": \"proj/decision/D08\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"03168964cdc9\", \"443a87fd16d7\", \"df6ddcf8c432\"], \"endorsements\": {\"threshold\": 2, \"before\": 3, \"after\": 2}}\n{\"id\": \"fdf962e22bfd\", \"name\": \"proj/decision/D10\", \"path\": [\"a7d72f16a5f0\", \"d3f8c1a94930\", \"70224190c76c\", \"6dd300cf170d\", \"fdf962e22bfd\"], \"endorsements\": {\"threshold\": 2, \"before\": 3, \"after\": 2}}\n</record>\n\nBefore the notice at the end of the record, all 12 decisions D01 to D12 were in force. Then one\nground was found invalid.\n\nQuestion: for each decision, may the project still rely on it being in force? Answer RELY or DO_NOT_RELY for each.\n\nYou may reason first. End your reply with one fenced JSON block (```json ... ```) holding one object that maps each\nof D01 to D12 to \"RELY\" or \"DO_NOT_RELY\", and nothing else."
+ },
+ "seed": "620e6e30bd953091e5836e42ef76556fb60e4674347765a5a7e90e4c5a95e0dd",
+ "truth": {
+  "D01": "DO_NOT_RELY",
+  "D02": "RELY",
+  "D03": "DO_NOT_RELY",
+  "D04": "DO_NOT_RELY",
+  "D05": "RELY",
+  "D06": "RELY",
+  "D07": "DO_NOT_RELY",
+  "D08": "RELY",
+  "D09": "DO_NOT_RELY",
+  "D10": "RELY",
+  "D11": "RELY",
+  "D12": "DO_NOT_RELY"
+ },
+ "whatif_digest": "2d2d370385a01e44ec9358fb5983e9a6679b56c1a6b9838650c0736b2414d32d"
+}

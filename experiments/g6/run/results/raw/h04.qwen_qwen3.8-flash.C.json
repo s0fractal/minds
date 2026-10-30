@@ -1,0 +1,19 @@
+{
+ "task": "h04",
+ "model": "qwen/qwen3.8-flash",
+ "arm": "C",
+ "attempts": [
+  {
+   "ok": false,
+   "error": "HTTPError: HTTP Error 429: Too Many Requests"
+  },
+  {
+   "ok": false,
+   "error": "HTTPError: HTTP Error 429: Too Many Requests"
+  },
+  {
+   "ok": false,
+   "error": "HTTPError: HTTP Error 429: Too Many Requests"
+  }
+ ]
+}
