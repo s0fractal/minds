@@ -6,8 +6,9 @@ of a claim or of an informative passage; every quote must still be in the spec, 
 `"source": "ASSURANCE.md"` (what this repository's tools establish beyond the spec, such as the release checks), in
 the claim cell of exactly one claim-table row of assurance.json whose evidence cell begins with the claim's status, and
 ASSURANCE.md must be exactly the rendering of assurance.json; every witness must exist; a claim
-that is tested or differential names at least one mutant that `tools/run_mutants.py` kills; every mutant named
-exists, and finds its line exactly once. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
+that is tested or differential names at least one mutant that `tools/run_mutants.py` kills (or, for the witness
+spike's checker, `experiments/witness/test_witness.py --mutants`); every mutant named exists, and finds its line
+exactly once. Debt is listed, never failed: `assumed` (nothing here checks it) and `unburned` (a witness exists, but no
 mutant has shown that it bites). An unburned claim says why in `reason`, rendered into ASSURANCE.md's debt table; no other
 claim carries one. Exit 1 on any violation.
 
@@ -28,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STATUSES = {"proved", "bounded", "differential", "tested", "unburned", "assumed"}
 DEBT = {"unburned", "assumed"}
+WITNESS = "experiments/witness"
 
 
 def norm(text: str) -> str:
@@ -112,6 +114,8 @@ def witness_exists(w: str) -> bool:
     kind, _, name = w.partition(":")
     if kind == "test":
         return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "test_vars1.py").read_text(), re.M) is not None
+    if kind == "witness":  # a test of the witness spike's checker (experiments/witness)
+        return re.search(rf"^    def {re.escape(name)}\(", (ROOT / WITNESS / "test_witness.py").read_text(), re.M) is not None
     if kind == "import":  # a check vars1.py makes as it loads, named by its message
         return name in (ROOT / "vars1.py").read_text()
     if kind == "prop":
@@ -134,6 +138,11 @@ def main(argv: list[str]) -> int:
     spec_doc = json.loads(arg("--spec-data", ROOT / "spec.json").read_text())
     data = json.loads(arg("--claims", ROOT / "claims.json").read_text())
     mutants = json.loads((ROOT / "mutants.json").read_text())
+    for mid, mu in json.loads((ROOT / WITNESS / "mutants.json").read_text()).items():  # one file, its own harness
+        if mid in mutants:
+            print(f"mutant id in both mutants.json and {WITNESS}/mutants.json: {mid}")
+            return 1
+        mutants[mid] = {**mu, "file": f"{WITNESS}/check.py"}
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     spec_text = render_spec(spec_doc)

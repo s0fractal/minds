@@ -17,6 +17,10 @@ What HELD rests on (README.md):
   admitted chain, complete: the reader's pin, which this file does not check (it runs no gate).
 
 Outside the fragment the answer is NOT_COVERED, never HELD: the lens decides there.
+
+The term must read one way: a term that is not UTF-8 JSON, or whose object names a key twice (Python keeps the last
+value, other readers the first), is REFUSED (FORMAT), never read by one convention. Exit 0 is HELD, 1 REFUSED or
+NOT_COVERED, 2 a wrong command line; 3 is an error of this checker, which no verdict uses.
 """
 import hashlib
 import json
@@ -233,6 +237,32 @@ def _ids(xs, what: str) -> List[bytes]:
     return [bytes.fromhex(x) for x in xs]
 
 
+def read_term(raw: bytes) -> object:
+    """The term in `raw`, read one way only: bytes that are not UTF-8 JSON (Python's json would read NaN, Infinity
+    and -Infinity, which are not JSON), or an object that names a key twice, are REFUSED (FORMAT)."""
+    def one_reading(pairs: List[Tuple[str, object]]) -> Dict[str, object]:
+        keys = [k for k, _ in pairs]
+        if len(set(keys)) != len(keys):
+            raise refuse("FORMAT", "an object of the term names a key twice")
+        return dict(pairs)
+
+    def not_json(token: str) -> object:
+        raise refuse("FORMAT", f"{token} is not JSON")
+    try:
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
+    except ValueError:
+        raise refuse("FORMAT", "the term is not UTF-8 JSON") from None
+
+
+def check_text(repo: str, raw: bytes, scope_cell: Optional[bytes] = None) -> Dict[str, object]:
+    """check() of the term in `raw` (read_term)."""
+    try:
+        term = read_term(raw)
+    except Refused as e:
+        return {"result": e.result, "code": e.code, "detail": e.detail}
+    return check(repo, term, scope_cell)
+
+
 def check(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None) -> Dict[str, object]:
     """HELD iff the term proves its decision Settled at its tip, within the fragment; otherwise REFUSED (the term is
     wrong) or NOT_COVERED (the fragment does not reach this decision: ask the lens)."""
@@ -329,11 +359,16 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
 
 
 def main(argv: List[str]) -> int:
-    if len(argv) not in (2, 4) or (len(argv) == 4 and argv[2] != "--scope-cell"):
+    if len(argv) not in (2, 4) or (len(argv) == 4 and (argv[2] != "--scope-cell"
+                                                       or not re.fullmatch(r"[0-9a-f]{64}", argv[3]))):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
-    term = json.loads(open(argv[1], encoding="utf-8").read())
-    out = check(argv[0], term, bytes.fromhex(argv[3]) if len(argv) == 4 else None)
+    try:
+        with open(argv[1], "rb") as f:
+            out = check_text(argv[0], f.read(), bytes.fromhex(argv[3]) if len(argv) == 4 else None)
+    except Exception as e:  # a crash is not a verdict: Python would exit 1, which reads as REFUSED
+        print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
+        return 3
     print(json.dumps(out, indent=1))
     return 0 if out["result"] == "HELD" else 1
 

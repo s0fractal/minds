@@ -114,7 +114,7 @@
   "replace": "        if v[\"slots\"][1:2] != [H_ATTESTED]:",
   "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
  },
- "m-verdict-code": {
+ "m-verdict-attested": {
   "find": "        if v[\"schema\"] != SCHEMA[\"verdict\"] or v[\"slots\"][1:2] != [H_ATTESTED]:",
   "replace": "        if v[\"schema\"] != SCHEMA[\"verdict\"]:",
   "kills": "test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count"
@@ -158,5 +158,25 @@
   "find": "    if len(counted) < thr:",
   "replace": "    if len(ends) < thr:",
   "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
+ },
+ "m-term-one-reading": {
+  "find": "        if len(set(keys)) != len(keys):",
+  "replace": "        if False:",
+  "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+ },
+ "m-term-json": {
+  "find": "        raise refuse(\"FORMAT\", \"the term is not UTF-8 JSON\") from None",
+  "replace": "        raise",
+  "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+ },
+ "m-crash-code": {
+  "find": "        return 3",
+  "replace": "        return 1",
+  "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+ },
+ "m-term-constants": {
+  "find": "object_pairs_hook=one_reading, parse_constant=not_json)",
+  "replace": "object_pairs_hook=one_reading)",
+  "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
  }
 }

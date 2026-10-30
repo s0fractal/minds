@@ -1046,13 +1046,40 @@ USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]... [--k
   verify-projection   exit 0 iff every pinned key witnessed it, its data matches, and its rules are known
   verify-attestation  exit 0 iff it is accepted at a witnessed tip and every pinned key endorsed and witnessed it
   inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
-  inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed)
+  inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed); its result
+                      says `accepted_under_own_policy`, never `accepted`, the word of verify-attestation
+A bundle must read one way: one that is not UTF-8 JSON, or whose object names a key twice, is refused.
 verify-* needs at least one --require: a bundle's own policy was chosen by whoever made it, not by the reader.
+Exit 0 or 1 is the verdict; 2 a refusal of the bundle or the command line; 3 an error of this file, never a verdict.
 --kernel runs the projection's rules module on its input under Node (the file whose SHA-256 is its rules), so the
 output is checked here, not taken on its witnesses' word; then every command also needs `kernel: verified_here`."""
 
 
+def read_bundle(raw: bytes) -> object:
+    """The bundle in `raw`, read one way only: an object that names a key twice has two readings (Python keeps the
+    last value, other readers the first), so it is refused rather than read by one convention; so are NaN, Infinity
+    and -Infinity, which Python's json reads and JSON does not have."""
+    def one_reading(pairs: List[Tuple[str, object]]) -> Dict[str, object]:
+        if len({k for k, _ in pairs}) != len(pairs):
+            raise VarsError("an object of the bundle names a key twice")
+        return dict(pairs)
+
+    def not_json(token: str) -> object:
+        raise VarsError(f"{token} is not JSON")
+    return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
+
+
 def main(argv: List[str]) -> int:
+    """The command line: exit 0 or 1 is a verdict, 2 a refusal of the bundle or the command line, 3 an error of this
+    file, which no verdict uses (an uncaught Python error would exit 1, the code of a negative verdict)."""
+    try:
+        return _run(argv)
+    except Exception as e:
+        print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
+        return 3
+
+
+def _run(argv: List[str]) -> int:
     cmds = ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation")
     opts = list(zip(argv[2::2], argv[3::2]))
     if len(argv) < 2 or argv[0] not in cmds or len(argv) % 2 \
@@ -1067,7 +1094,7 @@ def main(argv: List[str]) -> int:
               file=sys.stderr)
         return 2
     try:
-        bundle = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        bundle = read_bundle(Path(argv[1]).read_bytes())
         keys = [bytes.fromhex(k) for k in pins]
         kernels = [Path(m).read_bytes() for m in modules]
         if cmd.endswith("-projection"):
@@ -1077,12 +1104,16 @@ def main(argv: List[str]) -> int:
     except (VarsError, ValueError, KeyError, TypeError, OSError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
+    if cmd == "inspect-attestation":  # the bundle's own policy is no trust anchor, so its acceptance has its own word
+        result["accepted_under_own_policy"] = result.pop("accepted")
     print(json.dumps(result, indent=2, sort_keys=True))
     if cmd == "inspect-projection":
         ok = result["witnessed"] and result["data_ok"] in (True, None) and result["rules_status"] == "known"
     elif cmd == "verify-projection":
         ok = (result["witnessed"] and result["data_ok"] is True and result["rules_status"] == "known"
               and not result["required_missing"])
+    elif cmd == "inspect-attestation":
+        ok = result["accepted_under_own_policy"]
     else:
         ok = result["accepted"]
     if modules:  # the reader asked for the output to be checked here: the witnesses' word is not enough

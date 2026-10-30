@@ -9,7 +9,9 @@ foreign import and acceptance, scope rotation without retroactivity, replay trus
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import io
 import json
 import os
 import re
@@ -2033,6 +2035,8 @@ class TestVars1Conformance(unittest.TestCase):
         mc = self._minds_chain()
         repo = V.GitVarsRepo(ROOT_DIR)
         if repo.ref_commit(mc.SCOPE) is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":  # CI fetches the chain: a skip there would read as a pass
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
             self.skipTest("refs/vars/heads/minds is not fetched in this clone")
         published = set(re.findall(r"\| `([0-9a-f]{64})` \|", (ROOT_DIR / "README.md").read_text()))
         self.assertEqual(published, {k.hex() for k in mc.roster(repo)})
@@ -2442,7 +2446,7 @@ class TestVars1Conformance(unittest.TestCase):
         # A real bundle verifies offline, and the trace names what was counted
         b1 = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
         code, r = offline("inspect-attestation", b1)
-        self.assertEqual((code, r["accepted"], r["rules_status"]), (0, True, "known"))
+        self.assertEqual((code, r["accepted_under_own_policy"], r["rules_status"]), (0, True, "known"))
         ex = r["explain"]
         self.assertEqual(ex["at_tip"]["counted"], [{"verdict": r1["verdict"].hex(), "verifier": "minds-maintainer",
                                                     "endorsers": [pka.hex()]}])
@@ -2452,7 +2456,9 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((ex["policy"]["source"], ex["policy"]["threshold"], ex["policy"]["keys"]),
                          ("evaluator_policy", 1, [pka.hex()]))
         self.assertEqual(ex["rules"]["status"], "known")
-        self.assertEqual(r, V.verify_attestation(b1), "vars1.py and the standalone file are one implementation")
+        lib = V.verify_attestation(b1)
+        lib["accepted_under_own_policy"] = lib.pop("accepted")  # inspect's own word (test 99)
+        self.assertEqual(r, lib, "vars1.py and the standalone file are one implementation")
         code, p = offline("inspect-projection", b1["projection"])
         self.assertEqual((code, p["explain"]["scope_epoch"], p["explain"]["witnesses_missing"]), (0, scope1.hex(), []))
         self.assertEqual([(s["key"], s["counted"]) for s in p["explain"]["witness_seals"]], [(pka.hex(), True)])
@@ -2480,7 +2486,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn("only the rules of KNOWN_RULES", p["explain"]["rules"]["reason"])
         code, r = offline("inspect-attestation", dict(b1, projection=foreign))
         self.assertEqual(code, 1, r)
-        self.assertEqual((code, r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted"]),
+        self.assertEqual((code, r["rules_status"], r["evidence"], r["attested_at_tip"], r["accepted_under_own_policy"]),
                          (1, "unsupported", "supplied", None, False))
 
         # A second member joins: the scope rotates; the earlier bundle keeps the epoch of its projection's tip
@@ -2811,6 +2817,9 @@ class TestVars1Conformance(unittest.TestCase):
         tested["witnesses"] = ["test:test_99_does_not_exist"]
         code, out = check(spec, weak)
         self.assertIn("witness does not exist: test:test_99_does_not_exist", out)
+        tested["witnesses"] = ["witness:test_99_does_not_exist"]  # the witness spike's tests, a kind of their own
+        code, out = check(spec, weak)
+        self.assertIn("witness does not exist: witness:test_99_does_not_exist", out)
         bare = json.loads(json.dumps(claims))
         tested = next(c for c in bare["claims"] if c["status"] == "tested")
         tested["mutants"] = []
@@ -5640,7 +5649,8 @@ class TestVars1Conformance(unittest.TestCase):
                              ("known", "complete_at_tip", settles, settles), scope)
             self.assertEqual(r["endorsers_at_tip"], sorted(k.hex() for k in ([f["A"], f["B"]] if settles else [f["A"]])))
             self.assertEqual(r["explain"]["rules"]["encoding"], "v2" if rules == V.H_LENS_KERNEL_V2 else "v1")
-            self.assertEqual(offline(b), r, f"{scope}: the standalone file reads it alone, as vars1.py does")
+            inspected = {**{k: v for k, v in r.items() if k != "accepted"}, "accepted_under_own_policy": r["accepted"]}
+            self.assertEqual(offline(b), inspected, f"{scope}: the standalone file reads it alone, as vars1.py does")
 
         # A v2 input listing a reference its cell does not hold: x's tier slot "names" w
         two = made["two"]
@@ -6047,6 +6057,50 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_98_one_initial_endorser_alone_may_evict_under_v2(self) -> None:
         self._evict_alone(*self._v2_genesis()[:2], V.H_LENS_KERNEL_V2, "MINDS_KERNEL2_WASM")
+
+    def test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word(self) -> None:
+        """Decisions 0008 and 0003 of open-ontologies. An object that names a key twice has two readings (Python keeps
+        the last value, other readers the first), so such a bundle is refused, at the top and nested alike.
+        `inspect-attestation`, which claims no trust, reports its acceptance as `accepted_under_own_policy`, never as
+        `accepted`, the word of `verify-attestation`. A crash of the verifier exits 3, which no verdict uses."""
+        mc = self._minds_chain()
+        sk = b"\x07" * 32
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        att = V.export_attestation(repo, "minds", r1["decision"], r2["projection"])
+        other = V.export_attestation(repo, "minds", r2["decision"], r2["projection"])["cell"]
+        pk = V.ed25519_pubkey(sk).hex()
+        path = Path(self.tmp.name) / "bundle.json"
+
+        def cli(cmd, raw, *pins):
+            path.write_bytes(raw)
+            r = subprocess.run([sys.executable, str(ROOT_DIR / "vars1.py"), cmd, str(path),
+                                *[x for k in pins for x in ("--require", k)]], capture_output=True, text=True)
+            return r.returncode, (json.loads(r.stdout) if r.stdout else {})
+
+        text = json.dumps(att)
+        rc, out = cli("verify-attestation", text.encode(), pk)
+        self.assertEqual((rc, out.get("accepted")), (0, True))
+        rc, out = cli("inspect-attestation", text.encode())
+        self.assertEqual((rc, out.get("accepted_under_own_policy"), "accepted" in out), (0, True, False))
+        # another decision's cell first, this one's last: the last value alone would be accepted
+        twice = text.replace('"cell": ', f'"cell": "{other}", "cell": ', 1)
+        i = text.rindex('"cell": ')  # the projection's own cell, nested
+        nested = text[:i] + f'"cell": "{"00" * 32}", ' + text[i:]
+        # NaN and the infinities are not JSON, though Python's json reads them (Codex finding fb410499)
+        constants = [(text[:-1] + f', "extra": {x}}}').encode()
+                     for t in ("NaN", "Infinity", "-Infinity") for x in (t, f'{{"nested": {t}}}')]
+        self.assertEqual(cli("verify-attestation", (text[:-1] + ', "extra": {"nested": 1.5}}').encode(), pk)[0], 0)
+        for raw in (twice.encode(), nested.encode(), b"\xff" + text.encode(), *constants):
+            for cmd, pins in (("verify-attestation", (pk,)), ("inspect-attestation", ())):
+                self.assertEqual(cli(cmd, raw, *pins), (2, {}), (cmd, raw[:40]))
+        # a crash of the verifier is no verdict: it exits 3, not 1
+        path.write_text(text)
+        with unittest.mock.patch.object(V._MV, "verify_attestation", side_effect=IndexError("a defect")), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(V._MV.main(["verify-attestation", str(path), "--require", pk]), 3)
 
 
 if __name__ == "__main__":
