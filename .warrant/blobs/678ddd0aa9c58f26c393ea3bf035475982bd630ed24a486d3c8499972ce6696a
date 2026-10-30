@@ -1,0 +1,111 @@
+# Codex verdict on G6 pilot obligation
+
+Repository: s0fractal/minds
+
+- Base M: a8dc7c5eff448e3f8a841281d9d1b65625e077f4
+- Obligation lineage D: 5788976a05d2f56dc3293f9c0d97b8c32f3aabf4e7cef5c878491a80ce9121c4
+- Version T: 37bfd2ee799b00369e63a524c3a7697b111bed1c0791d8eb4df237365bbcf528
+
+Verdict: accept the completed pilot obligation. It requires a preregistered comparison and an honestly reported result, including a null result. It does not require a benefit for minds.
+
+## Identity and owner authorization
+
+The installed `python -m warrant.roadmap due --actor codex --json` at M reproduced the waker's D, T, G6, statement, three named PR references, empty evidence/requires and absent subject. MCP context showed a signed obligation@1 leaf with a pending guard waiting only for one roadmap/acceptor acceptance, no challenge and no open requirement. MCP init verified the codex signer's key against this worktree's v3.json.
+
+Git and GitHub's PR API independently agree on the merges:
+
+- https://github.com/s0fractal/minds/pull/40 — 16b727bc06a0e86b35af3e16f6d6ffcbb0465412, merged by s0fractal at 2026-10-29T19:37:48Z.
+- https://github.com/s0fractal/minds/pull/41 — c042df8f89295243d5ef5b0d7b92c21ac34328bf, merged by s0fractal at 2026-10-29T22:23:28Z.
+- https://github.com/s0fractal/minds/pull/42 — 27c6ce1b6c2088499eb178ccdf3551b07e556bf4, merged by s0fractal at 2026-10-30T11:23:55Z.
+
+The owner's merges of the preregistration and revised freeze, before the corresponding requests, constitute concrete authorization to proceed with this pilot. The initial smoke response timestamps run from 2026-10-29T19:51:35Z to 20:01:37Z; the revised smoke runs from 22:24:04Z to 22:36:02Z. Confirmatory response timestamps run from 22:39:27Z to 2026-10-30T00:30:02Z. These are saved provider metadata, not an independent provider audit.
+
+## What was checked
+
+Read PREREG.md, generator, chain construction, renderings, runner, parser, scorer, tests, mutants, run.sh, models.json, REPORT.md, descriptive code, raw records and ledger. Compared the #41 amendment with #40: cap, invalid-reason reporting and retained smoke artifacts changed before the new freeze. The primary rule and underlying comparison remained fixed. The pilot code, preregistration, test/mutant set, run.sh and model list at M are identical to the confirmatory freeze.
+
+Rebuilt all 16 confirmatory tasks from the full c042df8 freeze seed through actual VARS-1 admission and what_if. Every reconstructed history, truth map, case map, prompt, seed and what_if digest equaled its stored task. Independently decoded M and C to the same facts for every history. Both contain the failed ground and approval dependencies; each history meets the own, approvals and margin constraints. The surrounding instructions are identical across arms. W intentionally adds the computed report, as preregistered; C isolates the chain's representation.
+
+Checked task file hashes and manifest identity 8dd093e20a31485469b29142a964cd0b0ac944b5b32261a6d61300420c530d6d, including the results binding. Verified exactly the 144 unique planned (history, model, arm) requests and the frozen shuffled ledger order. All 142 returned responses name the requested model; response IDs are unique. Two requests exhausted three HTTP-429 attempts; four other requests succeeded after one HTTP-429 retry. Retries conform to the protocol. Raw usage costs sum to $1.570392797, agreeing with the rounded status.
+
+Independent parsing and wrong-reliance counting reproduce 42 valid M/W pairs, all with WR(M) = WR(W) = 0; the exact sign test has zero nonzero differences, p = 1. The primary verdict is therefore "no difference detected". Invalid totals are M=4, C=7, W=3. Twelve are deepseek cap stops and two are qwen no-answers. The frozen scorer reproduces run/score.json byte for byte. Recomputed descriptive output also equals run/describe.json byte for byte.
+
+## Boundaries of acceptance
+
+The readers are three models, each asked once at temperature zero, and the histories are synthetic with explicit rules. This pilot does not establish human usability or a benefit when the Markdown arm fails. The primary null is a ceiling result, and the report states it as such.
+
+The second smoke run's two cap stops and the confirmatory run's twelve cap stops have repetitive reasoning tails (last 20000 bytes compress to 0.002). This supports treating them as recorded reader failures under the frozen cap; it does not prove that a larger cap would never finish. The report explicitly calls that an inference, preserves the capped responses, gives the invalid-as-worst sensitivity, and states the preregistered void-and-repeat rule if a harness defect is established. No blocking harness defect was established here. No reader request was repeated or rescored under a changed rule during this review.
+
+## Validation environment
+
+Python 3.13 from the installed warrant MCP environment, its installed sigma-glyph, and installed Node v26.13.0. The first attempt used a mise Node shim that tried an unavailable runtime installation and produced environment errors. The successful rerun put /opt/homebrew/bin first in PATH. A validation copy of test_g6.py outside the worktree changed only HERE to the original source directory and WORK to an authorized ~/.warrant scratch directory. All original assertions and all mutant substitutions were retained. No implementation or stored run artifact was edited.
+
+Final validation:
+
+- G6 harness: 19 tests pass (39.915 seconds).
+- G6 named mutants: 28 of 28 killed by assertion failures; no survivors.
+- Complete task regeneration: 16 of 16 exactly match stored tasks.
+- Frozen score and descriptive output: each reproduces byte for byte.
+- Roadmap check: 13 lineages, zero problems.
+- Repository claim checker: passes for 160 claims and 278 defined mutants; existing debt is four assumed and two unburned claims. This checker validates the claim ledger; it is not a rerun of all 278 runtime mutants.
+- warrant.claims check is inapplicable because minds has no .warrant/claims.json; tools/check_claims.py is its actual claim checker.
+
+Independent audit summary:
+
+```json
+{
+  "task_manifest": "8dd093e20a31485469b29142a964cd0b0ac944b5b32261a6d61300420c530d6d",
+  "regenerated_histories": 16,
+  "unique_planned_replies": 144,
+  "served_model_matches": 142,
+  "invalid": {
+    "C": 7,
+    "W": 3,
+    "M": 4
+  },
+  "primary_pairs": 42,
+  "primary_mean_difference": 0,
+  "primary_sign_test_p": 1,
+  "verdict": "no difference detected",
+  "cost": 1.570392797,
+  "reply_timestamp_range": [
+    1793313567,
+    1793320202
+  ],
+  "score_byte_identical": true
+}
+```
+
+Named mutant results:
+
+```text
+killed m-closure-threshold: test_12_the_closure_reads_the_rules
+killed m-closure-own-checks: test_12_the_closure_reads_the_rules
+killed m-whatif-truth: test_02_the_chain_and_the_closure_agree_or_the_task_is_refused
+killed m-task-unchecked: test_02_the_chain_and_the_closure_agree_or_the_task_is_refused
+killed m-accept-margin: test_13_a_history_lacking_a_case_is_not_accepted
+killed m-markdown-approval: test_04_every_rendering_carries_the_same_facts
+killed m-chain-relies: test_04_every_rendering_carries_the_same_facts
+killed m-whatif-lost: test_05_the_report_answers_what_the_truth_says
+killed m-parse-first: test_07_a_reply_is_its_last_json_block_or_invalid
+killed m-parse-extra: test_07_a_reply_is_its_last_json_block_or_invalid
+killed m-rates-wrong: test_08_rates_and_the_paired_contrast
+killed m-contrast-sign: test_08_rates_and_the_paired_contrast
+killed m-contrast-worst: test_08_rates_and_the_paired_contrast
+killed m-sign-one-sided: test_09_the_sign_test_is_exact
+killed m-run-resume: test_10_the_runner_asks_each_once_retries_resumes_and_stops_at_the_budget
+killed m-run-budget: test_10_the_runner_asks_each_once_retries_resumes_and_stops_at_the_budget
+killed m-plan-order: test_11_the_order_mixes_the_arms
+killed m-key-unlimited: test_14_the_key_holds_the_cap
+killed m-key-above-cap: test_14_the_key_holds_the_cap
+killed m-key-budget-left: test_14_the_key_holds_the_cap
+killed m-run-spend-twice: test_15_a_resumed_run_spends_what_the_key_has_left
+killed m-run-unbound: test_16_results_belong_to_the_tasks_they_were_made_from
+killed m-score-unbound: test_16_results_belong_to_the_tasks_they_were_made_from
+killed m-bind-seed: test_17_tasks_bind_to_their_seed_count_and_bytes
+killed m-bind-digest: test_17_tasks_bind_to_their_seed_count_and_bytes
+killed m-bind-files: test_17_tasks_bind_to_their_seed_count_and_bytes
+killed m-bound-unverified: test_18_the_runner_and_scorer_check_the_task_bytes
+killed m-invalid-reason: test_19_an_invalid_reply_says_why
+```
+
