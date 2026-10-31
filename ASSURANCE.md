@@ -154,7 +154,7 @@ the reader pins as the admitted chain.
 
 | Claim | Evidence | Where |
 |---|---|---|
-| `check.py` answers `HELD` for a witness term only if the lens holds its decision Settled at the term's tip, provided the store at the tip is that scope's admitted chain; outside its fragment the answer is `NOT_COVERED` | Tested, exhaustively over every subset of verdicts on two G6 histories after a failure, with a mutant for every check; the argument from §4.2 is prose, not proved (roadmap G7) | `experiments/witness/test_witness.py` 01–10; README.md |
+| `check.py` answers `HELD` for a witness term only if the lens holds its decision Settled at the term's tip, provided the store at the tip is that scope's admitted chain; outside its fragment the answer is `NOT_COVERED` | Tested, exhaustively over every subset of verdicts on two generated histories after a failure, with a mutant for every check; the argument from §4.2 is prose, not proved (roadmap G7) | `experiments/witness/test_witness.py` 01–10; README.md |
 | The term reads one way: a witness term that is not UTF-8 JSON, or whose object names a key twice, is refused (`FORMAT`), and a crash of the checker exits 3, which no verdict uses | Tested, with mutants | `experiments/witness/test_witness.py` 11 |
 
 ## How a mutant counts
