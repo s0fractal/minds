@@ -79,6 +79,7 @@ jobs:
           lake build vars1fold
           lake build vars1cycle
           lake build vars1mask
+          lake build vars1witness
           lake build Vars1Sigma
 
       - name: F42 vectors are the oracle's
@@ -89,6 +90,8 @@ jobs:
           MINDS_REQUIRE_CHAIN: "1" # the chain was fetched above: test 25 fails here rather than skip
         run: python -m unittest -v test_vars1
       - name: Witness spike (experiments/witness/README.md)
+        env:
+          MINDS_REQUIRE_LEAN: "1" # built above: every check also runs vars1witness and must agree
         run: python experiments/witness/test_witness.py
       - name: Property suite (I0–I11)
         run: python test_vars1_props.py
@@ -116,5 +119,22 @@ jobs:
         run: python -m pip install --require-hashes -r requirements.txt
       - name: Mutants
         run: python tools/run_mutants.py
+      - name: Install elan (Lean toolchain from proofs/lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.elan/toolchains
+            proofs/.lake
+          key: lean-${{ hashFiles('proofs/lean-toolchain') }}-${{ hashFiles('proofs/**/*.lean', 'proofs/lakefile.toml') }}
+          restore-keys: lean-${{ hashFiles('proofs/lean-toolchain') }}-
+      - name: The Lean witness checker (the witness mutants' tests run it)
+        working-directory: proofs
+        run: lake build vars1witness
       - name: Witness spike mutants
+        env:
+          MINDS_REQUIRE_LEAN: "1"
         run: python experiments/witness/test_witness.py --mutants

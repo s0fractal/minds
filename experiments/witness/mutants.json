@@ -178,5 +178,25 @@
   "find": "object_pairs_hook=one_reading, parse_constant=not_json)",
   "replace": "object_pairs_hook=one_reading)",
   "kills": "test_11_a_term_reads_one_way_and_a_crash_is_no_verdict"
+ },
+ "m-lean-kill-edges": {
+  "find": "            items = hvec(atoms, c[edge])\n",
+  "replace": "            items = hvec(atoms, c[edge]) if edge in (\"relies\", \"attests\") else []\n",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-lean-invalid": {
+  "find": "                int(slots[1:2] == [H_VERDICT_INVALID]),",
+  "replace": "                0,",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-lean-seal-verify": {
+  "find": "        if x is not None and ed25519_verify(x[\"key\"], x[\"signed\"], x[\"signature\"]):",
+  "replace": "        if x is not None:",
+  "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-lean-seal-ctx": {
+  "find": "            good.append((num(x[\"target\"]), num(x[\"ctx\"]), key(x[\"key\"])))",
+  "replace": "            good.append((num(x[\"target\"]), num(scopes[0]), key(x[\"key\"])))",
+  "kills": "test_09_the_store_is_read_from_bytes"
  }
 }
