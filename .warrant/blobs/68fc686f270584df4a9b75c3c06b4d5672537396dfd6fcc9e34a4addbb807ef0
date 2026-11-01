@@ -1,0 +1,46 @@
+# G8 closure, obligation by obligation (minds PR #52, merged 7beb35c)
+
+Goal G8 (`316bb88e`): "The Lean model reads the rules the live chain runs, and a checker proved against it holds every decision the lens settles on the live chain."
+
+PR #52's code head is `d4a27cb` (tree `95b15344`), filed as pr-head version `6bdc1564`. codex accepted that version (`7676e5d6`) after its own review: the full Lean library and the four executables built, the new theorems' axioms audited, the witness suite 13/13 with the live chain's tip `57035e83`, I9/I10 on every tip of the fetched live chain, 44/44 witness mutants and `m-fold2-facts-typed` killed, three more gate-admitted adversarial chains where Python and Lean agree, and `tools/check_claims.py` (167 claims, 22 proved, 330 mutants). GitHub's required `check` and `mutants` jobs were green at the head. The owner merged it as `7beb35c`.
+
+To reproduce at `7beb35c`: `cd proofs && lake build` (with `#print axioms` on any theorem below), then with `MINDS_REQUIRE_LEAN=1 MINDS_REQUIRE_CHAIN=1` and `refs/vars/heads/minds` fetched: `python -m unittest test_vars1_props`, `python -m unittest test_vars1.TestVars1Conformance.test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain`, `python -m unittest experiments.witness.test_witness`, `python experiments/witness/test_witness.py --mutants`, `python tools/check_claims.py`.
+
+## `cf64847e`: the v2 fold
+
+| The obligation asks | Where it is held |
+|---|---|
+| `proofs/Vars1/Fold2.lean` models the v2 fold (§4.1 latches 4a and 4b) | `World2` (a scope's rules, a policy's keys, a cell's typed references), `St2` (the commit counter, the waiting rotation, cancelled scopes, birth commits), `latch2`, `settle2`, `step2`, `run2`, `DELAY = 16` |
+| latches are monotone and non-retroactive | `stateAt2_mono`, `stateAt2_append` (from `latch2_le`, `settle2_le`, `run2_append`) |
+| over v1 epochs it is v1's fold | `run2_v1`, under `RotationAdmitted` and a rotation superseding exactly its base: the hypotheses under which v1's own rotation theorems are stated |
+| under v2 the governing scope moves only once every removed key has sealed it or 16 commits have passed; a rules change only after the 16 with no veto | `moves_notice` |
+| conversely it moves once the wait is over | `step2_governs`; a veto cancels, `step2_vetoes` |
+| a waiting or vetoed scope latches nothing and is not Active; a vetoed change never governs | `waiting_withheld`, `waiting_not_active`, `vetoed_never_governs`, all under `Fresh` (the chain as the gate admits it) |
+| vars1fold compiles it | `proofs/Vars1FoldMain.lean` reads a `V=2` line (per-scope rules, typed references) and runs `run2` |
+| I10 compares it with `kernel2/lens2.wasm`, I9 the proved Passes 1–2 reading the typed references | `test_vars1_props.py` `lean_checks` (both encodings read by `read_kernel_input`) |
+| on the property suite's v2 run | `test_random_admission_sequences_under_v2` explores v2 sequences through `check_tip`, which runs `lean_checks` on every tip |
+| on test 88's rules changes | test 88 ends with `lean_checks` on every input it built, empty required: a veto, the window's last commit, a change governing after 16 |
+| on every tip of `refs/vars/heads/minds`, which CI requires | `test_every_tip_of_the_live_chain` (81 tips, 68 v1 and 13 v2, 0 differences at `57035e83`); `MINDS_REQUIRE_CHAIN=1` on the props step of `check.yml` makes it fail rather than skip |
+| the claims of latches 4a and 4b these theorems state are proved in `claims.json` | `fold.rotation-epoch`, `fold.rotation-waits`, `fold.rotation-edge`, `fold.rotation-ends`, `fold.rules-wait`, `fold.rules-veto`: status proved, with the Lean witnesses and I10, tests and mutants kept |
+
+Axioms: `propext`, `Quot.sound`. A defect found on the way: `vars1exec` compiled as written did not finish at the live chain's size; `@[csimp]` theorems (`fill_eq_fast`, `fillUp_eq_fast`, `staleOf_eq_fast`) prove array-backed versions equal, so `pass1_correct` and `stale_correct` hold of the code that runs (624 cells: 8 s).
+
+## `8854aaa5`: the witness checkers read the live chain
+
+| The obligation asks | Where it is held |
+|---|---|
+| `check.py` and `vars1witness` count a seal under any scope cell of the governing chain by a key of that scope's admission roster | `check.py` `_read` returns the chain (the one scope cell no other supersedes, then each scope it supersedes back to the genesis); `_check` requires the seal's scope on the chain (`SEAL`) and its key in that scope's roster (`KEY`). `Witness.lean`: `Store.ctxs`, `endorseOK` under any of them |
+| under the v1 or the v2 rules | `_read` admits `H_LENS_KERNEL` and `H_LENS_KERNEL_V2`, refuses others (`RULES`) |
+| a rotation that may still wait stays NOT_COVERED | `WAITING`: under a v2 base, the newest rotation drops a key or changes the rules |
+| `witness_sound` is proved with Pin's cumulative-endorser hypothesis stated for every scope of that chain | `Pin.cumulative` quantifies over `S.ctxs`; `endorse_sound`, `witness_sound`; axioms `propext`, `Quot.sound` |
+| on `refs/vars/heads/minds` at its tip the prover finds a witness for exactly the decisions the lens holds Settled, and `check.py` answers HELD and `vars1witness` ACCEPT for each | witness test 13 at `57035e83`: 46 decisions, 34 Settled by the lens, a witness for exactly those 34, HELD and ACCEPT for each; no witness for the other 12 |
+| (test 13), which CI requires | `MINDS_REQUIRE_CHAIN=1` and `MINDS_REQUIRE_LEAN=1` on the witness step of `check.yml` |
+
+Mutants: `m-waiting`, `m-pin-old`, `m-seal-roster`, `m-lean-ctxs` new; `m-scopes`, `m-scope-pin`, `m-rules`, `m-seal-scope`, `m-lean-seal-ctx` rewritten; 44 of 44 killed.
+
+## Not established
+
+- The decode (git tree, SHA-256 names, cell layout, Ed25519) is `check.py`'s Python: tested, a hypothesis of `witness_sound`.
+- `Fold2.lean` is compared with the kernel module (I10), not proved of the Rust; the model makes no refusal (E-24, E-25, −6, −7).
+- A waiting rotation, a vetoed rules change and foreign cells stay outside the witness fragment; the live chain has none of them at `57035e83`.
+- The 12 decisions the lens does not settle at the tip are releases recorded under the two-member roster that await antigravity's verdict; test 13 holds that no witness exists for them, not why.
