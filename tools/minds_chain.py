@@ -578,8 +578,14 @@ KERNELS = (("kernel", "kernel", (), "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_K
             "H_LENS_KERNEL_V1B"))
 
 
-def _run(cmd: List[str], cwd: Path) -> bool:
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True).returncode == 0
+def _run(cmd: List[str], cwd: Path, env: Optional[Dict[str, str]] = None) -> bool:
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                          env=None if env is None else {**os.environ, **env}).returncode == 0
+
+
+# A test run requires what CI's check job requires: a skip for want of the chain or of a Lean executable would read as
+# a pass. A commit whose tests predate these variables ignores them.
+REQUIRE = {"MINDS_REQUIRE_CHAIN": "1", "MINDS_REQUIRE_LEAN": "1"}
 
 
 def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
@@ -600,6 +606,20 @@ def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
     return results
 
 
+def witness_checks(root: Path, run=_run) -> List[Tuple[str, bool]]:
+    """The witness checkers of experiments/witness/README.md, where the commit carries them: `vars1witness` built
+    where its proofs name it (from PR #50 on), then the witness suite (from PR #46 on) with the Lean checker and the
+    chain required, as CI's check job runs it. Its test 13 holds every decision the lens settles on
+    refs/vars/heads/minds as the checkout's refs hold it; under `verify-release`, the chain the release was recorded
+    on. A commit from before them has none of these checks, so verifying an older release does not fail on them."""
+    results: List[Tuple[str, bool]] = []
+    if (root / "proofs" / "Vars1WitnessMain.lean").exists():
+        results.append(("lake build vars1witness", run(["lake", "build", "vars1witness"], root / "proofs")))
+    if (root / "experiments" / "witness" / "test_witness.py").exists():
+        results.append(("experiments/witness", run([sys.executable, "experiments/witness/test_witness.py"], root, REQUIRE)))
+    return results
+
+
 def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], bool]:
     """Every check a release requires, as `name OK|FAILED` lines; the release is refused unless all pass. Every
     rules module built from `root` must hash to its identity, and `rules` must be one of them."""
@@ -610,9 +630,10 @@ def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], b
     for target in ("", "vars1exec", "vars1fold", "vars1cycle", "Vars1Sigma"):
         results.append((f"lake build {target}".strip(), run(["lake", "build", *([target] if target else [])], root / "proofs")))
     results += [
-        ("test_vars1", run([sys.executable, "-m", "unittest", "test_vars1"], root)),
-        ("test_vars1_props", run([sys.executable, "test_vars1_props.py"], root)),
+        ("test_vars1", run([sys.executable, "-m", "unittest", "test_vars1"], root, REQUIRE)),
+        ("test_vars1_props", run([sys.executable, "test_vars1_props.py"], root, REQUIRE)),
     ]
+    results += witness_checks(root, run)
     results += kernel_checks(root, rules)
     return [f"{n} {'OK' if ok else 'FAILED'}" for n, ok in results], all(ok for _, ok in results)
 

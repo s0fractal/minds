@@ -6111,6 +6111,46 @@ class TestVars1Conformance(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(V._MV.main(["verify-attestation", str(path), "--require", pk]), 3)
 
+    def test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them(self) -> None:
+        """A release, and every member's verify-release, runs the witness checkers where the released commit carries
+        them: vars1witness built, then the witness suite with the Lean checker and the chain required, as CI runs it.
+        A commit from before them runs none of these checks, so an older release still awaiting a verdict does not
+        fail on a check its commit never had. The test suites run with the same requirements."""
+        mc = self._minds_chain()
+        root = Path(self.tmp.name) / "wt"
+        (root / "proofs").mkdir(parents=True)
+        calls, fails = [], set()  # (command, directory, extra environment); the commands whose run fails
+
+        def fake(cmd, cwd, env=None):
+            calls.append((cmd, cwd, env))
+            return cmd[-1] not in fails
+
+        self.assertEqual(mc.witness_checks(root, fake), [])
+        self.assertEqual(calls, [])
+        suite = root / "experiments" / "witness" / "test_witness.py"
+        suite.parent.mkdir(parents=True)
+        suite.write_text("")
+        self.assertEqual(mc.witness_checks(root, fake), [("experiments/witness", True)])
+        self.assertEqual(calls, [([sys.executable, "experiments/witness/test_witness.py"], root,
+                                  {"MINDS_REQUIRE_CHAIN": "1", "MINDS_REQUIRE_LEAN": "1"})])
+        (root / "proofs" / "Vars1WitnessMain.lean").write_text("")
+        calls.clear()
+        fails.add("experiments/witness/test_witness.py")
+        self.assertEqual(mc.witness_checks(root, fake),
+                         [("lake build vars1witness", True), ("experiments/witness", False)])
+        self.assertEqual(calls[0][:2], (["lake", "build", "vars1witness"], root / "proofs"))
+        # run_checks carries them, and runs every test suite with the requirements; the rules are not rebuilt here
+        calls.clear()
+        fails.clear()
+        with unittest.mock.patch.object(mc, "_run", fake):
+            lines, ok = mc.run_checks(root, V.H_LENS_KERNEL)
+        self.assertIn("lake build vars1witness OK", lines)
+        self.assertIn("experiments/witness OK", lines)
+        self.assertFalse(ok)  # no rules module in this tree
+        for name in ("test_vars1", "test_vars1_props.py", "experiments/witness/test_witness.py"):
+            env = next(e for c, _, e in calls if c[-1] == name)
+            self.assertEqual(env, {"MINDS_REQUIRE_CHAIN": "1", "MINDS_REQUIRE_LEAN": "1"}, name)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

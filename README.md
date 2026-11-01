@@ -137,13 +137,13 @@ intent agreed with the owner, built first from the parts above; nothing in it is
 ## Status
 
 Experimental. CI (`.github/workflows/check.yml`) runs every release check on a fresh Ubuntu runner: the kernel
-rebuild, which hashes to the same `H_LENS_KERNEL` there as on macOS, the Lean proofs and executables, the
-conformance suite and the property suite. The proofs' hypotheses and unlinked parts are listed in
-`proofs/README.md`; the Rust/wasm code itself is not proved, only differentially tested against the Lean side
-(lens Passes 1–2 against an executable lens proved equal to the model, the fold against the model's own fold,
-compiled). Other AI agents have reviewed it adversarially, and their reproduced findings are fixed with
-regression tests; no independent human has reviewed it. Radicle replicates `refs/vars/*` signed and with history
-(`tools/radicle-probe.sh`, two local nodes, rad 1.10.3).
+rebuild, which hashes to the same `H_LENS_KERNEL` there as on macOS, the Lean proofs and executables, the conformance
+suite, the property suite and the witness checkers (`experiments/witness`, on the live chain). The proofs' hypotheses
+and unlinked parts are listed in `proofs/README.md`; the Rust/wasm code itself is not proved, only differentially
+tested against the Lean side (lens Passes 1–2 against an executable lens proved equal to the model, the fold against
+the model's own fold, compiled). Other AI agents have reviewed it adversarially, and their reproduced findings are
+fixed with regression tests; no independent human has reviewed it. Radicle replicates `refs/vars/*` signed and with
+history (`tools/radicle-probe.sh`, two local nodes, rad 1.10.3).
 
 The host reads each chain commit once, as the objects its `git diff-tree` delta adds, and keeps checked objects by
 content hash and folds by tip commit; new bytes are always read, hashed against their name and checked. A cold
