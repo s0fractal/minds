@@ -708,10 +708,13 @@
   {
    "id": "fold.rotation-epoch",
    "quote": "Under `H_LENS_KERNEL_V2`, while `S` governs under v2 (in a v1 epoch every rotation takes effect at once, as v1 has it), step 4 holds for a rotation that does not wait",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
+    "lean:run2_v1",
+    "lean:step2_governs",
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+    "prop:I10"
    ],
    "mutants": [
     "m-4a-kernel-v1"
@@ -720,10 +723,12 @@
   {
    "id": "fold.rotation-waits",
    "quote": "while a removed key has not sealed `S'` under `S`, the rotation **waits** and `S` stays governing",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
+    "lean:moves_notice",
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+    "prop:I10"
    ],
    "mutants": [
     "m-4a-kernel-removed",
@@ -733,10 +738,13 @@
   {
    "id": "fold.rotation-edge",
    "quote": "Its supersedes edge to `S` is withheld from latch 3 while it waits and is authorized when `S'` becomes governing",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
+    "lean:waiting_withheld",
+    "lean:step2_governs",
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
-    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations"
+    "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
+    "prop:I10"
    ],
    "mutants": [
     "m-4a-kernel-defer",
@@ -748,12 +756,15 @@
   {
    "id": "fold.rotation-ends",
    "quote": "`S'` becomes governing after the commit in which every removed key has sealed it, or after the 16th commit following its admission, whichever comes first",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
+    "lean:moves_notice",
+    "lean:step2_governs",
     "test:test_85_a_rotation_that_removes_keys_without_consent_waits",
     "test:test_86_a_v2_build_answers_what_the_v2_rules_answer_on_rotations",
     "prop:I3b",
-    "prop:I7b"
+    "prop:I7b",
+    "prop:I10"
    ],
    "mutants": [
     "m-4a-kernel-consent",
@@ -780,9 +791,12 @@
   {
    "id": "fold.rules-wait",
    "quote": "a rotation whose `S'` names other rules than `S` waits 16 commits whatever its consent",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
-    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+    "lean:moves_notice",
+    "lean:step2_governs",
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain",
+    "prop:I10"
    ],
    "mutants": [
     "m-4b-kernel-change",
@@ -792,15 +806,20 @@
   {
    "id": "fold.rules-veto",
    "quote": "A new local cell of the commits `t+1 … t+16` that references `S'`, sealed under `S` by a key of `S`'s admission policy, cancels it before the wait can end",
-   "status": "differential",
+   "status": "proved",
    "witnesses": [
-    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+    "lean:step2_vetoes",
+    "lean:vetoed_never_governs",
+    "lean:waiting_withheld",
+    "test:test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain",
+    "prop:I10"
    ],
    "mutants": [
     "m-4b-kernel-veto",
     "m-4b-twin-veto",
     "m-4b-kernel-cancelled",
-    "m-4b-twin-cancelled"
+    "m-4b-twin-cancelled",
+    "m-fold2-facts-typed"
    ]
   },
   {
@@ -2109,7 +2128,9 @@
     "witness:test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count",
     "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
     "witness:test_09_the_store_is_read_from_bytes",
-    "witness:test_10_the_checker_runs_alone"
+    "witness:test_10_the_checker_runs_alone",
+    "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
+    "witness:test_13_every_decision_of_the_live_chain"
    ],
    "mutants": [
     "m-ed-small-order",
@@ -2143,7 +2164,10 @@
     "m-seal-signature",
     "m-key",
     "m-threshold",
-    "m-threshold-distinct"
+    "m-threshold-distinct",
+    "m-waiting",
+    "m-pin-old",
+    "m-seal-roster"
    ]
   },
   {
@@ -2172,13 +2196,16 @@
     "lean:stale_pin",
     "witness:test_04_after_the_failure_held_only_what_the_lens_settles",
     "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
-    "witness:test_09_the_store_is_read_from_bytes"
+    "witness:test_09_the_store_is_read_from_bytes",
+    "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
+    "witness:test_13_every_decision_of_the_live_chain"
    ],
    "mutants": [
     "m-lean-kill-edges",
     "m-lean-invalid",
     "m-lean-seal-verify",
-    "m-lean-seal-ctx"
+    "m-lean-seal-ctx",
+    "m-lean-ctxs"
    ]
   }
  ],

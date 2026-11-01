@@ -5465,6 +5465,15 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual([outcome(built, ki) for ki in inputs],
                          [outcome(V.kernel_runner(V.H_LENS_KERNEL_V2), ki) for ki in inputs],
                          "a v2 build answers what the pinned v2 answers on these chains")
+        # I10 and I9 on these chains: the model's v2 fold (proofs/Vars1/Fold2.lean, compiled as vars1fold) gives the
+        # pinned module's scope and latches through a rules change that waits, is vetoed, or governs after 16
+        import test_vars1_props as PROPS
+        if not (PROPS.FOLD_BIN.exists() and PROPS.EXEC_BIN.exists()):
+            if os.environ.get("MINDS_REQUIRE_LEAN") == "1":
+                self.fail("vars1fold and vars1exec are not built, and MINDS_REQUIRE_LEAN=1 requires them")
+            return
+        self.assertEqual([PROPS.lean_checks(ki, V.kernel_runner(V.H_LENS_KERNEL_V2).run(ki)) for ki in inputs],
+                         [[] for _ in inputs])
 
     def test_89_the_host_reads_typed_references_as_the_f42_oracle_does(self) -> None:
         """F42 (RULES-V2.md §8): v2's typed references, descriptor -> mask -> reference positions, as the host reads

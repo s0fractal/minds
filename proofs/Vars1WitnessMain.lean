@@ -10,7 +10,8 @@ length, then its items.
   7 checkpoint, 8 cycleWitness, 9 computation, 10 axiom, 11 other), `isLocal`, `payload+1`, `customPol+1`,
   `attested`, `invalid`, `witnessEmpty`, `reqEmpty`, then the lists `relies`, `attests`, `supersedes`, `retires`,
   `invalidates`;
-* `scope`, `pol0`; the policies (a list of `id thr keys`); the seals (a list of `target ctx key`);
+* `scope`, `pol0`; the scopes that governed (a list of `scope pol0`); the policies (a list of `id thr keys`); the
+  seals (a list of `target ctx key`);
 * the lines (a list of `rule concl premises`: rule 0 stand, 1 endorse, 2 settle; a conclusion is `0 c`, `1 w k`
   or `2 d`; premises are a list of conclusions);
 * the decision. -/
@@ -102,6 +103,7 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
   let rows := (← listOf row).toArray
   let scope ← nat
   let pol0 ← nat
+  let ctxs ← listOf (do let c ← nat; let p ← nat; pure (c, p))
   let pols ← listOf (do let id ← nat; let thr ← nat; let keys ← listOf nat; pure (id, thr, keys))
   let seals ← listOf (do let target ← nat; let ctx ← nat; let key ← nat; pure ({ target, ctx, key } : Seal Nat Nat))
   let lines ← listOf line
@@ -123,7 +125,7 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
       verdict := fun c => { attested := (r c).attested, replayed := false, invalid := (r c).invalid,
                             witness := if (r c).witnessEmpty then none else some c, verifier := 0 }
       req := fun c => if (r c).reqEmpty then none else some 0
-      seals, scope, pol0
+      seals, scope, pol0, ctxs
       pols := pols.map (·.1)
       keys := fun p => ((pol p).map (·.2.2)).getD []
       thr := fun p => ((pol p).map (·.2.1)).getD 0 }

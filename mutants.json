@@ -2313,5 +2313,13 @@
   "kills": [
    "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
   ]
+ },
+ "m-fold2-facts-typed": {
+  "file": "test_vars1_props.py",
+  "find": "        lists = [edges[2], edges[3], edges[4]] + ([typed] if v2 else [])",
+  "replace": "        lists = [edges[2], edges[3], edges[4]] + ([[]] if v2 else [])",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
  }
 }

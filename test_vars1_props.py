@@ -31,8 +31,8 @@ checks:
       (`vars1.cycle_witness_answers`) counts a witness exactly when the model proves it, for a contract of its own
       computation expecting `H_CYCLE_PROVEN`
 
-A second run writes sequences whose genesis names H_LENS_KERNEL_V2 and checks I0-I8 and I11 (I9 and I10 compare a
-model of v1's input). The interpreter keeps the rotation delay of §4.1 latch 4a from the spec's words, so the oracles
+A second run writes sequences whose genesis names H_LENS_KERNEL_V2 and checks I0-I11 (I9 reads the v2 input's typed
+references; I10 runs the model's v2 fold, `proofs/Vars1/Fold2.lean`). The interpreter keeps the rotation delay of §4.1 latch 4a from the spec's words, so the oracles
 see the governing scope; the Stale oracle reads typed references; and the generator adds v2-only variants (a peer
 contract naming a foreign verdict in a `hash` slot, consent seals, early rotations) that a v1 seed never draws.
 
@@ -1123,26 +1123,48 @@ EXEC_BIN = Path(__file__).resolve().parent / "proofs" / ".lake" / "build" / "bin
 _EXEC: Optional[subprocess.Popen] = None
 
 
-def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
-    """The facts line for `vars1exec` (proofs/Vars1/Exec.lean), read only from the kernel's own input and output:
-    cell structure from the input, `Authorized` and per-edge authorization from the fold's output. Returns the
-    line and the kernel's status bytes."""
+def read_kernel_input(kernel_input: bytes) -> Tuple[bool, List[Tuple[int, List[int]]], List[Tuple], List[Tuple[int, ...]], int]:
+    """The kernel input (VARS-1-SPEC.md §4.3; under v2, RULES-V2.md §3) read as `vars1exec` and `vars1fold` need it,
+    without vars1.py: whether it is v2, the policies (threshold, key indices), the cells
+    `(id, schema, payload, origin, birth, slots, edges, typed)` (`typed`, the v2 reference list as cell indices, is
+    None under v1), the seals `(target, ctx, key, commit)`, and the commit count."""
     words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
-    off = 0
-    C, N, NK, P = words(0, 4); off = 16
+    v2 = len(kernel_input) >= 4 and words(0)[0] == V.KERNEL2_MAGIC
+    off = 4 if v2 else 0
+    C, N, NK, P = words(off, 4); off += 16
+    pols = []
     for _ in range(P):
         off += 32
-        _thr, m = words(off, 2); off += 8 + 4 * m
+        thr, m = words(off, 2); off += 8
+        pols.append((thr, list(words(off, m)) if m else [])); off += 4 * m
     cells = []
     for _ in range(N):
-        cid, schema, payload, _name, _loss = (kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(5)); off += 160
-        origin, _birth, K = words(off, 3); off += 12
+        cid, schema, payload = (kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(3)); off += 160
+        origin, birth, K = words(off, 3); off += 12
         slots = [kernel_input[off + 32 * i: off + 32 * (i + 1)] for i in range(K)]; off += 32 * K
+        if v2:
+            off += 8  # the schema mask
         edges = []
         for _ in range(5):
             (cnt,) = words(off); off += 4
             edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
-        cells.append((cid, schema, payload, origin, slots, edges))
+        typed = None
+        if v2:
+            (R,) = words(off); off += 4
+            typed = [words(off + 8 * j + 4)[0] for j in range(R)]; off += 8 * R
+        cells.append((cid, schema, payload, origin, birth, slots, edges, typed))
+    (S,) = words(off); off += 4
+    seals = [words(off + 16 * j, 4) for j in range(S)]
+    return v2, pols, cells, seals, C
+
+
+def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
+    """The facts line for `vars1exec` (proofs/Vars1/Exec.lean), read only from the kernel's own input and output:
+    cell structure from the input, `Authorized` and per-edge authorization from the fold's output. A cell's references
+    are its edges and, under v1, every payload or slot equal to a cell id; under v2, the input's typed list. Returns the
+    line and the kernel's status bytes."""
+    _v2, _pols, cells, _seals, _C = read_kernel_input(kernel_input)
+    N = len(cells)
     index = {c[0]: i for i, c in enumerate(cells)}
     # `KernelRunner.run` returns the output after its length word: scope index, statuses, Authorized, edge latches
     status = kernel_output[4:4 + N]
@@ -1150,7 +1172,7 @@ def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
     flags = kernel_output[4 + 2 * N:]
     pos = 0
     parts = [str(N)]
-    for i, (cid, schema, payload, origin, slots, edges) in enumerate(cells):
+    for i, (cid, schema, payload, origin, _birth, slots, edges, typed) in enumerate(cells):
         rel, _att, sup, ret, inv = edges
         latch = {}
         for kind, lst in (("inv", inv), ("ret", ret), ("sup", sup)):
@@ -1158,8 +1180,8 @@ def exec_facts(kernel_input: bytes, kernel_output: bytes) -> Tuple[str, bytes]:
             pos += len(lst)
         is_verdict = schema == V.H_SCHEMA["verdict"]
         pay = index.get(payload)
-        refs = sorted({*rel, *edges[1], *sup, *ret, *inv, *(x for x in [pay] if x is not None),
-                       *(index[h] for h in slots if h in index)})
+        by_value = [index[h] for h in (payload, *slots) if h in index] if typed is None else typed
+        refs = sorted({*rel, *edges[1], *sup, *ret, *inv, *by_value})
         parts += [str(int(origin == 0 or cid in V.STD_SCHEMA_IDS)), str(int(schema == V.H_SCHEMA["acceptance"])),
                   str(int(is_verdict)), str(int(is_verdict and len(slots) > 1 and slots[1] == V.H_VERDICT_INVALID)),
                   str(origin), str(auth[i]), str(0 if pay is None else pay + 1),
@@ -1190,45 +1212,41 @@ _FOLD: Optional[subprocess.Popen] = None
 
 
 def fold_facts(kernel_input: bytes) -> str:
-    """The input line for `vars1fold` (the model's own fold, `proofs/Vars1/Fold.lean`), read only from the kernel's
-    input: policies, cell kinds and policy slots, edges, births, and the verified seals with their first commit."""
+    """The input line for `vars1fold` (the model's own fold: `proofs/Vars1/Fold.lean` under v1, `Fold2.lean` under
+    v2), read only from the kernel's input: policies, cell kinds and policy slots, edges, births, the verified seals
+    with their first commit, and under v2 the rules each scope names and every cell's typed references."""
+    v2, pols, kcells, seals, C = read_kernel_input(kernel_input)
+    pol_ix = {}
     words = lambda off, k=1: struct.unpack_from(f"<{k}I", kernel_input, off)
-    C, N, NK, P = words(0, 4); off = 16
-    pols, pol_ix = [], {}
+    off = 4 if v2 else 0
+    P = words(off + 12)[0]; off += 16
     for i in range(P):
-        pid = kernel_input[off:off + 32]; off += 32
-        thr, m = words(off, 2); off += 8
-        keys = list(words(off, m)) if m else []; off += 4 * m
-        pol_ix[pid] = i
-        pols.append((thr, keys))
+        pol_ix[kernel_input[off:off + 32]] = i
+        off += 40 + 4 * words(off + 36)[0]
     codes = {V.H_SCHEMA["scope"]: 1, V.H_SCHEMA["acceptance"]: 2, V.H_SCHEMA["contract"]: 3,
              V.H_SCHEMA["decision"]: 4, V.H_SCHEMA["question"]: 5, V.H_SCHEMA["verdict"]: 6, V.H_META_SCHEMA: 7}
+    rules_ix: Dict[bytes, int] = {V.H_LENS_KERNEL: 0}
     cells, g = [], None
-    for i in range(N):
-        cid, schema = kernel_input[off:off + 32], kernel_input[off + 32:off + 64]; off += 160
-        origin, birth, K = words(off, 3); off += 12
-        slots = [kernel_input[off + 32 * j: off + 32 * (j + 1)] for j in range(K)]; off += 32 * K
-        edges = []
-        for _ in range(5):
-            (cnt,) = words(off); off += 4
-            edges.append(list(words(off, cnt)) if cnt else []); off += 4 * cnt
+    for i, (cid, schema, _payload, origin, birth, slots, edges, typed) in enumerate(kcells):
         code = codes.get(schema, 0)
         pol = lambda h: 0 if h == V.H_EMPTY or h not in pol_ix else pol_ix[h] + 1
         owner = code in (3, 4) and slots[0] == V.H_OWNER
         custom = pol(slots[3]) if code in (3, 4) else pol(slots[1]) if code == 5 else 0
         p0, p1 = (pol(slots[0]), pol(slots[1])) if code == 1 else (0, 0)
+        rules = rules_ix.setdefault(slots[2], len(rules_ix)) if code == 1 else 0
         if code == 1 and origin == 0 and birth == 0:
             g = i
-        cells.append([code, int(origin == 0), int(cid in V.STD_SCHEMA_IDS), birth, int(owner), custom, p0, p1,
-                      edges[2], edges[3], edges[4]])
-    (S,) = words(off); off += 4
-    seals = [words(off + 16 * j, 4) for j in range(S)]
-    parts = [N, P, C, S, g]
+        row = [code, int(origin == 0), int(cid in V.STD_SCHEMA_IDS), birth, int(owner), custom, p0, p1]
+        if v2:
+            row.append(rules)
+        lists = [edges[2], edges[3], edges[4]] + ([typed] if v2 else [])
+        cells.append((row, lists))
+    parts = [2 if v2 else 1, len(kcells), len(pols), C, len(seals), g]
     for thr, keys in pols:
         parts += [thr, len(keys), *keys]
-    for c in cells:
-        parts += c[:8]
-        for lst in c[8:]:
+    for row, lists in cells:
+        parts += row
+        for lst in lists:
             parts += [len(lst), *lst]
     for t in seals:
         parts += list(t)
@@ -1247,6 +1265,30 @@ def model_fold(line: str) -> List[int]:
     if out == "E" or not out:
         raise RuntimeError(f"vars1fold rejected the facts line ({out or 'no output'})")
     return [int(x) for x in out.split()]
+
+
+def lean_checks(kernel_input: bytes, raw: bytes) -> List[Tuple[str, str]]:
+    """I9 and I10 on one kernel input and the rules kernel's output for it, in either encoding.
+
+    I9: the proved executable lens (proofs/Vars1/Exec.lean, compiled) computes the kernel's own status bytes from the
+    kernel's input and its fold's authority output. I10: the model's own fold (proofs/Vars1/Fold.lean, compiled; under
+    v2 Fold2.lean, with the rotation delay and rules-change quarantine of §4.1 latches 4a and 4b) reproduces the
+    kernel's governing scope, Authorized bits and edge authorizations from the kernel's input alone."""
+    out: List[Tuple[str, str]] = []
+    line, kstatus = exec_facts(kernel_input, raw)
+    estatus = exec_statuses(line)
+    n = len(kstatus)
+    mfold = model_fold(fold_facts(kernel_input))
+    kfold = [int.from_bytes(raw[:4], "little"), *raw[4 + n:4 + 2 * n], *raw[4 + 2 * n:]]
+    if mfold != kfold:
+        i = next((i for i, (a, b) in enumerate(zip(mfold, kfold)) if a != b), min(len(mfold), len(kfold)))
+        what = "scope" if i == 0 else f"Authorized of cell {i - 1}" if i <= n else f"edge latch {i - 1 - n}"
+        out.append(("I10", f"model fold disagrees with the kernel on {what}: "
+                           f"model={mfold[i:i+1]} kernel={kfold[i:i+1]}"))
+    if list(kstatus) != estatus:
+        i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
+        out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
+    return out
 
 
 _RUNNERS: Dict[bytes, "V.KernelRunner"] = {}
@@ -1443,25 +1485,7 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
         out.append(("I8", str(e)))
 
     raw = kernel_runner(lens["rules"]).run(lens["kernel_input"])
-    # I9: the proved executable lens (proofs/Vars1/Exec.lean, compiled) computes the kernel's own status bytes
-    # from the kernel's input and its fold's authority output
-    # I10: the model's own fold (proofs/Vars1/Fold.lean, compiled) reproduces the kernel's scope, Authorized bits and
-    # edge authorizations from the kernel's input. The model reads v1's input and has no rotation delay: under v2
-    # neither runs (RULES-V2.md §6)
-    if encoding == "v1":
-        line, kstatus = exec_facts(lens["kernel_input"], raw)
-        estatus = exec_statuses(line)
-        n = len(kstatus)
-        mfold = model_fold(fold_facts(lens["kernel_input"]))
-        kfold = [int.from_bytes(raw[:4], "little"), *raw[4 + n:4 + 2 * n], *raw[4 + 2 * n:]]
-        if mfold != kfold:
-            i = next((i for i, (a, b) in enumerate(zip(mfold, kfold)) if a != b), min(len(mfold), len(kfold)))
-            what = "scope" if i == 0 else f"Authorized of cell {i - 1}" if i <= n else f"edge latch {i - 1 - n}"
-            out.append(("I10", f"model fold disagrees with the kernel on {what}: "
-                               f"model={mfold[i:i+1]} kernel={kfold[i:i+1]}"))
-        if list(kstatus) != estatus:
-            i = next(i for i, (a, b) in enumerate(zip(kstatus, estatus)) if a != b)
-            out.append(("I9", f"Lean exec disagrees with the kernel at cell {i}: kernel={kstatus[i]} exec={estatus[i]}"))
+    out += lean_checks(lens["kernel_input"], raw)
 
     # I11: a client's Pass 3 from the kernel input (in its rules' encoding) and output alone equals the lens's Settled
     try:
@@ -1856,8 +1880,8 @@ class TestVars1Properties(unittest.TestCase):
         self._explore(V.H_LENS_KERNEL, self.N_SEQS, self.N_COMMITS)
 
     def test_random_admission_sequences_under_v2(self) -> None:
-        """I0..I8 and I11 on every admitted tip of sequences whose genesis names H_LENS_KERNEL_V2 (I9 and I10 compare
-        a model of v1's input): the gate and twin, the v2 kernel, the Stale oracle reading typed references, the edge
+        """I0..I11 on every admitted tip of sequences whose genesis names H_LENS_KERNEL_V2 (I9 on the input's typed
+        references, I10 with the model's v2 fold): the gate and twin, the v2 kernel, the Stale oracle reading typed references, the edge
         oracle with the rotation delay of §4.1 latch 4a kept by the interpreter from the spec, and the offline client
         reading the v2 input's reference list. The generator also writes a peer contract naming a foreign verdict in
         its `hash` slot under a second peer scope, and removed keys' consent seals; I7b holds the interpreter's
@@ -1868,6 +1892,27 @@ class TestVars1Properties(unittest.TestCase):
         self._explore(V.H_LENS_KERNEL_V2, self.N_SEQS_V2, self.N_COMMITS_V2)
         reached = {k: POWER[k] - before[k] for k in POWER}
         self.assertTrue(all(reached.values()), f"the exploration did not reach every case it is for: {reached}")
+
+    def test_every_tip_of_the_live_chain(self) -> None:
+        """I9 and I10 on every tip of refs/vars/heads/minds, the chain minds governs itself with: its v1 epochs, the
+        rotation to v2 in a v1 epoch (370cbf4) and the v2 epoch after it, joins included. Skipped when the chain is not
+        fetched, unless MINDS_REQUIRE_CHAIN=1 (CI fetches it)."""
+        repo = V.GitVarsRepo(Path(__file__).resolve().parent)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":  # CI fetches the chain: a skip there would read as a pass
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        seen: Dict[str, int] = {}
+        found: List[str] = []
+        for commit in repo.commit_chain(tip):
+            lens = repo.lens("minds", at=commit)
+            encoding = V.KNOWN_RULES[lens["rules"]]
+            seen[encoding] = seen.get(encoding, 0) + 1
+            raw = kernel_runner(lens["rules"]).run(lens["kernel_input"])
+            found += [f"{inv} at {commit[:10]}: {detail}" for inv, detail in lean_checks(lens["kernel_input"], raw)]
+        self.assertEqual(found, [])
+        self.assertEqual(set(seen), {"v1", "v2"}, f"the live chain has epochs of both rules: {seen}")
 
     def _explore(self, rules: bytes, n_seqs: int, n_commits: int) -> None:
         found: Dict[str, List[str]] = {}
