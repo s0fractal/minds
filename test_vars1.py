@@ -1816,18 +1816,19 @@ class TestVars1Conformance(unittest.TestCase):
         (work / "f").write_text("two")
         g("commit", "-q", "-am", "two")
         got = {}
-        def spy(root, rules):
+        def spy(root, rules, python=None):
             got.update(head=subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True,
                                            text=True).stdout.strip(), f=(root / "f").read_text(), rules=rules,
-                       sibling=(root.parent / "sigma-glyph").exists())
+                       sibling=(root.parent / "sigma-glyph").exists(), python=python)
             return ["spy OK"], True
         real, mc.run_checks = mc.run_checks, spy
         try:
             self.assertEqual(mc.checks_at(work, first, b"\x01" * 32), (["spy OK"], True))
         finally:
             mc.run_checks = real
-        self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": False},
-                         "nothing beside the worktree: the commit carries its dependencies")
+        self.assertEqual(got, {"head": first, "f": "one", "rules": b"\x01" * 32, "sibling": False,
+                               "python": sys.executable},
+                         "nothing beside the worktree: the commit carries its dependencies (here none: this Python)")
         self.assertEqual(g("worktree", "list", "--porcelain").count("worktree "), 1, "the worktree is removed")
         self.assertEqual((work / "f").read_text(), "two", "the checkout itself is untouched")
         g("checkout", "-q", "-b", "side")
@@ -1990,7 +1991,7 @@ class TestVars1Conformance(unittest.TestCase):
         commit(pr, gp, {"v": "vectors two"}, "two")
 
         seen = {}
-        def spy(root, rules):
+        def spy(root, rules, python=None):
             if not (root.parent / "sigma-glyph").exists():
                 return ["spy OK"], True
             seen.update(book=(root.parent / "sigma-glyph" / "impl" / "sigma_resume.py").read_text(),
@@ -3490,7 +3491,7 @@ class TestVars1Conformance(unittest.TestCase):
         ref40 = "c" * 40
         gm("update-ref", f"refs/heads/{ref40}", m1)
         ran = []
-        real, mc.run_checks = mc.run_checks, lambda root, rules: (ran.append(root), (["spy OK"], True))[1]
+        real, mc.run_checks = mc.run_checks, lambda root, rules, python=None: (ran.append(root), (["spy OK"], True))[1]
         try:
             with self.assertRaisesRegex(V.VarsError, "not a full commit id"):
                 mc.checks_at(minds, m1[:40], V.H_LENS_KERNEL)
@@ -3511,9 +3512,9 @@ class TestVars1Conformance(unittest.TestCase):
             self.assertEqual(mc.checks_at(minds, m1, V.H_LENS_KERNEL), (["spy OK"], True))
         finally:
             mc.run_checks = real
-        spec_pin = re.search(r"`sigma-glyph` at `([0-9a-f]+)`", (ROOT_DIR / "VARS-1-SPEC.md").read_text()).group(1)
-        self.assertRegex(mc.SIGMA_PIN, r"^[0-9a-f]{40}$")
-        self.assertTrue(mc.SIGMA_PIN.startswith(spec_pin))
+        # releases that pinned sibling checkouts were recorded under the spec's `c864d3e` (2026-10-19); the spec has
+        # since moved to sigma-glyph 1.0.0, and their Book I is still compared with the pin they were recorded under
+        self.assertEqual(mc.SIGMA_PIN, "c864d3ee01a2fe46c528bd6e9552438e64df5f6b")
 
 
     # -- classes of rules change (VARS-1-SPEC.md §4.3, AMENDMENTS.md) -------------------------------------------------
@@ -6013,7 +6014,7 @@ class TestVars1Conformance(unittest.TestCase):
         live = V.GitVarsRepo(work).ref_commit(mc.SCOPE)
         seen = []
 
-        def spy(root, rules):
+        def spy(root, rules, python=None):
             there = V.GitVarsRepo(root)
             seen.append((g("-C", str(root), "rev-parse", "HEAD"), there.ref_commit(mc.SCOPE) and mc.roster(there)))
             return ["spy OK"], True
@@ -6150,6 +6151,89 @@ class TestVars1Conformance(unittest.TestCase):
         for name in ("test_vars1", "test_vars1_props.py", "experiments/witness/test_witness.py"):
             env = next(e for c, _, e in calls if c[-1] == name)
             self.assertEqual(env, {"MINDS_REQUIRE_CHAIN": "1", "MINDS_REQUIRE_LEAN": "1"}, name)
+
+    def test_101_a_release_is_checked_under_the_requirements_its_commit_pins(self) -> None:
+        """verify-release runs today's checks on a release's commit, whose vars1.py refuses a Book I other than the
+        one it pins. A release recorded on sigma-glyph 0.8.0 and checked under 1.0.0 would fail on that and be
+        recorded INVALID, which no later verdict takes back. So the checks run under this Python where the commit
+        pins no requirements or the bytes this checkout pins, and otherwise under one made once from the commit's
+        requirements.txt with --require-hashes; one that cannot be made raises before any check runs."""
+        mc = self._minds_chain()
+        work = Path(self.tmp.name) / "minds"
+        work.mkdir()
+        g = lambda *a: subprocess.run(["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                      capture_output=True, text=True, check=True).stdout.strip()
+        g("init", "-q", "-b", "main")
+        own = (ROOT_DIR / "requirements.txt").read_bytes()
+        old = b"sigma-glyph==0.8.0 \\\n    --hash=sha256:" + b"0" * 64 + b"\n"
+        self.assertEqual(mc.interpreter_for(work, None), sys.executable)
+        self.assertEqual(mc.interpreter_for(work, own), sys.executable)
+        env = work / ".git" / "vars" / "envs" / V.sha256(old).hex()
+        calls, made = [], {"ok": False}
+
+        def fake(cmd, cwd, env_=None):
+            calls.append((cmd, cwd))
+            return made["ok"]
+
+        with unittest.mock.patch.object(mc, "_run", fake):
+            with self.assertRaisesRegex(V.VarsError, "cannot install"):
+                mc.interpreter_for(work, old)
+            self.assertFalse((env / "ready").exists())
+            made["ok"] = True
+            calls.clear()
+            self.assertEqual(mc.interpreter_for(work, old), str(env / "bin" / "python"))
+            self.assertEqual(calls, [([sys.executable, "-m", "venv", str(env)], env),
+                                     ([str(env / "bin" / "python"), "-m", "pip", "install", "--quiet",
+                                       "--require-hashes", "-r", "requirements.txt"], env)])
+            self.assertEqual((env / "requirements.txt").read_bytes(), old)
+            calls.clear()
+            self.assertEqual(mc.interpreter_for(work, old), str(env / "bin" / "python"))
+            self.assertEqual(calls, [], "made once per requirements file")
+
+        # checks_at reads the requirements from the release's commit and runs the checks under what they give
+        commits = []
+        for body in (None, own, old):
+            if body is not None:
+                (work / "requirements.txt").write_bytes(body)
+                g("add", "requirements.txt")
+            g("commit", "-q", "--allow-empty", "-m", "c")
+            commits.append(g("rev-parse", "HEAD"))
+        (work / "requirements.txt").write_bytes(own)  # the checkout itself is not what is read
+        asked, seen = [], []
+
+        def pick(repo_dir, requirements):
+            asked.append(requirements)
+            return f"python-{len(asked)}"
+
+        def spy(root, rules, python=None):
+            seen.append(python)
+            return ["spy OK"], True
+
+        with unittest.mock.patch.object(mc, "run_checks", spy), unittest.mock.patch.object(mc, "interpreter_for", pick):
+            for c in commits:
+                self.assertEqual(mc.checks_at(work, c, V.H_LENS_KERNEL), (["spy OK"], True))
+        self.assertEqual(asked, [None, own, old])
+        self.assertEqual(seen, ["python-1", "python-2", "python-3"])
+
+        def broken(repo_dir, requirements):
+            raise V.VarsError("cannot install the commit's requirements.txt")
+
+        seen.clear()
+        with unittest.mock.patch.object(mc, "run_checks", spy), unittest.mock.patch.object(mc, "interpreter_for", broken):
+            with self.assertRaisesRegex(V.VarsError, "cannot install"):
+                mc.checks_at(work, commits[2], V.H_LENS_KERNEL)
+        self.assertEqual(seen, [], "no check ran")
+
+        # run_checks runs every test suite under that Python
+        root = Path(self.tmp.name) / "wt101"
+        (root / "proofs").mkdir(parents=True)
+        (root / "experiments" / "witness").mkdir(parents=True)
+        (root / "experiments" / "witness" / "test_witness.py").write_text("")
+        ran = []
+        with unittest.mock.patch.object(mc, "_run", lambda cmd, cwd, env=None: ran.append(cmd) or True):
+            mc.run_checks(root, V.H_LENS_KERNEL, python="python-old")
+        for name in ("test_vars1", "test_vars1_props.py", "experiments/witness/test_witness.py"):
+            self.assertEqual(next(c for c in ran if c[-1] == name)[0], "python-old", name)
 
 
 if __name__ == "__main__":

@@ -2324,7 +2324,7 @@
  },
  "m-release-witness-checks": {
   "file": "tools/minds_chain.py",
-  "find": "    results += witness_checks(root, run)\n",
+  "find": "    results += witness_checks(root, run, python)\n",
   "replace": "",
   "kills": [
    "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
@@ -2346,18 +2346,98 @@
    "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
   ]
  },
+ "m-release-env-own": {
+  "file": "tools/minds_chain.py",
+  "find": "    if requirements is None or requirements == (ROOT / \"requirements.txt\").read_bytes():",
+  "replace": "    if True:",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-hashes": {
+  "file": "tools/minds_chain.py",
+  "find": "\"--quiet\", \"--require-hashes\", \"-r\",",
+  "replace": "\"--quiet\", \"-r\",",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-once": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not (env / \"ready\").exists():",
+  "replace": "    if True:",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-refuse": {
+  "file": "tools/minds_chain.py",
+  "find": "            raise V.VarsError(f\"cannot install the commit's requirements.txt (in {env}): the release is not checked\")",
+  "replace": "            return sys.executable",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-commit": {
+  "file": "tools/minds_chain.py",
+  "find": "    pinned = subprocess.run([\"git\", \"-C\", str(repo_dir), \"cat-file\", \"-e\", req], capture_output=True).returncode == 0",
+  "replace": "    pinned = False",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-run": {
+  "file": "tools/minds_chain.py",
+  "find": "        lines, ok = run_checks(wt, rules, python=python)",
+  "replace": "        lines, ok = run_checks(wt, rules)",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-tests": {
+  "file": "tools/minds_chain.py",
+  "find": "(\"test_vars1\", run([python, \"-m\", \"unittest\", \"test_vars1\"]",
+  "replace": "(\"test_vars1\", run([sys.executable, \"-m\", \"unittest\", \"test_vars1\"]",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-props": {
+  "file": "tools/minds_chain.py",
+  "find": "(\"test_vars1_props\", run([python, \"test_vars1_props.py\"]",
+  "replace": "(\"test_vars1_props\", run([sys.executable, \"test_vars1_props.py\"]",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-witness": {
+  "file": "tools/minds_chain.py",
+  "find": "    results += witness_checks(root, run, python)\n",
+  "replace": "    results += witness_checks(root, run)\n",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
+ "m-release-env-witness-suite": {
+  "file": "tools/minds_chain.py",
+  "find": "run([python, \"experiments/witness/test_witness.py\"]",
+  "replace": "run([sys.executable, \"experiments/witness/test_witness.py\"]",
+  "kills": [
+   "test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+  ]
+ },
  "m-release-witness-require": {
   "file": "tools/minds_chain.py",
-  "find": "run([sys.executable, \"experiments/witness/test_witness.py\"], root, REQUIRE)",
-  "replace": "run([sys.executable, \"experiments/witness/test_witness.py\"], root)",
+  "find": "run([python, \"experiments/witness/test_witness.py\"], root, REQUIRE)",
+  "replace": "run([python, \"experiments/witness/test_witness.py\"], root)",
   "kills": [
    "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
   ]
  },
  "m-release-tests-require": {
   "file": "tools/minds_chain.py",
-  "find": "(\"test_vars1\", run([sys.executable, \"-m\", \"unittest\", \"test_vars1\"], root, REQUIRE))",
-  "replace": "(\"test_vars1\", run([sys.executable, \"-m\", \"unittest\", \"test_vars1\"], root))",
+  "find": "(\"test_vars1\", run([python, \"-m\", \"unittest\", \"test_vars1\"], root, REQUIRE))",
+  "replace": "(\"test_vars1\", run([python, \"-m\", \"unittest\", \"test_vars1\"], root))",
   "kills": [
    "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
   ]

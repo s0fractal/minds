@@ -353,6 +353,11 @@
       "`test_vars1.py` 100; `tools/minds_chain.py` `witness_checks`, `run_checks`"
      ],
      [
+      "`verify-release` runs a release's test suites under the requirements its commit pins: this interpreter where the commit pins none (Book I from sibling checkouts) or the bytes this checkout pins, otherwise one made once from the commit's `requirements.txt` with `pip install --require-hashes`, so a release recorded on sigma-glyph 0.8.0 is checked on 0.8.0 by a verifier that runs 1.0.0; when that interpreter cannot be made, no check runs and no verdict is recorded",
+      "Tested, with mutants",
+      "`test_vars1.py` 101; `tools/minds_chain.py` `interpreter_for`, `checks_at`, `run_checks`"
+     ],
+     [
       "The GitHub Actions witness's key never was on the maintainer's machine",
       "By construction, not tested here: `witness-key.yml` makes it on a runner and refuses unless the environment `witness` deploys from `main` alone. It rests on GitHub's environment protection and on the owner's GitHub account, whose holder controls what `main`'s workflows do with it",
       "`.github/workflows/witness-key.yml`, `witness.yml`"

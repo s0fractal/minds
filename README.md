@@ -93,10 +93,12 @@ stays in this repository's history (`.warrant/store/` at 38b7192); it was not mi
 
 ## Running
 
-minds needs `node` for the wasm kernel and Book I, [sigma-glyph](https://github.com/s0fractal/sigma-glyph) 0.8.0
+minds needs `node` for the wasm kernel and Book I, [sigma-glyph](https://github.com/s0fractal/sigma-glyph) 1.0.0
 from PyPI, pinned by hash in `requirements.txt`; `vars1.py` also checks the installed modules' bytes against the
-revision the spec pins. The Lean link's three sigma-glyph files and the Ed25519 vectors from
-[primitives](https://github.com/s0fractal/primitives) are copied in (`proofs/SigmaEval/SOURCE`, `vectors/SOURCE`).
+revision the spec pins. The Lean link's six sigma-glyph files (Book I's evaluator and sigma-resume's machine, cycle
+checker and link) and the Ed25519 vectors from [primitives](https://github.com/s0fractal/primitives) are copied in
+(`proofs/SigmaEval/SOURCE`, `vectors/SOURCE`). `verify-release` checks a release recorded on an older sigma-glyph
+under the requirements its own commit pins, installed once under `.git/vars/envs/`.
 
 ```
 git clone https://github.com/s0fractal/minds && cd minds

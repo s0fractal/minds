@@ -214,15 +214,15 @@ try:
 except ImportError:
     raise RuntimeError("install Book I: python3 -m venv .venv && .venv/bin/pip install --require-hashes "
                        "-r requirements.txt, then run with .venv/bin/python") from None
-# Book I as the spec pins it (sigma-glyph c864d3e): the modules' bytes, however they were installed
+# Book I as the spec pins it (sigma-glyph 321504a, tag v1.0.0): the modules' bytes, however they were installed
 BOOK_I_SHA256 = {
-    "sigma_resume.py": "575a198d47519f56cb8cf75458d5d9754492433f98650d1ddf1f3580a363e858",
-    "sigma_glyph.py": "f4d9990d40f07c8cfd3aa10512c2195a0a04e8dc78bc955c0f53dfe737d3feb4",
+    "sigma_resume.py": "2e656e211c71921b258242b1d3dbb5b02818cf27f13422242ae616de1fc70b46",
+    "sigma_glyph.py": "28161a519f283e3b2c55e51be55aa211f1e1bcd234405fae6b61194d0d8a73e8",
 }
 for _mod in (SR, SR.G):
     _p = Path(_mod.__file__)
     if sha256(_p.read_bytes()).hex() != BOOK_I_SHA256[_p.name]:
-        raise RuntimeError(f"{_p} is not Book I as VARS-1-SPEC.md pins it (sigma-glyph c864d3e)")
+        raise RuntimeError(f"{_p} is not Book I as VARS-1-SPEC.md pins it (sigma-glyph 321504a)")
 
 
 # ---------------------------------------------------------------------------

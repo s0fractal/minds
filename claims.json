@@ -1821,6 +1821,27 @@
    ]
   },
   {
+   "id": "assurance.release-requirements",
+   "source": "ASSURANCE.md",
+   "quote": "`verify-release` runs a release's test suites under the requirements its commit pins",
+   "status": "tested",
+   "witnesses": [
+    "test:test_101_a_release_is_checked_under_the_requirements_its_commit_pins"
+   ],
+   "mutants": [
+    "m-release-env-own",
+    "m-release-env-hashes",
+    "m-release-env-once",
+    "m-release-env-refuse",
+    "m-release-env-commit",
+    "m-release-env-run",
+    "m-release-env-tests",
+    "m-release-env-props",
+    "m-release-env-witness",
+    "m-release-env-witness-suite"
+   ]
+  },
+  {
    "id": "assurance.witness",
    "source": "ASSURANCE.md",
    "quote": "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster; a release it answered before and whose answer Pass 3 no longer counts is left to it, and the others are still verified; a verdict that attests nothing is no answer",
