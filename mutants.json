@@ -2321,5 +2321,45 @@
   "kills": [
    "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
   ]
+ },
+ "m-release-witness-checks": {
+  "file": "tools/minds_chain.py",
+  "find": "    results += witness_checks(root, run)\n",
+  "replace": "",
+  "kills": [
+   "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
+ },
+ "m-release-witness-marker": {
+  "file": "tools/minds_chain.py",
+  "find": "    if (root / \"experiments\" / \"witness\" / \"test_witness.py\").exists():",
+  "replace": "    if True:",
+  "kills": [
+   "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
+ },
+ "m-release-witness-lean-marker": {
+  "file": "tools/minds_chain.py",
+  "find": "    if (root / \"proofs\" / \"Vars1WitnessMain.lean\").exists():",
+  "replace": "    if True:",
+  "kills": [
+   "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
+ },
+ "m-release-witness-require": {
+  "file": "tools/minds_chain.py",
+  "find": "run([sys.executable, \"experiments/witness/test_witness.py\"], root, REQUIRE)",
+  "replace": "run([sys.executable, \"experiments/witness/test_witness.py\"], root)",
+  "kills": [
+   "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
+ },
+ "m-release-tests-require": {
+  "file": "tools/minds_chain.py",
+  "find": "(\"test_vars1\", run([sys.executable, \"-m\", \"unittest\", \"test_vars1\"], root, REQUIRE))",
+  "replace": "(\"test_vars1\", run([sys.executable, \"-m\", \"unittest\", \"test_vars1\"], root))",
+  "kills": [
+   "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
  }
 }

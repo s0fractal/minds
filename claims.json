@@ -1805,6 +1805,22 @@
    ]
   },
   {
+   "id": "assurance.release-witness",
+   "source": "ASSURANCE.md",
+   "quote": "A release, and every member's `verify-release`, runs the witness checkers where the released commit carries them",
+   "status": "tested",
+   "witnesses": [
+    "test:test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+   ],
+   "mutants": [
+    "m-release-witness-checks",
+    "m-release-witness-marker",
+    "m-release-witness-lean-marker",
+    "m-release-witness-require",
+    "m-release-tests-require"
+   ]
+  },
+  {
    "id": "assurance.witness",
    "source": "ASSURANCE.md",
    "quote": "`witness` verifies every release waiting for its key's verdict, and only those: none recorded before its key joined, none it has answered (ATTESTED or INVALID), nothing for a key not on the roster; a release it answered before and whose answer Pass 3 no longer counts is left to it, and the others are still verified; a verdict that attests nothing is no answer",

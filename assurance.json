@@ -348,6 +348,11 @@
       "`test_vars1.py` 96; `tools/minds_chain.py` `checks_at`, `recorded_at`"
      ],
      [
+      "A release, and every member's `verify-release`, runs the witness checkers where the released commit carries them: `vars1witness` built, then `experiments/witness/test_witness.py` with the Lean checker and the chain required, its test 13 on the chain the checks read; a commit from before them is not checked for them. Every test suite of a release runs with the requirements CI's check job sets (`MINDS_REQUIRE_CHAIN`, `MINDS_REQUIRE_LEAN`)",
+      "Tested, with mutants",
+      "`test_vars1.py` 100; `tools/minds_chain.py` `witness_checks`, `run_checks`"
+     ],
+     [
       "The GitHub Actions witness's key never was on the maintainer's machine",
       "By construction, not tested here: `witness-key.yml` makes it on a runner and refuses unless the environment `witness` deploys from `main` alone. It rests on GitHub's environment protection and on the owner's GitHub account, whose holder controls what `main`'s workflows do with it",
       "`.github/workflows/witness-key.yml`, `witness.yml`"
