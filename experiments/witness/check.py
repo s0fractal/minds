@@ -11,11 +11,13 @@ store's bytes and answers HELD, REFUSED or NOT_COVERED. It shares no code with v
 the constants are VARS-1-SPEC.md's tables, the parsers and the Ed25519 check are its own, standard library only.
 
 What HELD rests on (README.md):
-- the positive part is checked from bytes: every object hashes to its name, the seals verify under their keys, the
-  keys are in the evaluator policy that the decision's id fixes, and the threshold is met;
+- the positive part is checked from bytes: every object hashes to its name, the seals verify under their keys, each
+  under a scope of the governing chain and by a key of its roster, the keys are in the evaluator policy that the
+  decision's id fixes, and the threshold is met;
 - the negative part (no cell invalidates, retires or supersedes a cone cell; no INVALID verdict judges the
-  decision; one scope; no foreign cells) is read over the store at the tip, so it holds only if that store is the
-  admitted chain, complete: the reader's pin, which this file does not check (it runs no gate).
+  decision; the scope cells are the governing chain, under v1 or v2, and its newest rotation cannot be waiting; no
+  foreign cells) is read over the store at the tip, so it holds only if that store is the admitted chain, complete:
+  the reader's pin, which this file does not check (it runs no gate).
 
 Outside the fragment the answer is NOT_COVERED, never HELD: the lens decides there.
 
@@ -37,6 +39,7 @@ H_EMPTY = bytes.fromhex("f7607964cdb9f811072ded78efc20c622f54483eb7b101da5605329
 H_ATTESTED = bytes.fromhex("7e5f2fdf987cac883a0453016a9541553d700e3a6f3a807839f22d5ca07b802c")
 H_VERDICT_INVALID = bytes.fromhex("b3966965c112d6d2613255fc018e34774dbc17c8517705b95946ea925b95096d")
 H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
+H_LENS_KERNEL_V2 = bytes.fromhex("1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e")
 H_META_SCHEMA = bytes.fromhex("7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
 SCHEMA = {name: bytes.fromhex(h) for name, h in {
     "axiom": "aaf70509e078bf1f833492eb82a116e4122232d424cf1668c05a9dd25855dcda",
@@ -275,8 +278,10 @@ def check(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None
 
 
 def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
-    """The term's parts and the store at its tip, decoded, within the fragment: one scope (the pinned one, which the
-    term names), the v1 rules, no foreign cell. Both checkers read the store through here."""
+    """The term's parts and the store at its tip, decoded, within the fragment: the scope cells form one chain of
+    rotations from the genesis to the one scope cell no other supersedes (the reader's pin, if given), each naming the
+    v1 or the v2 rules, and the newest rotation cannot be waiting; no foreign cell. Returns the chain, tip first. Both
+    checkers read the store through here."""
     if not isinstance(term, dict) or term.get("format") != FORMAT or not isinstance(term.get("scope"), str):
         raise refuse("FORMAT", f"not a {FORMAT} term")
     d = _ids([term.get("decision")], "decision")[0]
@@ -290,26 +295,46 @@ def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
     cells = {cid: cell(raw) for cid, raw in store["cells"].items()}
     seals = {sid: seal(raw) for sid, raw in store["seals"].items()}
 
-    # the fragment: one scope, the v1 rules, nothing foreign
-    scopes = [cid for cid, c in cells.items() if c["schema"] == SCHEMA["scope"]]
-    if len(scopes) != 1:
-        raise uncovered("SCOPES", f"{len(scopes)} scope cells: a rotation or a foreign scope")
-    sc = cells[scopes[0]]
-    if len(sc["slots"]) != 3:
-        raise refuse("STORE", "the scope cell is malformed")
-    if pin is not None and scopes[0] != pin:
+    # the fragment: the scope cells that governed, under v1 or v2, and nothing foreign
+    scopes = {cid: c for cid, c in cells.items() if c["schema"] == SCHEMA["scope"]}
+    if any(len(c["slots"]) != 3 for c in scopes.values()):
+        raise refuse("STORE", "a scope cell is malformed")
+    superseded = {t for c in scopes.values() for t in hvec(atoms, c["supersedes"])}
+    tips = [cid for cid in scopes if cid not in superseded]
+    if len(tips) != 1:
+        raise uncovered("SCOPES", f"{len(tips)} scope cells that no other supersedes (a vetoed rules change?)")
+    tip = tips[0]
+    if pin is not None and pin != tip:
+        if pin in superseded:
+            raise uncovered("WAITING", "a scope cell supersedes the pinned one: a rotation waits, or the pin is old")
         raise refuse("SCOPE", "the scope cell is not the one the reader pinned")
+    # the governing chain: the tip's scope, then the one scope each supersedes, back to the genesis. Cell ids name
+    # their content, so supersedes edges form no cycle, and with one tip every scope cell of the store is on it
+    chain = [tip]
+    while hvec(atoms, scopes[chain[-1]]["supersedes"]):
+        prev = hvec(atoms, scopes[chain[-1]]["supersedes"])
+        if len(prev) != 1 or prev[0] not in scopes:
+            raise refuse("STORE", "a scope cell does not supersede exactly one scope cell")
+        chain.append(prev[0])
+    sc = scopes[tip]
     if origin(atoms, sc) != term["scope"]:
         raise refuse("SCOPE", "the store's scope is not the term's")
-    if sc["slots"][2] != H_LENS_KERNEL:
-        raise uncovered("RULES", "the scope names rules other than v1")
     if any(cid not in STANDARD and origin(atoms, c) != term["scope"] for cid, c in cells.items()):
         raise uncovered("FOREIGN", "the store holds foreign cells")
-    return d, cone, ends, atoms, cells, seals, scopes, sc
+    if any(scopes[x]["slots"][2] not in (H_LENS_KERNEL, H_LENS_KERNEL_V2) for x in chain):
+        raise uncovered("RULES", "a scope names rules other than v1 and v2")
+    # only the newest rotation can still wait (a new scope is refused while one waits, E-24); under v2 it waits if it
+    # removes a key without its seal or changes the rules (§4.1 latches 4a, 4b), so the fragment leaves those out
+    if len(chain) > 1:
+        new, base = scopes[chain[0]], scopes[chain[1]]
+        if base["slots"][2] != H_LENS_KERNEL and (new["slots"][2] != base["slots"][2] or any(
+                not policy(atoms, base["slots"][i])[1] <= policy(atoms, new["slots"][i])[1] for i in (0, 1))):
+            raise uncovered("WAITING", "the newest rotation removes a key or changes the rules under v2: it may wait")
+    return d, cone, ends, atoms, cells, seals, chain, sc
 
 
 def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str, object]:
-    d, cone, ends, atoms, cells, seals, scopes, sc = _read(repo, term, pin)
+    d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, pin)
     dc = cells.get(d)
     if dc is None or dc["schema"] not in (SCHEMA["decision"], SCHEMA["contract"]):
         raise refuse("DECISION", "not a contract or decision cell of the store")
@@ -340,9 +365,11 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
             if hit:
                 raise uncovered("KILL_EDGE", f"{cid.hex()} {kind} {min(hit).hex()} of the cone")
 
-    # the endorsements: ATTESTED verdicts on the decision, sealed under the scope by distinct policy keys
+    # the endorsements: ATTESTED verdicts on the decision, each sealed under a scope that governed, by a key of its
+    # admission roster, by distinct keys of the evaluator policy
     own = dc["slots"][3:4]
     thr, keys = policy(atoms, own[0] if own and own[0] != H_EMPTY else sc["slots"][0])
+    rosters = {x: policy(atoms, cells[x]["slots"][0])[1] for x in chain}
     counted: Set[bytes] = set()
     for w, s in ends:
         v = cells.get(w, {"schema": None, "slots": []})
@@ -353,8 +380,10 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
         x = seals.get(s, {"target": None})
         if x["target"] != w:
             raise refuse("SEAL", f"{s.hex()} is not a seal of the store on {w.hex()}")
-        if x["ctx"] != scopes[0]:
-            raise refuse("SEAL", f"{s.hex()} is sealed under another scope")
+        if x["ctx"] not in chain:
+            raise refuse("SEAL", f"{s.hex()} is sealed under another scope than those that governed")
+        if x["key"] not in rosters.get(x["ctx"], set()):
+            raise refuse("KEY", f"{x['key'].hex()} is not a key of the roster it sealed under")
         if not ed25519_verify(x["key"], x["signed"], x["signature"]):
             raise refuse("SEAL", f"{s.hex()} does not verify")
         if x["key"] not in keys:
@@ -362,7 +391,7 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
         counted.add(x["key"])
     if len(counted) < thr:
         raise refuse("THRESHOLD", f"{len(counted)} distinct policy keys of {thr}")
-    return {"decision": d.hex(), "tip": term["tip"], "scope_cell": scopes[0].hex(), "threshold": thr,
+    return {"decision": d.hex(), "tip": term["tip"], "scope_cell": chain[0].hex(), "threshold": thr,
             "endorsers": sorted(k.hex() for k in counted), "cone": len(cone), "store_cells": len(cells)}
 
 
@@ -381,7 +410,7 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     The derivation: a `stand` line per cone cell, each after the cells it relies on, whose premises are that each of
     them stands; an `endorse` line per endorsement; and a `settle` line for the decision whose premises are that it
     and each endorsing verdict stand and every endorsement."""
-    d, cone, ends, atoms, cells, seals, scopes, sc = _read(repo, term, scope_cell)
+    d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, scope_cell)
     order = sorted(cells)
     ids = {cid: i for i, cid in enumerate(order)}
     num = lambda h: ids.setdefault(h, len(ids))  # noqa: E731  an id the store does not hold gets a number >= N
@@ -406,7 +435,9 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     pol0 = sc["slots"][0]
     used = [pol0] + ([cells[d]["slots"][3]] if d in cells and LEAN_SCHEMA.get(cells[d]["schema"]) in (2, 3)
                      and len(cells[d]["slots"]) > 3 and cells[d]["slots"][3] != H_EMPTY else [])
-    out += [ids[scopes[0]], pol(pol0), len(set(used))]
+    out += [ids[chain[0]], pol(pol0), len(chain), *(n for x in chain for n in (ids[x], pol(cells[x]["slots"][0])))]
+    used += [cells[x]["slots"][0] for x in chain]
+    out += [len(set(used))]
     for h in dict.fromkeys(used):
         thr, ks = policy(atoms, h)
         out += [pol(h), thr, len(ks), *(key(k) for k in sorted(ks))]

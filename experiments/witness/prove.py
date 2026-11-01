@@ -27,6 +27,11 @@ def prove(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str]
     atoms, cells, seals = repo.read_cas_tree(tip)
     scope_id = repo._evaluate_commit_chain(scope, repo.commit_chain(tip))["active_scope_id"]
     hv = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(atoms[h], require_sorted=True)  # noqa: E731
+    # the scopes that governed: the active one and each it supersedes; a seal under one counts by a key of its roster
+    rosters, x = {}, scope_id
+    while x is not None:
+        rosters[x] = set(V.parse_hvec(atoms[V.parse_pol1(atoms[cells[x].slots[0]])[1]], require_sorted=True))
+        x = next(iter(hv(cells[x].h_supersedes)), None)
     d = cells[decision]
     thr, keys_h = V.parse_pol1(atoms[d.slots[3] if d.slots[3] != V.H_EMPTY else cells[scope_id].slots[0]])
     keys = set(V.parse_hvec(atoms[keys_h], require_sorted=True))
@@ -49,7 +54,8 @@ def prove(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str]
     chosen, counted, ends = [], set(), []
     for w in sorted(verdicts, key=lambda w: (not clean(w), w.id)):
         new = sorted((s.actor_pubkey, sid) for sid, s in seals.items() if s.h_target == w.id
-                     and s.h_scope_ctx == scope_id and s.actor_pubkey in keys and s.actor_pubkey not in counted)
+                     and s.actor_pubkey in rosters.get(s.h_scope_ctx, ()) and s.actor_pubkey in keys
+                     and s.actor_pubkey not in counted)
         if not new:
             continue
         chosen.append(w.id)

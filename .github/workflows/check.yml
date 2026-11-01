@@ -88,12 +88,16 @@ jobs:
       - name: Conformance
         env:
           MINDS_REQUIRE_CHAIN: "1" # the chain was fetched above: test 25 fails here rather than skip
+          MINDS_REQUIRE_LEAN: "1" # built above: test 88 runs I9 and I10 on its rules changes
         run: python -m unittest -v test_vars1
       - name: Witness spike (experiments/witness/README.md)
         env:
           MINDS_REQUIRE_LEAN: "1" # built above: every check also runs vars1witness and must agree
+          MINDS_REQUIRE_CHAIN: "1" # fetched above: test 13 holds every decision the lens settles on the live chain
         run: python experiments/witness/test_witness.py
-      - name: Property suite (I0–I11)
+      - name: Property suite (I0–I12, and I9–I10 on every tip of the live chain)
+        env:
+          MINDS_REQUIRE_CHAIN: "1"
         run: python test_vars1_props.py
       - name: Spec claims (every normative block held by a witness)
         run: python tools/check_claims.py
@@ -117,8 +121,6 @@ jobs:
           node-version: "24"
       - name: Install Book I (sigma-glyph, hash-pinned)
         run: python -m pip install --require-hashes -r requirements.txt
-      - name: Mutants
-        run: python tools/run_mutants.py
       - name: Install elan (Lean toolchain from proofs/lean-toolchain)
         run: |
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
@@ -131,9 +133,16 @@ jobs:
             proofs/.lake
           key: lean-${{ hashFiles('proofs/lean-toolchain') }}-${{ hashFiles('proofs/**/*.lean', 'proofs/lakefile.toml') }}
           restore-keys: lean-${{ hashFiles('proofs/lean-toolchain') }}-
-      - name: The Lean witness checker (the witness mutants' tests run it)
+      - name: The Lean executables (the mutants' tests run I9, I10 and the witness checker)
         working-directory: proofs
-        run: lake build vars1witness
+        run: |
+          lake build vars1exec
+          lake build vars1fold
+          lake build vars1witness
+      - name: Mutants
+        env:
+          MINDS_REQUIRE_LEAN: "1"
+        run: python tools/run_mutants.py
       - name: Witness spike mutants
         env:
           MINDS_REQUIRE_LEAN: "1"
