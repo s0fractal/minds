@@ -162,7 +162,7 @@
      ],
      [
       "v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given",
-      "Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main)",
+      "Tested (conformance and the property suite's v2 run; Kani exercises v1 only, and the prototype's Lean `Refs.lean` is not on main)",
       "`test_vars1.py` 54–57"
      ],
      [
@@ -423,7 +423,7 @@
       "The Lean model (`vars1exec`, `vars1fold`)",
       "Compared with the kernel (I9, I10)",
       "Not compared (v1 with one more refusal)",
-      "Not modelled on main"
+      "Compared with the kernel (I9 on the typed references, I10 with `Fold2.lean`'s latches 4a and 4b), every tip of the live chain included"
      ],
      [
       "Kani and the fuzzer",
@@ -435,7 +435,7 @@
    }
   },
   {
-   "md": "\nSo a chain moved to v1b or v2 keeps its gate and its offline verifier, which reads every rules identity the host\nimplements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). It leaves behind\nthe Lean model and Kani and the fuzzer, which an activation has to name (RULES-V2.md §7).\n\n## What each result trusts\n\n"
+   "md": "\nSo a chain moved to v1b or v2 keeps its gate and its offline verifier, which reads every rules identity the host\nimplements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). Under v2 it keeps the\nLean model too (roadmap G8); it leaves behind Kani and the fuzzer, and under v1b the Lean model, which an activation\nhas to name (RULES-V2.md §7).\n\n## What each result trusts\n\n"
   },
   {
    "table": {

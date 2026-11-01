@@ -6,7 +6,7 @@ Lean 4 (`v4.31.0`, core only, no Mathlib). Models the fold (§4.1) and the lens 
 ```
 lake build              # library Vars1
 lake build vars1exec    # the executable lens, compiled (used by test_vars1_props.py, invariant I9)
-lake build vars1fold    # the model's own fold, compiled (invariant I10)
+lake build vars1fold    # the model's own fold, v1 and v2, compiled (invariant I10)
 lake build vars1cycle   # the model's cycle checker, compiled (invariant I12)
 lake build vars1witness # the witness checker, compiled (experiments/witness: every check runs it too)
 lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (three files copied in SigmaEval/)
@@ -23,6 +23,11 @@ and, for some theorems, `Classical.choice`.
 | | `stateAt_append` | the state at the start of `T_i` does not depend on later commits |
 | | `step_epoch_binding` | a commit's latches depend only on seals under its own scope `S_i` |
 | | `endorser_signed` | under unforgeability, every counted endorser signed `(id(u), id(S_i))` |
+| `Fold2.lean` | `stateAt2_mono`, `stateAt2_append` | the same two under the v2 rules (§4.1 latches 4a and 4b) |
+| | `run2_v1` | over a chain whose governing scope names v1 at every commit, the v2 fold is v1's, latch for latch, when rotations are admitted as the gate requires: v2 reads v1 epochs as v1 did |
+| | `moves_notice` | latch 4a: when the governing scope moves under v2, the new scope was admitted at some commit `t`, and either 16 commits have passed since, or it changes no rules and every key it removes from the old admission or acceptance policy has sealed it under the old scope; in a v1 epoch it moves at its admission. Latch 4b: a move to other rules comes 16 commits after the admission, with no veto in its window |
+| | `waiting_withheld`, `waiting_not_active` | a scope whose rotation waits, or was vetoed, latches no edge, so it is not Active and the Active local scope stays the governing one |
+| | `vetoed_never_governs` | a vetoed rules change never becomes the governing scope |
 | `Pass1.lean` | `unique_active_binding` | under §1.2 Rule 6, two local non-scope cells with one name are never both Active |
 | `Scope.lean` | `governed_superseded`, `unique_active_scope` | under the gate's rotation rule, a scope that no longer governs is superseded by a later scope; an Active local scope is the governing one |
 | `Pass2.lean`, `Lfp.lean` | `Φ_mono`, `stale_fixed`, `stale_least` | the Pass 2 operator is monotone; `Stale` is its least fixed point |
@@ -51,6 +56,14 @@ and, for some theorems, `Classical.choice`.
 verdict). It is compiled as `vars1exec`, and the property suite checks on every admitted tip that its status bytes
 equal `kernel/lens.wasm`'s (I9). So the kernel's Passes 1–2 are compared with proved code, not with another
 unproved implementation. Reverting `Superseded`'s transitivity in `Exec.lean` breaks the proof and fails I9.
+
+The compiled code is not `Exec.lean`'s `fill`, `fillUp` and `staleOf` as written: those build their results from
+nested closures and always run `n` rounds of Pass 2, which took seconds at 75 cells and did not finish at the live
+chain's 600. `@[csimp]` theorems (`fill_eq_fast`, `fillUp_eq_fast`, `staleOf_eq_fast`) prove array-backed versions,
+and a Pass 2 that stops at the first round changing nothing, equal to them; the compiler substitutes a constant only by
+a proved equal one, so `pass1_correct` and `stale_correct` hold of what runs. Under v2 the facts' references are the
+input's typed list (RULES-V2.md §3) instead of every payload or slot equal to a cell id: Passes 1–2 read references,
+not the encoding, so the same proofs apply.
 
 ## Cycle witnesses
 
@@ -96,6 +109,13 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   (no transcription) over facts read from the kernel's input, and the property suite checks on every admitted tip
   that its governing scope, Authorized bits and edge authorizations equal the kernel's (I10). Making the model let
   an author invalidate alone is caught by I10.
+- `kernel2/lens2.wasm`'s fold is tied to `Fold2.lean` the same way: `vars1fold` runs `run2` on a v2 input, with the
+  rules each scope names and the typed references. I10 and I9 run on the v2 property sequences (rotations waiting by
+  consent and by the 16 commits), on `test_vars1.py` 88's rules changes (a veto, the window's last commit, a change
+  governing after 16) and on every tip of the live chain `refs/vars/heads/minds` (68 v1 tips, 13 v2: the rotation to
+  v2 in a v1 epoch, then joins under v2). A `DELAY` of 15 in the model fails I10. `Fold2.lean`'s theorems about the
+  wait assume the chain as the gate admits it (`Fresh`, and `RotationAdmitted` for `run2_v1`); the model makes no
+  refusal (E-24, E-25, −6, −7).
 
 ## Mutants
 

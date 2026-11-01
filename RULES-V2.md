@@ -170,10 +170,18 @@ Lost or changed:
 - Mutants (`mutants.json`, `m-rc-*`, `m-v2-*`, `m-f40-*`, `m-f41-*`, `m-gate-scope-rules`), each killed by these tests.
 
 The property suite has a second run under v2 (`test_vars1_props.py`, `test_random_admission_sequences_under_v2`):
-genesis under v2, rotations with the delay of latch 4a, a `hash` slot naming a foreign verdict, and I0–I8 and I11 on
-every tip (I9 and I10 compare a model of v1's input). It starts under v2 rather than rotating to it: a rotation to v2
-in the generator would need a rules-change decision. Not carried over from the prototype: `proofs/Vars1/Refs.lean`;
-no Lean statement is about v2.
+genesis under v2, rotations with the delay of latch 4a, a `hash` slot naming a foreign verdict, and I0–I11 on every
+tip. It starts under v2 rather than rotating to it: a rotation to v2 in the generator would need a rules-change
+decision.
+
+The Lean model reads v2 (roadmap G8): `proofs/Vars1/Fold2.lean` is the v2 fold with latches 4a and 4b, and proves
+that it reads v1 epochs as v1 did (`run2_v1`), that a governing scope moves only after consent or the 16 commits,
+and a rules change only after the 16 with no veto (`moves_notice`), that a waiting or vetoed scope latches nothing
+and is not Active (`waiting_withheld`, `waiting_not_active`), and that a vetoed change never governs
+(`vetoed_never_governs`). `vars1fold` compiles it; I10 compares it with this module, and I9 the proved Passes 1–2
+reading the input's typed references, on the property run above, on test 88's rules changes, and on every tip of
+`refs/vars/heads/minds` (`test_every_tip_of_the_live_chain`). Not carried over from the prototype:
+`proofs/Vars1/Refs.lean`.
 
 ## 7. Adoption (done 2026-10-28)
 
@@ -187,8 +195,8 @@ What adoption needed: the owner's explicit go-ahead; a rotation whose new scope 
 `H_LENS_KERNEL_V2`, sealed by the admission quorum, with a rules-change decision (VARS-1-SPEC.md §4.3) whose
 counterexample chain is published under `refs/vars/heads/<its scope>`; `kernel2/lens2.wasm` stored as an atom; and
 every member's verifier updated to a host that implements v2 first. The offline verifier reads v2 since roadmap O4c,
-and the host refuses to load rules it does not read; the readers an activation leaves behind (the Lean model, Kani
-and the fuzzer) are those of ASSURANCE.md, "Who reads which rules".
+and the host refuses to load rules it does not read; the readers an activation leaves behind (Kani and the fuzzer; the
+Lean model until roadmap G8) are those of ASSURANCE.md, "Who reads which rules".
 
 ## 8. Known gaps (Monday's review of 9f69bfd, 2026-10-20)
 

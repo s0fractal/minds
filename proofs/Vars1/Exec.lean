@@ -74,6 +74,78 @@ def fillUpGo {α : Type} (step : (Nat → α) → Nat → α) : Nat → Nat → 
 def fillUp {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Nat → α :=
   fillUpGo step k 0 g
 
+/-! ### Compiled forms of `fill` and `fillUp`
+
+`fill` and `fillUp` build their result as nested `upd` closures, so one lookup walks up to `n` of them, and the lens
+looks up every cell from every newer one in each of its `n` rounds: compiled as written, `vars1exec` took seconds at
+75 cells and did not finish at the live chain's size. The compiler runs `fillFast` and `fillUpFast` instead, which
+keep the values filled so far in an array. `fill_eq_fast` and `fillUp_eq_fast` prove them equal to `fill` and
+`fillUp` (`@[csimp]`: the compiler substitutes a constant only by a proved equal one), so what `ExecProof.lean` proves
+of `fill` holds of the compiled code. -/
+
+theorem getD_set! {α : Type} (a : Array α) (i w : Nat) (d x : α) (h : i < a.size) :
+    (a.set! i x).getD w d = if w = i then x else a.getD w d := by
+  simp [Array.set!, Array.getD_eq_getD_getElem?, Array.getElem?_setIfInBounds]
+  by_cases hw : w = i
+  · subst hw; simp [h]
+  · simp [hw, Ne.symm hw]
+
+theorem size_set! {α : Type} (a : Array α) (i : Nat) (x : α) : (a.set! i x).size = a.size := by
+  simp [Array.set!]
+
+theorem getD_ofFn {α : Type} (k : Nat) (g : Nat → α) (w : Nat) :
+    (Array.ofFn (n := k) fun j => g j.val).getD w (g w) = g w := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_ofFn]
+  by_cases hw : w < k <;> simp [hw]
+
+def fillFastGo {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) : Nat → Array α → Nat → α
+  | 0, a => fun w => a.getD w (g w)
+  | i + 1, a => fillFastGo step g i (a.set! i (step (fun w => a.getD w (g w)) i))
+
+def fillFast {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Nat → α :=
+  fillFastGo step g k (Array.ofFn (n := k) fun j => g j.val)
+
+theorem fill_go {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) :
+    ∀ (i : Nat) (a : Array α) (h : Nat → α), i ≤ a.size → (∀ w, a.getD w (g w) = h w) →
+      fill step i h = fillFastGo step g i a
+  | 0, a, h, _, hh => by funext w; simp [fill, fillFastGo, hh]
+  | i + 1, a, h, hi, hh => by
+    have hf : (fun w => a.getD w (g w)) = h := funext hh
+    simp only [fill, fillFastGo, hf]
+    apply fill_go step g i
+    · rw [size_set!]; omega
+    · intro w
+      rw [getD_set! a i w (g w) _ (by omega), upd]
+      by_cases hw : w = i <;> simp [hw, hh]
+
+@[csimp] theorem fill_eq_fast : @fill = @fillFast := by
+  funext α step k g
+  exact fill_go step g k _ g (by simp) (getD_ofFn k g)
+
+def fillUpFastGo {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) : Nat → Nat → Array α → Nat → α
+  | 0, _, a => fun w => a.getD w (g w)
+  | m + 1, i, a => fillUpFastGo step g m (i + 1) (a.set! i (step (fun w => a.getD w (g w)) i))
+
+def fillUpFast {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Nat → α :=
+  fillUpFastGo step g k 0 (Array.ofFn (n := k) fun j => g j.val)
+
+theorem fillUp_go {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) :
+    ∀ (m i : Nat) (a : Array α) (h : Nat → α), i + m ≤ a.size → (∀ w, a.getD w (g w) = h w) →
+      fillUpGo step m i h = fillUpFastGo step g m i a
+  | 0, _, a, h, _, hh => by funext w; simp [fillUpGo, fillUpFastGo, hh]
+  | m + 1, i, a, h, hi, hh => by
+    have hf : (fun w => a.getD w (g w)) = h := funext hh
+    simp only [fillUpGo, fillUpFastGo, hf]
+    apply fillUp_go step g m (i + 1)
+    · rw [size_set!]; omega
+    · intro w
+      rw [getD_set! a i w (g w) _ (by omega), upd]
+      by_cases hw : w = i <;> simp [hw, hh]
+
+@[csimp] theorem fillUp_eq_fast : @fillUp = @fillUpFast := by
+  funext α step k g
+  exact fillUp_go step g k 0 _ g (by simp) (getD_ofFn k g)
+
 /-- Materialize `g` on `0 … n-1` as an array (computed once, constant-time lookups). -/
 def tab {α : Type} (n : Nat) (g : Nat → α) : Array α := Array.ofFn (n := n) fun i => g i.val
 
@@ -138,6 +210,37 @@ def round (P : Array S1) (S : Array Bool) : Array Bool :=
 
 /-- `Stale`: `N` rounds from the empty set. -/
 def staleOf (P : Array S1) : Array Bool := Nat.repeat (round F P) F.n (tab F.n fun _ => false)
+
+/-- `k` rounds of `f` from `x`, stopping early at a round that changes nothing. -/
+def repeatFix {α : Type} [DecidableEq α] (f : α → α) : Nat → α → α
+  | 0, x => x
+  | k + 1, x => let y := f x; if y = x then x else repeatFix f k y
+
+theorem repeat_succ' {α : Type} (f : α → α) : ∀ (k : Nat) (x : α), Nat.repeat f (k + 1) x = Nat.repeat f k (f x)
+  | 0, _ => rfl
+  | k + 1, x => by
+    show f (Nat.repeat f (k + 1) x) = f (Nat.repeat f k (f x))
+    rw [repeat_succ' f k x]
+
+theorem repeat_fixed {α : Type} (f : α → α) (x : α) (h : f x = x) : ∀ k, Nat.repeat f k x = x
+  | 0 => rfl
+  | k + 1 => by rw [repeat_succ', h, repeat_fixed f x h k]
+
+theorem repeatFix_eq {α : Type} [DecidableEq α] (f : α → α) : ∀ (k : Nat) (x : α), repeatFix f k x = Nat.repeat f k x
+  | 0, _ => rfl
+  | k + 1, x => by
+    simp only [repeatFix]
+    split
+    · next h => rw [repeat_succ', h, repeat_fixed f x h k]
+    · rw [repeatFix_eq f k, repeat_succ']
+
+/-- Compiled form of `staleOf`: once a round changes nothing, the remaining ones would not either
+(`repeatFix_eq`), so the compiler stops there (`@[csimp]`). Rounds before the fixed point are the spec's. -/
+def staleOfFast (F : Facts) (P : Array S1) : Array Bool := repeatFix (round F P) F.n (tab F.n fun _ => false)
+
+@[csimp] theorem staleOf_eq_fast : @staleOf = @staleOfFast := by
+  funext F P
+  simp [staleOf, staleOfFast, repeatFix_eq]
 
 def stale : Array Bool := staleOf F (pass1 F)
 

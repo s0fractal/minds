@@ -50,7 +50,7 @@ mutation tests. **Assumed** means nothing here checks it.
 | `H_LENS_KERNEL` identifies everything the gate decides | **Not established, and false**: the host decides canonical bytes, types, replay, rule-6 parsing and rules-change admission; the canonical-id fix of PR #1 changed the gate without changing `H_LENS_KERNEL`. A release names the host by its `main` commit and, from this release format on, by its release profile (below) | `tools/minds_chain.py` |
 | A rotation from v2 back to v1 is refused, with or without a decision | Differential (kernel E-25 and twin) and tested | `test_vars1.py` 52, 53 |
 | `kernel2/lens2.wasm` rebuilds to `H_LENS_KERNEL_V2` | Tested: in CI; in every release's checks when the released commit carries `kernel2/` | `tools/minds_chain.py` `kernel_checks`, `test_vars1.py` 58 |
-| v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance only; the property suite and Kani exercise v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
+| v2 reads a v1-born cell as v1 does, a v2-born cell by type, and checks the reference list it is given | Tested (conformance and the property suite's v2 run; Kani exercises v1 only, and the prototype's Lean `Refs.lean` is not on main) | `test_vars1.py` 54–57 |
 | A custom schema's `cell` mask is parsed correctly from its descriptors | Assumed: host parsing in the trusted base (RULES-V2.md F42) | — |
 | The spec's text changes in the same decision | Assumed: nothing checks the text | — |
 | v2's typed references, descriptor → mask → reference positions, as the host reads them (`schema_cell_mask`, `cell_refs`), equal the answers of an oracle that does not call the host's parser (`proofs/Vars1/Mask.lean`, compiled as `vars1mask`), on 310 cases of the domain schema admission accepts (F42): `proofs/vectors/f42.json`, which CI regenerates with the oracle and byte-compares | Differential (host against the oracle's vectors), with mutants of the mask and of the reading; the kernel still takes a custom schema's mask from the host, so the host's parser stays in the trusted base, now checked against the oracle on the corpus rather than proved | `test_vars1.py` 89; `tools/f42_vectors.py`; `proofs/Vars1/Mask.lean` |
@@ -114,12 +114,13 @@ result, never a reading.
 |---|---|---|---|
 | The gate and lens (`vars1.py`) | Runs it; Python twin | Runs it; Python twin | Runs it; Python twin reading the typed references |
 | The offline verifier (`verify/minds_verify.py`) | Reads projections and attestations; with `--kernel` and Node, it runs the rules on the input | Reads them, in v1's encoding (v1's output; one more refusal); likewise with `--kernel` | Reads them, in the v2 encoding: references from the input's own list, each checked against its cell; with `--kernel` and Node, the kernel's check of the list too |
-| The Lean model (`vars1exec`, `vars1fold`) | Compared with the kernel (I9, I10) | Not compared (v1 with one more refusal) | Not modelled on main |
+| The Lean model (`vars1exec`, `vars1fold`) | Compared with the kernel (I9, I10) | Not compared (v1 with one more refusal) | Compared with the kernel (I9 on the typed references, I10 with `Fold2.lean`'s latches 4a and 4b), every tip of the live chain included |
 | Kani and the fuzzer | Bounded / fuzzed | Not run | Not run |
 
 So a chain moved to v1b or v2 keeps its gate and its offline verifier, which reads every rules identity the host
-implements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). It leaves behind
-the Lean model and Kani and the fuzzer, which an activation has to name (RULES-V2.md §7).
+implements: the host refuses to load otherwise (`vars1.check_offline_reads`, `test_vars1.py` 90). Under v2 it keeps the
+Lean model too (roadmap G8); it leaves behind Kani and the fuzzer, and under v1b the Lean model, which an activation
+has to name (RULES-V2.md §7).
 
 ## What each result trusts
 
