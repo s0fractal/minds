@@ -1,0 +1,77 @@
+{
+ "actor": "codex",
+ "boundaries": [
+  "The theorem assumes faithful decoding of hashes, cell layout and Ed25519, a complete admitted store at the reader-pinned tip, and faithful W_max presentation. Python decode and native compilation are not end-to-end proved.",
+  "Acceptance covers the documented fragment. Computation, foreign cells, kill edges, INVALID verdicts, waiting rotations and unsupported rules may be NOT_COVERED. No claim of arbitrary-history completeness.",
+  "The live-chain result is pinned to 57035e83566a74cbce0ee65892c6e7daef8f8aca: 34 settled decisions of 46. It does not attest a later tip.",
+  "The missing historical evidence blob 3e3172236223b438fcac4a1fff20f2d53e64206175133ddcfc5316e681f44faf was not relied on. This review rests on merged source and fresh executions.",
+  "Full conformance, property and main mutation suites were not rerun; this review ran the witness suite, all witness mutants, all default Lean proofs and independent checker probes."
+ ],
+ "builds": [
+  "lake build vars1witness: PASS, 18 jobs",
+  "lake build: PASS, 20 jobs"
+ ],
+ "claims": "tools/check_claims.py: PASS, 167 claims, 22 proved, 330 main mutants inventoried (main mutants not rerun)",
+ "direct_certificate_probes": {
+  "result": "13/13 passed",
+  "source": "\"\"\"Independent inputs to the compiled checker; no minds decoder or prover used.\"\"\"\nimport copy\nimport subprocess\n\nEXE = '/Users/s0fractal/.warrant/work/codex/621facbb3306/source/proofs/.lake/build/bin/vars1witness'\n\ndef row(schema, *, payload=0, attested=0, invalid=0, witness=1, req=1, edges=None):\n    return [schema, 1, payload, 0, attested, invalid, witness, req] + [n for xs in (edges or [[], [], [], [], []]) for n in [len(xs), *xs]]\n\ndef line(rule, concl, prems):\n    return [rule, *concl, len(prems), *(n for p in prems for n in p)]\n\nbase = dict(rows=[row(3), row(5, payload=1, attested=1, edges=[[], [0], [], [], []]), row(0)],\n            threshold=1, seals=[1, 2, 0],\n            lines=[line(0, [0, 0], []), line(0, [0, 1], []), line(1, [1, 1, 0], []),\n                   line(2, [2, 0], [[0, 0], [0, 1], [1, 1, 0]])])\n\ndef wire(b):\n    # cells; scope=2 pol0=0; one governing scope; one policy with key 0; one seal; lines; decision=0\n    return ' '.join(map(str, [len(b['rows']), *(x for r in b['rows'] for x in r),\n                             2, 0, 1, 2, 0, 1, 0, b['threshold'], 1, 0, 1, *b['seals'],\n                             len(b['lines']), *(x for ln in b['lines'] for x in ln), 0]))\n\ndef check(name, b, expected, suffix=''):\n    out = subprocess.run([EXE], input=wire(b) + suffix + '\\n', text=True, capture_output=True, check=True).stdout.strip()\n    assert out == expected, (name, expected, out)\n    print('ok', name, out)\n\ncheck('valid certificate', base, 'ACCEPT')\nb = copy.deepcopy(base); b['threshold'] = 2\ncheck('one key cannot meet two-key quorum', b, 'REJECT')\nb['lines'].insert(3, base['lines'][2])\ncheck('duplicate endorsement cannot inflate quorum', b, 'REJECT')\nb = copy.deepcopy(base); b['lines'] = [b['lines'][-1], *b['lines'][:-1]]\ncheck('forward premises', b, 'REJECT')\nb = copy.deepcopy(base); b['lines'][0] = line(0, [0, 0], [[0, 0]])\ncheck('self premise', b, 'REJECT')\nb = copy.deepcopy(base); b['rows'][1][6] = 0\ncheck('nonempty verdict witness', b, 'REJECT')\nb = copy.deepcopy(base); b['rows'][0][7] = 0\ncheck('required computation', b, 'REJECT')\nb = copy.deepcopy(base); b['rows'][1][4:6] = [0, 1]\ncheck('INVALID verdict', b, 'REJECT')\nb = copy.deepcopy(base); b['seals'][1] = 99\ncheck('seal outside governing scopes', b, 'REJECT')\nb = copy.deepcopy(base); b['seals'][2] = 99\ncheck('seal by non-roster key', b, 'REJECT')\nb = copy.deepcopy(base); b['rows'].append(row(10, edges=[[], [], [], [], [0]]))\ncheck('kill edge outside derivation', b, 'REJECT')\ncheck('trailing data', base, 'E', ' 123')\nout = subprocess.run([EXE], input=wire(base).rsplit(' ', 1)[0] + '\\n', text=True, capture_output=True, check=True).stdout.strip()\nassert out == 'E', out\nprint('ok truncated input E')\n"
+ },
+ "environment": {
+  "lean": "4.31.0",
+  "node": "26.13.0",
+  "python": "3.15.2",
+  "sigma_glyph": "0.8.0, requirements hashes checked"
+ },
+ "execution_notes": "Scratch checkout at M; only test_witness.py WORK path changed to confine generated repositories to this review directory. TMPDIR confined there; PYTHONDONTWRITEBYTECODE=1. Production sources and assertions unchanged.",
+ "format": "minds.roadmap-review@1",
+ "goal": "G7",
+ "isolated_cli": {
+  "result": {
+   "decisions": 46,
+   "isolated_lean": "ACCEPT",
+   "isolated_python": "HELD",
+   "pinned_scope": "17d9caa7e0569deb6c658f6bbe376e97dcca7e25fb09fb7743520d3902ca2a9c",
+   "sample": "4a2a22eb7c614a0b27bb9698d5d451da40fda54f9a446929370489a9b1abddbc",
+   "settled": 34,
+   "tip": "57035e83566a74cbce0ee65892c6e7daef8f8aca"
+  },
+  "source": "import json\nfrom pathlib import Path\nimport shutil\nimport subprocess\nimport sys\n\nWORK = Path('/Users/s0fractal/.warrant/work/codex/621facbb3306')\nROOT = WORK / 'source'\nsys.path[:0] = [str(ROOT), str(ROOT / 'experiments/witness')]\nimport vars1 as V\nimport prove\n\nrepo = V.GitVarsRepo(ROOT)\ntip = repo.ref_commit('minds')\nlens = repo.lens('minds', at=tip)\ndecisions = [x for x, c in lens['cells'].items() if c.h_schema == V.H_SCHEMA['decision']]\nsettled = [x for x in decisions if lens['settled'].get(x)]\nterm = prove.prove(repo, 'minds', settled[0], tip)\npin = repo._evaluate_commit_chain('minds', repo.commit_chain(tip))['active_scope_id'].hex()\nisolated = WORK / 'isolated'\nisolated.mkdir(exist_ok=True)\nchecker = isolated / 'check.py'\nshutil.copyfile(ROOT / 'experiments/witness/check.py', checker)\ntermfile = isolated / 'term.json'\ntermfile.write_text(json.dumps(term))\nargs = [sys.executable, '-I', str(checker)]\ncommon = [str(ROOT), str(termfile), '--scope-cell', pin]\npy = subprocess.run(args + common, text=True, capture_output=True, check=True)\nassert json.loads(py.stdout)['result'] == 'HELD', py\ndecoded = subprocess.run(args + ['--lean'] + common, text=True, capture_output=True, check=True)\nlean = subprocess.run([str(ROOT / 'proofs/.lake/build/bin/vars1witness')], input=decoded.stdout,\n                      text=True, capture_output=True, check=True)\nassert lean.stdout.strip() == 'ACCEPT', lean\nprint(json.dumps(dict(tip=tip, decisions=len(decisions), settled=len(settled), sample=term['decision'],\n                      pinned_scope=pin, isolated_python='HELD', isolated_lean='ACCEPT'), indent=1))\n"
+ },
+ "lineage": "783b926da8bc198418d15768ab55af9583c63e451e081450e060419ba2bb6a69",
+ "main": "be482c90e0474241084425be67fafb8877c9b74b",
+ "reason": "The independent byte decoder and compiled Lean checker establish Settled without relying on the lens or witnesses as an oracle, within the documented fragment. witness_sound proves accepts implies Settled under Pin and a faithful W_max presentation. Fresh verification at M confirms the implemented path and its negative controls.",
+ "repository": "s0fractal/minds",
+ "reviewed_refs": {
+  "PR50": "41c0eaf7075fb960c917e0f9ca857527719c639a",
+  "PR51": "5c022e659966083d1ca1e3f9a5c0613aecf1731a",
+  "PR52": "7beb35c1e28c070db8c958d017567d747311bedd"
+ },
+ "roadmap": "warrant.roadmap due verified G7 T at M; check: 18 lineages, 0 problems before verdict",
+ "source_sha256": {
+  "experiments/witness/check.py": "c1dade9c4fd000840813d2b84517e9ef0e897396f7ceceaf43616a0e4af316e0",
+  "experiments/witness/mutants.json": "92e2b8dd0507198b85250048ff0a17e26814e534a57e8019ec87220938fd8ae2",
+  "experiments/witness/prove.py": "da4a9f6d9e17f17d2648ffcbc9818d6514837852f504167ac28eba25036e3ada",
+  "experiments/witness/test_witness.py": "23f9e7885acff66b5011bd731fbaf7271254748ef41cd1fbf23d9ac4b8986d87",
+  "proofs/Vars1/Pass3.lean": "3347dc600eef0881173d7985f27ab0cb8dc7d4248f85508ba1c29a7442d9b2bf",
+  "proofs/Vars1/Witness.lean": "a56680920c318c7e6bb7e5ccf7c0d9c2d6b1913802a2ce1a2edcd19fac86b424",
+  "proofs/Vars1WitnessMain.lean": "cf47cb71e641741f351c128ae43f4c9539383f9d370ef29f754b78a5ee452094"
+ },
+ "target": "621facbb330634d6930a266b982add72a36b7a27072f63e6b7ee2c6e116e0921",
+ "theorem": "Vars1.Witness.witness_sound: Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X -> WmaxFaithful W X S.cells wmax -> accepts S lines d = true -> Settled W X wmax d",
+ "theorem_axioms": [
+  "propext",
+  "Quot.sound"
+ ],
+ "verdict": "accept",
+ "witness_mutants": {
+  "killed": 44,
+  "red_baseline_refused": true,
+  "result": "killed m-ed-small-order: test_01_ed25519_is_rfc8032_strict_and_cofactorless\nkilled m-ed-s-bound: test_01_ed25519_is_rfc8032_strict_and_cofactorless\nkilled m-ed-equation: test_01_ed25519_is_rfc8032_strict_and_cofactorless\nkilled m-ed-canonical-y: test_01_ed25519_is_rfc8032_strict_and_cofactorless\nkilled m-tip-self: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-store-entry: test_09_the_store_is_read_from_bytes\nkilled m-store-hash: test_09_the_store_is_read_from_bytes\nkilled m-scopes: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-scope-pin: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-scope-origin: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-rules: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-foreign: test_09_the_store_is_read_from_bytes\nkilled m-decision: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-computation: test_09_the_store_is_read_from_bytes\nkilled m-invalid-verdict: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-cone-missing: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-cone-decision: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-cone-verdict: test_05_a_term_that_hides_part_of_its_cone_is_refused\nkilled m-cone-closed: test_05_a_term_that_hides_part_of_its_cone_is_refused\nkilled m-kill-outgoing: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-kill-incoming: test_05_a_term_that_hides_part_of_its_cone_is_refused\nkilled m-policy-own: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-verdict-schema: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-verdict-attested: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-verdict-payload: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-verdict-attests: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-seal-target: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-seal-scope: test_09_the_store_is_read_from_bytes\nkilled m-seal-signature: test_09_the_store_is_read_from_bytes\nkilled m-key: test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count\nkilled m-threshold: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-threshold-distinct: test_06_a_wrong_term_is_refused_for_its_reason\nkilled m-term-one-reading: test_11_a_term_reads_one_way_and_a_crash_is_no_verdict\nkilled m-term-json: test_11_a_term_reads_one_way_and_a_crash_is_no_verdict\nkilled m-crash-code: test_11_a_term_reads_one_way_and_a_crash_is_no_verdict\nkilled m-term-constants: test_11_a_term_reads_one_way_and_a_crash_is_no_verdict\nkilled m-lean-kill-edges: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-lean-invalid: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-lean-seal-verify: test_09_the_store_is_read_from_bytes\nkilled m-lean-seal-ctx: test_09_the_store_is_read_from_bytes\nkilled m-waiting: test_08_outside_the_fragment_the_answer_is_not_covered\nkilled m-pin-old: test_12_a_seal_counts_under_the_scope_that_governed_it\nkilled m-seal-roster: test_12_a_seal_counts_under_the_scope_that_governed_it\nkilled m-lean-ctxs: test_12_a_seal_counts_under_the_scope_that_governed_it\n",
+  "total": 44
+ },
+ "witness_suite": {
+  "require_chain": true,
+  "require_lean": true,
+  "result": ".............\n----------------------------------------------------------------------\nRan 13 tests in 108.481s\n\nOK\n"
+ }
+}
