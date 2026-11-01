@@ -1,0 +1,35 @@
+# codex verdict on Minds G8
+
+Verdict: accept the goal closure at the reviewed main commit.
+
+Repository: s0fractal/minds
+M: ecf8a46749ab156eb463aee409baf6a7911f9fe4
+D: 316bb88eec831b5ff8b00d68aee5398cbcba9a3bc6210cbca52228d24503e248
+T: 7f438e146edf460c4e187e222e3c420eca9ac51f6fb3330d4a8840b408d01942
+
+Owed: The Lean model reads the rules the live chain runs, and a checker proved against it holds every decision the lens settles on the live chain.
+
+Verified provenance and authority
+- warrant.roadmap due --actor codex --json at M lists D and T with the stated debt, PR #52 reference, empty evidence and requires, and no subject.
+- MCP workspace binds the signer to codex and gives it roadmap/acceptor; context shows T is the lineage leaf with a PENDING guard waiting only for that acceptance, no open prerequisites or challenges, canonical assessment and no rejected records or problems.
+- PR #52 merged as 7beb35c1e28c070db8c958d017567d747311bedd. Its code head is d4a27cb069ee4de6eb753716c8be84508e4ab8e9. No source changes intervene from that code head to M: only Warrant records and blobs.
+- MCP read verifies the prior codex acceptance record 7676e5d68274479a9dac3889d2ae7062a2c614754d9353b88e50bdb462a9078d targeting PR-head version 6bdc15643a0852f9a8b250d3432353ceeb90d98b5cf8dfcd10b61dadca3546d4.
+
+Independent checks at M, 2026-11-01
+- Built the full Vars1 Lean library, vars1exec, vars1fold, vars1cycle, vars1mask, vars1witness, and Vars1Sigma with the pinned Lean toolchain.
+- Inspected Fold2, its executable decoder, the v2 typed-reference bridge, Witness.accepts, Pin and witness_sound, the Python witness decoder/prover, changed tests, CI requirements and mutants. No sorry or axiom declarations in the model. #print axioms on stateAt2_mono, stateAt2_append, run2_v1, moves_notice, step2_governs, step2_vetoes, waiting_withheld, waiting_not_active, vetoed_never_governs and Witness.witness_sound uses only propext and Quot.sound (step2_vetoes only propext).
+- MINDS_REQUIRE_LEAN=1 MINDS_REQUIRE_CHAIN=1 python -m unittest test_vars1: 99/99 passed, including test 88's rules-change/quarantine/veto boundary cases and Lean comparisons.
+- The same required flags with python test_vars1_props.py: 10/10 passed, including v1/v2 generated admission sequences, regression vectors, cycle checks, and I9/I10 on all 83 commits of the fetched live chain, tip 7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d. No I9/I10 differences.
+- The same required flags with python experiments/witness/test_witness.py: 13/13 passed, with both Python and Lean checkers required.
+- Independently compared the exact sets of settled decisions, prover witnesses, Python HELD and Lean ACCEPT at both tips: at the version's claimed tip 57035e83566a74cbce0ee65892c6e7daef8f8aca, 34 of 46 decisions are settled and exactly those 34 have accepted witnesses; at fetched tip 7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d, exactly 34 of 47 do. No witness for the other 12/13 respectively.
+- Witness mutant suite: 44/44 killed, no survivors; main mutant m-fold2-facts-typed: 1/1 killed by test 88.
+- Independently rebuilt vars1fold with Fold2.DELAY changed from 16 to 15 in a separate test copy. The v2 generated-admission test fails with I10 governing-scope differences at seeds 4, 8 and 10; this is the expected negative control, not a baseline failure.
+- Additional gate-admitted v2 chain: raise the default evaluator policy threshold from one to two while keeping the same keys. The rotation governs immediately; the previous single-key witness becomes REFUSED THRESHOLD and Lean REJECT. A second key sealing the existing verdict under the new scope restores HELD and Lean ACCEPT, counting endorsements from both epochs.
+- python tools/check_claims.py: passed, 167 claims (22 proved), 330 registered mutants. Only the named mutants above were rerun, not all 330.
+- warrant.roadmap check: 18 lineages, zero problems before filing. The repository uses its own root claims.json and tools/check_claims.py; warrant.claims check expects a nonexistent .warrant/claims.json and is inapplicable here.
+
+Execution isolation
+Checks ran in an isolated copy of M under ~/.warrant/work/codex/7f438e146edf. The witness test harness's scratch WORK path alone was redirected there, and TMPDIR kept temporary fixtures there. Source/model/checker code was unchanged in the baseline. Test dependencies were installed from the repository's hash-pinned requirements. Live refs were fetched into the isolated copy, leaving this verdict worktree detached at M.
+
+Claim boundary
+This accepts completion on the named chain and the independently tested fetched tip. Fold2 is linked to the Rust/wasm kernel by differential checks, not by a proof of Rust. The byte/hash/signature decoder and completeness/admission of the store remain explicit hypotheses of witness_sound. Waiting rotations, vetoed rules changes, foreign cells and other excluded witness fragments are not universally covered. A future tip or rules change requires a fresh passing live-chain check. None of these boundaries prevents the specific G8 debt from being met at the reviewed tips.
