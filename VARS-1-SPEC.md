@@ -3,7 +3,7 @@
 A hash-native graph of claims, computations and verdicts, stored in git, evaluated by a compiled lens.
 
 Reference implementation `vars1.py`; lens kernel `kernel/lens.wasm`; proofs `proofs/`. Depends on
-`sigma-glyph` at `321504a` (tag v1.0.0; Book I, `impl/sigma_resume.py`), installed as sigma-glyph 1.0.0 from PyPI,
+`sigma-glyph` at `67aedac` (tag v1.0.1; Book I, `impl/sigma_resume.py`), installed as sigma-glyph 1.0.1 from PyPI,
 whose modules are byte-identical to that revision.
 
 ## 0. Terms

@@ -1,4 +1,4 @@
 # Book I: sigma_resume and sigma_glyph. vars1.py also checks the modules' bytes against the revision the spec pins.
-sigma-glyph==1.0.0 \
-    --hash=sha256:36d3354d47c7657237038549513b6c46a35e48ca35072a672de76cccd2f7f7b7 \
-    --hash=sha256:7878e718f28ed932aa6d40205898d31909cc4baf701970d35b969d448fb13fd0
+sigma-glyph==1.0.1 \
+    --hash=sha256:898bbd05fe49eaaa1f9b8613bda8781f5dfa6421b6a8df4a694bc6bd0c8953ca \
+    --hash=sha256:04bc88f8d644284f6327b87d09b6232795d412aabe78d543d332ba5daf64fd2e

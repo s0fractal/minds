@@ -5,7 +5,8 @@ defaultTargets = ["Vars1"]
 name = "Vars1"
 
 # Stage 2 link to Book I's mechanized evaluator and sigma-resume's machine. Not a default target. SigmaEval/ holds six
-# files copied from sigma-glyph v1.0.0, the spec's pin (see SigmaEval/SOURCE).
+# files copied from sigma-glyph v1.0.0, unchanged at v1.0.1, the spec's pin (see
+# SigmaEval/SOURCE).
 [[lean_lib]]
 name = "SigmaEval"
 srcDir = "SigmaEval"

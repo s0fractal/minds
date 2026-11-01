@@ -64,7 +64,7 @@ import vars1 as V  # noqa: E402
 SCOPE = "minds"
 SIBLINGS = ("sigma-glyph", "primitives")
 # Book I as the spec pinned it while releases pinned sibling checkouts (VARS-1-SPEC.md `c864d3e`, 2026-10-19): such a
-# release is checked against it. Releases since carry requirements.txt, and the spec has moved on (sigma-glyph 1.0.0).
+# release is checked against it. Releases since carry requirements.txt, and the spec has moved on (sigma-glyph 1.0.1).
 SIGMA_PIN = "c864d3ee01a2fe46c528bd6e9552438e64df5f6b"
 BOOK_I = ("impl/sigma_resume.py", "proofs")
 
@@ -691,7 +691,7 @@ def interpreter_for(repo_dir: Path, requirements: Optional[bytes]) -> str:
     above, has checked the installed modules against its own pins). Otherwise one with exactly the commit's
     requirements installed (`pip install --require-hashes`, so only the files the commit names by hash), made once
     per requirements file under `.git/vars/envs/`: a release recorded on sigma-glyph 0.8.0 is checked on 0.8.0 by a
-    verifier that runs 1.0.0, rather than refused by its own commit's check of the Book I bytes. One that cannot be
+    verifier that runs 1.0.1, rather than refused by its own commit's check of the Book I bytes. One that cannot be
     made is an error, not a failed check: no verdict is recorded, since the release was not checked."""
     if requirements is None or requirements == (ROOT / "requirements.txt").read_bytes():
         return sys.executable

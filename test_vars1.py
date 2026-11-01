@@ -3513,7 +3513,7 @@ class TestVars1Conformance(unittest.TestCase):
         finally:
             mc.run_checks = real
         # releases that pinned sibling checkouts were recorded under the spec's `c864d3e` (2026-10-19); the spec has
-        # since moved to sigma-glyph 1.0.0, and their Book I is still compared with the pin they were recorded under
+        # since moved to sigma-glyph 1.0.1, and their Book I is still compared with the pin they were recorded under
         self.assertEqual(mc.SIGMA_PIN, "c864d3ee01a2fe46c528bd6e9552438e64df5f6b")
 
 
@@ -6154,7 +6154,7 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_101_a_release_is_checked_under_the_requirements_its_commit_pins(self) -> None:
         """verify-release runs today's checks on a release's commit, whose vars1.py refuses a Book I other than the
-        one it pins. A release recorded on sigma-glyph 0.8.0 and checked under 1.0.0 would fail on that and be
+        one it pins. A release recorded on sigma-glyph 0.8.0 and checked under 1.0.1 would fail on that and be
         recorded INVALID, which no later verdict takes back. So the checks run under this Python where the commit
         pins no requirements or the bytes this checkout pins, and otherwise under one made once from the commit's
         requirements.txt with --require-hashes; one that cannot be made raises before any check runs."""
