@@ -48,8 +48,8 @@ verdict uses (an uncaught Python error would exit 1, the code of a refusal).
 
 ## What HELD establishes
 
-`HELD` means that the decision is Settled at the tip under the v1 rules, provided the store at the tip is that scope's
-admitted chain. The argument below follows §4.2. For `check.py` it is prose, which test 04 checks; for the Lean
+`HELD` means that the decision is Settled at the tip under the v1 or the v2 rules, provided the store at the tip is that
+scope's admitted chain. The argument below follows §4.2. For `check.py` it is prose, which test 04 checks; for the Lean
 checker it is a theorem.
 
 1. **Every cone cell is Active.**
@@ -114,16 +114,28 @@ endorsement and one `settle` line. It writes only the seals that verify. The Lea
 The proof never uses that `Stale` is the least fixed point. Each cell that stands is proved not stale from the cells
 it relies on, which earlier lines conclude. So soundness holds for any solution of the Pass 2 equation.
 
-The Lean checker checks two things that `check.py` leaves to the gate: a counted verdict's witness slot is empty, and
-an endorsing key is in the admission roster. On an admitted chain both hold, so the two checkers do not differ there.
+The Lean checker checks one thing that `check.py` leaves to the gate: a counted verdict's witness slot is empty. On an
+admitted chain it holds, so the two checkers do not differ there.
+
+**Rotations.** A seal counts under the scope that governed the commit that admitted it (§4.1: each is checked under
+its own commit's scope), so after a rotation the seals made before it still count. The checker reads the governing
+chain from the store: the one scope cell no other supersedes (which must be the reader's pin, if one is given), then
+the one scope each supersedes, back to the genesis. Cell ids name their content, so the chain has no cycle, and with
+one such tip every scope cell lies on it. A seal counts if its scope is on the chain and its key is in that scope's
+admission roster; `Pin` states that such a seal is among the cell's cumulative endorsers, which the gate makes true by
+admitting a seal on a local cell only under the governing scope. Under v2 a rotation can wait (§4.1 latches 4a, 4b);
+only the newest can, since a new scope is refused while one waits, and it waits only if it drops a key or changes the
+rules. The fragment leaves those out. The rules version matters nowhere else here: v2 changes which values are
+references, and that decides only the acceptance of foreign cells, which the fragment has none of.
 
 
 Outside the fragment the answer is `NOT_COVERED` and never `HELD`: there, the lens decides.
 
 | code | when |
 |---|---|
-| `SCOPES` | the store has a second scope cell (a rotation, or a foreign scope) |
-| `RULES` | the scope names rules other than v1 |
+| `SCOPES` | not exactly one scope cell that no other supersedes (two: a vetoed rules change) |
+| `WAITING` | under v2 the newest rotation drops a key or changes the rules, so it may still wait; or the pinned scope is superseded |
+| `RULES` | a scope of the chain names rules other than v1 and v2 |
 | `FOREIGN` | the store holds a cell of another origin |
 | `COMPUTATION` | the decision requires a computation, which replay decides |
 | `INVALID_VERDICT` | an INVALID verdict judges the decision |
@@ -133,12 +145,12 @@ The fragment is small, and the reason is the finding again. Test 08 shows decisi
 checker leaves `NOT_COVERED`:
 - a ground whose notice was itself invalidated;
 - an INVALID verdict from another verifier;
-- a rotation;
-- the v2 rules.
+- a rotation under v2 that drops a key without that key's seal, so it waits.
 
 To prove that an edge *does not count*, a term would need a proof that its source is itself invalidated, or that it
 is unauthorized: negation in strata, not a Horn derivation. A decision rebound by `supersedes`, which real chains do,
-is outside too. So is the live minds chain: it rotated to v2.
+is outside too. The live minds chain is inside: its v1 epochs, its rotation to v2 and its joins under both are
+rotations of the fragment, and test 13 holds every decision the lens settles there.
 
 `REFUSED` means the term is wrong. Its codes:
 
@@ -147,18 +159,18 @@ is outside too. So is the live minds chain: it rotated to v2.
 | `FORMAT` | it is not in the term format |
 | `TIP` | the tip is not a full commit id that names itself as a commit |
 | `STORE` | an entry is not a store object, or an object does not hash to its name |
-| `SCOPE` | the store's scope is not the term's, or not the pinned one |
+| `SCOPE` | the store's scope is not the term's, or the pin is not a scope cell of the store |
 | `DECISION` | the decision is not a contract or decision cell |
 | `CONE_MISSING` | the cone names a cell the store does not hold |
 | `CONE_OPEN` | the cone is not closed under `relies`, or lacks the decision or an endorsing verdict |
 | `VERDICT` | an endorsement is not an ATTESTED verdict on the decision |
-| `SEAL` | a seal is not on its verdict, is under another scope, or does not verify |
-| `KEY` | a seal's key is not in the evaluator policy |
+| `SEAL` | a seal is not on its verdict, is under a scope that did not govern, or does not verify |
+| `KEY` | a seal's key is not in the roster of the scope it is under, or not in the evaluator policy |
 | `THRESHOLD` | there are too few distinct policy keys |
 
 ## Evidence
 
-`test_witness.py` holds the tests; chains are admitted through the real gate. Every check in tests 03–09 runs both
+`test_witness.py` holds the tests; chains are admitted through the real gate. Every check in tests 03–09, 12 and 13 runs both
 checkers on the same term and requires that `vars1witness` answers `ACCEPT` exactly when `check.py` answers `HELD`. It
 does so wherever the Lean checker is built, and fails where `MINDS_REQUIRE_LEAN=1` and it is not, as in CI. `histories.py` generates the
 histories: a project of three maintainers whose ground fails, the generator of the withdrawn G6 pilot
@@ -172,14 +184,16 @@ histories: a project of three maintainers whose ground fails, the generator of t
 | 04 | **Soundness, exhaustively on two histories after the failure.** A decision the lens settles gets a HELD witness; one it does not gets none. No term over any subset of a decision's verdicts, each with its whole cone, is HELD for a decision the lens does not settle. There are 222 such terms. Of the 93 for lost decisions, none is HELD: 86 are NOT_COVERED (`KILL_EDGE`) and 7 REFUSED (`THRESHOLD`). Of the 129 for settled decisions, 59 are HELD, 58 REFUSED (`THRESHOLD`, one key) and 12 NOT_COVERED (a stale verdict in the subset). |
 | 05 | A lost decision cannot be passed off by leaving the fallen ground, or a stale verdict, out of the cone. |
 | 06–07 | A wrong term is refused for its own reason, including verdicts that judge or attest another decision, a NOT_ASSESSED verdict, a custom-schema cell shaped like a verdict, and a key outside the evaluator policy. |
-| 08 | Outside the fragment the answer is NOT_COVERED. A decision left not Active by an unauthorized supersedes edge is not HELD. |
+| 08 | Outside the fragment the answer is NOT_COVERED: a rotation under v2 that waits, rules other than v1 and v2, two scope cells superseding one. A decision left not Active by an unauthorized supersedes edge is not HELD. |
 | 09 | A store the gate never saw: a seal that does not verify, a seal under another scope, bytes that do not hash to their name, a missing object, an entry outside `cas/`, a decision requiring a computation, a foreign cell. |
 | 10 | `check.py`, copied alone into an empty folder and run with `-I`, works. |
 | 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8, one that is not an object, and one holding `NaN` or an infinity, which Python's json reads and JSON does not have. A crash exits 3. |
+| 12 | Rotations under v1 and v2: decisions approved before and after a key joins are HELD, seals read under the scope that governed each; a pin of the replaced scope is NOT_COVERED (`WAITING`); after a v1 rotation drops a key, that key's earlier seal counts and a seal by it under the new scope is refused (`KEY`). |
+| 13 | **The live chain** `refs/vars/heads/minds` at its tip: the prover finds a witness for exactly the decisions the lens settles, and both checkers hold each (34 of 46 at `57035e8`). CI requires the chain. |
 
-**Mutants.** `mutants.json` has one mutant per check: 40, all killed. Four of them break the decode that `check.py
+**Mutants.** `mutants.json` has one mutant per check: 44, all killed. Five of them break the decode that `check.py
 --lean` writes: kill edges dropped, INVALID verdicts not marked, seals written without verifying, a seal's scope
-replaced. The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
+replaced, only the tip's scope written as one that governed. The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 

@@ -15,8 +15,9 @@ conclusion of an earlier line (the form of open-ontologies' `OOCert.horn_certifi
 * `stand c` concludes that `c` stands (`Live`): `c` is a local cell of the store, no cell of the store
   invalidates, retires or supersedes it, it supersedes nothing, and its premises are exactly that each cell it
   relies on stands.
-* `endorse w k` concludes that key `k` endorses `w`: a seal of the store on the local cell `w`, under the scope
-  cell, by `k`, a key of the scope's admission roster. No premises.
+* `endorse w k` concludes that key `k` endorses `w`: a seal of the store on the local cell `w`, under one of the
+  scope cells that governed the chain (`ctxs`: the scope at the tip and each one it supersedes back to the genesis),
+  by `k`, a key of that scope's admission roster. No premises.
 * `settle d` concludes that `d` is `Settled`: `d` is a contract or decision that requires no computation, no
   INVALID verdict of the store judges it, `d` stands, and the endorsements among its premises, each on a standing
   ATTESTED verdict with an empty witness slot that judges and attests `d`, count at least the threshold of `d`'s
@@ -37,7 +38,8 @@ open Vars1
 variable {C K P : Type} [DecidableEq C] [DecidableEq K] [DecidableEq P]
 
 /-- What the decode read from the store at the tip: every cell of the store, the seals the derivation names
-(each one's signature verified), the scope cell, and the policies with their thresholds and keys. -/
+(each one's signature verified), the scope cell governing at the tip, the scope cells that governed before it, and
+the policies with their thresholds and keys. -/
 structure Store (C K P : Type) where
   cells : List C
   schema : C → Schema
@@ -55,6 +57,9 @@ structure Store (C K P : Type) where
   scope : C
   /-- The scope cell's `slots[0]`: the admission roster, and the evaluator policy of a decision with none. -/
   pol0 : P
+  /-- The scope cells that governed some commit of the chain, the tip's included, each with its admission roster
+  (`slots[0]`): a seal under one of them, by a key of its roster, was admitted while it governed. -/
+  ctxs : List (C × P)
   pols : List P
   keys : P → List K
   thr : P → Nat
@@ -92,8 +97,9 @@ def standOK (c : C) (prem : List (Concl C K)) : Bool :=
     decide (prem = (S.relies c).map .stands)
 
 def endorseOK (w : C) (k : K) (prem : List (Concl C K)) : Bool :=
-  prem.isEmpty && decide (w ∈ S.cells) && S.isLocal w && decide (k ∈ S.keys S.pol0) &&
-    S.seals.any fun s => decide (s.target = w) && decide (s.ctx = S.scope) && decide (s.key = k)
+  prem.isEmpty && decide (w ∈ S.cells) && S.isLocal w &&
+    S.ctxs.any fun cp => decide (k ∈ S.keys cp.2) &&
+      S.seals.any fun s => decide (s.target = w) && decide (s.ctx = cp.1) && decide (s.key = k)
 
 /-- An endorsement premise `endorsed w k` of `settle d`: `w` stands among the premises and is an ATTESTED verdict
 with an empty witness slot that judges and attests `d`, and `k` is a key of `d`'s evaluator policy. -/
@@ -153,8 +159,9 @@ def accepts (lines : List (Line C K)) (d : C) : Bool :=
   of it.
 * The store at the tip is the admitted chain: the Pass 1 equations hold (`IsPass1`); an edge latches only from a
   present cell (`edge_present` proves it of the fold); `X.active` is Pass 1 `Active`; `X.stale` satisfies the
-  Pass 2 equation (`stale_pin` proves it of `Stale`); and a verified seal under the scope cell, by a key of the
-  admission roster, on a local cell counts among that cell's cumulative endorsers (§4.1). -/
+  Pass 2 equation (`stale_pin` proves it of `Stale`); and a verified seal under a scope cell that governed, by a key
+  of its admission roster, on a local cell counts among that cell's cumulative endorsers (§4.1: each seal is checked
+  under the scope of its own commit, and the gate admits a seal on a local cell only under the scope governing it). -/
 structure Pin (W : World C K P) (AE : C → C → Kind → Bool) (Present isIntrinsic : C → Prop)
     (Auth : C → Bool) (Inv Eff Ret Acc : C → Prop) (X : Pass3In C K P) : Prop where
   schema : ∀ c ∈ S.cells, (W.info c).schema = S.schema c
@@ -178,7 +185,7 @@ structure Pin (W : World C K P) (AE : C → C → Kind → Bool) (Present isIntr
   edgeFrom : ∀ w v k, AE w v k = true → Present w
   active : ∀ c, X.active c ↔ Active W AE Eff Acc Ret c
   stale : ∀ v, X.stale v → (∃ d ∈ (W.info v).relies, ¬ X.active d ∨ X.stale d) ∨ (W.info v).isLocal = false
-  cumulative : ∀ s ∈ S.seals, s.ctx = S.scope → S.isLocal s.target = true → s.key ∈ S.keys S.pol0 →
+  cumulative : ∀ s ∈ S.seals, ∀ cp ∈ S.ctxs, s.ctx = cp.1 → S.isLocal s.target = true → s.key ∈ S.keys cp.2 →
     s.key ∈ X.cumulative s.target
 
 variable (W : World C K P) (X : Pass3In C K P) (wmax : C → List C)
@@ -295,11 +302,11 @@ theorem stand_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X
 theorem endorse_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X) {w : C} {k : K}
     {prem : List (Concl C K)} (hok : endorseOK S w k prem = true) : Holds S W X wmax (.endorsed w k) := by
   simp only [endorseOK, Bool.and_eq_true, decide_eq_true_eq, List.any_eq_true] at hok
-  obtain ⟨⟨⟨⟨-, hw⟩, hl⟩, hroster⟩, s, hs, ⟨⟨ht, hctx⟩, hkey⟩⟩ := hok
+  obtain ⟨⟨⟨-, hw⟩, hl⟩, cp, hcp, hroster, s, hs, ⟨⟨ht, hctx⟩, hkey⟩⟩ := hok
   show k ∈ witnessEndorsers W X w
   unfold witnessEndorsers
   rw [pin.isLocal w hw, hl, if_pos rfl]
-  have := pin.cumulative s hs hctx (ht ▸ hl) (hkey ▸ hroster)
+  have := pin.cumulative s hs cp hcp hctx (ht ▸ hl) (hkey ▸ hroster)
   rw [ht, hkey] at this
   exact this
 

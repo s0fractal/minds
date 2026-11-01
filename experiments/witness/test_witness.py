@@ -77,7 +77,7 @@ class Chain:
         for k, v in (("user.name", "witness"), ("user.email", "witness@local"), ("gc.auto", "0")):
             subprocess.run(["git", "-C", str(path), "config", k, v], check=True)
         self.path, self.repo = path, V.GitVarsRepo(path)
-        self.sk = {m: hashlib.sha256(b"witness/" + m.encode()).digest() for m in MEMBERS}
+        self.sk = {m: hashlib.sha256(b"witness/" + m.encode()).digest() for m in (*MEMBERS, "dee")}
         self.pk = {m: V.ed25519_pubkey(s) for m, s in self.sk.items()}
         a = dict(V.STD_SCHEMA_ATOMS)
         if rules == V.H_LENS_KERNEL_V2:
@@ -150,6 +150,21 @@ class Chain:
 
     def check(self, term, pin=None):
         return held(self.path, term, pin)
+
+    def rotate(self, members, label: str, rules=None, sealer: str = "ana") -> V.Cell:
+        """Admit a new scope cell superseding the governing one, with `members` 1-of-n in both rosters, sealed by
+        `sealer` under the governing scope; it governs from the next commit unless its rotation waits."""
+        a = self.atoms
+        pol = self.pol(a, 1, members)
+        old = self.repo.read_cas_tree(self.tip)[1][self.ctx]
+        s1 = V.Cell(V.H_SCHEMA["scope"], self.put(a, V.atom_utf8(f"{SCOPE}/SCOPE")), self.put(a, V.atom_utf8(label)),
+                    h_supersedes=self.put(a, V.atom_hvec([self.ctx])), h_loss=self.put(a, V.atom_utf8(label)),
+                    slots=(pol, pol, rules or old.slots[2]))
+        self.commit((s1, sealer))
+        return s1
+
+    def governing(self) -> bytes:
+        return self.repo._evaluate_commit_chain(SCOPE, self.repo.commit_chain(self.tip))["active_scope_id"]
 
 
 def seals_on(repo: V.GitVarsRepo, tip: str, cid: bytes):
@@ -366,7 +381,8 @@ class T(unittest.TestCase):
 
     def test_08_outside_the_fragment_the_answer_is_not_covered(self):
         """Settled by the lens but outside the fragment: a ground whose notice was itself invalidated, an INVALID
-        verdict on the decision, a rotation, the v2 rules. And a decision whose unauthorized supersedes edge leaves it
+        verdict on the decision, a rotation that may wait (under v2 it drops a key without that key's seal), rules other
+        than v1 and v2, two scope cells that supersede one. And a decision whose unauthorized supersedes edge leaves it
         not Active is not HELD either."""
         c = Chain(scratch())
         g, k, d, vs = c.basic()
@@ -386,24 +402,30 @@ class T(unittest.TestCase):
         r = c.check(PR.prove(c.repo, SCOPE, d.id))
         self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "INVALID_VERDICT"), r)
 
+        c = Chain(scratch(), rules=V.H_LENS_KERNEL_V2)
+        g, k, d, vs = c.basic()
+        s1 = c.rotate(("ana", "bo"), "cy leaves")  # under v2, without cy's seal: it waits (§4.1 latch 4a)
+        self.assertEqual(c.governing(), c.scope.id, "the rotation waits")
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
+        for pin in (None, c.scope.id):
+            r = c.check(PR.prove(c.repo, SCOPE, d.id), pin)
+            self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "WAITING"), (pin, r))
+
         c = Chain(scratch())
         g, k, d, vs = c.basic()
         a = {}
         pol = c.pol(a, 1, MEMBERS)
-        s1 = V.Cell(V.H_SCHEMA["scope"], c.put(a, V.atom_utf8(f"{SCOPE}/SCOPE")), c.put(a, V.atom_utf8("same roster")),
-                    h_supersedes=c.put(a, V.atom_hvec([c.scope.id])), h_loss=c.put(a, V.atom_utf8("rotation")),
-                    slots=(pol, pol, V.H_LENS_KERNEL))
-        c.atoms = a
-        c.commit((s1, "ana"))
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
-        r = c.check(term(c.repo, c.tip, d.id, [vs["ana"].id, vs["bo"].id]))
-        self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "SCOPES"), r)
-
-        c = Chain(scratch(), rules=V.H_LENS_KERNEL_V2)
-        g, k, d, vs = c.basic()
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
-        r = c.check(PR.prove(c.repo, SCOPE, d.id))
-        self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "RULES"), r)
+        name = c.put(a, V.atom_utf8(f"{SCOPE}/SCOPE"))
+        others = [V.Cell(V.H_SCHEMA["scope"], name, c.put(a, V.atom_utf8(label)),
+                         h_supersedes=c.put(a, V.atom_hvec([c.scope.id])), h_loss=c.put(a, V.atom_utf8(label)),
+                         slots=(pol, pol, rules)) for label, rules in (("other rules", V.sha256(b"other rules")),
+                                                                       ("v1 again", V.H_LENS_KERNEL))]
+        t = term(c.repo, c.tip, d.id, [vs["ana"].id, vs["bo"].id])
+        for cells, code in (([others[0]], "RULES"), (others, "SCOPES")):  # unadmitted stores: no gate ran on them
+            tip = raw_commit(c.path, c.tip, [*(cas("cells", x.encode()) for x in cells),
+                                             *(cas("atoms", x) for x in a.values())])
+            r = c.check(dict(t, tip=tip))
+            self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", code), r)
 
         c = Chain(scratch())
         g = c.axiom("ground/g")
@@ -508,6 +530,68 @@ class T(unittest.TestCase):
             self.assertEqual(cli(text.encode()), (3, None))
         finally:
             CK.check_text = crash
+
+    def test_12_a_seal_counts_under_the_scope_that_governed_it(self):
+        """Rotations, under v1 and under v2: a decision approved before a key joins and one approved after are HELD,
+        their seals read under the scope that governed each commit, and both checkers agree; a pin of the scope a
+        rotation replaced is not the tip (NOT_COVERED WAITING). A rotation that drops a key in a v1 epoch takes effect
+        at once; that key's seals before it still count, a seal by it under the new scope does not (KEY)."""
+        for rules in (V.H_LENS_KERNEL, V.H_LENS_KERNEL_V2):
+            c = Chain(scratch(), rules=rules)
+            g, k, d, vs = c.basic()
+            s0 = c.scope.id
+            s1 = c.rotate((*MEMBERS, "dee"), "dee joins")  # adds a key: never waits
+            self.assertEqual(c.governing(), s1.id, "a join takes effect at once")
+            c.ctx = s1.id
+            d2 = c.decision("decision/d2", [k], members=(*MEMBERS, "dee"))
+            w = {m: c.verdict(d2, f"decision/d2/by-{m}", [k], verifier=m) for m in ("bo", "dee")}
+            c.commit((d2, "dee"), *((v, m) for m, v in w.items()))
+            for dec, ws in ((d, [vs["ana"].id, vs["bo"].id]), (d2, [w["bo"].id, w["dee"].id])):
+                self.assertTrue(c.repo.lens(SCOPE)["settled"].get(dec.id))
+                for t in (PR.prove(c.repo, SCOPE, dec.id), term(c.repo, c.tip, dec.id, ws)):
+                    r = c.check(t, s1.id)
+                    self.assertEqual(r["result"], "HELD", (rules.hex()[:8], r))
+            r = c.check(PR.prove(c.repo, SCOPE, d.id), s0)
+            self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "WAITING"), r)
+
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        s1 = c.rotate(("ana", "bo"), "cy leaves")  # a v1 epoch: at once, consent or not
+        self.assertEqual(c.governing(), s1.id)
+        good = term(c.repo, c.tip, d.id, [vs["ana"].id, vs["cy"].id])
+        self.assertEqual(c.check(good)["result"], "HELD", "cy's seal under the scope it was a member of counts")
+        late = V.Seal.sign(c.sk["cy"], vs["cy"].id, s1.id).encode()
+        tip = raw_commit(c.path, c.tip, [cas("seals", late)])
+        t = dict(good, tip=tip, endorsements=[good["endorsements"][0], {"verdict": vs["cy"].id.hex(),
+                                                                       "seal": hashlib.sha256(late).hexdigest()}])
+        r = c.check(t)
+        self.assertEqual((r["result"], r.get("code")), ("REFUSED", "KEY"), r)
+
+    def test_13_every_decision_of_the_live_chain(self):
+        """On refs/vars/heads/minds at its tip (its v1 epochs, the rotation to v2, joins under both): the prover finds
+        a witness for exactly the decisions the lens holds Settled, check.py holds each, and vars1witness accepts each.
+        Skipped when the chain is not fetched, unless MINDS_REQUIRE_CHAIN=1."""
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        lens = repo.lens("minds", at=tip)
+        decisions = [cid for cid, c in lens["cells"].items() if c.h_schema == V.H_SCHEMA["decision"]]
+        held_ = []
+        for dec in decisions:
+            settled = bool(lens["settled"].get(dec)) and bool(lens["active"].get(dec)) and not lens["stale"].get(dec)
+            try:
+                t = PR.prove(repo, "minds", dec, tip)
+            except PR.NotHeld:
+                self.assertFalse(settled, f"the lens settles {dec.hex()}, the prover found no witness")
+                continue
+            r = held(ROOT, t)
+            self.assertEqual(r["result"], "HELD", (dec.hex(), r))
+            held_.append(dec)
+        self.assertEqual(len(held_), sum(bool(lens["settled"].get(x)) for x in decisions))
+        self.assertGreater(len(held_), 0)
 
 
 def mutants() -> int:

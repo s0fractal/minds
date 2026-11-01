@@ -2128,7 +2128,9 @@
     "witness:test_07_only_ATTESTED_verdicts_on_the_decision_by_its_policy_keys_count",
     "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
     "witness:test_09_the_store_is_read_from_bytes",
-    "witness:test_10_the_checker_runs_alone"
+    "witness:test_10_the_checker_runs_alone",
+    "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
+    "witness:test_13_every_decision_of_the_live_chain"
    ],
    "mutants": [
     "m-ed-small-order",
@@ -2162,7 +2164,10 @@
     "m-seal-signature",
     "m-key",
     "m-threshold",
-    "m-threshold-distinct"
+    "m-threshold-distinct",
+    "m-waiting",
+    "m-pin-old",
+    "m-seal-roster"
    ]
   },
   {
@@ -2191,13 +2196,16 @@
     "lean:stale_pin",
     "witness:test_04_after_the_failure_held_only_what_the_lens_settles",
     "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
-    "witness:test_09_the_store_is_read_from_bytes"
+    "witness:test_09_the_store_is_read_from_bytes",
+    "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
+    "witness:test_13_every_decision_of_the_live_chain"
    ],
    "mutants": [
     "m-lean-kill-edges",
     "m-lean-invalid",
     "m-lean-seal-verify",
-    "m-lean-seal-ctx"
+    "m-lean-seal-ctx",
+    "m-lean-ctxs"
    ]
   }
  ],

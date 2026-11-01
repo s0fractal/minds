@@ -35,12 +35,12 @@
   "kills": "test_09_the_store_is_read_from_bytes"
  },
  "m-scopes": {
-  "find": "    if len(scopes) != 1:",
-  "replace": "    if len(scopes) < 1:",
+  "find": "    if len(tips) != 1:",
+  "replace": "    if not tips:",
   "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
  },
  "m-scope-pin": {
-  "find": "    if pin is not None and scopes[0] != pin:",
+  "find": "    if pin is not None and pin != tip:",
   "replace": "    if False:",
   "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
  },
@@ -50,7 +50,7 @@
   "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
  },
  "m-rules": {
-  "find": "    if sc[\"slots\"][2] != H_LENS_KERNEL:",
+  "find": "    if any(scopes[x][\"slots\"][2] not in (H_LENS_KERNEL, H_LENS_KERNEL_V2) for x in chain):",
   "replace": "    if False:",
   "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
  },
@@ -135,7 +135,7 @@
   "kills": "test_06_a_wrong_term_is_refused_for_its_reason"
  },
  "m-seal-scope": {
-  "find": "        if x[\"ctx\"] != scopes[0]:",
+  "find": "        if x[\"ctx\"] not in chain:",
   "replace": "        if False:",
   "kills": "test_09_the_store_is_read_from_bytes"
  },
@@ -196,7 +196,27 @@
  },
  "m-lean-seal-ctx": {
   "find": "            good.append((num(x[\"target\"]), num(x[\"ctx\"]), key(x[\"key\"])))",
-  "replace": "            good.append((num(x[\"target\"]), num(scopes[0]), key(x[\"key\"])))",
+  "replace": "            good.append((num(x[\"target\"]), num(chain[0]), key(x[\"key\"])))",
   "kills": "test_09_the_store_is_read_from_bytes"
+ },
+ "m-waiting": {
+  "find": "        if base[\"slots\"][2] != H_LENS_KERNEL and (",
+  "replace": "        if False and (",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-pin-old": {
+  "find": "        if pin in superseded:",
+  "replace": "        if False:",
+  "kills": "test_12_a_seal_counts_under_the_scope_that_governed_it"
+ },
+ "m-seal-roster": {
+  "find": "        if x[\"key\"] not in rosters.get(x[\"ctx\"], set()):",
+  "replace": "        if False:",
+  "kills": "test_12_a_seal_counts_under_the_scope_that_governed_it"
+ },
+ "m-lean-ctxs": {
+  "find": "    out += [ids[chain[0]], pol(pol0), len(chain), *(n for x in chain for n in (ids[x], pol(cells[x][\"slots\"][0])))]",
+  "replace": "    out += [ids[chain[0]], pol(pol0), 1, ids[chain[0]], pol(pol0)]",
+  "kills": "test_12_a_seal_counts_under_the_scope_that_governed_it"
  }
 }
