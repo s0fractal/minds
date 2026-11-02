@@ -8,7 +8,7 @@ One line in: `N`, then `N` table entries (`0` normal form, `1` blocked reference
 normal form. One line out: two letters, `checkCycle`'s verdict then `gateCycle`'s, each `P` (`CYCLE_PROVEN`), `N`
 (`NOT_ASSESSED`) or `R` (refused); or `E` (a malformed line). -/
 
-open Vars1.Replay
+open Vars1.Replay SigmaResume
 
 /-- A table entry's cost is stored as `c - 1`, so every fired action costs at least 1 by construction. -/
 def tableStep (t : Array (Act Nat)) (i : Nat) : Act Nat :=

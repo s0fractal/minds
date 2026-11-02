@@ -1,7 +1,11 @@
-Copied unchanged from github.com/s0fractal/sigma-glyph, proofs/, tag v0.8.0
-(3890daebf8c6c2b9d6746b606f05274e03295c65); identical at c864d3e, the Book I revision VARS-1-SPEC.md pins.
+Copied unchanged from github.com/s0fractal/sigma-glyph, proofs/, tag v1.0.0
+(321504a02c0d0a87eeb6b5dd4760a9b22a6d53af). The same bytes at tag v1.0.1
+(67aedac1f926198496f0e57809e7324e2a348d12), the Book I revision VARS-1-SPEC.md pins.
 Copyright s0fractal; see that repository's license. test_vars1 checks these hashes.
 
 a1b4e8e1759a6356daec98a536c24bcd8c75aeed21be33e9e40f905fd520577b  Sha256.lean
 ca04fcd606e40c71e3644808cfdfad12440dee2667b24415b8210445229a9464  MachineBytes.lean
 6645514aaadaacd808546dae3e1b70c2584104a4eeec3bc3db486ab8dc5253bb  EvalMachine.lean
+bc3b3c2281bc9e747be06f694accf7ec00d22d590fafdacc7a1873a959073271  ResumeMachine.lean
+429c1bde8f19fcaf9c64da6a72fb9ce509bce95491183e08b0ff0f1a8f342e2c  ResumeCycle.lean
+6db317e46d05679c80145e33e438a8ddc8ba20cc6754be656dd769b47ac11fc2  ResumeLink.lean

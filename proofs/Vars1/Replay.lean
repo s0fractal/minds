@@ -1,3 +1,4 @@
+import ResumeMachine
 /-!
 # Book I replay soundness (§3.2 Check #4)
 
@@ -5,13 +6,13 @@ Stage 1 treated Book I replay as an opaque oracle. Here it is a small-step
 semantics and a lineage verifier, and Pass 3's oracle is defined from them
 (`Vars1/Pass3Replay.lean`).
 
-* `Machine` — a deterministic transition `step : S → Act S` whose fired actions
-  cost at least 1 ATP (Book I §3.4 "minimum cost of any action is 1";
-  `EvalMachine.step_cost_pos` in sigma-glyph).
-* `adv M s b` — `sigma_resume._run`: fire actions greedily while the next one is
-  affordable from what is left of `b`; stop at a normal form, a blocked
-  reference, or the first unaffordable action (PAUSED). Returns the final state
-  and the ATP spent.
+* `Machine`, `adv` and `adv_seg` are sigma-glyph's `ResumeMachine.lean`, copied in
+  `SigmaEval/` at tag v1.0.0 (written here, moved there on 2026-11-01): a
+  deterministic transition whose fired actions cost at least 1 ATP, and
+  `sigma_resume._run` over it, firing greedily while the next action is
+  affordable and stopping at a normal form, a blocked reference, or the first
+  unaffordable action (PAUSED); advancing by `a` and then by `b` is advancing by
+  `a + b` when the first spends exactly `a`.
 * `Ckpts` — the checkpoint cells: computation, `spent_total`, decoded state,
   `H_relies`, the `H_NORMAL_FORM` claim, and `SR.start` per computation.
 * `parent` — the highest-spent same-computation checkpoint in `H_relies`
@@ -27,8 +28,6 @@ outcome (RESOURCE_FAULT, ADMISSION_REFUSED, INCOMPLETE, recursion depth): the
 Gate maps it to `NOT_ASSESSED`. Every theorem holds for every such host.
 
 Theorems:
-* `adv_seg` — segmentation invariance: if advancing by `a` spends exactly `a`,
-  advancing by `a` and then by `b` equals advancing by `a + b`.
 * `verify_sound` — replay soundness: `REPLAYED` for `c` implies one advance
   from `SR.start (comp c)` by `spent_total(c)` spends exactly that and reaches
   exactly `state(c)`.
@@ -39,102 +38,7 @@ Theorems:
 
 namespace Vars1.Replay
 
-/-- What the transition does from a state. -/
-inductive Act (S : Type) where
-  /-- normal form (`step5` returns `None`) -/
-  | nf
-  /-- the demanded hash is absent (`Unresolved`, BLOCKED_REFERENCE) -/
-  | blocked
-  /-- the demanded action, its successor state and its ATP price -/
-  | fire (s : S) (cost : Nat)
-
-/-- A deterministic, positively priced transition system. -/
-structure Machine where
-  S : Type
-  step : S → Act S
-  cost_pos : ∀ s s' c, step s = .fire s' c → 0 < c
-
-variable (M : Machine)
-
-/-- `sigma_resume._run` without host fences: greedy, atomic, pre-checked charging. -/
-def adv (s : M.S) (b : Nat) : M.S × Nat :=
-  match _hstep : M.step s with
-  | .fire s' c =>
-      if c ≤ b then ((adv s' (b - c)).1, c + (adv s' (b - c)).2) else (s, 0)
-  | .nf => (s, 0)
-  | .blocked => (s, 0)
-termination_by b
-decreasing_by have := M.cost_pos s s' c _hstep; omega
-
-theorem adv_eq (s : M.S) (b : Nat) :
-    adv M s b =
-      match M.step s with
-      | .fire s' c =>
-          if c ≤ b then ((adv M s' (b - c)).1, c + (adv M s' (b - c)).2) else (s, 0)
-      | .nf => (s, 0)
-      | .blocked => (s, 0) := by
-  rw [adv]; split <;> simp_all
-
-/-- `adv` never spends more than its budget (Book I §3.4). -/
-theorem adv_le (s : M.S) (b : Nat) : (adv M s b).2 ≤ b := by
-  induction b using Nat.strongRecOn generalizing s with
-  | _ b ih =>
-    rw [adv_eq]
-    split
-    · rename_i s' c h
-      split
-      · have hc := M.cost_pos s s' c h
-        have := ih (b - c) (by omega) s'
-        simp only; omega
-      · simp
-    · simp
-    · simp
-
-/-- **Segmentation invariance.** When the first segment spends its whole budget
-(no budget refusal stopped it early), the run splits at that point. -/
-theorem adv_seg (s s₁ s₂ : M.S) (a b d : Nat)
-    (h₁ : adv M s a = (s₁, a)) (h₂ : adv M s₁ b = (s₂, d)) :
-    adv M s (a + b) = (s₂, a + d) := by
-  induction a using Nat.strongRecOn generalizing s with
-  | _ a ih =>
-    rw [adv_eq] at h₁
-    rw [adv_eq]
-    split
-    · rename_i s' c hstep
-      rw [hstep] at h₁
-      have hc := M.cost_pos s s' c hstep
-      by_cases hca : c ≤ a
-      · simp only [hca, if_true, Prod.mk.injEq] at h₁
-        have hrest : adv M s' (a - c) = (s₁, a - c) := by
-          rw [Prod.ext_iff]; exact ⟨h₁.1, by omega⟩
-        have := ih (a - c) (by omega) s' hrest
-        have e : a + b - c = a - c + b := by omega
-        simp only [show c ≤ a + b by omega, if_true, e, this, Prod.mk.injEq]
-        exact ⟨trivial, by omega⟩
-      · simp only [hca, if_false, Prod.mk.injEq] at h₁
-        obtain ⟨rfl, ha⟩ := h₁
-        subst ha
-        simp only [Nat.zero_add]
-        rw [← h₂, adv_eq M s b, hstep]
-    · rename_i hstep
-      rw [hstep] at h₁
-      simp only [Prod.mk.injEq] at h₁
-      obtain ⟨rfl, ha⟩ := h₁
-      subst ha
-      rw [adv_eq, hstep] at h₂
-      simp_all
-    · rename_i hstep
-      rw [hstep] at h₁
-      simp only [Prod.mk.injEq] at h₁
-      obtain ⟨rfl, ha⟩ := h₁
-      subst ha
-      rw [adv_eq, hstep] at h₂
-      simp_all
-
-/-- `true` exactly on a normal form. -/
-def Act.isNF {S : Type} : Act S → Bool
-  | .nf => true
-  | _ => false
+open SigmaResume
 
 /-- The checkpoint cells of a store. `R` names computations (`computation_id`). -/
 structure Ckpts (C R : Type) (M : Machine) where
@@ -156,7 +60,7 @@ inductive Status where
   | replayed | notAssessed | refused
   deriving DecidableEq, Repr
 
-variable {C R : Type} [DecidableEq R] {M}
+variable {C R : Type} [DecidableEq R] {M : Machine}
 
 /-- The first element of maximal `spent` (Python `max(..., key=spent)`). -/
 def best (spent : C → Nat) : List C → Option C

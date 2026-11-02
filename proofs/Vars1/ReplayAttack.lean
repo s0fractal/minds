@@ -19,6 +19,8 @@ after spending 1, not at `1` after spending 5.
 
 namespace Vars1.Replay.Attack
 
+open SigmaResume
+
 def toyStep : Nat → Act Nat
   | 0 => .fire 2 1
   | _ => .nf

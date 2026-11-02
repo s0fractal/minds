@@ -33,7 +33,7 @@ set_option linter.unusedSectionVars false
 
 namespace Vars1
 
-open Replay
+open Replay SigmaResume
 
 variable {C K P : Type} [DecidableEq C] [DecidableEq K] {M : Machine} [DecidableEq M.S]
 

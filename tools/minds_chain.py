@@ -9,7 +9,8 @@ from every key on the roster: another member runs `verify-release`, which reruns
 in a fresh checkout and records that member's verdict.
 
 Run it with the interpreter that has requirements.txt installed (`.venv/bin/python tools/minds_chain.py ...`):
-the checks run the test suites with that same interpreter.
+the checks run the test suites with that same interpreter, or, for a release whose commit pins other requirements,
+with one that has the commit's own installed (`interpreter_for`).
 
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
     tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check on main in a
@@ -62,7 +63,9 @@ import vars1 as V  # noqa: E402
 
 SCOPE = "minds"
 SIBLINGS = ("sigma-glyph", "primitives")
-SIGMA_PIN = "c864d3ee01a2fe46c528bd6e9552438e64df5f6b"  # VARS-1-SPEC.md `c864d3e`: Book I as the spec depends on it
+# Book I as the spec pinned it while releases pinned sibling checkouts (VARS-1-SPEC.md `c864d3e`, 2026-10-19): such a
+# release is checked against it. Releases since carry requirements.txt, and the spec has moved on (sigma-glyph 1.0.1).
+SIGMA_PIN = "c864d3ee01a2fe46c528bd6e9552438e64df5f6b"
 BOOK_I = ("impl/sigma_resume.py", "proofs")
 
 
@@ -606,7 +609,7 @@ def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
     return results
 
 
-def witness_checks(root: Path, run=_run) -> List[Tuple[str, bool]]:
+def witness_checks(root: Path, run=_run, python: str = sys.executable) -> List[Tuple[str, bool]]:
     """The witness checkers of experiments/witness/README.md, where the commit carries them: `vars1witness` built
     where its proofs name it (from PR #50 on), then the witness suite (from PR #46 on) with the Lean checker and the
     chain required, as CI's check job runs it. Its test 13 holds every decision the lens settles on
@@ -616,13 +619,14 @@ def witness_checks(root: Path, run=_run) -> List[Tuple[str, bool]]:
     if (root / "proofs" / "Vars1WitnessMain.lean").exists():
         results.append(("lake build vars1witness", run(["lake", "build", "vars1witness"], root / "proofs")))
     if (root / "experiments" / "witness" / "test_witness.py").exists():
-        results.append(("experiments/witness", run([sys.executable, "experiments/witness/test_witness.py"], root, REQUIRE)))
+        results.append(("experiments/witness", run([python, "experiments/witness/test_witness.py"], root, REQUIRE)))
     return results
 
 
-def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], bool]:
+def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL, python: str = sys.executable) -> Tuple[List[str], bool]:
     """Every check a release requires, as `name OK|FAILED` lines; the release is refused unless all pass. Every
-    rules module built from `root` must hash to its identity, and `rules` must be one of them."""
+    rules module built from `root` must hash to its identity, and `rules` must be one of them. The test suites run
+    under `python`, which must have `root`'s requirements installed."""
     run = _run
 
     # The Lean executables first: properties I9, I10 and I12 run them, so in a fresh checkout they must exist
@@ -630,10 +634,10 @@ def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL) -> Tuple[List[str], b
     for target in ("", "vars1exec", "vars1fold", "vars1cycle", "Vars1Sigma"):
         results.append((f"lake build {target}".strip(), run(["lake", "build", *([target] if target else [])], root / "proofs")))
     results += [
-        ("test_vars1", run([sys.executable, "-m", "unittest", "test_vars1"], root, REQUIRE)),
-        ("test_vars1_props", run([sys.executable, "test_vars1_props.py"], root, REQUIRE)),
+        ("test_vars1", run([python, "-m", "unittest", "test_vars1"], root, REQUIRE)),
+        ("test_vars1_props", run([python, "test_vars1_props.py"], root, REQUIRE)),
     ]
-    results += witness_checks(root, run)
+    results += witness_checks(root, run, python)
     results += kernel_checks(root, rules)
     return [f"{n} {'OK' if ok else 'FAILED'}" for n, ok in results], all(ok for _, ok in results)
 
@@ -681,6 +685,31 @@ def recorded_at(repo: V.GitVarsRepo, cid: bytes) -> str:
     raise V.VarsError("not a cell of this chain")
 
 
+def interpreter_for(repo_dir: Path, requirements: Optional[bytes]) -> str:
+    """The Python a commit's checks run under. This one, where the commit pins no requirements (its Book I came from
+    the sibling checkouts beside it, put first on its path) or the bytes this checkout pins (and `vars1`, imported
+    above, has checked the installed modules against its own pins). Otherwise one with exactly the commit's
+    requirements installed (`pip install --require-hashes`, so only the files the commit names by hash), made once
+    per requirements file under `.git/vars/envs/`: a release recorded on sigma-glyph 0.8.0 is checked on 0.8.0 by a
+    verifier that runs 1.0.1, rather than refused by its own commit's check of the Book I bytes. One that cannot be
+    made is an error, not a failed check: no verdict is recorded, since the release was not checked."""
+    if requirements is None or requirements == (ROOT / "requirements.txt").read_bytes():
+        return sys.executable
+    env = Path(repo_dir) / ".git" / "vars" / "envs" / V.sha256(requirements).hex()
+    if not (env / "ready").exists():
+        if env.exists():
+            shutil.rmtree(env)
+        env.mkdir(parents=True)
+        (env / "requirements.txt").write_bytes(requirements)
+        made = (_run([sys.executable, "-m", "venv", str(env)], env)
+                and _run([str(env / "bin" / "python"), "-m", "pip", "install", "--quiet", "--require-hashes", "-r",
+                          "requirements.txt"], env))
+        if not made:
+            raise V.VarsError(f"cannot install the commit's requirements.txt (in {env}): the release is not checked")
+        (env / "ready").write_bytes(b"")
+    return str(env / "bin" / "python")
+
+
 def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[str, str]] = None,
               chain: Optional[str] = None) -> Tuple[List[str], bool]:
     """Run every check on commit `sha` in a fresh checkout under `.git/vars/verify/`: a clone sharing this
@@ -688,10 +717,10 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     except that `refs/vars/heads/minds` is `chain` when one is given: `verify-release` passes the chain as it stood
     when the release was recorded, so a member who joined or left since does not change what the checks read (test
     25 compares README's keys with the roster). A commit now carries its dependencies (sigma-glyph from PyPI by
-    requirements.txt, run by this interpreter; vendored Lean sources and vectors), so nothing sits beside the
-    checkout. An older release that pinned sibling commits (`siblings`) gets each extracted at that commit beside it
-    (read from the sibling repository with `git archive`), and Book I is compared with the spec's pin. The checkout
-    and any extracted siblings are removed afterwards."""
+    requirements.txt, run under `interpreter_for` that file; vendored Lean sources and vectors), so nothing sits
+    beside the checkout. An older release that pinned sibling commits (`siblings`) gets each extracted at that commit
+    beside it (read from the sibling repository with `git archive`), and Book I is compared with `SIGMA_PIN`. The
+    checkout and any extracted siblings are removed afterwards."""
     git = lambda *a: subprocess.run(["git", "-C", str(repo_dir), *a], capture_output=True, text=True, check=True)
     # every commit checked out or compared is named by its canonical id in its own repository, never by a ref
     if not V.canonical_commit_id(repo_dir, sha):
@@ -703,6 +732,11 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     if siblings is not None and not V.canonical_commit_id(parent / "sigma-glyph", SIGMA_PIN):
         raise V.VarsError(f"the spec's Book I pin {SIGMA_PIN} is not a commit of the sigma-glyph checkout")
     git("merge-base", "--is-ancestor", sha, "main")
+    # the checks run under the commit's own requirements, read from the commit; none before 2026-10-19 (a512f8b)
+    req = f"{sha}:requirements.txt"
+    pinned = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "-e", req], capture_output=True).returncode == 0
+    python = interpreter_for(repo_dir, subprocess.run(["git", "-C", str(repo_dir), "show", req], capture_output=True,
+                                                      check=True).stdout if pinned else None)
     base = Path(repo_dir) / ".git" / "vars" / "verify" / sha[:12]
     base.mkdir(parents=True, exist_ok=True)
     pre: List[Tuple[str, bool]] = []
@@ -732,7 +766,7 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
         if chain is not None:
             sub("update-ref", f"refs/vars/heads/{SCOPE}", chain)
         sub("checkout", "-q", "--detach", sha)
-        lines, ok = run_checks(wt, rules)
+        lines, ok = run_checks(wt, rules, python=python)
     finally:
         shutil.rmtree(wt, ignore_errors=True)
         for sib in SIBLINGS:

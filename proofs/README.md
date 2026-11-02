@@ -9,7 +9,7 @@ lake build vars1exec    # the executable lens, compiled (used by test_vars1_prop
 lake build vars1fold    # the model's own fold, v1 and v2, compiled (invariant I10)
 lake build vars1cycle   # the model's cycle checker, compiled (invariant I12)
 lake build vars1witness # the witness checker, compiled (experiments/witness: every check runs it too)
-lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator (three files copied in SigmaEval/)
+lake build Vars1Sigma   # link to sigma-glyph's Book I evaluator and sigma-resume (six files copied in SigmaEval/)
 ```
 
 Zero `sorry`, no `axiom` declarations. `#print axioms` shows only `propext`, `Quot.sound`
@@ -32,17 +32,19 @@ and, for some theorems, `Classical.choice`.
 | `Scope.lean` | `governed_superseded`, `unique_active_scope` | under the gate's rotation rule, a scope that no longer governs is superseded by a later scope; an Active local scope is the governing one |
 | `Pass2.lean`, `Lfp.lean` | `Φ_mono`, `stale_fixed`, `stale_least` | the Pass 2 operator is monotone; `Stale` is its least fixed point |
 | | `sweep_reaches_stale` | the spec's round (live acceptance first, then an in-place sweep) reaches `Stale` within `|cells|+1` rounds, in any cell order |
-| `Replay.lean` | `adv_seg` | segmentation invariance of budgeted advance |
-| | `verify_sound` | `REPLAYED` for `c` ⟹ one advance from `ComputationRoot` by `spent_total(c)` reaches exactly `c`'s state |
+| `SigmaEval/ResumeMachine.lean` (sigma-glyph) | `adv_seg` | segmentation invariance of budgeted advance |
+| `Replay.lean` | `verify_sound` | `REPLAYED` for `c` ⟹ one advance from `ComputationRoot` by `spent_total(c)` reaches exactly `c`'s state |
 | | `not_assessed_ancestor_blocks` | a `NOT_ASSESSED` ancestor prevents `REPLAYED` at any fuel |
 | `ReplayAttack.lean` | `pre_lineage_unsound` | a verifier that trusts an unverified parent is unsound (explicit counterexample) |
-| `Cycle.lean` | `checkCycle_sound` | `checkCycle` (`sigma_resume.verify_cycle` over the abstract machine) returns `CYCLE_PROVEN` ⟹ one advance from the start by `entry_spent` reaches exactly the entry, and `n ≥ 1` actions from the entry return to it at `cycle_cost` |
+| `SigmaEval/ResumeCycle.lean` (sigma-glyph) | `checkCycle_sound` | `checkCycle` (`sigma_resume.verify_cycle` over the abstract machine) returns `CYCLE_PROVEN` ⟹ one advance from the start by `entry_spent` reaches exactly the entry, and `n ≥ 1` actions from the entry return to it at `cycle_cost` |
 | | `cycle_proven_no_normal_form` | then from the start every number of actions fires, and at every budget the run ends paused: never a normal form, never a blocked reference |
+| `Cycle.lean` | `gateCycle_proven_iff` | the gate's verdict (`NOT_ASSESSED` for a well-shaped witness whose entry is above the ceiling) proves exactly what `checkCycle` proves |
 | | `replayed_nf_excludes_cycle` | no computation has both a `REPLAYED` checkpoint claiming `H_NORMAL_FORM` and an accepted cycle witness |
 | `Pass3Replay.lean` | `settled_full_replay` | a Settled contract with `required_comp` has a live witness: a full replay from root to a normal form with the expected term hash, or a cycle witness of the same computation for `H_CYCLE_PROVEN` from whose start no budget reaches a normal form |
 | | `settled_cycle_no_normal_form` | a Settled contract with `required_comp = r` and `expected_outcome = H_CYCLE_PROVEN`: from `SR.start r` every number of actions fires and no budget gives a normal form or a blocked reference |
-| `Vars1Sigma/Link.lean` | `run_eq_adv`, `book_verify_sound` | the abstract machine instantiated with `EvalMachine.step`; replay soundness for Book I |
-| | `book_cycle_no_normal_form` | for Book I: an accepted cycle witness means `_run` of `EvalMachine.step` from the start, at any budget, stops at a term that is a normal form at no budget (no Book I term with a state cycle is known) |
+| `SigmaEval/ResumeLink.lean` (sigma-glyph) | `run_eq_adv` | the abstract machine instantiated with `EvalMachine.step` |
+| `Vars1Sigma/Link.lean` | `book_verify_sound` | replay soundness for Book I |
+| `SigmaEval/ResumeLink.lean` (sigma-glyph) | `book_cycle_no_normal_form` | for Book I: an accepted cycle witness means `_run` of `EvalMachine.step` from the start, at any budget, stops at a term that is a normal form at no budget (no Book I term with a state cycle is known) |
 | `ExecProof.lean` | `pass1_correct` | the executable Pass 1 (`Exec.lean`) satisfies `IsPass1`, and its `sup`/`act` bits are the model's `Superseded`/`Active`, on the world its facts describe |
 | | `stale_correct` | the executable Pass 2 is the model's `Stale = lfp Φ` |
 | `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
@@ -67,7 +69,8 @@ not the encoding, so the same proofs apply.
 
 ## Cycle witnesses
 
-`Cycle.lean` defines `checkCycle`, `sigma_resume.verify_cycle` (sigma-glyph 0.8.0) written over the abstract machine
+`SigmaEval/ResumeCycle.lean` (sigma-glyph's, copied in at tag v1.0.0; written here first and moved there on
+2026-11-01) defines `checkCycle`, `sigma_resume.verify_cycle` written over the abstract machine
 in its order: positive `n ≤ cost`; the period's cost against the host ceiling (`NOT_ASSESSED`); the prefix `advance`
 by `entry_spent`, whose own admission ceiling turns `entry_spent > max_atp` into a refusal (`PREFIX_MISMATCH`, not
 `NOT_ASSESSED`); the prefix must spend exactly `entry_spent`, stop `PAUSED` and stop at the entry; the period, `_run`
