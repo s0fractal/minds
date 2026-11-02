@@ -2322,6 +2322,14 @@
    "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
   ]
  },
+ "m-88-rules-governs": {
+  "file": "test_vars1.py",
+  "find": "        inputs.append(self.repo.lens(\"core\")[\"kernel_input\"])  # the change governs, still read by the old rules\n",
+  "replace": "",
+  "kills": [
+   "test_88_a_rules_change_under_v2_waits_and_a_veto_shows_a_difference_on_this_chain"
+  ]
+ },
  "m-release-witness-checks": {
   "file": "tools/minds_chain.py",
   "find": "    results += witness_checks(root, run, python)\n",
