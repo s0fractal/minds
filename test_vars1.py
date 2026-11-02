@@ -5433,6 +5433,7 @@ class TestVars1Conformance(unittest.TestCase):
         tip = self._tick(tip, s0, 1)
         self.assertEqual((self._governing(tip), self.repo.lens("core")["rules"]), (s2.id, V.H_LENS_KERNEL_V2),
                          "the 16th commit of the window ends it; the next commit is under the new rules")
+        inputs.append(self.repo.lens("core")["kernel_input"])  # the change governs, still read by the old rules
         self.assertEqual(self.repo.lens("core", at=self._tick(tip, s2, 1))["rules"], VAR)
 
         # on a fresh chain, a veto in the window's last commit still counts
@@ -5466,9 +5467,20 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual([outcome(built, ki) for ki in inputs],
                          [outcome(V.kernel_runner(V.H_LENS_KERNEL_V2), ki) for ki in inputs],
                          "a v2 build answers what the pinned v2 answers on these chains")
+        # the inputs hold a change that governs, read from their bytes: the pinned module's governing scope names
+        # other rules than the genesis scope. None did before Codex's challenge a6cb6991 of the G8 closure, and the
+        # property suite makes no rotation to other rules, so these inputs are I10's only rules change.
+        import test_vars1_props as PROPS
+
+        def other_rules_govern(ki: bytes) -> bool:
+            cells = PROPS.read_kernel_input(ki)[2]
+            scopes = [c for c in cells if c[1] == V.H_SCHEMA["scope"] and c[3] == 0]
+            governing = cells[int.from_bytes(V.kernel_runner(V.H_LENS_KERNEL_V2).run(ki)[:4], "little")]
+            return governing[5][2] != min(scopes, key=lambda c: c[4])[5][2]
+        self.assertEqual(sorted({other_rules_govern(ki) for ki in inputs}), [False, True],
+                         "the inputs hold a rules change that governs, and ones that wait or are vetoed")
         # I10 and I9 on these chains: the model's v2 fold (proofs/Vars1/Fold2.lean, compiled as vars1fold) gives the
         # pinned module's scope and latches through a rules change that waits, is vetoed, or governs after 16
-        import test_vars1_props as PROPS
         if not (PROPS.FOLD_BIN.exists() and PROPS.EXEC_BIN.exists()):
             if os.environ.get("MINDS_REQUIRE_LEAN") == "1":
                 self.fail("vars1fold and vars1exec are not built, and MINDS_REQUIRE_LEAN=1 requires them")

@@ -115,10 +115,11 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
 - `kernel2/lens2.wasm`'s fold is tied to `Fold2.lean` the same way: `vars1fold` runs `run2` on a v2 input, with the
   rules each scope names and the typed references. I10 and I9 run on the v2 property sequences (rotations waiting by
   consent and by the 16 commits), on `test_vars1.py` 88's rules changes (a veto, the window's last commit, a change
-  governing after 16) and on every tip of the live chain `refs/vars/heads/minds` (68 v1 tips, 13 v2: the rotation to
-  v2 in a v1 epoch, then joins under v2). A `DELAY` of 15 in the model fails I10. `Fold2.lean`'s theorems about the
-  wait assume the chain as the gate admits it (`Fresh`, and `RotationAdmitted` for `run2_v1`); the model makes no
-  refusal (E-24, E-25, −6, −7).
+  governing after 16; the last was missing until Codex's challenge `a6cb6991`, and test 88 now reads it from the
+  inputs' bytes; the property sequences never rotate to other rules, so these are I10's only rules changes) and on
+  every tip of the live chain `refs/vars/heads/minds` (68 v1 tips, 13 v2: the rotation to v2 in a v1 epoch, then joins
+  under v2). A `DELAY` of 15 in the model fails I10. `Fold2.lean`'s theorems about the wait assume the chain as the
+  gate admits it (`Fresh`, and `RotationAdmitted` for `run2_v1`); the model makes no refusal (E-24, E-25, −6, −7).
 
 ## Mutants
 
