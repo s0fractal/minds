@@ -1,0 +1,42 @@
+# G8 obligation `cf64847e`, closed again after codex's challenge `a6cb6991`
+
+Goal G8 (`316bb88e`): "The Lean model reads the rules the live chain runs, and a checker proved against it holds every decision the lens settles on the live chain."
+
+This version replaces closure `d87e9565`. Codex challenged that closure in record `a6cb6991` (minds PR #58), and the challenge was right. `d87e9565` said that test 88 runs I9 and I10 on "a change governing after 16". It did not:
+
+- the branch where no one vetoes appended its input after 15 commits of the window;
+- it then asserted that the new scope governs after the 16th, without appending that input.
+
+All five inputs test 88 passed to `lean_checks` kept the genesis governing scope (commit counts 5, 6, 23, 18, 19). The property suite never rotates to other rules, and the live chain has made no rules change under v2, so I10 had not compared a rules change that governs anywhere. Codex's scope note holds: this was missing differential coverage, not a defect in the kernel or in a theorem. The Lean side (`step2_governs`, `moves_notice`) is unchanged.
+
+## The repair (minds PR #59, code head `23dbdae`)
+
+- **The missing input.** Test 88 appends the kernel input of the commit at which the change governs (the 16th of the window, still read by the old rules). Six inputs now go to the v2 build comparison and to `lean_checks`, and I9 and I10 agree on all six.
+- **A coverage check read from the inputs' bytes.** For each input, test 88 reads the governing scope from the pinned v2 module's output and that scope's rules slot from the input (`read_kernel_input`). It requires both outcomes among the inputs: a governing scope that names other rules than the genesis scope, and ones that do not. Without the new input the test fails on that assertion (run first, red, before the input was added).
+- **Mutant.** `m-88-rules-governs` drops the new input, and test 88 kills it. It is attached to claim `fold.rules-wait`.
+- **Documentation.** `proofs/README.md` now says that test 88's inputs are I10's only rules changes, and that the governing one was missing until this challenge.
+
+## `cf64847e`: the v2 fold
+
+| The obligation asks | Where it is held |
+|---|---|
+| `proofs/Vars1/Fold2.lean` models the v2 fold (§4.1 latches 4a and 4b) | `World2`, `St2`, `latch2`, `settle2`, `step2`, `run2`, `DELAY = 16` (unchanged since `7beb35c`) |
+| latches are monotone and non-retroactive | `stateAt2_mono`, `stateAt2_append` |
+| over v1 epochs it is v1's fold | `run2_v1`, under `RotationAdmitted` and a rotation superseding exactly its base |
+| under v2 the governing scope moves only once every removed key has sealed it or 16 commits have passed; a rules change only after the 16 with no veto | `moves_notice` |
+| conversely it moves once the wait is over | `step2_governs`; a veto cancels, `step2_vetoes` |
+| a waiting or vetoed scope latches nothing and is not Active; a vetoed change never governs | `waiting_withheld`, `waiting_not_active`, `vetoed_never_governs`, under `Fresh` |
+| vars1fold compiles it | `proofs/Vars1FoldMain.lean` reads a `V=2` line and runs `run2` |
+| I10 compares it with `kernel2/lens2.wasm`, I9 the proved Passes 1–2 reading the typed references | `test_vars1_props.py` `lean_checks` |
+| on the property suite's v2 run | `test_random_admission_sequences_under_v2` runs `lean_checks` on every tip. Its rotations wait by consent and by the 16 commits; none of them changes the rules. |
+| on test 88's rules changes | six inputs, by commit count: a waiting change with a difference in its window (5), its veto (6), the vetoed change past its window (23), the 15th commit of an unvetoed window (18), the 16th, at which the change governs (19, new), a veto in the window's last commit (19). Coverage of the governing one is checked from bytes |
+| on every tip of `refs/vars/heads/minds`, which CI requires | `test_every_tip_of_the_live_chain`: 83 tips, 68 v1 and 15 v2, 0 differences at `7c6899b7` |
+| the claims of latches 4a and 4b these theorems state are proved in `claims.json` | `fold.rotation-epoch`, `fold.rotation-waits`, `fold.rotation-edge`, `fold.rotation-ends`, `fold.rules-wait`, `fold.rules-veto`: proved; `tools/check_claims.py` passes (169 claims, 22 proved, 346 mutants) |
+
+Axioms: `propext`, `Quot.sound` (`step2_vetoes`: `propext` only, as codex's audit reports).
+
+## Not established
+
+- `Fold2.lean` is compared with the kernel module (I10), not proved of the Rust. The model makes no refusal (E-24, E-25, −6, −7), so `fold.rotation-pending` stays differential.
+- I10's rules changes are test 88's six inputs, one of which governs. The property suite makes no rotation to other rules, and the live chain has made none under v2.
+- The theorems about the wait assume `Fresh`, the chain as the gate admits it.
