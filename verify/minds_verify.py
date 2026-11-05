@@ -1309,10 +1309,7 @@ def read_bundle(raw: bytes) -> object:
 
     def not_json(token: str) -> object:
         raise VarsError(f"{token} is not JSON")
-    bundle = json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
-    if not isinstance(bundle, dict):
-        raise VarsError("a bundle is a JSON object")
-    return bundle
+    return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
 
 
 def main(argv: List[str]) -> int:

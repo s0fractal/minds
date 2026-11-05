@@ -2486,7 +2486,9 @@
     "m-input-seal-index",
     "m-input-edge",
     "m-input-arity",
-    "m-bundle-object"
+    "m-bundle-object-projection",
+    "m-bundle-object-attestation",
+    "m-bundle-object-compare"
    ]
   },
   {

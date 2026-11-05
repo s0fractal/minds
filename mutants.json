@@ -2308,8 +2308,8 @@
  },
  "m-verify-constants": {
   "file": "verify/minds_verify.py",
-  "find": "    bundle = json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading, parse_constant=not_json)",
-  "replace": "    bundle = json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading)",
+  "find": "    return json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading, parse_constant=not_json)",
+  "replace": "    return json.loads(raw.decode(\"utf-8\"), object_pairs_hook=one_reading)",
   "kills": [
    "test_99_a_bundle_reads_one_way_and_inspect_has_its_own_word"
   ]
@@ -2748,7 +2748,7 @@
   "find": "        if birth >= commits:\n            raise VarsError(\"a kernel input holds a cell born beyond its commit count\")\n",
   "replace": "",
   "kills": [
-   "test_120_an_input_that_lies_about_its_history_is_refused"
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
   ]
  },
  "m-input-seal-commit": {
@@ -2779,14 +2779,6 @@
   "file": "verify/minds_verify.py",
   "find": "        if schema in _STANDARD_ARITY and k != _STANDARD_ARITY[schema]:\n            raise VarsError(\"a kernel input holds a cell of a standard schema with another arity\")\n",
   "replace": "",
-  "kills": [
-   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
-  ]
- },
- "m-bundle-object": {
-  "file": "verify/minds_verify.py",
-  "find": "    if not isinstance(bundle, dict):\n        raise VarsError(\"a bundle is a JSON object\")\n    return bundle\n",
-  "replace": "    return bundle\n",
   "kills": [
    "test_123_a_spoiled_bundle_is_refused_and_no_crash"
   ]
@@ -2885,6 +2877,30 @@
   "replace": "    if subprocess.run([\"git\", \"-C\", str(repo_dir), \"cat-file\", \"-e\", last],",
   "kills": [
    "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-bundle-object-projection": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not isinstance(bundle, dict) or bundle.get(\"format\") != BUNDLE_FORMAT:",
+  "replace": "    if bundle.get(\"format\") != BUNDLE_FORMAT:",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-bundle-object-attestation": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not isinstance(bundle, dict) or bundle.get(\"format\") != ATTESTATION_FORMAT:",
+  "replace": "    if bundle.get(\"format\") != ATTESTATION_FORMAT:",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-bundle-object-compare": {
+  "file": "verify/minds_verify.py",
+  "find": "        if not isinstance(bundle, dict):\n            raise VarsError(\"a bundle is a JSON object\")\n",
+  "replace": "",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
   ]
  }
 }
