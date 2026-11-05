@@ -514,6 +514,35 @@ needs at least one pinned key and exits 0 only on acceptance with every pinned k
 acceptance `accepted_under_own_policy`, never `accepted`, the word of `verify-attestation`. `export_attestation`
 builds a bundle.
 
+**One history.** A witness vouches for one history: it seals no projection of a chain that does not extend what it sealed
+before. VARS-1 does not prevent a fork, which takes one key and no one's leave. It makes signing both sides provable.
+A chain is named by its genesis scope cell, which is its scope's name and roster: two chains begun with one name and one
+roster are one chain to this check, and a key that seals on both is named, so a key that means to serve two chains names them apart.
+A reader refuses an input that does not read as one history, as the rules do: a cell born or a seal made beyond its commit
+count, an index outside what it lists, an edge to a cell not older. Whoever signs an input chooses its bytes, and this is
+the reader's only check of them.
+Of two tips of one chain, the input of the one with fewer commits holds exactly
+the cells of the other born below its commit count, with the same births, and
+exactly its seals made below that count, by
+the same keys; so two inputs of one chain always read as one history, and no honest witness is named.
+Cell order is no prefix and a key index shifts when a key joins, so keys are compared through the rosters both inputs hold.
+At one commit count there is one tip, for that tip one input byte for byte, and for that input under its rules one output:
+two projections that differ in any of these are a fork too, whatever else they share.
+`minds_verify.py verify-equivocation A B` reads two bundles and nothing else, and exits 0 only when their histories fork and
+a key sealed both: both seals verify, each on a projection whose digest is its input's, so anyone can recheck it with no
+trust in who brought it. It exits 4 for a fork no key sealed both of, which names no one, and 1 when there is no fork; two
+chains of different genesis are `unrelated`, and name no one.
+Two conflicting projections each witnessed by `q` of `n` keys name at least `2q - n` keys, and only when both sides name one
+witness policy and both met it: the result says `same_witness_policy` and `overlap_bound`. A reader who wants a fork to cost
+someone needs `q > n / 2` and pins one policy.
+`verify-extends OLD NEW` exits 0 only when the second bundle's history is the first's or extends it: a reader keeps the last
+bundle it accepted and refuses a rollback, and still verifies the new bundle for the keys it trusts.
+Every path of `tools/minds_chain.py` that seals a projection remembers, in that clone, the newest tip its projections name for
+that key, and refuses to seal on a chain that does not descend from it. Another clone of the key, or a fresh runner, has no
+such memory and is not protected: it can sign a fork unknowingly, and the proof still names it.
+A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits at different counts,
+reads as one history; and that an input is faithful to a chain is still the witnesses' word (§4.3).
+
 **Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
 that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
@@ -571,7 +600,8 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11); a key's withdrawal and Grounded equal §4.2 over the input's
-  indices, and a client's two bounds on Grounded hold the lens's answer (I13); and, on generated transition tables and cycle
+  indices, and a client's two bounds on Grounded hold the lens's answer (I13); every two tips of a sequence read as one
+  history (I14); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
   (`proofs/Vars1/Cycle.lean`, compiled) (I12). A second run writes chains whose genesis names `H_LENS_KERNEL_V2` and
   checks I0–I8 and I11 on them (I9 and I10 compare a model of v1's input): there the interpreter keeps the rotation
@@ -592,4 +622,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 102–109 and 115–119: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
   circuits, what a client names, what a key can still do by an edge, and who can change a status (`GitVarsRepo.power`,
   `proofs/Vars1/Power.lean`) against a search through the gate.
+- `test_vars1.py` tests 110–114 and 120–123: every pair of tips of the live chain reads as one history; forks, rollbacks,
+  lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that
+  refuses to sign a fork.
 - `proofs/`: the theorems listed in `proofs/README.md`.

@@ -2580,6 +2580,81 @@
    "test_108_an_invalid_on_the_checkpoint_withdraws_only_its_own_key"
   ]
  },
+ "m-history-genesis": {
+  "file": "verify/minds_verify.py",
+  "find": "    if _genesis(a) != _genesis(b):\n        return \"unrelated\", None\n",
+  "replace": "",
+  "kills": [
+   "test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
+  ]
+ },
+ "m-history-below": {
+  "file": "verify/minds_verify.py",
+  "find": "    cells = lambda ki: {(c[\"id\"], c[\"birth\"]) for c in ki[\"cells\"] if c[\"birth\"] < n}",
+  "replace": "    cells = lambda ki: {(c[\"id\"], c[\"birth\"]) for c in ki[\"cells\"]}",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-seal-below": {
+  "file": "verify/minds_verify.py",
+  "find": "for t, ctx, k, com in ki[\"seals\"] if com < n)",
+  "replace": "for t, ctx, k, com in ki[\"seals\"])",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-key-map": {
+  "file": "verify/minds_verify.py",
+  "find": "    ss, sl = seals(short, to_long.get), seals(long_, lambda k: k if k in to_short else None)",
+  "replace": "    ss, sl = seals(short, lambda k: k), seals(long_, lambda k: k)",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-keys": {
+  "file": "verify/minds_verify.py",
+  "find": "    ss, sl = seals(short, to_long.get), seals(long_, lambda k: k if k in to_short else None)",
+  "replace": "    ss, sl = seals(short, lambda k: None), seals(long_, lambda k: None)",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-seals": {
+  "file": "verify/minds_verify.py",
+  "find": "    if cs != cl or ss != sl or not consistent:",
+  "replace": "    if cs != cl or not consistent:",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-equivocation-needs-key": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"equivocation\": relation == \"forked\" and bool(sealed_both),",
+  "replace": "        \"equivocation\": relation == \"forked\",",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-bytes": {
+  "file": "verify/minds_verify.py",
+  "find": "(ka[\"encoding\"] == kb[\"encoding\"] and pa[\"input\"] != pb[\"input\"])",
+  "replace": "False",
+  "kills": [
+   "test_113_one_input_for_one_tip_byte_for_byte"
+  ]
+ },
+ "m-extends-behind": {
+  "file": "verify/minds_verify.py",
+  "find": "        return 0 if result[\"relation\"] in (\"same\", \"extends\") else 1",
+  "replace": "        return 0 if result[\"relation\"] in (\"same\", \"extends\", \"behind\") else 1",
+  "kills": [
+   "test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
+  ]
+ },
  "m-offline-grounded-after": {
   "file": "verify/minds_verify.py",
   "find": "    grounded, low, high = bounds({pos[d.id]: later_blocks} if later_blocks else None)",
@@ -2666,6 +2741,166 @@
   "replace": "                if latches(co, u, kind):",
   "kills": [
    "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-input-birth": {
+  "file": "verify/minds_verify.py",
+  "find": "        if birth >= commits:\n            raise VarsError(\"a kernel input holds a cell born beyond its commit count\")\n",
+  "replace": "",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-input-seal-commit": {
+  "file": "verify/minds_verify.py",
+  "find": "        if seal[3] >= commits:\n            raise VarsError(\"a kernel input holds a seal made beyond its commit count\")\n",
+  "replace": "",
+  "kills": [
+   "test_120_an_input_that_lies_about_its_history_is_refused"
+  ]
+ },
+ "m-input-seal-index": {
+  "file": "verify/minds_verify.py",
+  "find": "            if value >= bound:\n                raise VarsError(f\"a kernel input's seal names a {name} outside what it lists\")\n",
+  "replace": "            pass\n",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-input-edge": {
+  "file": "verify/minds_verify.py",
+  "find": "            if any(x >= len(cells) for x in edges[-1]):\n                raise VarsError(\"a kernel input's edge names a cell not older than its own\")\n",
+  "replace": "",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-input-arity": {
+  "file": "verify/minds_verify.py",
+  "find": "        if schema in _STANDARD_ARITY and k != _STANDARD_ARITY[schema]:\n            raise VarsError(\"a kernel input holds a cell of a standard schema with another arity\")\n",
+  "replace": "",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-history-tip": {
+  "file": "verify/minds_verify.py",
+  "find": "    if relation == \"same\" and (ra[\"tip\"] != rb[\"tip\"] or (ka[\"encoding\"]",
+  "replace": "    if relation == \"same\" and (False or (ka[\"encoding\"]",
+  "kills": [
+   "test_122_two_tips_at_one_count_are_not_one_tip"
+  ]
+ },
+ "m-history-output": {
+  "file": "verify/minds_verify.py",
+  "find": "or (ra[\"rules\"] == rb[\"rules\"] and pa[\"input\"] == pb[\"input\"] and pa[\"output\"] != pb[\"output\"])):",
+  "replace": "or False):",
+  "kills": [
+   "test_122_two_tips_at_one_count_are_not_one_tip"
+  ]
+ },
+ "m-history-consistent": {
+  "file": "verify/minds_verify.py",
+  "find": "    if cs != cl or ss != sl or not consistent:",
+  "replace": "    if cs != cl or ss != sl:",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-exit-fork-no-key": {
+  "file": "verify/minds_verify.py",
+  "find": "            return 0 if result[\"equivocation\"] else 4 if result[\"relation\"] == \"forked\" else 1",
+  "replace": "            return 0 if result[\"equivocation\"] else 1",
+  "kills": [
+   "test_121_what_two_witnessed_sides_are_worth"
+  ]
+ },
+ "m-overlap-policy": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"overlap_bound\": (max(0, 2 * pol_a[\"threshold\"] - len(pol_a[\"keys\"])) if same_policy and both_witnessed else None),",
+  "replace": "        \"overlap_bound\": (max(0, 2 * pol_a[\"threshold\"] - len(pol_a[\"keys\"])) if both_witnessed else None),",
+  "kills": [
+   "test_121_what_two_witnessed_sides_are_worth"
+  ]
+ },
+ "m-overlap-witnessed": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"overlap_bound\": (max(0, 2 * pol_a[\"threshold\"] - len(pol_a[\"keys\"])) if same_policy and both_witnessed else None),",
+  "replace": "        \"overlap_bound\": (max(0, 2 * pol_a[\"threshold\"] - len(pol_a[\"keys\"])) if same_policy else None),",
+  "kills": [
+   "test_121_what_two_witnessed_sides_are_worth"
+  ]
+ },
+ "m-overlap-bound": {
+  "file": "verify/minds_verify.py",
+  "find": "2 * pol_a[\"threshold\"] - len(pol_a[\"keys\"])",
+  "replace": "pol_a[\"threshold\"]",
+  "kills": [
+   "test_121_what_two_witnessed_sides_are_worth"
+  ]
+ },
+ "m-witness-fork-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "    refuse_a_fork(repo_dir, pk, tip)\n    repo.admit_and_advance(SCOPE, commit, expected_old=tip)\n",
+  "replace": "    repo.admit_and_advance(SCOPE, commit, expected_old=tip)\n",
+  "kills": [
+   "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-witness-fork-mark": {
+  "file": "tools/minds_chain.py",
+  "find": "        mark.write_text(max(named, key=lambda t: order[t]) + \"\\n\")\n",
+  "replace": "",
+  "kills": [
+   "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-witness-mark-own-commit": {
+  "file": "tools/minds_chain.py",
+  "find": "        mark.write_text(max(named, key=lambda t: order[t]) + \"\\n\")\n",
+  "replace": "        mark.write_text(commit + \"\\n\")\n",
+  "kills": [
+   "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-witness-release-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "    admit_sealing(repo_dir, repo, V.ed25519_pubkey(sk), tip, c, [tip])\n",
+  "replace": "    repo.admit_and_advance(SCOPE, c, expected_old=tip)\n",
+  "kills": [
+   "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-witness-ancestor": {
+  "file": "tools/minds_chain.py",
+  "find": "    if subprocess.run([\"git\", \"-C\", str(repo_dir), \"merge-base\", \"--is-ancestor\", last, tip],",
+  "replace": "    if subprocess.run([\"git\", \"-C\", str(repo_dir), \"cat-file\", \"-e\", last],",
+  "kills": [
+   "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-bundle-object-projection": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not isinstance(bundle, dict) or bundle.get(\"format\") != BUNDLE_FORMAT:",
+  "replace": "    if bundle.get(\"format\") != BUNDLE_FORMAT:",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-bundle-object-attestation": {
+  "file": "verify/minds_verify.py",
+  "find": "    if not isinstance(bundle, dict) or bundle.get(\"format\") != ATTESTATION_FORMAT:",
+  "replace": "    if bundle.get(\"format\") != ATTESTATION_FORMAT:",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-bundle-object-compare": {
+  "file": "verify/minds_verify.py",
+  "find": "        if not isinstance(bundle, dict):\n            raise VarsError(\"a bundle is a JSON object\")\n",
+  "replace": "",
+  "kills": [
+   "test_123_a_spoiled_bundle_is_refused_and_no_crash"
   ]
  }
 }

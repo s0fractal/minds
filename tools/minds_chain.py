@@ -443,7 +443,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     )
     cells = [*grounds, decision, verdict, projection]
     c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, s) for x in cells], parent_commit=tip)
-    repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    admit_sealing(repo_dir, repo, V.ed25519_pubkey(sk), tip, c, [tip])
     return c, {"decision": decision.id, "verdict": verdict.id, "projection": projection.id}
 
 
@@ -778,6 +778,39 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     return [f"{n} {'OK' if g else 'FAILED'}" for n, g in pre] + lines, ok and all(g for _, g in pre)
 
 
+def witnessed_path(repo_dir: Path, pk: bytes) -> Path:
+    """The newest tip that projections this key sealed in this clone name: what it remembers of the one history (§4.4).
+    Beside the keys, unpushed."""
+    return key_path(repo_dir).parent / f"witnessed-{SCOPE}-{pk.hex()}"
+
+
+def refuse_a_fork(repo_dir: Path, pk: bytes, tip: str) -> None:
+    """A witness vouches for one history (§4.4), so it signs no projection on a chain that does not descend from the tips
+    of the projections it signed before. This clone's memory is all it has: another clone of the key, or a fresh runner,
+    has none and is not protected by this."""
+    mark = witnessed_path(repo_dir, pk)
+    if not mark.exists():
+        return
+    last = mark.read_text().strip()
+    if subprocess.run(["git", "-C", str(repo_dir), "merge-base", "--is-ancestor", last, tip],
+                      capture_output=True).returncode != 0:
+        raise V.VarsError(f"this key sealed a projection of {last[:12]}, and this chain's tip {tip[:12]} does not descend "
+                          "from it: sealing here would sign a fork")
+
+
+def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, commit: str, named: List[str]) -> None:
+    """The one path of a commit whose seals include projections: refuse a fork, admit it, and remember the newest tip
+    those projections name. Not the new commit, which a lost push race never publishes: what the key has said of the
+    history is the tips it named, and the published chain can move on from them without this commit and be no fork."""
+    refuse_a_fork(repo_dir, pk, tip)
+    repo.admit_and_advance(SCOPE, commit, expected_old=tip)
+    if named:
+        order = {c: i for i, c in enumerate(repo.commit_chain(tip))}
+        mark = witnessed_path(repo_dir, pk)
+        mark.parent.mkdir(parents=True, exist_ok=True)
+        mark.write_text(max(named, key=lambda t: order[t]) + "\n")
+
+
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
@@ -835,7 +868,7 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     c = repo.build_candidate_commit(SCOPE, new, [*grounds, verdict],
                                     [V.Seal.sign(sk, x, s) for x in [*(g.id for g in grounds), verdict.id, *witness]],
                                     parent_commit=tip)
-    repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    admit_sealing(repo_dir, repo, pk, tip, c, [V.parse_utf8(atoms[cells[x].slots[0]]) for x in witness])
     return c, ok, lines
 
 
