@@ -50,8 +50,12 @@ GitHub Actions witness (below), whose key is on GitHub.
 | antigravity | `a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7` |
 | github-actions | `1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4` |
 
-Any one member may admit cells, including a scope rotation, so one member could rotate the others out and release
-alone after that. To give each a veto, pin every key when you verify:
+The admission threshold is 1, so each member alone is the quorum: one may invalidate another's verdict or the ground
+under it, and rotate the others out and release alone after that (`status` says so as `admission.one_key_is_the_quorum`;
+spec §4.2). `minds_chain.py threshold 2` raises it, with one member's key: it removes no key and changes no rules, so it
+takes effect at once, and a member still admits cells alone. It is not done here: it takes the maintainer's key and the
+owner's word, and three early releases whose policy falls back to the admission policy lose Settled until a second member
+attests them. To give each a veto, pin every key when you verify:
 `vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 
 `join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every

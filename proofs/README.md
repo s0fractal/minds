@@ -53,6 +53,7 @@ and, for some theorems, `Classical.choice`.
 | | `circular_support` | a verdict that relies on the decision it judges: both are Settled, the world is a fixed point of the operator, and neither is Grounded |
 | | `grounded_iter` | simultaneous rounds from below reach Grounded within `N + 1` rounds, on `Fin N` |
 | `Power.lean` | `run_latch`, `run2_latch` | over any extension whose seals are old or a coalition's and which makes no rotation (under v2, none waiting at the tip), a new latch into a present cell is one the coalition can make: a quorum of its policy among the source's old endorsers and the coalition, or, on a local cell its author may evict and not for `invalidates`, one of its initial endorsers among them |
+| | `one_key_cannot_latch` | one key, with no other's old seal on the source, latches no edge into a cell whose policy no list of it alone meets, unless it is an initial endorser the policy lets evict: what an admission threshold of two is worth |
 | | `pass1_frame`, `active_frame`, `stale_frame` | if no new edge enters a closed set of local cells, its Pass 1 and Pass 2 bits are unchanged, whatever the rest of the chain does |
 | | `confinement` | the fold's confinement joined to the frame: a set the coalition cannot latch into keeps `Active` over the extension |
 | | `settled_keeps` | a coalition takes back only its own endorsement: a contract or decision stays Settled while the counted keys outside it meet the quorum |
