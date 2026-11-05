@@ -510,6 +510,25 @@ needs at least one pinned key and exits 0 only on acceptance with every pinned k
 acceptance `accepted_under_own_policy`, never `accepted`, the word of `verify-attestation`. `export_attestation`
 builds a bundle.
 
+**One history.** A witness vouches for one history: it seals no projection of a chain that does not extend what it sealed
+before. VARS-1 does not prevent a fork, which takes one key and no one's leave. It makes signing both sides provable.
+A chain is named by its genesis scope cell. Of two tips of one chain, the input of the one with fewer commits holds exactly
+the cells of the other born below its commit count, with the same births, and exactly its seals made below that count, by
+the same keys; so two inputs of one chain always read as one history, and no honest witness is named.
+Cell order is no prefix and a key index shifts when a key joins, so keys are compared through the rosters both inputs hold.
+Two inputs that hold the same commit count, in one encoding, are one tip only byte for byte.
+`minds_verify.py verify-equivocation A B` reads two bundles and nothing else, and exits 0 only when their histories fork and
+a key sealed both: both seals verify, each on a projection whose digest is its input's, so anyone can recheck it with no
+trust in who brought it. Keys that sealed both are named; two chains of different genesis are `unrelated`, and name no one.
+Two conflicting projections each witnessed by `q` of `n` keys name at least `2q - n` keys, so a reader who wants a fork to
+cost someone needs `q > n / 2`.
+`verify-extends OLD NEW` exits 0 only when the second bundle's history is the first's or extends it: a reader keeps the last
+bundle it accepted and refuses a rollback, and still verifies the new bundle for the keys it trusts.
+`tools/minds_chain.py verify-release` keeps the last tip each key sealed on this host and refuses to seal on a chain that does not descend
+from it; a host with no such memory is not protected, and a key that lost it can sign a fork unknowingly, which the proof
+still names.
+A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits, reads as one history.
+
 **Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
 that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
@@ -567,7 +586,8 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
   for every contract and decision without `required_comp` (I11); a key's withdrawal and Grounded equal §4.2 over the input's
-  indices, and a client's two bounds on Grounded hold the lens's answer (I13); and, on generated transition tables and cycle
+  indices, and a client's two bounds on Grounded hold the lens's answer (I13); every two tips of a sequence read as one
+  history (I14); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
   (`proofs/Vars1/Cycle.lean`, compiled) (I12). A second run writes chains whose genesis names `H_LENS_KERNEL_V2` and
   checks I0–I8 and I11 on them (I9 and I10 compare a model of v1's input): there the interpreter keeps the rotation
@@ -587,4 +607,6 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md).
 - `test_vars1.py` tests 102–107: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
   circuits, and who can change a status (`GitVarsRepo.power`, `proofs/Vars1/Power.lean`) against a search through the gate.
+- `test_vars1.py` tests 110–114: every pair of tips of the live chain reads as one history; forks, rollbacks and other
+  chains from two bundles alone, in a fresh folder; a witness that refuses to sign a fork.
 - `proofs/`: the theorems listed in `proofs/README.md`.

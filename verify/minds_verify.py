@@ -28,6 +28,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
+from collections import Counter
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -533,7 +534,7 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
     if v2 and u32(0) != KERNEL2_MAGIC:
         raise VarsError("the kernel input is not in the v2 encoding of the rules it names")
     base = 4 if v2 else 0
-    n, p = u32(base + 4), u32(base + 12)
+    commits, n, p = u32(base), u32(base + 4), u32(base + 12)
     off = base + 16
     pols: Dict[bytes, Tuple[int, List[int]]] = {}
     for _ in range(p):
@@ -544,7 +545,7 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
     for _ in range(n):
         cid, schema, payload = take(off, 32), take(off + 32, 32), take(off + 64, 32)
         off += 160
-        origin, k = u32(off), u32(off + 8)
+        origin, birth, k = u32(off), u32(off + 4), u32(off + 8)
         off += 12
         slots = [take(off + 32 * j, 32) for j in range(k)]
         off += 32 * k
@@ -555,7 +556,7 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
             m = u32(off)
             edges.append([u32(off + 4 + 4 * j) for j in range(m)])
             off += 4 + 4 * m
-        cell = {"id": cid, "schema": schema, "payload": payload, "origin": origin, "slots": slots,
+        cell = {"id": cid, "schema": schema, "payload": payload, "origin": origin, "birth": birth, "slots": slots,
                 "relies": edges[0], "attests": edges[1], "edges": edges}
         if v2:
             vals, i = (payload, *slots), len(cells)
@@ -574,7 +575,7 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
         seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
     if off + 4 + 16 * len(seals) != len(kernel_input):
         raise VarsError("kernel input has trailing bytes")
-    return {"pols": pols, "cells": cells, "seals": seals, "encoding": encoding}
+    return {"commits": commits, "pols": pols, "cells": cells, "seals": seals, "encoding": encoding}
 
 
 def _pass3_tables(ki: Dict[str, object], output: bytes) -> Dict[str, object]:
@@ -1152,13 +1153,96 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     return result
 
 
+def _genesis(ki: Dict[str, object]) -> bytes:
+    """The scope cell a kernel input's chain began with: what names the chain, whatever its scope is called."""
+    first = [c["id"] for c in ki["cells"] if c["origin"] == 0 and c["schema"] == H_SCHEMA["scope"] and c["birth"] == 0]
+    if len(first) != 1:
+        raise VarsError("a kernel input without one genesis scope cell")
+    return first[0]
+
+
+def compare_histories(a: Dict[str, object], b: Dict[str, object]) -> Tuple[str, Optional[int]]:
+    """How two parsed kernel inputs stand (§4.4 One history): `unrelated` (another genesis), `same`, `extends` (`b`
+    extends `a`), `behind` (`a` extends `b`) or `forked`, and the first commit at which a fork shows when the facts name
+    one. A chain's input at an earlier tip is its input at a later one below that tip's commit count: every cell with
+    its birth and every seal with its commit. Cell order is no prefix, and a key index shifts when a key joins, so keys
+    are compared through the rosters both hold: a policy with one id has one list of keys, in byte order."""
+    if _genesis(a) != _genesis(b):
+        return "unrelated", None
+    short, long_ = (a, b) if a["commits"] <= b["commits"] else (b, a)
+    n = short["commits"]
+    cells = lambda ki: {(c["id"], c["birth"]) for c in ki["cells"] if c["birth"] < n}
+    to_long: Dict[int, int] = {}
+    consistent = all(p in long_["pols"] for p in short["pols"])
+    for p, (thr, ks) in short["pols"].items():
+        if p in long_["pols"]:
+            lt, lks = long_["pols"][p]
+            consistent = consistent and lt == thr and len(lks) == len(ks)
+            for x, y in zip(ks, lks):
+                consistent = consistent and to_long.setdefault(x, y) == y
+    to_short = {y: x for x, y in to_long.items()}
+
+    def seals(ki: Dict[str, object], key_of) -> Counter:
+        ids = [c["id"] for c in ki["cells"]]
+        return Counter((ids[t], ids[ctx], key_of(k), com) for t, ctx, k, com in ki["seals"] if com < n)
+
+    cs, cl = cells(short), cells(long_)
+    ss, sl = seals(short, to_long.get), seals(long_, lambda k: k if k in to_short else None)
+    if cs != cl or ss != sl or not consistent:
+        at = [b for _, b in cs ^ cl] + [k[3] for k in (ss - sl) + (sl - ss)]
+        return "forked", min(at) if at else None
+    if a["commits"] == b["commits"]:
+        return "same", None
+    return ("extends", None) if a["commits"] < b["commits"] else ("behind", None)
+
+
+def compare_projections(a: Dict[str, object], b: Dict[str, object]) -> Dict[str, object]:
+    """Two projection bundles, or attestation bundles that carry one, read together with no repository (§4.4 One
+    history). `equivocation` is true when their histories fork and a key sealed both: both seals verify, each seal's
+    target is a projection whose digest is its input's, and so the result is a proof anyone can recheck from the two
+    bundles alone, with no trust in whoever brought them. What it does not say: a fork that has not yet passed the shorter
+    side's commit count, or differs only in empty commits, reads as one history."""
+    sides = []
+    for bundle in (a, b):
+        pb = bundle.get("projection") if bundle.get("format") == ATTESTATION_FORMAT else bundle
+        if not isinstance(pb, dict):
+            raise VarsError("an attestation bundle without a projection says nothing of a history")
+        r = verify_projection(pb)
+        if not r["data_ok"]:
+            raise VarsError("a projection bundle without its input and output says nothing of a history")
+        if r["rules_status"] != "known":
+            raise VarsError("a projection whose rules this verifier does not read says nothing of a history")
+        ki = parse_kernel_input(bytes.fromhex(pb["input"]), r["explain"]["rules"]["encoding"])
+        sides.append((r, ki, {row["key"] for row in r["explain"]["witness_seals"]}, bytes.fromhex(pb["input"])))
+    (ra, ka, sa, ia), (rb, kb, sb, ib) = sides
+    relation, first = compare_histories(ka, kb)
+    if relation == "same" and ka["encoding"] == kb["encoding"] and ia != ib:
+        relation = "forked"  # one tip has one input, byte for byte; here the difference is in no fact compared
+    sealed_both = sorted(sa & sb)
+    view = lambda r, ki: {"projection": r["projection"], "tip": r["tip"], "commits": ki["commits"],
+                          "witnessed": r["witnessed"], "witnesses": r["witnesses"]}
+    return {
+        "relation": relation,
+        "first_difference": first,
+        "chain": _genesis(ka).hex() if relation != "unrelated" else None,
+        "a": view(ra, ka),
+        "b": view(rb, kb),
+        "sealed_both": sealed_both if relation == "forked" else [],
+        "equivocation": relation == "forked" and bool(sealed_both),
+    }
+
+
 USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]... [--kernel RULES.wasm]...
+       minds_verify.py verify-equivocation|verify-extends BUNDLE.json BUNDLE.json
   verify-projection   exit 0 iff every pinned key witnessed it, its data matches, and its rules are known
   verify-attestation  exit 0 iff it is settled and grounded at a witnessed tip and every pinned key endorsed and
                       witnessed it
   inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
   inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed); its result
                       says `accepted_under_own_policy`, never `accepted`, the word of verify-attestation
+  verify-equivocation exit 0 iff the two bundles' histories fork and a key sealed both: a proof by itself, no pins
+  verify-extends      exit 0 iff the second bundle's history is the first's or extends it: run it on the last bundle
+                      you accepted and a new one, and verify the new one for the keys you trust as well
 A bundle must read one way: one that is not UTF-8 JSON, or whose object names a key twice, is refused.
 verify-* needs at least one --require: a bundle's own policy was chosen by whoever made it, not by the reader.
 Exit 0 or 1 is the verdict; 2 a refusal of the bundle or the command line; 3 an error of this file, never a verdict.
@@ -1191,6 +1275,16 @@ def main(argv: List[str]) -> int:
 
 
 def _run(argv: List[str]) -> int:
+    if len(argv) == 3 and argv[0] in ("verify-equivocation", "verify-extends"):
+        try:
+            result = compare_projections(read_bundle(Path(argv[1]).read_bytes()), read_bundle(Path(argv[2]).read_bytes()))
+        except (VarsError, ValueError, KeyError, TypeError, OSError) as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, sort_keys=True))
+        if argv[0] == "verify-equivocation":
+            return 0 if result["equivocation"] else 1
+        return 0 if result["relation"] in ("same", "extends") else 1
     cmds = ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation")
     opts = list(zip(argv[2::2], argv[3::2]))
     if len(argv) < 2 or argv[0] not in cmds or len(argv) % 2 \

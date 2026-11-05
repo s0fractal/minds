@@ -45,6 +45,7 @@ from minds_verify import (  # noqa: E402
     VarsError, atom_u64, parse_u64, atom_utf8, parse_utf8, validate_utf8_atom, atom_hvec, parse_hvec, atom_pol1,
     parse_pol1, Cell, Seal, SCHEMA_SPECS, build_standard_schemas, STD_SCHEMAS, STD_SCHEMA_ATOMS, H_SCHEMA,
     KERNEL_BITS, BUNDLE_FORMAT, ATTESTATION_FORMAT, parse_kernel_input, pass3_at_tip, grounded_at_tip, _pass3_tables, kernel_input_order,
+    compare_histories, compare_projections,
     rules_status, verify_projection, verify_attestation,
 )
 

@@ -2579,5 +2579,96 @@
   "kills": [
    "test_108_an_invalid_on_the_checkpoint_withdraws_only_its_own_key"
   ]
+ },
+ "m-history-genesis": {
+  "file": "verify/minds_verify.py",
+  "find": "    if _genesis(a) != _genesis(b):\n        return \"unrelated\", None\n",
+  "replace": "",
+  "kills": [
+   "test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
+  ]
+ },
+ "m-history-below": {
+  "file": "verify/minds_verify.py",
+  "find": "    cells = lambda ki: {(c[\"id\"], c[\"birth\"]) for c in ki[\"cells\"] if c[\"birth\"] < n}",
+  "replace": "    cells = lambda ki: {(c[\"id\"], c[\"birth\"]) for c in ki[\"cells\"]}",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-seal-below": {
+  "file": "verify/minds_verify.py",
+  "find": "for t, ctx, k, com in ki[\"seals\"] if com < n)",
+  "replace": "for t, ctx, k, com in ki[\"seals\"])",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-key-map": {
+  "file": "verify/minds_verify.py",
+  "find": "    ss, sl = seals(short, to_long.get), seals(long_, lambda k: k if k in to_short else None)",
+  "replace": "    ss, sl = seals(short, lambda k: k), seals(long_, lambda k: k)",
+  "kills": [
+   "test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-keys": {
+  "file": "verify/minds_verify.py",
+  "find": "    ss, sl = seals(short, to_long.get), seals(long_, lambda k: k if k in to_short else None)",
+  "replace": "    ss, sl = seals(short, lambda k: None), seals(long_, lambda k: None)",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-seals": {
+  "file": "verify/minds_verify.py",
+  "find": "    if cs != cl or ss != sl or not consistent:",
+  "replace": "    if cs != cl or not consistent:",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-equivocation-needs-key": {
+  "file": "verify/minds_verify.py",
+  "find": "        \"equivocation\": relation == \"forked\" and bool(sealed_both),",
+  "replace": "        \"equivocation\": relation == \"forked\",",
+  "kills": [
+   "test_112_a_fork_without_a_shared_key_names_no_one"
+  ]
+ },
+ "m-history-bytes": {
+  "file": "verify/minds_verify.py",
+  "find": "    if relation == \"same\" and ka[\"encoding\"] == kb[\"encoding\"] and ia != ib:",
+  "replace": "    if False:",
+  "kills": [
+   "test_113_one_input_for_one_tip_byte_for_byte"
+  ]
+ },
+ "m-extends-behind": {
+  "file": "verify/minds_verify.py",
+  "find": "        return 0 if result[\"relation\"] in (\"same\", \"extends\") else 1",
+  "replace": "        return 0 if result[\"relation\"] in (\"same\", \"extends\", \"behind\") else 1",
+  "kills": [
+   "test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
+  ]
+ },
+ "m-witness-fork-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "    refuse_a_fork(repo_dir, pk, tip)\n",
+  "replace": "",
+  "kills": [
+   "test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed"
+  ]
+ },
+ "m-witness-fork-mark": {
+  "file": "tools/minds_chain.py",
+  "find": "    witnessed_path(repo_dir, pk).write_text(c + \"\\n\")\n",
+  "replace": "",
+  "kills": [
+   "test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed"
+  ]
  }
 }

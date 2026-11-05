@@ -6813,5 +6813,242 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn(k.id.hex(), r["explain"]["grounded"]["needs_replay"])
 
 
+    # ---------- one history: §4.4 ----------
+
+    def test_110_every_two_tips_of_the_live_chain_read_as_one_history(self) -> None:
+        """No honest witness is named: `compare_histories` on every pair of tips of refs/vars/heads/minds, across the
+        rotation from v1 to v2 and the joins, whose key indices shift."""
+        repo = V.GitVarsRepo(ROOT_DIR)
+        if repo.ref_commit("minds") is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        tips = subprocess.run(["git", "-C", str(ROOT_DIR), "rev-list", "--first-parent", "--reverse", "refs/vars/heads/minds"],
+                              capture_output=True, text=True, check=True).stdout.split()
+        inputs = []
+        for t in tips:
+            lens = repo.lens("minds", at=t)
+            inputs.append(V.parse_kernel_input(lens["kernel_input"], "v2" if lens["rules"] == V.H_LENS_KERNEL_V2 else "v1"))
+        self.assertEqual({ki["encoding"] for ki in inputs}, {"v1", "v2"})  # the pairs below cross the encodings
+        self.assertGreater(len({ki["commits"] for ki in inputs}), 80)
+        for i, a in enumerate(inputs):
+            self.assertEqual(V.compare_histories(a, a), ("same", None))
+            for b in inputs[i + 1:]:
+                self.assertEqual(V.compare_histories(a, b), ("extends", None))
+                self.assertEqual(V.compare_histories(b, a), ("behind", None))
+
+    def _fork_at(self, repo, tip):
+        subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", tip], check=True)
+
+    def test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both(self) -> None:
+        """The two bundles alone, in a fresh folder, with no repository: a fork, the keys that sealed both sides, a
+        later tip of one history, a rollback, a chain of another genesis, a tampered input."""
+        mc = self._minds_chain()
+        sk, pk = SK["m"], PK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r0 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        fork = repo.ref_commit("minds")
+        early = V.export_projection(repo, "minds", r0["projection"])
+        _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        _, r1b = mc.release(self.repo_path, sk, "c" * 40, ["x OK"])
+        side_a = V.export_projection(repo, "minds", r1b["projection"])
+        self._fork_at(repo, fork)
+        repo = V.GitVarsRepo(self.repo_path)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        other = ch.axiom("other-side", at)
+        ch.commit(at, [other], [("m", other)])
+        _, r2 = mc.release(self.repo_path, sk, "d" * 40, ["x OK"])
+        _, r2b = mc.release(self.repo_path, sk, "e" * 40, ["x OK"])
+        side_b = V.export_projection(repo, "minds", r2b["projection"])
+
+        folder = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, folder, True)
+        shutil.copy(ROOT_DIR / "verify" / "minds_verify.py", folder)
+
+        def run(cmd, a, b):
+            (folder / "a.json").write_text(json.dumps(a))
+            (folder / "b.json").write_text(json.dumps(b))
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", cmd, "a.json", "b.json"], cwd=folder,
+                                 capture_output=True, text=True)
+            return out.returncode, (json.loads(out.stdout) if out.stdout else None), out.stderr
+
+        for a, b in ((side_a, side_b), (side_b, side_a)):
+            code, r, _ = run("verify-equivocation", a, b)
+            self.assertEqual((code, r["relation"], r["equivocation"], r["sealed_both"]), (0, "forked", True, [pk.hex()]))
+            self.assertEqual(r["chain"], mc.governing_scope(repo).hex())
+            self.assertIsInstance(r["first_difference"], int)
+            self.assertEqual(run("verify-extends", a, b)[0], 1)
+        # one history: no accusation, and a rollback told from an extension
+        code, r, _ = run("verify-equivocation", early, side_a)
+        self.assertEqual((code, r["relation"], r["equivocation"], r["sealed_both"]), (1, "extends", False, []))
+        self.assertEqual(run("verify-extends", early, side_a)[0], 0)
+        code, r, _ = run("verify-extends", side_a, early)
+        self.assertEqual((code, r["relation"]), (1, "behind"))
+        self.assertEqual(run("verify-extends", side_a, side_a)[:2][0], 0)
+        # an attestation bundle carries the same evidence, and one without a projection says nothing of a history
+        att = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r2b["projection"])))
+        self.assertEqual(run("verify-equivocation", att, side_a)[1]["relation"], "forked")
+        code, _, err = run("verify-equivocation", {k: v for k, v in att.items() if k != "projection"}, side_a)
+        self.assertEqual(code, 2)
+        self.assertIn("without a projection", err)
+        # bytes that do not hash to what the key sealed prove nothing
+        tampered = dict(side_a, input=side_a["input"][:-2] + ("00" if side_a["input"][-2:] != "00" else "01"))
+        code, _, err = run("verify-equivocation", tampered, side_b)
+        self.assertEqual(code, 2)
+        self.assertIn("does not hash", err)
+        code, _, err = run("verify-equivocation", {k: v for k, v in side_a.items() if k not in ("input", "output")}, side_b)
+        self.assertEqual(code, 2)
+        self.assertIn("without its input", err)
+
+        # a chain of another genesis, under the same key: two chains are not a fork
+        with unittest.mock.patch.object(mc, "SCOPE", "another"):
+            mc.init(self.repo_path, sk)
+            _, r3 = mc.release(self.repo_path, sk, "f" * 40, ["x OK"])
+            _, r3b = mc.release(self.repo_path, sk, "1" * 40, ["x OK"])
+            another = V.export_projection(repo, "another", r3b["projection"])
+        code, r, _ = run("verify-equivocation", side_a, another)
+        self.assertEqual((code, r["relation"], r["equivocation"], r["sealed_both"], r["chain"]),
+                         (1, "unrelated", False, [], None))
+
+    def test_112_a_fork_without_a_shared_key_names_no_one(self) -> None:
+        """A fork whose sides no key sealed both is a fork and no equivocation; and a fork shows in what the facts name:
+        a cell's birth, a seal, a key behind a seal."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["a"], "a")
+        fork = repo.ref_commit("minds")
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        _, r1b = mc.release(self.repo_path, SK["m"], "b" * 40, ["x OK"])
+        side_m = V.export_projection(repo, "minds", r1b["projection"])
+        self._fork_at(repo, fork)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r2 = mc.release(self.repo_path, SK["a"], "c" * 40, ["x OK"])
+        _, r2b = mc.release(self.repo_path, SK["a"], "d" * 40, ["x OK"])
+        side_a = V.export_projection(repo, "minds", r2b["projection"])
+        r = V.compare_projections(json.loads(json.dumps(side_m)), json.loads(json.dumps(side_a)))
+        self.assertEqual((r["relation"], r["equivocation"], r["sealed_both"]), ("forked", False, []))
+
+        def parsed(ch):
+            lens = ch.lens()
+            return V.parse_kernel_input(lens["kernel_input"], "v2")
+
+        def chain(tag, moves):
+            """Two sides of one genesis in two repositories: `moves` runs on a chain after a common commit."""
+            path = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+            self.addCleanup(shutil.rmtree, path, True)
+            for args in (("init", "-q"), ("config", "user.name", "x"), ("config", "user.email", "x@x"), ("config", "gc.auto", "0")):
+                subprocess.run(["git", "-C", str(path), *args], check=True)
+            ch = SmallChain(V.GitVarsRepo(path), "s", ("a", "b", "c"), 1, 1, V.H_LENS_KERNEL_V2)
+            at: dict[bytes, bytes] = {}
+            base = ch.axiom("base", at)
+            ch.commit(at, [base], [("a", base)])
+            moves(ch, base)
+            return ch
+
+        def cell(ch, name, key):
+            at: dict[bytes, bytes] = {}
+            x = ch.axiom(name, at)
+            ch.commit(at, [x], [(key, x)])
+
+        # the same cells, born in another order
+        p = parsed(chain("x", lambda ch, b: (cell(ch, "x", "a"), cell(ch, "y", "a"))))
+        q = parsed(chain("y", lambda ch, b: (cell(ch, "y", "a"), cell(ch, "x", "a"))))
+        self.assertEqual(V.compare_histories(p, q), ("forked", 2))
+        # the same cells at the same births, one key behind a cell on one side and another on the other
+        p = parsed(chain("k", lambda ch, b: cell(ch, "x", "a")))
+        q = parsed(chain("l", lambda ch, b: cell(ch, "x", "b")))
+        self.assertEqual(V.compare_histories(p, q), ("forked", 2))
+        # the same cells and seal keys, a seal in another commit
+        p = parsed(chain("s", lambda ch, b: (ch.commit({}, [], [("b", b)]), cell(ch, "x", "a"))))
+        q = parsed(chain("t", lambda ch, b: (cell(ch, "x", "a"), ch.commit({}, [], [("b", b)]))))
+        self.assertEqual(V.compare_histories(p, q)[0], "forked")
+        # a shorter side that the longer one extends only in its later commits: one history
+        p = parsed(chain("u", lambda ch, b: cell(ch, "x", "a")))
+        q = parsed(chain("v", lambda ch, b: (cell(ch, "x", "a"), cell(ch, "y", "b"))))
+        self.assertEqual(V.compare_histories(p, q), ("extends", None))
+
+        # a key joins whose bytes sort before the others': every key index shifts, and it is still one history
+        path = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, path, True)
+        for args in (("init", "-q"), ("config", "user.name", "x"), ("config", "user.email", "x@x"), ("config", "gc.auto", "0")):
+            subprocess.run(["git", "-C", str(path), *args], check=True)
+        low, *high = sorted(("a", "b", "c"), key=lambda n: PK[n])
+        ch = SmallChain(V.GitVarsRepo(path), "j", tuple(high), 1, 1, V.H_LENS_KERNEL_V2)
+        cell(ch, "before", high[0])
+        before = parsed(ch)
+        at = {}
+        keys = ch.put(at, V.atom_hvec(sorted(PK[n] for n in (low, *high))))
+        pol = ch.put(at, V.atom_pol1(1, keys))
+        s1 = V.Cell(V.H_SCHEMA["scope"], ch.s.h_slot_name, ch.s.h_payload, h_supersedes=ch.put(at, V.atom_hvec([ch.s.id])),
+                    h_loss=ch.put(at, V.atom_utf8("a key joins")), slots=(pol, pol, ch.s.slots[2]))
+        ch.commit(at, [s1], [(high[0], s1)])
+        ch.s = s1
+        cell(ch, "after", low)
+        after = parsed(ch)
+        self.assertNotEqual(sorted({k for _, _, k, c in before["seals"]}),
+                            sorted({k for _, _, k, c in after["seals"] if c < before["commits"]}))  # they did shift
+        self.assertEqual(V.compare_histories(before, after), ("extends", None))
+        self.assertEqual(V.compare_histories(after, before), ("behind", None))
+
+    def test_113_one_input_for_one_tip_byte_for_byte(self) -> None:
+        """Two projections at one count whose inputs differ in no fact compared are still not one tip: one tip has one
+        input. Here the sides differ only in a policy atom no cell names."""
+        mc = self._minds_chain()
+        sk = SK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        fork = repo.ref_commit("minds")
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        ch.commit({}, [], [])
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        side_a = V.export_projection(repo, "minds", r1["projection"])
+        self._fork_at(repo, fork)
+        repo = V.GitVarsRepo(self.repo_path)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        ch.policy(at, 1, ["a"])
+        ch.commit(at, [], [])
+        _, r2 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        side_b = V.export_projection(repo, "minds", r2["projection"])
+        r = V.compare_projections(json.loads(json.dumps(side_a)), json.loads(json.dumps(side_b)))
+        self.assertEqual(V.parse_kernel_input(bytes.fromhex(side_a["input"]), "v1")["commits"],
+                         V.parse_kernel_input(bytes.fromhex(side_b["input"]), "v1")["commits"])
+        self.assertEqual((r["relation"], r["equivocation"], r["sealed_both"]), ("forked", True, [PK["m"].hex()]))
+
+    def test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed(self) -> None:
+        """A witness remembers the last tip it sealed on this host and refuses a chain that does not descend from it. A
+        host with no such memory, as a fresh runner is, is not protected."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["b"], "bob")
+        ok = lambda *a, **kw: (["x OK"], True)
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        fork = repo.ref_commit("minds")
+        mark = mc.witnessed_path(self.repo_path, PK["b"])
+        remembered = lambda: mark.read_text().strip() if mark.exists() else None
+        c1, good, _ = mc.verify_release(self.repo_path, SK["b"], r1["decision"], "bob", checks=ok)
+        self.assertTrue(good)
+        self.assertEqual(remembered(), c1)
+        # extending what it signed goes on
+        _, r2 = mc.release(self.repo_path, SK["m"], "b" * 40, ["x OK"])
+        c2, good, _ = mc.verify_release(self.repo_path, SK["b"], r2["decision"], "bob", checks=ok)
+        self.assertEqual(remembered(), c2)
+        # the chain is rewritten under the witness
+        self._fork_at(repo, fork)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r3 = mc.release(self.repo_path, SK["m"], "c" * 40, ["x OK"])
+        tip = repo.ref_commit("minds")
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.verify_release(self.repo_path, SK["b"], r3["decision"], "bob", checks=ok)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+        # no memory, no protection: this is what a fresh runner has
+        mark.unlink()
+        mc.verify_release(self.repo_path, SK["b"], r3["decision"], "bob", checks=ok)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

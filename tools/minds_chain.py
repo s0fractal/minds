@@ -778,6 +778,25 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     return [f"{n} {'OK' if g else 'FAILED'}" for n, g in pre] + lines, ok and all(g for _, g in pre)
 
 
+def witnessed_path(repo_dir: Path, pk: bytes) -> Path:
+    """The last tip this key witnessed from this host: its memory of the one history (§4.4). Beside the keys, unpushed."""
+    return key_path(repo_dir).parent / f"witnessed-{pk.hex()}"
+
+
+def refuse_a_fork(repo_dir: Path, pk: bytes, tip: str) -> None:
+    """A witness vouches for one history (§4.4), so it signs nothing on a chain that does not descend from what it
+    signed before. This host's memory is all it has: a key used on a host with no memory of it, as a fresh runner is,
+    is not protected by this."""
+    mark = witnessed_path(repo_dir, pk)
+    if not mark.exists():
+        return
+    last = mark.read_text().strip()
+    if subprocess.run(["git", "-C", str(repo_dir), "merge-base", "--is-ancestor", last, tip],
+                      capture_output=True).returncode != 0:
+        raise V.VarsError(f"this key witnessed {last[:12]}, and this chain's tip {tip[:12]} does not descend from it: "
+                          "sealing here would sign a fork")
+
+
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
@@ -832,10 +851,13 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
         if repo.projection_digests(SCOPE, V.parse_utf8(atoms[c.slots[0]])) != (c.slots[2], c.slots[3]):
             raise V.VarsError(f"projection {cid.hex()[:12]} does not match this host's recomputation")
         witness.append(cid)
+    refuse_a_fork(repo_dir, pk, tip)
     c = repo.build_candidate_commit(SCOPE, new, [*grounds, verdict],
                                     [V.Seal.sign(sk, x, s) for x in [*(g.id for g in grounds), verdict.id, *witness]],
                                     parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    witnessed_path(repo_dir, pk).parent.mkdir(parents=True, exist_ok=True)
+    witnessed_path(repo_dir, pk).write_text(c + "\n")
     return c, ok, lines
 
 

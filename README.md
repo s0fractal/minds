@@ -120,6 +120,10 @@ python3 -I minds_verify.py verify-projection BUNDLE.json --require PUBKEY    # p
 python3 -I minds_verify.py inspect-attestation BUNDLE.json                   # consistency only, no trust
 ```
 
+`verify-equivocation A B` needs no pin: two bundles whose histories fork and a key that sealed both are a proof by
+themselves. `verify-extends OLD NEW` is for a reader who keeps the last bundle it accepted: it refuses a rollback, and
+says nothing of whom to trust in NEW (spec §4.4, One history).
+
 `verify-*` needs at least one `--require`: a bundle carries its own witness and scope policies, chosen by whoever
 made it, so they say nothing about whom you trust. Pin the member keys listed above. `inspect-*` checks a bundle
 against its own policies and claims no trust.

@@ -2369,6 +2369,87 @@
     "m-grounded-relies",
     "m-grounded-witness"
    ]
+  },
+  {
+   "id": "hist.one",
+   "quote": "A witness vouches for one history: it seals no projection of a chain that does not extend what it sealed\nbefore.",
+   "status": "assumed"
+  },
+  {
+   "id": "hist.chain",
+   "quote": "A chain is named by its genesis scope cell.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
+   ],
+   "mutants": [
+    "m-history-genesis"
+   ]
+  },
+  {
+   "id": "hist.compare",
+   "quote": "Of two tips of one chain, the input of the one with fewer commits holds exactly\nthe cells of the other born below its commit count, with the same births, and exactly its seals made below that count, by\nthe same keys; so two inputs of one chain always read as one history, and no honest witness is named.",
+   "status": "proved",
+   "witnesses": [
+    "lean:present_prefix",
+    "lean:born_prefix",
+    "test:test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+    "prop:I14"
+   ],
+   "mutants": [
+    "m-history-below",
+    "m-history-seal-below",
+    "m-history-key-map"
+   ]
+  },
+  {
+   "id": "hist.proof",
+   "quote": "`minds_verify.py verify-equivocation A B` reads two bundles and nothing else, and exits 0 only when their histories fork and\na key sealed both",
+   "status": "tested",
+   "witnesses": [
+    "test:test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both",
+    "test:test_112_a_fork_without_a_shared_key_names_no_one",
+    "test:test_113_one_input_for_one_tip_byte_for_byte"
+   ],
+   "mutants": [
+    "m-history-seals",
+    "m-history-keys",
+    "m-equivocation-needs-key",
+    "m-history-bytes",
+    "m-extends-behind"
+   ]
+  },
+  {
+   "id": "hist.overlap",
+   "quote": "Two conflicting projections each witnessed by `q` of `n` keys name at least `2q - n` keys",
+   "status": "proved",
+   "witnesses": [
+    "lean:quorum_overlap"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "hist.guard",
+   "quote": "`tools/minds_chain.py verify-release` keeps the last tip each key sealed on this host and refuses to seal on a chain that does not descend\nfrom it",
+   "status": "tested",
+   "witnesses": [
+    "test:test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed"
+   ],
+   "mutants": [
+    "m-witness-fork-guard",
+    "m-witness-fork-mark"
+   ]
+  },
+  {
+   "id": "hist.not",
+   "quote": "A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits, reads as one history.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_112_a_fork_without_a_shared_key_names_no_one"
+   ],
+   "mutants": [
+    "m-history-below"
+   ]
   }
  ],
  "informative": [

@@ -29,6 +29,8 @@ checks:
       indices, and the sequences reach tips where the earlier reading (any policy key blocks the verifier id) differs;
       Grounded is the least fixed point of its equation, by simultaneous rounds from below, implies Settled, and a
       client's two bounds (`grounded_at_tip`) hold it; the sequences reach a Settled contract that is not Grounded
+  I14 every two tips of a sequence read as one history from their kernel inputs alone (`compare_histories`): an honest
+      witness of one chain is never named as a forker
   I12 on generated finite transition tables and cycle witnesses, true and false, `sigma_resume.verify_cycle` (with the
       table as its transition) and the gate's cycle check (`vars1.gate_cycle_witness`) give the verdict of the model's
       own checker, `checkCycle` of proofs/Vars1/Cycle.lean compiled as `vars1cycle`, and Pass 3's
@@ -1581,6 +1583,18 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
                 break
     except V.VarsError as e:
         out.append(("I13", f"raised: {e}"))
+
+    # I14: every two tips of a sequence read as one history, from their kernel inputs alone
+    try:
+        read = V.parse_kernel_input(lens["kernel_input"], encoding)
+        for earlier in it.__dict__.setdefault("tips_read", []):
+            got = V.compare_histories(earlier, read)
+            want = "same" if earlier["commits"] == read["commits"] else "extends"
+            if got != (want, None):
+                out.append(("I14", f"two tips of one sequence read as {got}, at {earlier['commits']} and {read['commits']} commits"))
+        it.tips_read.append(read)
+    except V.VarsError as e:
+        out.append(("I14", f"raised: {e}"))
 
     # I1
     by_name: Dict[bytes, List[bytes]] = {}

@@ -57,6 +57,8 @@ and, for some theorems, `Classical.choice`.
 | | `confinement` | the fold's confinement joined to the frame: a set the coalition cannot latch into keeps `Active` over the extension |
 | | `settled_keeps` | a coalition takes back only its own endorsement: a contract or decision stays Settled while the counted keys outside it meet the quorum |
 | | `settled_needs`, `settled_iff_keys` | a coalition settles only with the keys already counted; Settled reads the cell's standing, its policy and the set of keys that count, and nothing else |
+| `History.lean` | `present_prefix`, `born_prefix` | the cells of a tip are exactly the cells of a later tip of the chain born before its count, with the same births: two tips of one chain read as one history by their cells |
+| | `quorum_overlap` | two lists of distinct keys of a policy of `n` hold at least `\|A\| + \|B\| - n` keys in common |
 | `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
 | | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
 
