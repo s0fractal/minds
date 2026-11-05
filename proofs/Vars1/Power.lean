@@ -73,6 +73,28 @@ theorem edgeCond_canLatch {cm : Commit C K} (hs : SealsFrom old Co cm) {S w v : 
   · exact Or.inl ⟨_, fun e he => endorsers_back hs he, h⟩
   · exact Or.inr ⟨hk, hev, hloc, e, hi, endorsers_back hs he⟩
 
+/-- **What a threshold above one is worth.** One key `c`, with no old seal under `S` on the source by anyone else, latches no
+edge into `v` if no list of `c` alone meets `v`'s policy, unless it is an initial endorser of `v` and may evict it. This is
+why an admission threshold of two closes what one key can do by an edge on a verdict, on a ground and on a rotation's
+quorum at once: the policy of each of them is the admission policy. -/
+theorem one_key_cannot_latch {c : K} {S w v : C} {k : Kind} {iv : List K}
+    (hold : ∀ s ∈ old, s.target = w → s.ctx = S → s.key = c)
+    (hco : ∀ e, Co e → e = c)
+    (hq : ∀ E : List K, (∀ e ∈ E, e = c) → W.quorum E (pol W S v).1 = false)
+    (hauthor : k = .invalidates ∨ (pol W S v).2 = false ∨ c ∉ iv) :
+    ¬ CanLatch W old Co S w v k iv := by
+  have hback : ∀ e, Backer old Co S w e → e = c := by
+    rintro e (h | ⟨s, hs, ht, hx, rfl⟩)
+    · exact hco e h
+    · exact hold s hs ht hx
+  rintro (⟨E, hE, hquo⟩ | ⟨hne, hev, -, e, he, hb⟩)
+  · rw [hq E (fun e he => hback e (hE e he))] at hquo
+    exact Bool.noConfusion hquo
+  · rcases hauthor with h | h | h
+    · exact hne h
+    · rw [h] at hev; exact Bool.noConfusion hev
+    · exact h (hback e hb ▸ he)
+
 theorem initAfter_present (st : St C K) (cm : Commit C K) {v : C} (hv : v ∈ st.present) :
     initAfter W st cm v = st.initEnd v := by
   simp [initAfter, hv]

@@ -303,10 +303,13 @@ else the tip scope's admission policy. A witness `w` is Active, non-Stale, attes
 For a contract or decision, a key's endorsement through a witness is withdrawn if that key endorses an Active, non-Stale
 verdict with `H_VERDICT_INVALID` and the witness's `verifier_id`, on `v` or naming the checkpoint or cycle witness the
 witness names. No other key's endorsement is: a verifier id is free text, so it says of who wrote a verdict only what the
-seal says, and one key of a t-of-n policy cannot hold a decision back by naming another's. An edge is another matter: a
-verdict's `Pol_i` is the admission policy (§4.1), so where that threshold is 1, as on `refs/vars/heads/minds`, one key can
-still invalidate another's verdict, and hold a decision back for as long as it keeps doing so; only a rules change could
-alter that. And an endorsement withdrawn this way comes back if the admission quorum invalidates the INVALID verdict. A question has no
+seal says, and one key of a t-of-n policy cannot hold a decision back by naming another's. An edge is another matter: the
+`Pol_i` of a verdict and of what it rests on is the admission policy (§4.1), and that threshold is what decides who can
+take them. Where it is 1 with more than one key, each key alone is the quorum: it can invalidate another's verdict or the
+ground under it, again after each new attestation, and rotate the others out; `t` of a decision's policy then says who
+can settle it and not who can hold it back. Where it is 2 or more no key can do any of this alone, and a key still admits a
+cell, since a seal of one key admits (§3). An endorsement withdrawn by an INVALID verdict comes back if the admission quorum
+invalidates that verdict, so a decision of `n` of `n` holds a key that never attested, and not one that attested and withdrew. A question has no
 withdrawal: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
 for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the keys of `EvalPol(v)`
 whose endorsement through some witness is not withdrawn meet its threshold; otherwise **Provisional**. Scope and custom schema cells are Settled iff

@@ -15,7 +15,12 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
     tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check on main in a
                                               # fresh checkout, then record main
-    tools/minds_chain.py join PUBKEY NAME     # rotate the roster to add a member's Ed25519 public key (hex)
+    tools/minds_chain.py join PUBKEY NAME [--key FILE]...
+                                              # rotate the roster to add a member's Ed25519 public key (hex), under
+                                              # the thresholds it has, sealed by each FILE or the maintainer key
+    tools/minds_chain.py threshold N [--key FILE]...
+                                              # rotate to the same roster and rules under admission and acceptance
+                                              # N-of-n, sealed by each FILE or the maintainer key
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
                                               # verdict, and witness the projections that name your key
@@ -57,7 +62,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -137,31 +142,62 @@ def roster(repo: V.GitVarsRepo) -> List[bytes]:
     return V.parse_hvec(atoms[hv], require_sorted=True)
 
 
-def join(repo_dir: Path, sk: bytes, pubkey: bytes, name: str) -> str:
-    """Rotate the scope so the roster is the current one plus `pubkey`. Any member may then admit cells (1-of-n);
-    releases are settled only by all of them (see `release`)."""
+def thresholds(repo: V.GitVarsRepo) -> Tuple[int, int]:
+    """The thresholds of the governing scope's admission and acceptance policies."""
+    atoms, cells, _ = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    scope = cells[governing_scope(repo)]
+    return V.parse_pol1(atoms[scope.slots[0]])[0], V.parse_pol1(atoms[scope.slots[1]])[0]
+
+
+def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: int, acceptance: int, say: str) -> str:
+    """A rotation of the governing scope to `keys` under these thresholds, sealed by each of `sks`, keeping its rules."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     s = governing_scope(repo)
+    atoms: Dict[bytes, bytes] = {}
+    adm = _policy(atoms, admission, keys)
+    acc = _policy(atoms, acceptance, keys)
+    scope = V.Cell(
+        h_schema=V.H_SCHEMA["scope"],
+        h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/SCOPE")),
+        h_payload=_put(atoms, V.atom_utf8(f"{SCOPE} roster of {len(keys)}: {say}")),
+        h_supersedes=_put(atoms, V.atom_hvec([s])),
+        h_loss=_put(atoms, V.atom_utf8(f"rotation: {say}")),
+        slots=(adm, acc, governing_rules(repo)),
+    )
+    c = repo.build_candidate_commit(SCOPE, atoms, [scope], [V.Seal.sign(sk, scope.id, s) for sk in sks], parent_commit=tip)
+    repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    return c
+
+
+def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
+    """Rotate the scope so the roster is the current one plus `pubkey`, under the thresholds it has. Every key of `sks`
+    seals it, so a roster whose admission threshold is above 1 needs that many here. Any member may admit cells whatever
+    the threshold; releases are settled only by all of them (see `release`)."""
+    repo = V.GitVarsRepo(repo_dir)
     keys = roster(repo)
     if pubkey in keys:
         raise V.VarsError("already a member")
     if V.weak_public_key(pubkey):
         raise V.VarsError("weak public key")
-    keys = sorted(keys + [pubkey])
-    atoms: Dict[bytes, bytes] = {}
-    pol = _policy(atoms, 1, keys)
-    scope = V.Cell(
-        h_schema=V.H_SCHEMA["scope"],
-        h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/SCOPE")),
-        h_payload=_put(atoms, V.atom_utf8(f"{SCOPE} roster of {len(keys)}: {name} joins")),
-        h_supersedes=_put(atoms, V.atom_hvec([s])),
-        h_loss=_put(atoms, V.atom_utf8(f"rotation: {name} joins")),
-        slots=(pol, pol, governing_rules(repo)),
-    )
-    c = repo.build_candidate_commit(SCOPE, atoms, [scope], [V.Seal.sign(sk, scope.id, s)], parent_commit=tip)
-    repo.admit_and_advance(SCOPE, c, expected_old=tip)
-    return c
+    admission, acceptance = thresholds(repo)
+    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), admission, acceptance,
+                   f"{name} joins")
+
+
+def set_threshold(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], threshold: int) -> str:
+    """Rotate the scope to the same roster and rules under this admission and acceptance threshold (spec §4.2). It removes no
+    key and changes no rules, so it takes effect at once (§4.1 latches 4a, 4b); it needs the quorum of the policy it leaves.
+    One key still admits a cell at any threshold (§3 check 3). An evaluator policy that falls back to the admission policy
+    moves with it (§4.2 Pass 3): `what-if` says what that takes from a chain before anyone files this."""
+    repo = V.GitVarsRepo(repo_dir)
+    keys = roster(repo)
+    if not 1 <= threshold <= len(keys):
+        raise V.VarsError(f"a threshold of {threshold} for a roster of {len(keys)}")
+    if thresholds(repo) == (threshold, threshold):
+        raise V.VarsError("the scope has this threshold already")
+    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, threshold, threshold,
+                   f"admission and acceptance {threshold} of {len(keys)}")
 
 
 def _rules_read(repo: V.GitVarsRepo, scope: str, commit: str, rules: bytes) -> Tuple[str, object]:
@@ -548,6 +584,9 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
         "commits_since_release": behind,
         "rules": {"id": rules.hex(), "name": RULES_NAMES.get(rules, "unknown")},
         "roster": sorted(k.hex() for k in keys),
+        # with an admission threshold of 1 and more than one key, each key alone is the quorum (spec §4.2)
+        "admission": {"threshold": thresholds(repo)[0], "keys": len(keys),
+                      "one_key_is_the_quorum": thresholds(repo)[0] == 1 and len(keys) > 1},
         "releases": releases,
         "unsettled": [r["name"] for r in releases if not r["settled"]],
         "unwitnessed_projections": projections,
@@ -1014,8 +1053,14 @@ def _main(argv: List[str]) -> int:
                               profile=profile_at(repo_dir, main_sha)["id"])
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
-    if cmd == "join" and len(argv) == 3:
-        print(join(repo_dir, load_or_create_key(repo_dir), bytes.fromhex(argv[1]), argv[2]))
+    if cmd in ("join", "threshold") and len(argv) >= 2:
+        rest = argv[3:] if cmd == "join" else argv[2:]
+        files = rest[1::2]
+        if rest[0::2] != ["--key"] * len(files) or len(rest) % 2 or (cmd == "join" and len(argv) < 3):
+            raise SystemExit(__doc__)
+        sks = [bytes.fromhex(Path(f).read_text().strip()) for f in files] or [load_or_create_key(repo_dir)]
+        print(join(repo_dir, sks, bytes.fromhex(argv[1]), argv[2]) if cmd == "join"
+              else set_threshold(repo_dir, sks, int(argv[1])))
         return 0
     if cmd == "verify-release" and len(argv) == 6 and argv[2] == "--key" and argv[4] == "--name":
         sk = bytes.fromhex(Path(argv[3]).read_text().strip())

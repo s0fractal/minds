@@ -7029,36 +7029,112 @@ class TestVars1Conformance(unittest.TestCase):
         ch2.commit({}, [], [("b", notice)])
         self.assertFalse(ch2.lens()["active"][d.id])
 
-    def test_119_what_a_key_can_still_do_by_an_edge(self) -> None:
-        """Documents what the withdrawal leaves. A verdict's `Pol_i` is the admission policy, so with an admission threshold
-        of 1, as on the live chain, one key can invalidate another's verdict by an edge, and do it again after each new
-        attestation. And an endorsement withdrawn by INVALID comes back if the admission quorum invalidates that verdict:
-        n-of-n blocks for a key that never attested, not for one that attested and withdrew."""
-        ch = self._small("ed", adm=1)
-        at: dict[bytes, bytes] = {}
-        pol = ch.policy(at, 2, ["a", "b", "c"])
-        d = ch.decision("d", at, pol)
-        ch.commit(at, [d], [("a", d)])
-        at = {}
-        va, vb = ch.verdict("va", at, d.id, V.H_ATTESTED, "ana"), ch.verdict("vb", at, d.id, V.H_ATTESTED, "bo")
-        ch.commit(at, [va, vb], [("a", va), ("b", vb)])
-        self.assertIn([PK["c"].hex()], ch.repo.power(ch.scope, d.id)["lose_settled"])  # and the table says so
-
-        def edge(ch, name, target, keys):
+    def test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds(self) -> None:
+        """A rule on the edge into a verdict would close one path of four: with an admission threshold of 1 one key can take
+        a verdict, the ground it rests on or that ground by retiring it, and rotate the others out. A threshold of 2 closes
+        them all, with no rules change, and a key still admits cells. What it leaves: a quorum can undo a withdrawal."""
+        def edge(ch, name, target, keys, kind="invalidates"):
             at: dict[bytes, bytes] = {}
             base = ch.axiom(name, at)
-            n = V.Cell(base.h_schema, base.h_slot_name, base.h_payload, h_invalidates=ch.put(at, V.atom_hvec([target])))
+            kw = ({"h_invalidates": ch.put(at, V.atom_hvec([target]))} if kind == "invalidates"
+                  else {"h_retires": ch.put(at, V.atom_hvec([target])), "h_loss": ch.put(at, V.atom_utf8("gone"))})
+            n = V.Cell(base.h_schema, base.h_slot_name, base.h_payload, **kw)
             ch.commit(at, [n], [(k, n) for k in keys])
 
-        edge(ch, "n1", va.id, ["c"])
-        self.assertFalse(ch.lens()["settled"][d.id])
-        at = {}
-        va2 = ch.verdict("va2", at, d.id, V.H_ATTESTED, "ana-2")
-        ch.commit(at, [va2], [("a", va2)])
-        self.assertTrue(ch.lens()["settled"][d.id])
-        edge(ch, "n2", va2.id, ["c"])
-        self.assertFalse(ch.lens()["settled"][d.id])
+        def settled_by_a_and_b(tag, adm):
+            """d is 2-of-3, settled by a and b, whose verdicts rest on their own checks, as a release's do."""
+            ch = self._small(tag, adm=adm)
+            quorum = lambda first: [first, *[k for k in ("a", "b", "c") if k != first][:adm - 1]]
+            at: dict[bytes, bytes] = {}
+            ca, cb = ch.axiom("check-a", at), ch.axiom("check-b", at)
+            ch.commit(at, [ca, cb], [(k, ca) for k in quorum("a")] + [(k, cb) for k in quorum("b")])
+            at = {}
+            d = ch.decision("d", at, ch.policy(at, 2, ["a", "b", "c"]))
+            ch.commit(at, [d], [(k, d) for k in quorum("a")])
+            at = {}
+            va = ch.verdict("va", at, d.id, V.H_ATTESTED, "ana", relies=[ca.id])
+            vb = ch.verdict("vb", at, d.id, V.H_ATTESTED, "bo", relies=[cb.id])
+            ch.commit(at, [va, vb], [("a", va), ("b", vb)])
+            self.assertTrue(ch.lens()["settled"][d.id])
+            return ch, d, va, ca
 
+        paths = (("verdict", "invalidates"), ("check", "invalidates"), ("check", "retires"))
+        for i, (what, kind) in enumerate(paths):
+            ch, d, va, ca = settled_by_a_and_b(f"one{i}", 1)
+            edge(ch, "n", va.id if what == "verdict" else ca.id, ["c"], kind)
+            self.assertFalse(ch.lens()["settled"][d.id], (what, kind))
+            ch, d, va, ca = settled_by_a_and_b(f"two{i}", 2)
+            edge(ch, "n", va.id if what == "verdict" else ca.id, ["c"], kind)
+            self.assertTrue(ch.lens()["settled"][d.id], (what, kind))
+
+        # and the table says so: c is in it at 1 and out of it at 2
+        ch, d, va, ca = settled_by_a_and_b("t1", 1)
+        self.assertIn([PK["c"].hex()], ch.repo.power(ch.scope, d.id)["lose_settled"])
+        ch, d, va, ca = settled_by_a_and_b("t2", 2)
+        self.assertNotIn([PK["c"].hex()], ch.repo.power(ch.scope, d.id)["lose_settled"])
+
+        # at 1 c rotates the others out and counts the 16 commits itself; at 2 the gate refuses it
+        def rotate_out(ch):
+            at: dict[bytes, bytes] = {}
+            p1 = ch.put(at, V.atom_pol1(1, ch.put(at, V.atom_hvec([PK["c"]]))))
+            s1 = V.Cell(V.H_SCHEMA["scope"], ch.s.h_slot_name, ch.s.h_payload, h_supersedes=ch.put(at, V.atom_hvec([ch.s.id])),
+                        h_loss=ch.put(at, V.atom_utf8("c alone")), slots=(p1, p1, ch.s.slots[2]))
+            ch.commit(at, [s1], [("c", s1)])
+            return s1
+
+        ch, *_ = settled_by_a_and_b("r1", 1)
+        s1 = rotate_out(ch)
+        for i in range(16):
+            at = {}
+            n = ch.axiom(f"tick{i}", at)
+            ch.commit(at, [n], [("c", n)])
+        self.assertEqual(ch.lens()["scope"], s1.id)
+        ch, *_ = settled_by_a_and_b("r2", 2)
+        with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+            rotate_out(ch)
+
+        # the tool's way there, on a chain of the live shape: one key raises it, at once, and every flow goes on
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["a"], "a")
+        mc.join(self.repo_path, SK["m"], PK["b"], "b")
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 1, "keys": 3, "one_key_is_the_quorum": True})
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at = {}
+        early = V.Cell(V.H_SCHEMA["decision"], ch.put(at, V.atom_utf8("minds/early")), ch.put(at, V.atom_utf8("no policy of its own")),
+                       slots=(ch.put(at, V.atom_utf8("provisional")), V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        w = ch.verdict("early.v", at, early.id, V.H_ATTESTED, "emm")
+        ch.commit(at, [early, w], [("m", early), ("m", w)])
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        before = repo.lens("minds")
+        self.assertTrue(before["settled"][early.id])
+        with self.assertRaisesRegex(V.VarsError, "a threshold of 4"):
+            mc.set_threshold(self.repo_path, SK["m"], 4)
+        mc.set_threshold(self.repo_path, SK["m"], 2)
+        lens = repo.lens("minds")
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 2, "keys": 3, "one_key_is_the_quorum": False})
+        self.assertEqual((mc.thresholds(repo), lens["evaluators"][early.id][0]), ((2, 2), 2))
+        # a policy of its own does not move; one that falls back to the admission policy does, and a second key mends it
+        self.assertFalse(lens["settled"][early.id])
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at = {}
+        w2 = ch.verdict("early.w2", at, early.id, V.H_ATTESTED, "ay")
+        ch.commit(at, [w2], [("a", w2)])
+        self.assertTrue(repo.lens("minds")["settled"][early.id])
+        # one key still admits, releases and answers
+        ok = lambda *x, **kw: (["x OK"], True)
+        _, r2 = mc.release(self.repo_path, SK["m"], "b" * 40, ["x OK"])
+        mc.verify_release(self.repo_path, SK["a"], r2["decision"], "a", checks=ok)
+        mc.verify_release(self.repo_path, SK["b"], r2["decision"], "b", checks=ok)
+        self.assertTrue(repo.lens("minds")["settled"][r2["decision"]])
+        # a join now takes the quorum, and keeps the thresholds
+        with self.assertRaisesRegex(V.VarsError, "quorum"):
+            mc.join(self.repo_path, SK["m"], PK["c"], "c")
+        mc.join(self.repo_path, [SK["m"], SK["a"]], PK["c"], "c")
+        self.assertEqual((mc.thresholds(repo), len(mc.roster(repo))), ((2, 2), 4))
+
+        # what it leaves: a and b together make c's withdrawn endorsement count again, on a decision of 3 of 3
         ch = self._small("nn", adm=2)
         at = {}
         pol = ch.policy(at, 3, ["a", "b", "c"])
@@ -7067,13 +7143,12 @@ class TestVars1Conformance(unittest.TestCase):
         at = {}
         ws = [ch.verdict(f"w{m}", at, d.id, V.H_ATTESTED, f"id-{m}") for m in "abc"]
         ch.commit(at, ws, list(zip("abc", ws)))
-        self.assertTrue(ch.lens()["settled"][d.id])
         at = {}
         x = ch.verdict("x", at, d.id, V.H_VERDICT_INVALID, "id-c")
         ch.commit(at, [x], [("c", x)])
         self.assertFalse(ch.lens()["settled"][d.id])
         edge(ch, "over", x.id, ["a", "b"])
-        self.assertTrue(ch.lens()["settled"][d.id])  # a and b made c's endorsement count again
+        self.assertTrue(ch.lens()["settled"][d.id])
 
     # ---------- one history: §4.4 ----------
 
