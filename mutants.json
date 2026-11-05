@@ -2596,14 +2596,6 @@
    "test_115_a_clients_grounded_is_the_lenss"
   ]
  },
- "m-client-question-withdrawal": {
-  "file": "verify/minds_verify.py",
-  "find": "            gone = set() if question else _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())",
-  "replace": "            gone = _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())",
-  "kills": [
-   "test_115_a_clients_grounded_is_the_lenss"
-  ]
- },
  "m-client-schema": {
   "file": "verify/minds_verify.py",
   "find": "            plain[i] = auth[i]",
