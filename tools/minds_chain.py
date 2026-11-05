@@ -17,13 +17,15 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # fresh checkout, then record main
     tools/minds_chain.py join PUBKEY NAME [--key FILE]...
                                               # rotate the roster to add a member's Ed25519 public key (hex), under
-                                              # the thresholds it has, sealed by each FILE or the maintainer key
+                                              # the thresholds it has, sealed by each FILE or the maintainer key.
+                                              # Raise `threshold` first when the key is someone else's (see `join`)
     tools/minds_chain.py threshold N [--key FILE]...
                                               # rotate to the same roster and rules under admission and acceptance
                                               # N-of-n, sealed by each FILE or the maintainer key
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
                                               # verdict, and witness the projections that name your key
+    tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
     tools/minds_chain.py witness --key FILE --name NAME
                                               # as a member: verify-release every release awaiting your key
                                               # (the GitHub Actions witness, .github/workflows/witness.yml)
@@ -45,7 +47,7 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py shadow RULES [--out FILE]
                                               # every historical tip under its epoch's rules and under RULES: the
                                               # manifest of every difference (commit, cell, bit, old, new)
-    tools/minds_chain.py change-rules CLASS RULES --manifest FILE [--accept DIGEST]
+    tools/minds_chain.py change-rules CLASS RULES --manifest FILE [--accept DIGEST] [--key FILE]...
                 [--input FILE --budget N --refusal N]                       (hardening, tightening)
                 [--counterexample-scope S --counterexample C --cell I --status B --right R]   (correction)
                                               # rotate to RULES with a rules-change decision (VARS-1-SPEC.md §4.3),
@@ -62,7 +64,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -150,9 +152,12 @@ def thresholds(repo: V.GitVarsRepo) -> Tuple[int, int]:
 
 
 def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: int, acceptance: int, say: str) -> str:
-    """A rotation of the governing scope to `keys` under these thresholds, sealed by each of `sks`, keeping its rules."""
+    """A rotation of the governing scope to `keys` under these thresholds, sealed by each of `sks`, keeping its rules. It
+    names no projection, so it adds nothing to a key's memory, but no key that remembers a history seals on a fork of it."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
+    for sk in sks:
+        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)
     s = governing_scope(repo)
     atoms: Dict[bytes, bytes] = {}
     adm = _policy(atoms, admission, keys)
@@ -173,7 +178,12 @@ def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: 
 def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
     """Rotate the scope so the roster is the current one plus `pubkey`, under the thresholds it has. Every key of `sks`
     seals it, so a roster whose admission threshold is above 1 needs that many here. Any member may admit cells whatever
-    the threshold; releases are settled only by all of them (see `release`)."""
+    the threshold; releases are settled only by all of them (see `release`).
+
+    Before the first key of someone outside joins, raise the admission threshold to 2 or more (`threshold`): at 1 each key
+    alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2). While
+    every key is ours this stays at 1 on purpose, since raising it costs three early releases their Settled until a second
+    key attests them (`status` says `one_key_is_the_quorum`)."""
     repo = V.GitVarsRepo(repo_dir)
     keys = roster(repo)
     if pubkey in keys:
@@ -248,14 +258,16 @@ def shadow(repo_dir: Path, new_rules: bytes, scope: str = SCOPE) -> Dict[str, ob
     return {**doc, "digest": _digest(doc)}
 
 
-def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifest: Dict[str, object],
+def change_rules(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], kind: str, new_rules: bytes, manifest: Dict[str, object],
                  accept: Optional[str] = None, **fields: object) -> str:
     """Record a rotation of the scope to `new_rules` with a rules-change decision of class `kind` (§4.3), only after
     the shadow replay: `manifest` must be `shadow`'s replay of this chain now. A hardening or an equivalent change
     must leave every historical tip as it was; a correction or a tightening may change some, and is recorded only
     with `accept` equal to the manifest's digest. `fields`: for a correction `counterexample_scope`,
     `counterexample`, `cell`, `status`, `right`; for a hardening or a tightening `input` (bytes), `budget`,
-    `refusal` (the code, negated). The gate then replays the decision's own computations."""
+    `refusal` (the code, negated). Every key of `sks` seals it, so an admission threshold above 1 needs that many here.
+    The gate then replays the decision's own computations."""
+    sks = [sks] if isinstance(sks, bytes) else sks
     if manifest != shadow(repo_dir, new_rules):
         raise V.VarsError("the shadow manifest is not this chain's replay under those rules now: run `shadow` again")
     if manifest["differences"]:
@@ -269,6 +281,8 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
     tip = str(manifest["tip"])  # the chain the manifest replayed; the CAS below refuses if the ref has moved since
     if repo.ref_commit(SCOPE) != tip:
         raise V.VarsError("the chain moved after its shadow replay: run `shadow` again")
+    for sk in sks:
+        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)
     base_id = repo._evaluate_commit_chain(SCOPE, repo.commit_chain(tip))["active_scope_id"]
     base = repo.read_cas_tree(tip)[1][base_id]
     atoms: Dict[bytes, bytes] = {new_rules: V.RULES_ATOMS[new_rules]}
@@ -298,7 +312,7 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
                    put(V.atom_utf8(f"{SCOPE} under rules {new_rules.hex()[:12]}")), h_supersedes=put(V.atom_hvec([base_id])),
                    h_loss=put(V.atom_utf8(f"rules change ({kind})")), slots=(base.slots[0], base.slots[1], new_rules))
     cells = [schema, decision, scope]
-    c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, base_id) for x in cells],
+    c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, base_id) for x in cells for sk in sks],
                                     parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c
@@ -817,20 +831,34 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     return [f"{n} {'OK' if g else 'FAILED'}" for n, g in pre] + lines, ok and all(g for _, g in pre)
 
 
-def witnessed_path(repo_dir: Path, pk: bytes) -> Path:
-    """The newest tip that projections this key sealed in this clone name: what it remembers of the one history (§4.4).
-    Beside the keys, unpushed."""
-    return key_path(repo_dir).parent / f"witnessed-{SCOPE}-{pk.hex()}"
+def witnessed_ref(pk: bytes) -> str:
+    """The newest tip that projections this key sealed name: what it remembers of the one history (§4.4). A ref beside the
+    chain's, so the commit stays reachable and a witness with no disk of its own keeps it where it keeps the chain."""
+    return f"refs/vars/witnessed/{SCOPE}/{pk.hex()}"
+
+
+def witnessed_tip(repo_dir: Path, pk: bytes) -> Optional[str]:
+    out = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", witnessed_ref(pk)],
+                         capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def remember_witnessed(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, named: Iterable[str]) -> None:
+    """Remember the newest of the tips `named`, all on the chain up to `tip`. The memory only moves on: a tip it holds that
+    is newer stays, since a commit the chain lost may have named more."""
+    order = {c: i for i, c in enumerate(repo.commit_chain(tip))}
+    newest = max(named, key=lambda t: order[t], default=None)
+    last = witnessed_tip(repo_dir, pk)
+    if newest is not None and (last is None or order[newest] > order.get(last, -1)):
+        subprocess.run(["git", "-C", str(repo_dir), "update-ref", witnessed_ref(pk), newest], check=True)
 
 
 def refuse_a_fork(repo_dir: Path, pk: bytes, tip: str) -> None:
     """A witness vouches for one history (§4.4), so it signs no projection on a chain that does not descend from the tips
-    of the projections it signed before. This clone's memory is all it has: another clone of the key, or a fresh runner,
-    has none and is not protected by this."""
-    mark = witnessed_path(repo_dir, pk)
-    if not mark.exists():
+    of the projections it signed before. Its ref is all it has: a clone that never fetched it is not protected by this."""
+    last = witnessed_tip(repo_dir, pk)
+    if last is None:
         return
-    last = mark.read_text().strip()
     if subprocess.run(["git", "-C", str(repo_dir), "merge-base", "--is-ancestor", last, tip],
                       capture_output=True).returncode != 0:
         raise V.VarsError(f"this key sealed a projection of {last[:12]}, and this chain's tip {tip[:12]} does not descend "
@@ -843,11 +871,7 @@ def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, co
     history is the tips it named, and the published chain can move on from them without this commit and be no fork."""
     refuse_a_fork(repo_dir, pk, tip)
     repo.admit_and_advance(SCOPE, commit, expected_old=tip)
-    if named:
-        order = {c: i for i, c in enumerate(repo.commit_chain(tip))}
-        mark = witnessed_path(repo_dir, pk)
-        mark.parent.mkdir(parents=True, exist_ok=True)
-        mark.write_text(max(named, key=lambda t: order[t]) + "\n")
+    remember_witnessed(repo_dir, repo, pk, tip, named)
 
 
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
@@ -923,7 +947,13 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
     records it (none for ANSWERED_BEFORE)."""
     pk = V.ed25519_pubkey(sk)
     repo = V.GitVarsRepo(repo_dir)
-    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    tip = repo.ref_commit(SCOPE)
+    refuse_a_fork(repo_dir, pk, tip)  # before anything else: a rewritten chain is refused even with nothing to answer
+    atoms, cells, seals = repo.read_cas_tree(tip)
+    # what the chain itself shows this key sealed, so a key that has answered before starts with its memory
+    sealed = {V.parse_utf8(atoms[cells[x.h_target].slots[0]]) for x in seals.values()
+              if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["projection"]}
+    remember_witnessed(repo_dir, repo, pk, tip, sealed)
     mine = [cells[x.h_target] for x in seals.values()
             if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
     answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
@@ -1080,7 +1110,10 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "change-rules" and len(argv) >= 5 and argv[3] == "--manifest":
         kind, new_rules = argv[1], bytes.fromhex(argv[2])
-        opts = dict(zip(argv[5::2], argv[6::2]))
+        pairs = list(zip(argv[5::2], argv[6::2]))
+        opts = dict(pairs)
+        files = [v for k, v in pairs if k == "--key"]
+        sks = [bytes.fromhex(Path(f).read_text().strip()) for f in files] or [load_or_create_key(repo_dir)]
         fields: Dict[str, object] = {}
         if kind == "correction":
             fields = {k: opts[f"--{k.replace('_', '-')}"] for k in
@@ -1088,8 +1121,7 @@ def _main(argv: List[str]) -> int:
         elif kind in ("hardening", "tightening"):
             fields = {"input": Path(opts["--input"]).read_bytes(), "budget": opts["--budget"], "refusal": opts["--refusal"]}
         manifest = json.loads(Path(argv[4]).read_text())
-        print(change_rules(repo_dir, load_or_create_key(repo_dir), kind, new_rules, manifest, opts.get("--accept"),
-                           **fields))
+        print(change_rules(repo_dir, sks, kind, new_rules, manifest, opts.get("--accept"), **fields))
         return 0
     if cmd == "evidence":
         print(json.dumps(evidence(repo_dir), indent=2))
@@ -1108,6 +1140,9 @@ def _main(argv: List[str]) -> int:
     if cmd == "power" and len(argv) == 2:
         repo = V.GitVarsRepo(repo_dir)
         print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
+        return 0
+    if cmd == "witnessed-ref" and len(argv) == 3 and argv[1] == "--key":
+        print(witnessed_ref(V.ed25519_pubkey(bytes.fromhex(Path(argv[2]).read_text().strip()))))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))

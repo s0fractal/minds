@@ -7178,8 +7178,10 @@ class TestVars1Conformance(unittest.TestCase):
         """The chain is rewritten to `tip`, and the keys forget what they sealed here: to make the fork the proof is for,
         a key has to get past `refuse_a_fork`, whose own test is 114."""
         subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", tip], check=True)
-        for mark in (self.repo_path / ".git" / "vars").glob("witnessed-*"):
-            mark.unlink()
+        marks = subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref", "--format=%(refname)", "refs/vars/witnessed/"],
+                               capture_output=True, text=True, check=True).stdout.split()
+        for mark in marks:
+            subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "-d", mark], check=True)
 
     def _projection_of(self, repo, scope, tip, key, policy=None, seal_scope=None, named=None):
         """A projection bundle of `tip` that `key` seals, made as a witness would make it, naming the keys of `policy`."""
@@ -7670,15 +7672,15 @@ class TestVars1Conformance(unittest.TestCase):
 
     def test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed(self) -> None:
         """Every path that seals a projection, in one clone: it remembers the newest tip those projections name, and refuses
-        a chain that does not descend from it. A verdict lost in a push race is no fork. Another clone, or a fresh runner,
-        has no such memory."""
+        a chain that does not descend from it. A verdict lost in a push race is no fork. A clone that never fetched that
+        memory is not protected; test 125 is the witness that keeps it in the repository."""
         mc = self._minds_chain()
         mc.init(self.repo_path, SK["m"])
         repo = V.GitVarsRepo(self.repo_path)
         mc.join(self.repo_path, SK["m"], PK["b"], "bob")
         ok = lambda *a, **kw: (["x OK"], True)
-        mark = mc.witnessed_path(self.repo_path, PK["b"])
-        remembered = lambda: mark.read_text().strip() if mark.exists() else None
+        remembered = lambda: mc.witnessed_tip(self.repo_path, PK["b"])
+        forget = lambda pk: subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "-d", mc.witnessed_ref(pk)], check=True)
         rewrite = lambda tip: subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", tip],
                                              check=True)
 
@@ -7709,12 +7711,18 @@ class TestVars1Conformance(unittest.TestCase):
         below = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{named_by_r2}^"], capture_output=True,
                                text=True, check=True).stdout.strip()
         rewrite(below)
-        mine = mc.witnessed_path(self.repo_path, PK["m"])
-        mine.unlink(missing_ok=True)  # whoever rewrites has no memory of it: its own guard has its turn below
+        forget(PK["m"])  # whoever rewrites has no memory of it: its own guard has its turn below
         _, r3 = mc.release(self.repo_path, SK["m"], "c" * 40, ["x OK"])
         tip = repo.ref_commit("minds")
         with self.assertRaisesRegex(V.VarsError, "sign a fork"):
             mc.verify_release(self.repo_path, SK["b"], r3["decision"], "bob", checks=ok)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # a rotation names no projection, and a key that remembers a history still seals none on a fork of it
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.set_threshold(self.repo_path, SK["b"], 2)
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.join(self.repo_path, SK["b"], PK["c"], "c")
         self.assertEqual(repo.ref_commit("minds"), tip)
 
         # `release` seals a projection as well: one path, one guard
@@ -7722,20 +7730,176 @@ class TestVars1Conformance(unittest.TestCase):
             mc.release(self.repo_path, SK["b"], "d" * 40, ["x OK"])
         self.assertEqual(repo.ref_commit("minds"), tip)
         # the key `release` sealed for remembers too, and refuses on a fork of that
-        self.assertTrue(mine.exists())
+        self.assertIsNotNone(mc.witnessed_tip(self.repo_path, PK["m"]))
         rewrite(below)
-        mine.unlink(missing_ok=True)
+        forget(PK["m"])
         mc.release(self.repo_path, SK["m"], "e" * 40, ["x OK"])
-        sealed = mine.read_text().strip() if mine.exists() else tip
+        sealed = mc.witnessed_tip(self.repo_path, PK["m"]) or tip
         rewrite(subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{sealed}^"], capture_output=True, text=True,
                                check=True).stdout.strip())
         with self.assertRaisesRegex(V.VarsError, "sign a fork"):
             mc.release(self.repo_path, SK["m"], "f" * 40, ["x OK"])
 
-        # no memory, no protection: this is what another clone or a fresh runner has
-        mine.unlink(missing_ok=True)
-        mark.unlink(missing_ok=True)
+        # no memory, no protection: this is what a clone that never fetched it has
+        forget(PK["m"])
+        forget(PK["b"])
         mc.release(self.repo_path, SK["m"], "1" * 40, ["x OK"])
+
+    def test_125_a_witness_with_no_disk_refuses_a_rewritten_chain(self) -> None:
+        """A witness that starts each run on an empty disk, as the GitHub Actions witness does: it fetches the chain and its
+        memory, answers, and pushes both. When the chain is rewritten under it, the next fresh run refuses, even with
+        nothing to answer, and moves nothing. Who can rewrite the memory ref too defeats this."""
+        origin = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, origin, True)
+        subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["b"], "bot")
+        git = lambda path, *args: subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True, check=True).stdout.strip()
+        publish = lambda: git(self.repo_path, "push", "-q", "--force", str(origin), "refs/vars/heads/minds")
+        ok = lambda *a, **kw: (["x OK"], True)
+        ref = mc.witnessed_ref(PK["b"])
+
+        def fresh_clone():
+            """An empty runner after the workflow's forced fetch."""
+            d = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+            self.addCleanup(shutil.rmtree, d, True)
+            subprocess.run(["git", "init", "-q", str(d)], check=True)
+            for args in (("config", "user.name", "x"), ("config", "user.email", "x@x"), ("config", "gc.auto", "0")):
+                git(d, *args)
+            git(d, "fetch", "-q", "--no-tags", str(origin), "+refs/vars/*:refs/vars/*")
+            return d
+
+        def fresh_run():
+            """One run of the workflow: the fetch, the witness, the push."""
+            d = fresh_clone()
+            done = mc.witness(d, SK["b"], "bot", checks=ok)
+            pushing = ["refs/vars/heads/minds"]
+            if mc.witnessed_tip(d, PK["b"]):
+                pushing.append(ref)
+            git(d, "push", "-q", "--atomic", str(origin), *pushing)
+            return done
+
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        publish()
+        answered = fresh_run()
+        self.assertEqual([x["verdict"] for x in answered], ["ATTESTED"])
+        git(self.repo_path, "fetch", "-q", str(origin), "+refs/vars/heads/minds:refs/vars/heads/minds")
+        repo = V.GitVarsRepo(self.repo_path)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        between = ch.axiom("a-commit-with-nothing-waiting-below-it", at)
+        ch.commit(at, [between], [("m", between)])
+        _, r2 = mc.release(self.repo_path, SK["m"], "b" * 40, ["x OK"])
+        publish()
+        fresh_run()
+        remembered = git(origin, "rev-parse", ref)
+        self.assertIn(remembered, V.GitVarsRepo(origin).commit_chain(git(origin, "rev-parse", "refs/vars/heads/minds")))
+        before_rewrite = remembered
+        # nothing new to answer, on the honest chain: a run is quiet
+        self.assertEqual(fresh_run(), [])
+
+        # the chain is rewritten on the remote below what the key sealed, and nothing is waiting for it
+        below = git(origin, "rev-parse", f"{before_rewrite}^")
+        git(origin, "update-ref", "refs/vars/heads/minds", below)
+        tip = git(origin, "rev-parse", "refs/vars/heads/minds")
+        self.assertEqual(mc.awaiting(fresh_clone(), PK["b"]), [])
+        d = fresh_clone()
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.witness(d, SK["b"], "bot", checks=ok)
+        self.assertEqual(git(origin, "rev-parse", "refs/vars/heads/minds"), tip)
+        self.assertEqual(git(origin, "rev-parse", ref), before_rewrite)
+
+        # a key that has answered before starts with its memory, from what the chain shows it sealed
+        git(origin, "update-ref", "refs/vars/heads/minds", before_rewrite)
+        git(origin, "update-ref", "-d", ref)
+        fresh_run()
+        read_ref = lambda: subprocess.run(["git", "-C", str(origin), "rev-parse", "--verify", "--quiet", ref],
+                                          capture_output=True, text=True).stdout.strip()
+        derived = read_ref()
+        self.assertIn(derived, V.GitVarsRepo(origin).commit_chain(before_rewrite))
+        # and the memory only moves on: at a further tip whose seals name no more, it stays where it was
+        git(origin, "update-ref", ref, before_rewrite)
+        d = fresh_clone()
+        self.assertEqual(mc.witness(d, SK["b"], "bot", checks=ok), [])
+        self.assertEqual(mc.witnessed_tip(d, PK["b"]), before_rewrite)
+
+        # who can rewrite the memory with the chain defeats this: named in the spec, and shown here
+        git(origin, "update-ref", "refs/vars/heads/minds", below)
+        git(origin, "update-ref", ref, below)
+        fresh_run()  # it answers on the rewritten chain, with no complaint
+
+        # the workflow does what this test does, and forces nothing but the fetch
+        flow = (ROOT_DIR / ".github" / "workflows" / "witness.yml").read_text()
+        self.assertIn("git push --atomic origin refs/vars/heads/minds \"$memory\"", flow)
+        self.assertEqual(flow.count("--force"), 0)
+
+    def test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals(self) -> None:
+        """Raising the threshold must not make a rules change impossible. Through the real gate: on a threshold of 2 one seal is
+        refused and two pass, by the function and by the command line, and a key that remembers a history seals no change on
+        a fork of it. `join` and `threshold` read the same `--key`."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["a"], "a")
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        kw = {"input": self._fuzz_counterexample(), "budget": self.BUDGET, "refusal": 7}
+        rules = V.H_LENS_KERNEL_V1B
+        files = {}
+        for name in ("m", "a"):
+            files[name] = self.repo_path / f"{name}.seed"
+            files[name].write_text(SK[name].hex())
+        def run(*argv):
+            """The command's exit code, or what refused it: a refusal here fails on the assertion and not as a crash."""
+            try:
+                return mc._main([*argv])
+            except V.VarsError as e:
+                return str(e)
+
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            self.assertEqual(run("threshold", "2", "--key", str(files["m"])), 0)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+
+        # one seal is refused, by the gate's quorum; nothing moves
+        tip = repo.ref_commit("minds")
+        with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+            mc.change_rules(self.repo_path, SK["m"], "hardening", rules, mc.shadow(self.repo_path, rules), **kw)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # a key that remembers a history seals no change on a fork of it
+        _, r2 = mc.release(self.repo_path, SK["a"], "b" * 40, ["x OK"])
+        self.assertEqual(mc.witnessed_tip(self.repo_path, PK["a"]), tip)
+        top = repo.ref_commit("minds")
+        below = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{tip}^"], capture_output=True, text=True,
+                               check=True).stdout.strip()
+        subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", below], check=True)
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.change_rules(self.repo_path, [SK["a"]], "hardening", rules, mc.shadow(self.repo_path, rules), **kw)
+        subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", top], check=True)
+
+        # two seals pass, by the command line, and the change governs
+        manifest = self.repo_path / "manifest.json"
+        manifest.write_text(json.dumps(mc.shadow(self.repo_path, rules)))
+        inp = self.repo_path / "input.bin"
+        inp.write_bytes(kw["input"])
+        argv = ["change-rules", "hardening", rules.hex(), "--manifest", str(manifest), "--input", str(inp),
+                "--budget", str(kw["budget"]), "--refusal", str(kw["refusal"])]
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            self.assertIn("admission quorum", run(*argv, "--key", str(files["m"])))
+            self.assertEqual(run(*argv, "--key", str(files["m"]), "--key", str(files["a"])), 0)
+        self.assertEqual(mc.governing_rules(repo), rules)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+        self.assertEqual(mc.replay_changes(self.repo_path)[0][1], "REPLAYED")
+        # and a join by the command line, which needs both too
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            self.assertIn("admission quorum", run("join", PK["c"].hex(), "c", "--key", str(files["m"])))
+            self.assertEqual(run("join", PK["c"].hex(), "c", "--key", str(files["m"]), "--key", str(files["a"])), 0)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+
+        # the condition for the first outside key is where whoever runs `join` reads it
+        self.assertIn("Before the first key of someone outside joins", mc.join.__doc__)
+        self.assertIn("Run it before the first key of someone outside joins", (ROOT_DIR / "README.md").read_text())
 
 
 if __name__ == "__main__":

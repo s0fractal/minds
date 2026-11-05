@@ -540,9 +540,10 @@ witness policy and both met it: the result says `same_witness_policy` and `overl
 someone needs `q > n / 2` and pins one policy.
 `verify-extends OLD NEW` exits 0 only when the second bundle's history is the first's or extends it: a reader keeps the last
 bundle it accepted and refuses a rollback, and still verifies the new bundle for the keys it trusts.
-Every path of `tools/minds_chain.py` that seals a projection remembers, in that clone, the newest tip its projections name for
-that key, and refuses to seal on a chain that does not descend from it. Another clone of the key, or a fresh runner, has no
-such memory and is not protected: it can sign a fork unknowingly, and the proof still names it.
+Every path of `tools/minds_chain.py` that seals a projection remembers, in a ref `refs/vars/witnessed/<scope>/<key>`, the newest tip its projections name for
+that key, and refuses to seal on a chain that does not descend from it. The GitHub Actions witness fetches and pushes that ref
+with the chain, so a fresh runner has it. A clone that never fetched it is not protected, and neither is a witness whose
+memory ref is rewritten with the chain: it can sign a fork unknowingly, and the proof still names it.
 A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits at different counts,
 reads as one history; and that an input is faithful to a chain is still the witnesses' word (§4.3).
 
@@ -625,7 +626,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 102–109 and 115–119: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
   circuits, what a client names, what a key can still do by an edge, and who can change a status (`GitVarsRepo.power`,
   `proofs/Vars1/Power.lean`) against a search through the gate.
-- `test_vars1.py` tests 110–114 and 120–123: every pair of tips of the live chain reads as one history; forks, rollbacks,
+- `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,
   lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that
   refuses to sign a fork.
 - `proofs/`: the theorems listed in `proofs/README.md`.
