@@ -1040,7 +1040,7 @@
     "test:test_28_a_later_invalid_withdraws_only_its_own_verifier",
     "prop:I11",
     "prop:I13",
-    "test:test_119_what_a_key_can_still_do_by_an_edge"
+    "test:test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
    ],
    "mutants": [
     "m-pass3-exclusion",
@@ -2530,6 +2530,20 @@
     "m-overlap-policy",
     "m-overlap-witnessed",
     "m-overlap-bound"
+   ]
+  },
+  {
+   "id": "lens.admission-threshold",
+   "quote": "Where it is 2 or more no key can do any of this alone, and a key still admits a\ncell",
+   "status": "proved",
+   "witnesses": [
+    "lean:one_key_cannot_latch",
+    "test:test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
+   ],
+   "mutants": [
+    "m-threshold-join-keeps",
+    "m-threshold-rotate",
+    "m-threshold-status"
    ]
   }
  ],

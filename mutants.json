@@ -466,8 +466,8 @@
  },
  "m-f40-join": {
   "file": "tools/minds_chain.py",
-  "find": "        slots=(pol, pol, governing_rules(repo)),",
-  "replace": "        slots=(pol, pol, V.H_LENS_KERNEL),",
+  "find": "        slots=(adm, acc, governing_rules(repo)),",
+  "replace": "        slots=(adm, acc, V.H_LENS_KERNEL),",
   "kills": [
    "test_53_v1_releases_survive_a_rules_change"
   ]
@@ -2901,6 +2901,30 @@
   "replace": "",
   "kills": [
    "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-threshold-join-keeps": {
+  "file": "tools/minds_chain.py",
+  "find": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), admission, acceptance,",
+  "replace": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), 1, 1,",
+  "kills": [
+   "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
+  ]
+ },
+ "m-threshold-rotate": {
+  "file": "tools/minds_chain.py",
+  "find": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, threshold, threshold,",
+  "replace": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, 1, threshold,",
+  "kills": [
+   "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
+  ]
+ },
+ "m-threshold-status": {
+  "file": "tools/minds_chain.py",
+  "find": "                      \"one_key_is_the_quorum\": thresholds(repo)[0] == 1 and len(keys) > 1},",
+  "replace": "                      \"one_key_is_the_quorum\": False},",
+  "kills": [
+   "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
   ]
  }
 }
