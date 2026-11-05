@@ -6788,7 +6788,7 @@ class TestVars1Conformance(unittest.TestCase):
         bundle = lambda cell, proj: json.loads(json.dumps(V.export_attestation(repo, "minds", cell, proj)))
         r = V.verify_attestation(bundle(d1.id, r1["projection"]))
         self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["accepted"]), (True, False, False))
-        self.assertEqual(r["explain"]["grounded"], {"grounded": False, "unsettled": sorted([d0.id.hex(), d1.id.hex()]),
+        self.assertEqual(r["explain"]["grounded"], {"grounded": False, "ungrounded": sorted([d0.id.hex(), d1.id.hex()]),
                                                     "needs_replay": []})
         # d0 attested: both are grounded, and d1 is accepted at a tip that holds the verdict
         at = {}
@@ -6797,7 +6797,7 @@ class TestVars1Conformance(unittest.TestCase):
         _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
         r = V.verify_attestation(bundle(d1.id, r2["projection"]))
         self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["accepted"]), (True, True, True))
-        self.assertEqual(r["explain"]["grounded"], {"grounded": True, "unsettled": [], "needs_replay": []})
+        self.assertEqual(r["explain"]["grounded"], {"grounded": True, "ungrounded": [], "needs_replay": []})
 
         # a decision on a contract with a computation: the lens replays it, a client cannot
         k, _, _ = self._replayed(ch, "m")
@@ -6811,6 +6811,269 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["accepted"]), (True, None, False))
         self.assertEqual(r["explain"]["grounded"]["grounded"], None)
         self.assertIn(k.id.hex(), r["explain"]["grounded"]["needs_replay"])
+
+
+    # ---------- a client's Grounded, what it names, and what `power` reads ----------
+
+    def _client_agrees(self, ch, computations: bool = False) -> None:
+        """A client's two bounds on Grounded hold the lens's answer on every cell, and meet where no computation is read."""
+        lens = ch.lens()
+        ki = V.parse_kernel_input(lens["kernel_input"], "v2" if lens["rules"] == V.H_LENS_KERNEL_V2 else "v1")
+        raw = V.kernel_runner(lens["rules"]).run(lens["kernel_input"])
+        low, high = V.grounded_at_tip(ki, raw), V.grounded_at_tip(ki, raw, assume_replay=True)
+        for i, kc in enumerate(ki["cells"]):
+            g = lens["grounded"][kc["id"]]
+            self.assertEqual((kc["id"].hex(), low[i] and not g, g and not high[i]), (kc["id"].hex(), False, False))
+            if not computations:
+                self.assertEqual((kc["id"].hex(), low[i], high[i]), (kc["id"].hex(), g, g))
+
+    def test_115_a_clients_grounded_is_the_lenss(self) -> None:
+        """Beside the counted verdicts: a key's own withdrawal, a question (which has none), a custom schema without its
+        quorum (a cell relying on it is Settled and not Grounded), a projection without its witnesses."""
+        ch = self._small("cl", adm=2)
+        at: dict[bytes, bytes] = {}
+        pol = ch.policy(at, 2, ["a", "b", "c"])
+        d = ch.decision("d", at, pol)
+        ch.commit(at, [d], [("a", d), ("b", d)])
+        at = {}
+        va, vb = ch.verdict("va", at, d.id, V.H_ATTESTED, "ana"), ch.verdict("vb", at, d.id, V.H_ATTESTED, "bo")
+        ch.commit(at, [va, vb], [("a", va), ("b", va), ("a", vb), ("b", vb)])
+        self._client_agrees(ch)
+        self.assertTrue(ch.lens()["grounded"][d.id])
+        # a withdraws: its endorsement goes through both verdicts under that id, b's stays, one key is under the quorum
+        at = {}
+        x = ch.verdict("x", at, d.id, V.H_VERDICT_INVALID, "ana")
+        ch.commit(at, [x], [("a", x)])
+        at = {}
+        x2 = ch.verdict("x2", at, d.id, V.H_VERDICT_INVALID, "bo")
+        ch.commit(at, [x2], [("a", x2)])
+        self.assertFalse(ch.lens()["grounded"][d.id])
+        self._client_agrees(ch)
+
+        # a question has no withdrawal: an INVALID verdict under the answer's id takes nothing from it
+        at = {}
+        p1 = ch.policy(at, 1, ["a"])
+        q = V.Cell(V.H_SCHEMA["question"], ch.put(at, V.atom_utf8("cl/q")), ch.put(at, V.atom_utf8("which")),
+                   slots=(V.H_SCHEMA["verdict"], p1))
+        ch.commit(at, [q], [("a", q), ("b", q)])
+        at = {}
+        ans = ch.verdict("ans", at, q.id, V.H_ATTESTED, "ana")
+        ch.commit(at, [ans], [("a", ans), ("b", ans)])
+        at = {}
+        y = ch.verdict("y", at, q.id, V.H_VERDICT_INVALID, "ana")
+        ch.commit(at, [y], [("a", y), ("b", y)])
+        self.assertTrue(ch.lens()["grounded"][q.id])
+        self._client_agrees(ch)
+
+        # a custom schema one key of two sealed: not Authorized, so what relies on it is Settled and not Grounded
+        at = {}
+        sch = V.Cell(V.H_META_SCHEMA, ch.put(at, V.atom_utf8("cl/schema/x")), V.H_EMPTY,
+                     slots=(ch.put(at, V.atom_utf8("note:utf8")),))
+        ch.commit(at, [sch], [("a", sch)])
+        at = {}
+        on = ch.axiom("on-schema", at, relies=[sch.id])
+        ch.commit(at, [on], [("a", on), ("b", on)])
+        lens = ch.lens()
+        self.assertEqual((lens["settled"][sch.id], lens["settled"][on.id], lens["grounded"][on.id]), (False, True, False))
+        self._client_agrees(ch)
+
+        # a projection its witnesses have not signed
+        tip = ch.tip
+        h_in, h_st = ch.repo.projection_digests(ch.scope, tip)
+        at = {}
+        witnesses = ch.put(at, V.atom_pol1(3, ch.put(at, V.atom_hvec(sorted(PK[m] for m in ("a", "b", "c"))))))
+        rules = V.chain_rules(ch.scope, ch.repo.chain_deltas(ch.repo.commit_chain(tip)))
+        pc = V.Cell(V.H_SCHEMA["projection"], ch.put(at, V.atom_utf8(f"cl/projection/{tip[:12]}")), V.H_EMPTY,
+                    slots=(ch.put(at, V.atom_utf8(tip)), rules, h_in, h_st, witnesses))
+        ch.commit(at, [pc], [("a", pc), ("b", pc)])
+        self.assertFalse(ch.lens()["grounded"][pc.id])
+        self._client_agrees(ch)
+        ch.commit({}, [], [("c", pc)])
+        self.assertTrue(ch.lens()["grounded"][pc.id])
+        self._client_agrees(ch)
+
+    def test_116_a_withdrawal_after_the_tip_reaches_grounded(self) -> None:
+        """A verdict supplied from after the tip is read for Grounded as for Settled: a decision kept Settled by a verdict
+        that rests on an unsettled ground, once the founded verdict's key withdraws, is not accepted."""
+        mc = self._minds_chain()
+        sk = SK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, sk, PK["a"], "a")
+        mc.join(self.repo_path, sk, PK["b"], "b")
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        pol = ch.policy(at, 1, ["m", "a", "b"])
+        r0 = ch.decision("r0", at, pol)
+        ch.commit(at, [r0], [("m", r0)])
+        at = {}
+        d = ch.decision("d", at, pol)
+        ch.commit(at, [d], [("m", d)])
+        at = {}
+        founded = ch.verdict("founded", at, d.id, V.H_ATTESTED, "ana")
+        unfounded = ch.verdict("unfounded", at, d.id, V.H_ATTESTED, "bo", relies=[r0.id])
+        ch.commit(at, [founded, unfounded], [("a", founded), ("b", unfounded)])
+        _, rel = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        pc = repo.lens("minds")["cells"][rel["projection"]]
+        ch.commit({}, [], [("a", pc), ("b", pc)])
+        bundle = lambda: json.loads(json.dumps(V.export_attestation(repo, "minds", d.id, rel["projection"])))
+        r = V.verify_attestation(bundle())
+        self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["accepted"]), (True, True, True))
+        at = {}
+        x = ch.verdict("x", at, d.id, V.H_VERDICT_INVALID, "ana")
+        ch.commit(at, [x], [("a", x)])
+        lens = repo.lens("minds")
+        self.assertEqual((lens["settled"][d.id], lens["grounded"][d.id]), (True, False))
+        r = V.verify_attestation(bundle())
+        self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["contradicted_after_tip"]), (True, True, False))
+        self.assertEqual((r.get("grounded_after_tip"), r["accepted"]), (False, False))
+
+    def test_117_what_a_decision_rests_on_is_named(self) -> None:
+        """A decision is ungrounded because of what its verdict rests on: a client and what-if name that, and not only
+        the decision itself."""
+        mc = self._minds_chain()
+        sk = SK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        pol = ch.policy(at, 1, ["m"])
+        r0 = ch.decision("r0", at, pol)
+        ch.commit(at, [r0], [("m", r0)])
+        at = {}
+        d = ch.decision("d", at, pol)
+        ch.commit(at, [d], [("m", d)])
+        at = {}
+        v = ch.verdict("v", at, d.id, V.H_ATTESTED, "m", relies=[r0.id])
+        ch.commit(at, [v], [("m", v)])
+        _, rel = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        r = V.verify_attestation(json.loads(json.dumps(V.export_attestation(repo, "minds", d.id, rel["projection"]))))
+        names = r["explain"]["grounded"].get("ungrounded", [])
+        self.assertEqual((r["grounded_at_tip"], r["accepted"]), (False, False))
+        self.assertEqual(sorted(names), sorted(x.id.hex() for x in (d, v, r0)))
+
+        # with a computation under the verdict: the contract is what needs a replay, and the decision is not
+        k, _, _ = self._replayed(ch, "m")
+        at = {}
+        d2 = ch.decision("d2", at, pol)
+        ch.commit(at, [d2], [("m", d2)])
+        at = {}
+        v2 = ch.verdict("v2", at, d2.id, V.H_ATTESTED, "m", relies=[k.id])
+        ch.commit(at, [v2], [("m", v2)])
+        _, rel = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        r = V.verify_attestation(json.loads(json.dumps(V.export_attestation(repo, "minds", d2.id, rel["projection"]))))
+        self.assertEqual((r["grounded_at_tip"], r["explain"]["grounded"]["needs_replay"]), (None, [k.id.hex()]))
+
+        # what-if: d's row loses Grounded through its verdict's ground, and names both
+        at = {}
+        v0 = ch.verdict("v0", at, r0.id, V.H_ATTESTED, "m")
+        ch.commit(at, [v0], [("m", v0)])
+        self.assertTrue(repo.lens("minds")["grounded"][d.id])
+        at = {}
+        x = ch.verdict("x", at, r0.id, V.H_VERDICT_INVALID, "m")
+        report = repo.what_if("minds", at, [x], [V.Seal.sign(sk, x.id, ch.s.id)])
+        row = {w["cell"]: w for w in report["lost"]}.get(d.id.hex(), {})
+        self.assertEqual(row.get("after"), {"grounded": False})
+        self.assertEqual(sorted(row.get("needs", {}).get("ungrounded", [])), sorted(c.id.hex() for c in (v, r0)))
+
+    def test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact(self) -> None:
+        """The table reads a contract or decision without a computation, and refuses the rest. It reads Settled, so it is
+        not exact where the status also turns on other quorums; a seal added to a waiting edge counts."""
+        ch = self._small("pw")
+        at: dict[bytes, bytes] = {}
+        ax = ch.axiom("ax", at)
+        pol = ch.policy(at, 1, ["a"])
+        q = V.Cell(V.H_SCHEMA["question"], ch.put(at, V.atom_utf8("pw/q")), ch.put(at, V.atom_utf8("which")),
+                   slots=(V.H_SCHEMA["verdict"], pol))
+        ch.commit(at, [ax, q], [("a", ax), ("a", q)])
+        k, ck, w = self._replayed(ch, "a")
+        for cell in (ax, q, k, w):
+            with self.assertRaisesRegex(V.VarsError, "contract or decision without a computation"):
+                ch.repo.power(ch.scope, cell.id)
+
+        # a decision on a decision: Settled is the table's, Grounded turns on another quorum, so it is not exact
+        at = {}
+        d0 = ch.decision("d0", at, pol)
+        d1 = ch.decision("d1", at, pol, relies=[d0.id])
+        ch.commit(at, [d0, d1], [("a", d0), ("a", d1)])
+        self.assertFalse(ch.repo.power(ch.scope, d1.id)["exact"])
+        # the same through a verdict's ground
+        at = {}
+        d2 = ch.decision("d2", at, pol)
+        ch.commit(at, [d2], [("a", d2)])
+        at = {}
+        v2 = ch.verdict("v2", at, d2.id, V.H_ATTESTED, "a", relies=[d0.id])
+        ch.commit(at, [v2], [("a", v2)])
+        self.assertFalse(ch.repo.power(ch.scope, d2.id)["exact"])
+        # a decision with nothing else under it is exact
+        at = {}
+        d3 = ch.decision("d3", at, pol)
+        ch.commit(at, [d3], [("a", d3)])
+        self.assertTrue(ch.repo.power(ch.scope, d3.id)["exact"])
+
+        # an edge waiting for seals: alone b has no quorum, with a's seal already on the notice it has one
+        ch2 = self._small("pw2", adm=2)
+        at = {}
+        pol2 = ch2.policy(at, 2, ["a", "b", "c"])
+        d = ch2.decision("d", at, pol2, tier=V.H_OWNER)
+        ch2.commit(at, [d], [("a", d), ("b", d)])
+        self.assertEqual(sorted(map(len, ch2.repo.power(ch2.scope, d.id)["lose_live"])), [2, 2, 2])
+        at = {}
+        base = ch2.axiom("waiting", at)
+        notice = V.Cell(base.h_schema, base.h_slot_name, base.h_payload, h_invalidates=ch2.put(at, V.atom_hvec([d.id])))
+        ch2.commit(at, [notice], [("a", notice)])
+        self.assertTrue(ch2.lens()["active"][d.id])
+        table = ch2.repo.power(ch2.scope, d.id)
+        self.assertFalse(table["exact"])  # something already points at it
+        self.assertIn([PK["b"].hex()], table["lose_live"])
+        ch2.commit({}, [], [("b", notice)])
+        self.assertFalse(ch2.lens()["active"][d.id])
+
+    def test_119_what_a_key_can_still_do_by_an_edge(self) -> None:
+        """Documents what the withdrawal leaves. A verdict's `Pol_i` is the admission policy, so with an admission threshold
+        of 1, as on the live chain, one key can invalidate another's verdict by an edge, and do it again after each new
+        attestation. And an endorsement withdrawn by INVALID comes back if the admission quorum invalidates that verdict:
+        n-of-n blocks for a key that never attested, not for one that attested and withdrew."""
+        ch = self._small("ed", adm=1)
+        at: dict[bytes, bytes] = {}
+        pol = ch.policy(at, 2, ["a", "b", "c"])
+        d = ch.decision("d", at, pol)
+        ch.commit(at, [d], [("a", d)])
+        at = {}
+        va, vb = ch.verdict("va", at, d.id, V.H_ATTESTED, "ana"), ch.verdict("vb", at, d.id, V.H_ATTESTED, "bo")
+        ch.commit(at, [va, vb], [("a", va), ("b", vb)])
+        self.assertIn([PK["c"].hex()], ch.repo.power(ch.scope, d.id)["lose_settled"])  # and the table says so
+
+        def edge(ch, name, target, keys):
+            at: dict[bytes, bytes] = {}
+            base = ch.axiom(name, at)
+            n = V.Cell(base.h_schema, base.h_slot_name, base.h_payload, h_invalidates=ch.put(at, V.atom_hvec([target])))
+            ch.commit(at, [n], [(k, n) for k in keys])
+
+        edge(ch, "n1", va.id, ["c"])
+        self.assertFalse(ch.lens()["settled"][d.id])
+        at = {}
+        va2 = ch.verdict("va2", at, d.id, V.H_ATTESTED, "ana-2")
+        ch.commit(at, [va2], [("a", va2)])
+        self.assertTrue(ch.lens()["settled"][d.id])
+        edge(ch, "n2", va2.id, ["c"])
+        self.assertFalse(ch.lens()["settled"][d.id])
+
+        ch = self._small("nn", adm=2)
+        at = {}
+        pol = ch.policy(at, 3, ["a", "b", "c"])
+        d = ch.decision("d", at, pol)
+        ch.commit(at, [d], [("a", d), ("b", d)])
+        at = {}
+        ws = [ch.verdict(f"w{m}", at, d.id, V.H_ATTESTED, f"id-{m}") for m in "abc"]
+        ch.commit(at, ws, list(zip("abc", ws)))
+        self.assertTrue(ch.lens()["settled"][d.id])
+        at = {}
+        x = ch.verdict("x", at, d.id, V.H_VERDICT_INVALID, "id-c")
+        ch.commit(at, [x], [("c", x)])
+        self.assertFalse(ch.lens()["settled"][d.id])
+        edge(ch, "over", x.id, ["a", "b"])
+        self.assertTrue(ch.lens()["settled"][d.id])  # a and b made c's endorsement count again
 
 
 if __name__ == "__main__":

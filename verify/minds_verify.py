@@ -682,11 +682,14 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
     return live[di] and len(end) >= thr, end, thr, p
 
 
-def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = False) -> List[bool]:
+def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = False,
+                    withdrawn_after: Optional[Dict[int, Set[Tuple[bytes, int]]]] = None) -> List[bool]:
     """§4.2 Grounded for every cell, from a parsed kernel input and the kernel's output alone: the least fixed point,
     computed from below. A computation's replay needs the repository, so a contract or decision with `required_comp`
     is counted with no witness, or with `assume_replay`, with every live REPLAYED verdict on a live checkpoint or cycle
-    witness: the two runs bound the lens's answer from below and above, and where they differ this file cannot tell."""
+    witness: the two runs bound the lens's answer from below and above, and where they differ this file cannot tell.
+    `withdrawn_after` maps a cell's index to the (verifier id, key index) pairs that INVALID verdicts recorded after the
+    tip withdraw from it, as `pass3_at_tip` reads them."""
     t = _pass3_tables(ki, output)
     kc, pols, live, auth, children, endorsers = (ki["cells"], ki["pols"], t["live"], t["auth"], t["children"],
                                                  t["endorsers"])
@@ -694,12 +697,15 @@ def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = 
     judged = (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"])
     witnesses: List[Dict[int, Set[int]]] = [{} for _ in range(n)]
     need: List[Optional[int]] = [None] * n  # the threshold of a cell Pass 3 evaluates
-    plain = [False] * n  # a cell Settled once live; a projection has no edge into it, so nothing reads it
+    plain = [False] * n  # a cell Settled once live, or once its latch or its witnesses say so
     for i, c in enumerate(kc):
         if not live[i]:
             continue
         if c["schema"] == H_META_SCHEMA or c["schema"] == H_SCHEMA["scope"]:
             plain[i] = auth[i]
+        elif c["schema"] == H_SCHEMA["projection"]:
+            wp = pols.get(c["slots"][4])
+            plain[i] = wp is not None and len(endorsers(i) & set(wp[1])) >= wp[0]
         elif c["schema"] in judged:
             question = c["schema"] == H_SCHEMA["question"]
             p = c["slots"][1 if question else 3]
@@ -708,7 +714,7 @@ def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = 
                 continue
             thr, pk = pols[p][0], set(pols[p][1])
             need[i] = thr
-            gone = set() if question else _withdrawn_by(ki, t, i, pk)
+            gone = set() if question else _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())
             for w in children[i]:
                 x = kc[w]
                 if not live[w] or i not in x["attests"]:
@@ -955,9 +961,10 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     the input holds, and `attested_at_tip` is Pass 3 recomputed from the input and output alone (`pass3_at_tip`,
     local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `grounded_at_tip` says whether
     what it rests on is settled too: true or false, or None when that turns on a computation's replay, which this file
-    cannot run (`grounded_at_tip`; `explain.grounded`). `accepted` requires that it is settled and grounded, the
-    projection witnessed, and no supplied verdict from after the tip withdrawing what settles it; it says nothing else
-    about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a computation need replay,
+    cannot run (`grounded_at_tip`; `explain.grounded`), and `grounded_after_tip` the same once the supplied verdicts from
+    after the tip are read. `accepted` requires that it is settled and grounded with those verdicts read, and the
+    projection witnessed. It says nothing else about the chain after the tip: those verdicts are on this cell, and a
+    withdrawal after the tip from a cell it rests on is not in the bundle. Any inconsistency raises VarsError. Decisions that require a computation need replay,
     hence the repository. A projection naming rules outside `KNOWN_RULES` is not read: `rules_status: "unsupported"`,
     and nothing is accepted on it.
 
@@ -1108,24 +1115,32 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     result["attested_at_tip"] = settled
     result["active_at_tip"] = st["active"] and not st["stale"]
     result["contradicted_after_tip"] = settled and not now
-    low = grounded_at_tip(ki, output)
-    high = grounded_at_tip(ki, output, assume_replay=True)
-    grounded = True if low[pos[d.id]] else False if not high[pos[d.id]] else None
-    result["grounded_at_tip"] = grounded
-    # the cells it rests on, by its grounds and by the grounds of its counted verdicts, that do not stand as Grounded
+
+    def bounds(after: Optional[Dict[int, Set[Tuple[bytes, int]]]]) -> Tuple[Optional[bool], List[bool], List[bool]]:
+        lo = grounded_at_tip(ki, output, withdrawn_after=after)
+        hi = grounded_at_tip(ki, output, assume_replay=True, withdrawn_after=after)
+        return (True if lo[pos[d.id]] else False if not hi[pos[d.id]] else None), lo, hi
+
+    result["grounded_at_tip"] = bounds(None)[0]
+    grounded, low, high = bounds({pos[d.id]: later_blocks} if later_blocks else None)
+    result["grounded_after_tip"] = grounded
+    # What it rests on, along `relies` and through the verdicts that judge what it rests on, that keeps it from Grounded:
+    # a client names what it cannot hold, and the cells whose computation it cannot replay
+    judges = (H_SCHEMA["contract"], H_SCHEMA["decision"])
     rests, todo = set(), [pos[d.id]]
     while todo:
         i = todo.pop()
         if i not in rests:
             rests.add(i)
             todo += kc[i]["relies"]
-            if kc[i]["schema"] in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
-                todo += [w for w, x in enumerate(kc) if x["schema"] == H_SCHEMA["verdict"]
-                         and x["payload"] == kc[i]["id"] and low[w]]
+            if kc[i]["schema"] in judges:
+                todo += [w for w, x in enumerate(kc) if x["schema"] == H_SCHEMA["verdict"] and x["payload"] == kc[i]["id"]
+                         and x["slots"][1] != H_VERDICT_INVALID and i in x["attests"]]
     explain["grounded"] = {
         "grounded": grounded,
-        "unsettled": sorted(kc[i]["id"].hex() for i in rests if not high[i]),
-        "needs_replay": sorted(kc[i]["id"].hex() for i in rests if high[i] and not low[i]),
+        "ungrounded": [] if grounded else sorted(kc[i]["id"].hex() for i in rests if not high[i]),
+        "needs_replay": [] if grounded else sorted(kc[i]["id"].hex() for i in rests if not low[i] and high[i]
+                                                   and kc[i]["schema"] in judges and kc[i]["slots"][1] != H_EMPTY),
     }
     standing = {key_of[k].hex() for k in end_now}
     at_tip_keys = {key_of[k].hex() for k in end}

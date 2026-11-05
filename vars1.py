@@ -2640,8 +2640,9 @@ class GitVarsRepo:
         }
 
     def power(self, scope: str, cid: bytes, at: Optional[str] = None) -> Dict[str, object]:
-        """Who can change this local cell's status at the tip, read from the rules: for each effect the minimal
-        coalitions of roster keys that reach it by commits of their own, with no rotation (`proofs/Vars1/Power.lean`).
+        """Who can change whether this local contract or decision without a computation stands and is Settled at the tip,
+        read from the rules: for each effect the minimal coalitions of roster keys that reach it by commits of their own,
+        with no rotation (`proofs/Vars1/Power.lean`). It reads Settled, not Grounded, and refuses any other cell.
         A coalition can attack a cell when it can latch an edge into it (§4.1 latch 3, `CanLatch`): by a new cell of its
         own, or by adding its seals to an existing cell whose edge is not yet latched. `lose_live`: it can attack the
         cell or something it relies on, transitively. `lose_settled`: that, or the keys still counted fall below the
@@ -2651,14 +2652,17 @@ class GitVarsRepo:
         falls back to the admission policy is its own. It does not reach a cell whose evaluator policy names keys it
         does not hold except through what that cell rests on and its verdicts, which is what the lists above say of the
         roster it would leave. A reader who does not watch the chain is protected by its pin, not by the wait (§4.4).
-        `exact` is false when something already attacks a
-        cell the status reads, or it reads a foreign cell or an evaluator's endorsement from another scope: attacking the
-        attacker can bring a cell back, and this table does not follow that. It is then the set the frame theorems
-        bound, not a set each of whose coalitions was shown to work."""
+        `exact` is false when something already points an edge at a cell the status reads (attacking the attacker can bring
+        a cell back, and this table does not follow that), when it reads a foreign cell, or when it rests, along `relies`
+        or through a verdict, on a contract, decision, question or custom schema: then Grounded, which `accepted` asks,
+        turns on quorums this table does not list. It is then the set the frame theorems bound, not a set each of whose
+        coalitions was shown to work, nor every coalition that can change what a reader accepts."""
         lens = self.lens(scope, at=at)
         cells, atoms = lens["cells"], lens["atoms"]
-        if cid not in cells or parse_utf8(atoms[cells[cid].h_slot_name]).split("/", 1)[0] != scope:
-            raise VarsError("power reads a local cell of this scope")
+        if (cid not in cells or parse_utf8(atoms[cells[cid].h_slot_name]).split("/", 1)[0] != scope
+                or cells[cid].h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"])
+                or cells[cid].slots[1] != H_EMPTY):
+            raise VarsError("power reads a local contract or decision without a computation")
         tip = self.ref_commit(scope) if at is None else at
         _, _, tree_seals = self.read_cas_tree(tip)
         s_id = lens["scope"]
@@ -2733,7 +2737,9 @@ class GitVarsRepo:
         for w in verdicts:
             reads |= grounds(w)
         origin = lambda u: parse_utf8(atoms[cells[u].h_slot_name]).split("/", 1)[0]
-        exact = not any(x in attackers or origin(x) != scope for x in reads)
+        other_quorum = (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"], H_META_SCHEMA)
+        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)
+                        for x in reads)
 
         def lose_live(co: Set[bytes]) -> bool:
             return live and any(attack(co, u) for u in grounds(cid))
@@ -2788,6 +2794,7 @@ class GitVarsRepo:
                        "acceptance": {"threshold": acc[0], "keys": sorted(k.hex() for k in acc[1])}},
             "lose_live": minimal(lose_live), "lose_settled": minimal(lose_settled), "gain_settled": minimal(gain_settled),
             "rotation": {"threshold": adm[0], "keys": sorted(k.hex() for k in adm[1])},
+            "reads": "live and settled, not grounded",
             "exact": exact,
         }
 
@@ -2906,8 +2913,15 @@ class GitVarsRepo:
                 out["endorsements"] = {"threshold": thr, "standing": sorted(k.hex() for k in now),
                                        "fell_away": sorted(k.hex() for k in then - now)}
             if b.get("grounded") and not a.get("grounded"):
-                out["ungrounded"] = [g.hex() for g in relies_on(cid)
-                                     if standing(g) and not after["grounded"].get(g, False)]
+                # what lost it Grounded: along `relies`, and through the verdicts that counted for what it rests on
+                seen, todo = set(), [*relies_on(cid), *before["counted_witnesses"].get(cid, {})]
+                while todo:
+                    x = todo.pop()
+                    if x not in seen and x in before["cells"]:
+                        seen.add(x)
+                        todo += [*relies_on(x), *before["counted_witnesses"].get(x, {})]
+                out["ungrounded"] = sorted(x.hex() for x in seen
+                                           if before["grounded"].get(x, False) and not after["grounded"].get(x, False))
             return out
 
         lost, held = [], []

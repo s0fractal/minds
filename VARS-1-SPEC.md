@@ -303,8 +303,10 @@ else the tip scope's admission policy. A witness `w` is Active, non-Stale, attes
 For a contract or decision, a key's endorsement through a witness is withdrawn if that key endorses an Active, non-Stale
 verdict with `H_VERDICT_INVALID` and the witness's `verifier_id`, on `v` or naming the checkpoint or cycle witness the
 witness names. No other key's endorsement is: a verifier id is free text, so it says of who wrote a verdict only what the
-seal says, and one key of a t-of-n policy cannot hold a decision back by naming another's. A quorum of `Pol_i` can still
-invalidate a verdict by an edge (§4.1). A question has no
+seal says, and one key of a t-of-n policy cannot hold a decision back by naming another's. An edge is another matter: a
+verdict's `Pol_i` is the admission policy (§4.1), so where that threshold is 1, as on `refs/vars/heads/minds`, one key can
+still invalidate another's verdict, and hold a decision back for as long as it keeps doing so; only a rules change could
+alter that. And an endorsement withdrawn this way comes back if the admission quorum invalidates the INVALID verdict. A question has no
 withdrawal: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
 for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the keys of `EvalPol(v)`
 whose endorsement through some witness is not withdrawn meet its threshold; otherwise **Provisional**. Scope and custom schema cells are Settled iff
@@ -498,7 +500,9 @@ of a newer cell of its origin that references it, by that scope's admission keys
 input and the output; a computation's replay is out of its reach, so where the answer turns on one the result says
 `grounded_at_tip: null` and names the cells (`explain.grounded`). The cell is *accepted* when that recomputation settles it
 and grounds it, the projection is witnessed, and no supplied verdict from after `tip` withdraws what settles it. A result
-that is settled and not grounded says so in `attested_at_tip` and `grounded_at_tip`, and is not accepted.
+that is settled and not grounded says so in `attested_at_tip` and `grounded_at_tip`, and is not accepted; a supplied verdict
+from after `tip` is read for Grounded as for Settled (`grounded_after_tip`), and a withdrawal after `tip` from a cell it
+rests on is not in the bundle.
 Acceptance is about `tip`: the release recorded last is accepted only once a later projection
 covers it. Because the admission quorum may rotate a key out (§3), and releases after that need it no longer, a
 reader who wants certain keys to have a veto pins them: each pinned key must also endorse the cell at `tip` and
@@ -585,6 +589,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 62–74: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
   bound as a resource hardening on the fuzzer's input, (d), a past change replayed in a fresh clone and its evidence
   missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md).
-- `test_vars1.py` tests 102–107: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
-  circuits, and who can change a status (`GitVarsRepo.power`, `proofs/Vars1/Power.lean`) against a search through the gate.
+- `test_vars1.py` tests 102–109 and 115–119: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
+  circuits, what a client names, what a key can still do by an edge, and who can change a status (`GitVarsRepo.power`,
+  `proofs/Vars1/Power.lean`) against a search through the gate.
 - `proofs/`: the theorems listed in `proofs/README.md`.
