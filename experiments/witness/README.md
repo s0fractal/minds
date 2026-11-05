@@ -62,10 +62,14 @@ checker it is a theorem.
    - It requires no computation.
    - Each endorsing verdict is in the cone, so it is Active and not Stale. It is a verdict on the decision, ATTESTED,
      and attests the decision.
-   - No INVALID verdict judges the decision, so no verifier is excluded.
+   - No INVALID verdict judges the decision, so no key's endorsement is withdrawn.
    - Each seal is in the store at the tip, under the only scope cell, and verifies. Its key is one of `EvalPol(d)`:
      the decision's own policy, else the scope's admission policy.
    - The distinct keys meet the threshold.
+
+**What HELD does not say.** It is about Settled, not Grounded (§4.2). A decision can be HELD while a decision in its cone
+is not Settled: the `stand` rule reads `Active` and not Stale, as the lens's Pass 2 does. To ask whether what it rests on
+is settled too, read `grounded` in the lens, or `grounded_at_tip` of an attestation bundle.
 
 **What is checked from bytes.**
 - Every object hashes to its name.

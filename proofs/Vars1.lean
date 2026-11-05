@@ -15,3 +15,5 @@ import Vars1.ExecProof
 import Vars1.Scope
 import Vars1.Mask
 import Vars1.Witness
+import Vars1.Grounded
+import Vars1.Power

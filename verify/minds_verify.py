@@ -577,19 +577,12 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
     return {"pols": pols, "cells": cells, "seals": seals, "encoding": encoding}
 
 
-def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
-                 blocked_after: Optional[Set[bytes]] = None,
-                 trace: Optional[Dict[str, object]] = None) -> Tuple[bool, Set[int], int, bytes]:
-    """§4.2 Pass 3 for the contract or decision at index `di` (without `required_comp`), from a parsed kernel input
-    and the kernel's output alone: whether it is Settled, the key indices that endorse it, the threshold, and the
-    policy hash. Endorsers are counted as the lens counts them: every admitted seal on a local verdict; on a
-    foreign verdict, seals under a scope of its origin that a live acceptance (of it or of a newer cell of its
-    origin that references it, by an edge or by a reference the input's rules read) names, by that scope's
-    admission keys. A contradicting INVALID verdict of the same verifier, endorsed by a policy key, blocks;
-    `blocked_after` adds the verifier ids that such INVALID verdicts recorded after the tip block. With `trace`, it
-    is filled with what was counted: `counted` maps each counted verdict's index to the key indices that endorse it,
-    `blocked_at_tip` holds the verifier ids blocked by INVALID verdicts at the tip, and `blocked_after` those added
-    from after it."""
+def _pass3_tables(ki: Dict[str, object], output: bytes) -> Dict[str, object]:
+    """What Pass 3 reads, from a parsed kernel input and the kernel's output alone: the live and Authorized bits, the
+    cells that reference each cell, and each cell's endorsers. Endorsers are counted as the lens counts them: every
+    admitted seal on a local verdict; on a foreign verdict, seals under a scope of its origin that a live acceptance
+    (of it or of a newer cell of its origin that references it, by an edge or by a reference the input's rules read)
+    names, by that scope's admission keys."""
     kc, pols, seals = ki["cells"], ki["pols"], ki["seals"]
     n = len(kc)
     if len(output) < 4 + 2 * n:
@@ -636,35 +629,123 @@ def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
             out |= signed.get((w, sf), set()) & set(pol[1])
         return out
 
-    d = kc[di]
     si = struct.unpack_from("<I", output, 0)[0]
     if si >= n:
         raise VarsError("kernel output names a scope outside its input")
-    scope_cell = kc[si]
-    p = d["slots"][3] if d["slots"][3] != H_EMPTY else scope_cell["slots"][0]
+    return {"live": live, "auth": auth, "children": children, "endorsers": endorsers, "scope": kc[si]}
+
+
+def _withdrawn_by(ki: Dict[str, object], t: Dict[str, object], di: int, pk: Set[int]) -> Set[Tuple[bytes, int]]:
+    """The (verifier id, policy key) pairs of the live INVALID verdicts on the cell at `di`: the key withdraws its own
+    endorsement under that verifier id, and no other key's (§4.2 Pass 3)."""
+    kc, live, endorsers = ki["cells"], t["live"], t["endorsers"]
+    did = kc[di]["id"]
+    return {(kc[b]["slots"][2], k) for b in range(len(kc))
+            if live[b] and kc[b]["schema"] == H_SCHEMA["verdict"] and kc[b]["slots"][1] == H_VERDICT_INVALID
+            and kc[b]["payload"] == did for k in endorsers(b) & pk}
+
+
+def pass3_at_tip(ki: Dict[str, object], output: bytes, di: int,
+                 blocked_after: Optional[Set[Tuple[bytes, int]]] = None,
+                 trace: Optional[Dict[str, object]] = None) -> Tuple[bool, Set[int], int, bytes]:
+    """§4.2 Pass 3 for the contract or decision at index `di` (without `required_comp`), from a parsed kernel input
+    and the kernel's output alone: whether it is Settled, the key indices that endorse it, the threshold, and the
+    policy hash. An INVALID verdict by a policy key withdraws that key's endorsement under its verifier id and no other
+    key's; `blocked_after` adds the (verifier id, key index) pairs that such INVALID verdicts recorded after the tip
+    withdraw. With `trace`, it is filled with what was counted: `counted` maps each counted verdict's index to the key
+    indices that endorse it, `withdrawn_at_tip` holds the pairs INVALID verdicts at the tip withdraw, and
+    `withdrawn_after` those added from after it."""
+    t = _pass3_tables(ki, output)
+    kc, pols, live, children, endorsers = ki["cells"], ki["pols"], t["live"], t["children"], t["endorsers"]
+    d = kc[di]
+    p = d["slots"][3] if d["slots"][3] != H_EMPTY else t["scope"]["slots"][0]
     if p not in pols:
         raise VarsError("the kernel input lacks the evaluator policy")
     thr, pk = pols[p][0], set(pols[p][1])
     did = d["id"]
-    bad = [b for b in range(n) if live[b] and kc[b]["schema"] == H_SCHEMA["verdict"]
-           and kc[b]["slots"][1] == H_VERDICT_INVALID and kc[b]["payload"] == did and endorsers(b) & pk]
-    blocked = {kc[b]["slots"][2] for b in bad} | (blocked_after or set())
+    at_tip = _withdrawn_by(ki, t, di, pk)
+    withdrawn = at_tip | (blocked_after or set())
     end: Set[int] = set()
     counted: Dict[int, Set[int]] = {}
     for w in children[di]:
         c = kc[w]
         if not live[w] or di not in c["attests"] or c["schema"] != H_SCHEMA["verdict"] or c["payload"] != did:
             continue
-        if c["slots"][2] in blocked or c["slots"][0] != H_EMPTY or c["slots"][1] != H_ATTESTED:
+        if c["slots"][0] != H_EMPTY or c["slots"][1] != H_ATTESTED:
             continue
-        got = endorsers(w) & pk
+        got = {k for k in endorsers(w) & pk if (c["slots"][2], k) not in withdrawn}
         if got:
             counted[w] = got
         end |= got
     if trace is not None:
-        trace.update(counted=counted, blocked_at_tip={kc[b]["slots"][2] for b in bad},
-                     blocked_after=set(blocked_after or set()) - {kc[b]["slots"][2] for b in bad})
+        trace.update(counted=counted, withdrawn_at_tip=at_tip, withdrawn_after=withdrawn - at_tip)
     return live[di] and len(end) >= thr, end, thr, p
+
+
+def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = False) -> List[bool]:
+    """§4.2 Grounded for every cell, from a parsed kernel input and the kernel's output alone: the least fixed point,
+    computed from below. A computation's replay needs the repository, so a contract or decision with `required_comp`
+    is counted with no witness, or with `assume_replay`, with every live REPLAYED verdict on a live checkpoint or cycle
+    witness: the two runs bound the lens's answer from below and above, and where they differ this file cannot tell."""
+    t = _pass3_tables(ki, output)
+    kc, pols, live, auth, children, endorsers = (ki["cells"], ki["pols"], t["live"], t["auth"], t["children"],
+                                                 t["endorsers"])
+    n = len(kc)
+    judged = (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"])
+    witnesses: List[Dict[int, Set[int]]] = [{} for _ in range(n)]
+    need: List[Optional[int]] = [None] * n  # the threshold of a cell Pass 3 evaluates
+    plain = [False] * n  # a cell Settled once live; a projection has no edge into it, so nothing reads it
+    for i, c in enumerate(kc):
+        if not live[i]:
+            continue
+        if c["schema"] == H_META_SCHEMA or c["schema"] == H_SCHEMA["scope"]:
+            plain[i] = auth[i]
+        elif c["schema"] in judged:
+            question = c["schema"] == H_SCHEMA["question"]
+            p = c["slots"][1 if question else 3]
+            p = p if p != H_EMPTY else t["scope"]["slots"][0]
+            if p not in pols:
+                continue
+            thr, pk = pols[p][0], set(pols[p][1])
+            need[i] = thr
+            gone = set() if question else _withdrawn_by(ki, t, i, pk)
+            for w in children[i]:
+                x = kc[w]
+                if not live[w] or i not in x["attests"]:
+                    continue
+                if question:
+                    if x["schema"] == c["slots"][0]:
+                        witnesses[i][w] = endorsers(w) & pk
+                    continue
+                if x["schema"] != H_SCHEMA["verdict"] or x["payload"] != c["id"]:
+                    continue
+                if c["slots"][1] == H_EMPTY:
+                    if x["slots"][0] != H_EMPTY or x["slots"][1] != H_ATTESTED:
+                        continue
+                elif not assume_replay or x["slots"][1] != H_REPLAYED:
+                    continue
+                witnesses[i][w] = {k for k in endorsers(w) & pk if (x["slots"][2], k) not in gone}
+        else:
+            plain[i] = True
+    grounded = [False] * n
+    changed = True
+    while changed:
+        changed = False
+        for i, c in enumerate(kc):
+            if grounded[i] or not live[i] or not all(grounded[g] for g in c["relies"]):
+                continue
+            if need[i] is not None:
+                keys: Set[int] = set()
+                for w, ks in witnesses[i].items():
+                    if grounded[w]:
+                        keys |= ks
+                if len(keys) < need[i]:
+                    continue
+            elif not plain[i]:
+                continue
+            grounded[i] = True
+            changed = True
+    return grounded
 
 
 def kernel_input_order(kernel_input: bytes, encoding: str = "v1") -> List[bytes]:
@@ -865,18 +946,20 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     """Recompute §4.2 Pass 3 for one contract or decision from a bundle, with no repository.
 
     `attested`: over the supplied verdicts, ATTESTED verdicts on the cell, sealed by distinct keys of its evaluator
-    policy (else the bundled scope's admission policy), meet the threshold, after excluding verdicts contradicted by an
-    INVALID verdict of the same verifier sealed by a policy key. A supplier can omit verdicts, so on its own this is
-    `evidence: "supplied"`.
+    policy (else the bundled scope's admission policy), meet the threshold; an INVALID verdict withdraws the endorsement
+    of the keys that seal it under its verifier id, and no other key's. A supplier can omit verdicts, so on its own this
+    is `evidence: "supplied"`.
 
     With a projection bundle whose tip holds the cell, the projection's kernel input — every cell and verified seal
     at that tip, committed to by its digest — is the evidence: the bundle must supply every verdict on the cell that
     the input holds, and `attested_at_tip` is Pass 3 recomputed from the input and output alone (`pass3_at_tip`,
-    local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `accepted` requires that,
-    the projection witnessed, and no supplied verdict from after the tip contradicting it by a policy key; it says
-    nothing else about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a
-    computation need replay, hence the repository. A projection naming rules outside `KNOWN_RULES` is not read:
-    `rules_status: "unsupported"`, and nothing is accepted on it.
+    local and foreign verdicts as the lens counts them; `evidence: "complete_at_tip"`). `grounded_at_tip` says whether
+    what it rests on is settled too: true or false, or None when that turns on a computation's replay, which this file
+    cannot run (`grounded_at_tip`; `explain.grounded`). `accepted` requires that it is settled and grounded, the
+    projection witnessed, and no supplied verdict from after the tip withdrawing what settles it; it says nothing else
+    about the chain after the tip. Any inconsistency raises VarsError. Decisions that require a computation need replay,
+    hence the repository. A projection naming rules outside `KNOWN_RULES` is not read: `rules_status: "unsupported"`,
+    and nothing is accepted on it.
 
     The chain's admission quorum may rotate its roster, so a key that refused a release can be rotated out and
     later releases settle without it. A reader who wants a veto for certain keys pins them: with `require`, each
@@ -914,12 +997,13 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         if seal.h_target not in signers:
             raise VarsError("a seal in the bundle names an unrelated cell")
         signers[seal.h_target].add(seal.actor_pubkey)
-    contradicted = {w.slots[2] for wid, w in verdicts.items()
-                    if w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys}
+    # An INVALID verdict withdraws its own keys' endorsement under its verifier id, and no other key's
+    withdrawn = {(w.slots[2], k) for wid, w in verdicts.items() if w.slots[1] == H_VERDICT_INVALID
+                 for k in signers[wid] & keys}
     attests = lambda w: w.h_attests in atoms and d.id in parse_hvec(atoms[w.h_attests], require_sorted=True)
-    counted = [wid for wid, w in verdicts.items() if attests(w)
-               and w.slots[0] == H_EMPTY and w.slots[1] == H_ATTESTED and w.slots[2] not in contradicted]
-    endorsers = set().union(*(signers[wid] & keys for wid in counted)) if counted else set()
+    counted = {wid: {k for k in signers[wid] & keys if (w.slots[2], k) not in withdrawn}
+               for wid, w in verdicts.items() if attests(w) and w.slots[0] == H_EMPTY and w.slots[1] == H_ATTESTED}
+    endorsers = set().union(*counted.values()) if counted else set()
 
     def verifier(h: bytes) -> str:
         """A verifier id as text when its atom is supplied, else its hash."""
@@ -927,6 +1011,10 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
             return parse_utf8(atoms[h])
         except (KeyError, VarsError):
             return h.hex()
+
+    def withdrawn_rows(pairs: Iterable[Tuple[bytes, bytes]]) -> List[Dict[str, str]]:
+        return sorted(({"verifier": verifier(v), "key": k.hex()} for v, k in pairs),
+                      key=lambda x: (x["verifier"], x["key"]))
 
     def witness_rows(rows: Iterable[Tuple[bytes, bytes, Set[bytes]]]) -> List[Dict[str, object]]:
         return sorted(({"verdict": wid.hex(), "verifier": verifier(vid), "endorsers": sorted(k.hex() for k in ks)}
@@ -945,6 +1033,7 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         "tip": None,
         "projection_witnessed": None,
         "attested_at_tip": None,
+        "grounded_at_tip": None,
         "active_at_tip": None,
         "accepted": False,
         "rules_status": None,
@@ -954,14 +1043,14 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         "policy": {"id": pol.hex(), "source": "evaluator_policy" if d.slots[3] != H_EMPTY else "scope_admission",
                    "threshold": thr, "keys": sorted(k.hex() for k in keys)},
         "supplied": {
-            "counted": witness_rows((wid, verdicts[wid].slots[2], signers[wid] & keys)
-                                    for wid in counted if signers[wid] & keys),
-            "blocked_verifiers": sorted(verifier(v) for v in contradicted),
+            "counted": witness_rows((wid, verdicts[wid].slots[2], ks) for wid, ks in counted.items() if ks),
+            "withdrawn": withdrawn_rows(withdrawn),
         },
         "rules": None,
         "scope_epoch": None,
         "at_tip": None,
         "after_tip": None,
+        "grounded": None,
         "required": [{"key": k.hex(), "reasons": ["no projection: a pinned key is checked only at a projection's tip"]}
                      for k in require or []],
         "projection": None,
@@ -1004,10 +1093,11 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     if p != pol or t_thr != thr or len(ki["pols"][p][1]) != len(keys):
         raise VarsError("the projection's input disagrees with the bundle on the evaluator policy")
     key_of = dict(zip(ki["pols"][p][1], sorted(keys)))  # both orders are the keys' byte order
-    # Verdicts supplied from after the tip contradict as at the tip: an INVALID by a policy key withdraws the
-    # ATTESTED verdicts of its own verifier, and Pass 3 is recomputed without them
-    later_blocks = {w.slots[2] for wid, w in verdicts.items()
-                    if wid not in at_tip and w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys}
+    # Verdicts supplied from after the tip withdraw as at the tip: an INVALID by a policy key withdraws that key's
+    # endorsement under its verifier id, and Pass 3 is recomputed without them
+    index_of = {k: i for i, k in key_of.items()}
+    later_blocks = {(w.slots[2], index_of[k]) for wid, w in verdicts.items()
+                    if wid not in at_tip and w.slots[1] == H_VERDICT_INVALID for k in signers[wid] & keys}
     now, end_now, trace_now = settled, end, trace
     if later_blocks:
         trace_now = {}
@@ -1018,13 +1108,33 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     result["attested_at_tip"] = settled
     result["active_at_tip"] = st["active"] and not st["stale"]
     result["contradicted_after_tip"] = settled and not now
+    low = grounded_at_tip(ki, output)
+    high = grounded_at_tip(ki, output, assume_replay=True)
+    grounded = True if low[pos[d.id]] else False if not high[pos[d.id]] else None
+    result["grounded_at_tip"] = grounded
+    # the cells it rests on, by its grounds and by the grounds of its counted verdicts, that do not stand as Grounded
+    rests, todo = set(), [pos[d.id]]
+    while todo:
+        i = todo.pop()
+        if i not in rests:
+            rests.add(i)
+            todo += kc[i]["relies"]
+            if kc[i]["schema"] in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
+                todo += [w for w, x in enumerate(kc) if x["schema"] == H_SCHEMA["verdict"]
+                         and x["payload"] == kc[i]["id"] and low[w]]
+    explain["grounded"] = {
+        "grounded": grounded,
+        "unsettled": sorted(kc[i]["id"].hex() for i in rests if not high[i]),
+        "needs_replay": sorted(kc[i]["id"].hex() for i in rests if high[i] and not low[i]),
+    }
     standing = {key_of[k].hex() for k in end_now}
     at_tip_keys = {key_of[k].hex() for k in end}
     rows = lambda tr: witness_rows((kc[w]["id"], kc[w]["slots"][2], {key_of[k] for k in ks})
                                    for w, ks in tr["counted"].items())
-    explain["at_tip"] = {"counted": rows(trace), "blocked_verifiers": sorted(verifier(v) for v in trace["blocked_at_tip"]),
+    pairs = lambda ps: withdrawn_rows((v, key_of[k]) for v, k in ps)
+    explain["at_tip"] = {"counted": rows(trace), "withdrawn": pairs(trace["withdrawn_at_tip"]),
                          "endorsers": sorted(at_tip_keys), "settled": settled}
-    explain["after_tip"] = {"blocked_verifiers": sorted(verifier(v) for v in trace_now["blocked_after"]),
+    explain["after_tip"] = {"withdrawn": pairs(trace_now["withdrawn_after"]),
                             "counted": rows(trace_now), "withdrawn_endorsers": sorted(at_tip_keys - standing)}
     required = []
     for k in require or []:
@@ -1038,13 +1148,14 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
         required.append({"key": k.hex(), "reasons": reasons})
     explain["required"] = required
     result["required_missing"] = [row["key"] for row in required if row["reasons"]]
-    result["accepted"] = bool(now and pr["witnessed"] and not result["required_missing"])
+    result["accepted"] = bool(now and grounded is True and pr["witnessed"] and not result["required_missing"])
     return result
 
 
 USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]... [--kernel RULES.wasm]...
   verify-projection   exit 0 iff every pinned key witnessed it, its data matches, and its rules are known
-  verify-attestation  exit 0 iff it is accepted at a witnessed tip and every pinned key endorsed and witnessed it
+  verify-attestation  exit 0 iff it is settled and grounded at a witnessed tip and every pinned key endorsed and
+                      witnessed it
   inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
   inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed); its result
                       says `accepted_under_own_policy`, never `accepted`, the word of verify-attestation

@@ -148,6 +148,19 @@ has to name (RULES-V2.md §7).
 | `what-if` says what each lost cell would need to regain what it lost: the grounds it relies on that no longer stand, and for a decision that lost Settled its threshold, the endorsements still counted and those that fell away; with `--restore` the signer also supposes it ran its own invalidated checks again, and a release whose only fallen endorsement was the signer's holds through the replacement | Tested, with mutants (no replacement made with another member's key restores anything: Pass 3 counts the sealing key) | `test_vars1.py` 82; `tools/minds_chain.py` `what_if` |
 | Releases recorded before this format rest on their checks | **Not established, and false**: their checks are text in the statement only; `what-if` reaches them only through their verdicts | — |
 
+## Who can change a status, and what Settled carries
+
+The rules say what one commit can latch; these say what a coalition of keys can change over every extension of the
+chain, and what a decision's Settled rests on. A chain whose rotation already waits is outside them: any commit counts
+its wait (`moves_notice`). Foreign cells are outside the frame theorems, which ask every cell of the set to be local.
+
+| Claim | Evidence | Where |
+|---|---|---|
+| A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them | Proved under v1 and v2, the gate's refusal of a rotation without its quorum (E-20) as a hypothesis | `proofs/Vars1/Power.lean` `run_latch`, `run2_latch` |
+| If no new edge enters a closed set of local cells, its Pass 1 and Pass 2 bits are unchanged, whatever the rest of the chain does; a contract or decision stays Settled while the counted keys outside the coalition meet its quorum; Settled reads only its standing, its policy and the set of keys that count | Proved, with cell order as a rank and the closure and the Pass 1 equations as hypotheses, as `Pin` has them | `proofs/Vars1/Power.lean` `confinement`, `pass1_frame`, `stale_frame`, `settled_keeps`, `settled_needs`, `settled_iff_keys` |
+| `GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts | Tested, with mutants: on small chains under each policy and tier, every coalition and every move of one commit through the real gate reach an effect exactly when the table says so. `exact` is false where something already attacks a cell the status reads: attacking the attacker can bring a cell back, and the table does not follow that. Only one commit is searched | `test_vars1.py` 106, 107; `vars1.py` `power` |
+| A monotone circuit compiles to a chain of linear size, a gate to a decision: AND relies on its inputs, OR carries a verdict per input under a policy of one key; the output's Grounded is the circuit's value, while Settled, which does not cross `relies`, is not | Tested on random circuits through the real gate, with mutants; not a theorem. It suggests that Grounded reaches what monotone circuits compute (P-complete), where Pass 2 alone is reachability; no such statement is proved | `test_vars1.py` 105 |
+
 ## A witness checked without the lens (experiments/witness)
 
 A spike: a decision's cone and the seals that settle it, as a proof term that `experiments/witness/check.py`

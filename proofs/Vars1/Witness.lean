@@ -188,13 +188,13 @@ structure Pin (W : World C K P) (AE : C → C → Kind → Bool) (Present isIntr
   cumulative : ∀ s ∈ S.seals, ∀ cp ∈ S.ctxs, s.ctx = cp.1 → S.isLocal s.target = true → s.key ∈ S.keys cp.2 →
     s.key ∈ X.cumulative s.target
 
-variable (W : World C K P) (X : Pass3In C K P) (wmax : C → List C)
+variable (W : World C K P) (X : Pass3In C K P) (wmax : C → List C) (cnt : C → C → List K)
 
 /-- What each conclusion asserts of the model. -/
 def Holds : Concl C K → Prop
   | .stands c => c ∈ S.cells ∧ Live X c
   | .endorsed w k => k ∈ witnessEndorsers W X w
-  | .settled d => Settled W X wmax d
+  | .settled d => Settled W X wmax cnt d
 
 /-! ## Lemmas on the checker's lists -/
 
@@ -240,7 +240,7 @@ theorem mem_endorsedKeys {k : K} : ∀ {ps : List (Concl C K)}, k ∈ endorsedKe
 
 section Sound
 
-variable {S W X wmax}
+variable {S W X wmax cnt}
 variable {AE : C → C → Kind → Bool} {Present isIntrinsic : C → Prop} {Auth : C → Bool}
   {Inv Eff Ret Acc : C → Prop}
 
@@ -282,7 +282,7 @@ theorem active_of_stand (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret A
 /-- A `stand` line whose premises hold concludes a cell that stands. -/
 theorem stand_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X) {c : C}
     {prem : List (Concl C K)} (hok : standOK S c prem = true)
-    (hprem : ∀ p ∈ prem, Holds S W X wmax p) : Holds S W X wmax (.stands c) := by
+    (hprem : ∀ p ∈ prem, Holds S W X wmax cnt p) : Holds S W X wmax cnt (.stands c) := by
   simp only [standOK, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff, Bool.not_eq_true'] at hok
   obtain ⟨⟨⟨⟨hc, hl⟩, hs⟩, hk⟩, hp⟩ := hok
   have hact := active_of_stand pin hc hl hs hk
@@ -290,7 +290,7 @@ theorem stand_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X
   intro hst
   rcases pin.stale c hst with ⟨d, hd, hdead⟩ | hnl
   · rw [pin.relies c hc] at hd
-    have : Holds S W X wmax (.stands d) := hprem _ (hp ▸ List.mem_map_of_mem hd)
+    have : Holds S W X wmax cnt (.stands d) := hprem _ (hp ▸ List.mem_map_of_mem hd)
     obtain ⟨-, hda, hds⟩ := this
     rcases hdead with h | h
     · exact h hda
@@ -300,7 +300,7 @@ theorem stand_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X
 
 /-- An `endorse` line concludes a key among the verdict's endorsers. -/
 theorem endorse_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X) {w : C} {k : K}
-    {prem : List (Concl C K)} (hok : endorseOK S w k prem = true) : Holds S W X wmax (.endorsed w k) := by
+    {prem : List (Concl C K)} (hok : endorseOK S w k prem = true) : Holds S W X wmax cnt (.endorsed w k) := by
   simp only [endorseOK, Bool.and_eq_true, decide_eq_true_eq, List.any_eq_true] at hok
   obtain ⟨⟨⟨-, hw⟩, hl⟩, cp, hcp, hroster, s, hs, ⟨⟨ht, hctx⟩, hkey⟩⟩ := hok
   show k ∈ witnessEndorsers W X w
@@ -312,9 +312,9 @@ theorem endorse_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc
 
 /-- A `settle` line whose premises hold concludes `Settled`. -/
 theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
-    (hwmax : WmaxFaithful W X S.cells wmax) {d : C} {prem : List (Concl C K)}
-    (hok : settleOK S d prem = true) (hprem : ∀ p ∈ prem, Holds S W X wmax p) :
-    Holds S W X wmax (.settled d) := by
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {d : C} {prem : List (Concl C K)}
+    (hok : settleOK S d prem = true) (hprem : ∀ p ∈ prem, Holds S W X wmax cnt p) :
+    Holds S W X wmax cnt (.settled d) := by
   simp only [settleOK, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true',
     List.all_eq_true] at hok
   obtain ⟨⟨⟨⟨⟨⟨⟨hd, hsch⟩, hreq⟩, hinv⟩, hsd⟩, hpol⟩, hall⟩, hthr⟩ := hok
@@ -324,7 +324,7 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
     rw [pin.schema d hd, pin.customPol d hd, pin.scope, pin.pol0]
     rcases hsch with h | h <;> rw [h]
   -- every endorsement premise is on a verdict of `W_max(d)`
-  have hcount : ∀ w k, Concl.endorsed w k ∈ prem → k ∈ (wmax d).flatMap (witnessEndorsers W X) ∧
+  have hcount : ∀ w k, Concl.endorsed w k ∈ prem → k ∈ (wmax d).flatMap (cnt d) ∧
       k ∈ S.keys (Witness.evalPol S d) := by
     intro w k hmem
     have hc := hall _ hmem
@@ -333,16 +333,6 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
     obtain ⟨hw, hlw⟩ := hprem _ hsw
     have hin : InWmax W X S.cells d w := by
       refine ⟨hw, hlw, pin.attests w hw ▸ haw, ?_⟩
-      have hctr : ¬ Contradicted W X S.cells d w := by
-        rintro ⟨b, hb, -, hbv, hbp, hbi, -⟩
-        have : judgedInvalid S d = true := by
-          simp only [judgedInvalid, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
-          have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
-          refine ⟨b, hb, ⟨hbs, (pin.payload b hb d hd).mp hbp⟩, ?_⟩
-          rw [← (pin.verdict b hb hbs).2.1]
-          exact hbi
-        rw [hinv] at this
-        exact Bool.noConfusion this
       have hrest : (W.info w).schema = .verdict ∧ (W.info w).payload = some d ∧
           (match X.req d with
            | none => (X.verdict w).witness = none ∧ (X.verdict w).attested = true
@@ -352,9 +342,26 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
         rw [(pin.req d hd hsch).mpr hreq]
         exact ⟨(pin.verdict w hw hvw).2.2.mpr hwit, (pin.verdict w hw hvw).1 ▸ hatt⟩
       rw [pin.schema d hd]
-      rcases hsch with h | h <;> rw [h] <;> exact ⟨hctr, hrest⟩
-    exact ⟨List.mem_flatMap.mpr ⟨w, (hwmax d w).mpr hin, (hprem _ hmem)⟩, hkey⟩
-  have hq : W.quorum ((wmax d).flatMap (witnessEndorsers W X)) (Vars1.evalPol W X d) = true := by
+      rcases hsch with h | h <;> rw [h] <;> exact hrest
+    -- no INVALID verdict judges `d`, and `w` names no witness: nothing withdraws `k`
+    have hnw : ¬ Withdrawn W X S.cells d w k := by
+      rintro ⟨b, hb, -, hbv, hbp, hbi, -, -⟩
+      rcases hbp with hbp | ⟨hwn, -⟩
+      · have : judgedInvalid S d = true := by
+          simp only [judgedInvalid, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+          have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
+          refine ⟨b, hb, ⟨hbs, (pin.payload b hb d hd).mp hbp⟩, ?_⟩
+          rw [← (pin.verdict b hb hbs).2.1]
+          exact hbi
+        rw [hinv] at this
+        exact Bool.noConfusion this
+      · exact hwn ((pin.verdict w hw hvw).2.2.mpr hwit)
+    have hcounts : Counts W X S.cells d w k := by
+      refine ⟨hprem _ hmem, ?_⟩
+      rw [pin.schema d hd]
+      rcases hsch with h | h <;> rw [h] <;> exact hnw
+    exact ⟨List.mem_flatMap.mpr ⟨w, (hwmax d w).mpr hin, (hcnt d w k).mpr hcounts⟩, hkey⟩
+  have hq : W.quorum ((wmax d).flatMap (cnt d)) (Vars1.evalPol W X d) = true := by
     rw [hep]
     refine pin.quorum _ hpol _ (dedup (endorsedKeys prem)) ?_ (nodup_dedup _) ?_ hthr
     · intro k hk
@@ -363,16 +370,16 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
     · intro k hk
       obtain ⟨w, hw⟩ := mem_endorsedKeys (mem_dedup.mp hk)
       exact (hcount w k hw).2
-  show Settled W X wmax d
+  show Settled W X wmax cnt d
   refine ⟨hlive, ?_⟩
   rw [pin.schema d hd]
   rcases hsch with h | h <;> rw [h] <;> exact hq
 
 /-- Every conclusion of a checked prefix holds. -/
 theorem run_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
-    (hwmax : WmaxFaithful W X S.cells wmax) :
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) :
     ∀ (lines : List (Line C K)) (done out : List (Concl C K)), run S done lines = some out →
-      (∀ p ∈ done, Holds S W X wmax p) → ∀ p ∈ out, Holds S W X wmax p
+      (∀ p ∈ done, Holds S W X wmax cnt p) → ∀ p ∈ out, Holds S W X wmax cnt p
   | [], done, out, h, hd => by
     simp only [run, Option.some.injEq] at h
     exact h ▸ hd
@@ -380,12 +387,12 @@ theorem run_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
     simp only [run] at h
     split at h
     · rename_i hl
-      apply run_sound pin hwmax ls _ out h
+      apply run_sound pin hwmax hcnt ls _ out h
       intro p hp
       rcases List.mem_cons.mp hp with rfl | hp
       · simp only [lineOK, Bool.and_eq_true, List.all_eq_true] at hl
         obtain ⟨hpre, hrule⟩ := hl
-        have hprem : ∀ q ∈ l.prem, Holds S W X wmax q := fun q hq => hd q (by simpa using hpre q hq)
+        have hprem : ∀ q ∈ l.prem, Holds S W X wmax cnt q := fun q hq => hd q (by simpa using hpre q hq)
         obtain ⟨rule, concl, prem⟩ := l
         cases rule <;> cases concl <;> simp only at hrule hprem ⊢
         · exact stand_sound pin hrule hprem
@@ -396,7 +403,7 @@ theorem run_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
         · exact absurd hrule (by decide)
         · exact absurd hrule (by decide)
         · exact absurd hrule (by decide)
-        · exact settle_sound pin hwmax hrule hprem
+        · exact settle_sound pin hwmax hcnt hrule hprem
       · exact hd p hp
     · exact absurd h (by simp)
 
@@ -404,12 +411,12 @@ theorem run_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
 model of §4.2 at the tip, for every reading `W`, `X` of the scope's admitted chain that the decode `S` agrees
 with (`Pin`), and every faithful presentation of `W_max`. -/
 theorem witness_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
-    (hwmax : WmaxFaithful W X S.cells wmax) {lines : List (Line C K)} {d : C}
-    (h : accepts S lines d = true) : Settled W X wmax d := by
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {lines : List (Line C K)} {d : C}
+    (h : accepts S lines d = true) : Settled W X wmax cnt d := by
   unfold accepts at h
   split at h
   · rename_i out hrun
-    exact run_sound pin hwmax lines [] out hrun (by simp) _ (by simpa using h)
+    exact run_sound pin hwmax hcnt lines [] out hrun (by simp) _ (by simpa using h)
   · exact absurd h (by decide)
 
 end Sound

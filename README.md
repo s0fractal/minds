@@ -24,6 +24,8 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 - `tools/radicle-probe.sh` — checks that Radicle replicates `refs/vars/*`, with two nodes on localhost only.
 - `tools/minds_chain.py` — minds governs itself with VARS-1 (below).
 - `tools/bench_chain.py` — how admission and `lens()` cost grows with chain length (cold and warm instance).
+- `tools/minds_chain.py power CELL` — which coalitions of roster keys can change a cell's status by commits of their own,
+  read from the rules (`proofs/Vars1/Power.lean`; a search through the gate holds it, `test_vars1.py` 106).
 
 ## Self-governance
 

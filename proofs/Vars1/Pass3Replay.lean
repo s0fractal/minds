@@ -84,13 +84,13 @@ def withReplay : Pass3In C K P := { X with replayOK := replayWitness W X Q }
 def QuorumNonempty : Prop := ∀ p, W.quorum [] p = false
 
 /-- **A `Settled` contract with `required_comp` carries a full replay.** -/
-theorem settled_full_replay (cells : List C) (wmax : C → List C) (v : C) (r : Nat)
+theorem settled_full_replay (cells : List C) (wmax : C → List C) (cnt : C → C → List K) (v : C) (r : Nat)
     (hf : WmaxFaithful W (withReplay W X Q) cells wmax)
     (hq : QuorumNonempty W)
     (hs : HostSound Q.host)
     (hschema : (W.info v).schema = .contract ∨ (W.info v).schema = .decision)
     (hreq : X.req v = some r)
-    (hset : Settled W (withReplay W X Q) wmax v) :
+    (hset : Settled W (withReplay W X Q) wmax cnt v) :
     ∃ c, Live X c ∧
       ((Q.ck.comp c = r ∧
         adv M (Q.ck.start r) (Q.ck.spent c) = (Q.ck.state c, Q.ck.spent c) ∧
@@ -111,7 +111,7 @@ theorem settled_full_replay (cells : List C) (wmax : C → List C) (v : C) (r : 
   have key : ∃ c, Live X c ∧ replayWitness W X Q c v := by
     rcases hschema with h | h <;>
     · rw [h] at hrest
-      obtain ⟨-, -, -, hm⟩ := hrest
+      obtain ⟨-, -, hm⟩ := hrest
       rw [hreq'] at hm
       obtain ⟨-, c, -, hl, hok⟩ := hm
       exact ⟨c, hl, hok⟩
@@ -133,14 +133,14 @@ theorem settled_full_replay (cells : List C) (wmax : C → List C) (v : C) (r : 
 /-- **The `H_CYCLE_PROVEN` branch.** A `Settled` contract or decision with `required_comp = r` and
 `expected_outcome = H_CYCLE_PROVEN` means that from `SR.start r` every number of actions fires, and at every budget
 the run ends paused: no budget gives a normal form or a blocked reference. -/
-theorem settled_cycle_no_normal_form (cells : List C) (wmax : C → List C) (v : C) (r : Nat)
+theorem settled_cycle_no_normal_form (cells : List C) (wmax : C → List C) (cnt : C → C → List K) (v : C) (r : Nat)
     (hf : WmaxFaithful W (withReplay W X Q) cells wmax)
     (hq : QuorumNonempty W)
     (hdis : ∀ s, Q.termHash s ≠ Q.cycleProven)
     (hschema : (W.info v).schema = .contract ∨ (W.info v).schema = .decision)
     (hreq : X.req v = some r)
     (hexp : Q.expected v = Q.cycleProven)
-    (hset : Settled W (withReplay W X Q) wmax v) :
+    (hset : Settled W (withReplay W X Q) wmax cnt v) :
     (∀ m, (steps M m (Q.ck.start r)).isSome) ∧
       ∀ b, (M.step (adv M (Q.ck.start r) b).1).isFire = true := by
   obtain ⟨-, hquo⟩ := hset
@@ -156,7 +156,7 @@ theorem settled_cycle_no_normal_form (cells : List C) (wmax : C → List C) (v :
   have key : ∃ c, replayWitness W X Q c v := by
     rcases hschema with h | h <;>
     · rw [h] at hrest
-      obtain ⟨-, -, -, hm⟩ := hrest
+      obtain ⟨-, -, hm⟩ := hrest
       rw [hreq'] at hm
       obtain ⟨-, c, -, -, hok⟩ := hm
       exact ⟨c, hok⟩

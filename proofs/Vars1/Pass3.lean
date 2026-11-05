@@ -58,19 +58,22 @@ def witnessEndorsers (w : C) : List K :=
 /-- Live: `Active ∧ ¬Stale`. -/
 def Live (c : C) : Prop := X.active c ∧ ¬ X.stale c
 
-/-- The contradictory-verdict exclusion: a live invalid verdict on `v` by the same verifier,
-endorsed by someone in `EvalPol(v)`. -/
-def Contradicted (cells : List C) (v w : C) : Prop :=
-  ∃ b ∈ cells, Live X b ∧ (W.info b).schema = .verdict ∧ (W.info b).payload = some v ∧
+/-- A key's withdrawal: `k` endorses a live INVALID verdict under `w`'s verifier id, on `v` or on the checkpoint or
+cycle witness `w` names. It withdraws `k`'s endorsement through `w` and no other key's: the verifier id is free text
+(`slots[2]`), so what it says about who wrote the verdict is only what the seal says. -/
+def Withdrawn (cells : List C) (v w : C) (k : K) : Prop :=
+  ∃ b ∈ cells, Live X b ∧ (W.info b).schema = .verdict ∧
+    ((W.info b).payload = some v ∨
+      ((X.verdict w).witness ≠ none ∧ (X.verdict b).witness = (X.verdict w).witness)) ∧
     (X.verdict b).invalid = true ∧ (X.verdict b).verifier = (X.verdict w).verifier ∧
-    ∃ k ∈ witnessEndorsers W X b, W.member (evalPol W X v) k = true
+    k ∈ witnessEndorsers W X b
 
 /-- Membership in `W_max(v)`. -/
 def InWmax (cells : List C) (v w : C) : Prop :=
   w ∈ cells ∧ Live X w ∧ v ∈ (W.info w).attests ∧
   match (W.info v).schema with
   | .contract | .decision =>
-      ¬ Contradicted W X cells v w ∧ (W.info w).schema = .verdict ∧
+      (W.info w).schema = .verdict ∧
       (W.info w).payload = some v ∧
       (match X.req v with
        | none => (X.verdict w).witness = none ∧ (X.verdict w).attested = true
@@ -79,22 +82,34 @@ def InWmax (cells : List C) (v w : C) : Prop :=
   | .question => (W.info w).schema = X.expectedSchema v
   | _ => False
 
-/-- `Settled(v)` (§4.2 Pass 3). `QuorumMet` is counted over the endorsers of
-witnesses that satisfy `InWmax` (passed as `wmax`, a decidable presentation). -/
-def Settled (wmax : C → List C) (v : C) : Prop :=
+/-- Does `k`'s endorsement through the witness `w` count for `v`? A question has no withdrawal: it asks for an
+answer, and any cell of its expected schema answers it. -/
+def Counts (cells : List C) (v w : C) (k : K) : Prop :=
+  k ∈ witnessEndorsers W X w ∧
+  match (W.info v).schema with
+  | .contract | .decision => ¬ Withdrawn W X cells v w k
+  | _ => True
+
+/-- `Settled(v)` (§4.2 Pass 3). `QuorumMet` is counted over the keys that count through witnesses that satisfy
+`InWmax` (passed as `wmax` and `cnt`, a decidable presentation). -/
+def Settled (wmax : C → List C) (cnt : C → C → List K) (v : C) : Prop :=
   Live X v ∧
   match (W.info v).schema with
   | .metaSchema | .scope => X.authorized v
   | .contract | .decision | .question =>
-      W.quorum ((wmax v).flatMap (witnessEndorsers W X)) (evalPol W X v) = true
+      W.quorum ((wmax v).flatMap (cnt v)) (evalPol W X v) = true
   | _ => True
 
 /-- `Provisional(v)`. -/
-def Provisional (wmax : C → List C) (v : C) : Prop :=
-  Live X v ∧ ¬ Settled W X wmax v
+def Provisional (wmax : C → List C) (cnt : C → C → List K) (v : C) : Prop :=
+  Live X v ∧ ¬ Settled W X wmax cnt v
 
 /-- A `wmax` presentation is faithful when it lists exactly the `W_max` members. -/
 def WmaxFaithful (cells : List C) (wmax : C → List C) : Prop :=
   ∀ v w, w ∈ wmax v ↔ InWmax W X cells v w
+
+/-- A `cnt` presentation is faithful when it lists exactly the keys that count. -/
+def CntFaithful (cells : List C) (cnt : C → C → List K) : Prop :=
+  ∀ v w k, k ∈ cnt v w ↔ Counts W X cells v w k
 
 end Vars1
