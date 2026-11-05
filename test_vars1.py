@@ -7835,6 +7835,68 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn("git push --atomic origin refs/vars/heads/minds \"$memory\"", flow)
         self.assertEqual(flow.count("--force"), 0)
 
+    def test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals(self) -> None:
+        """Raising the threshold must not make a rules change impossible. Through the real gate: on a threshold of 2 one seal is
+        refused and two pass, by the function and by the command line, and a key that remembers a history seals no change on
+        a fork of it. `join` and `threshold` read the same `--key`."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, SK["m"], PK["a"], "a")
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        kw = {"input": self._fuzz_counterexample(), "budget": self.BUDGET, "refusal": 7}
+        rules = V.H_LENS_KERNEL_V1B
+        files = {}
+        for name in ("m", "a"):
+            files[name] = self.repo_path / f"{name}.seed"
+            files[name].write_text(SK[name].hex())
+        run = lambda *argv: mc._main([*argv])
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            self.assertEqual(run("threshold", "2", "--key", str(files["m"])), 0)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+
+        # one seal is refused, by the gate's quorum; nothing moves
+        tip = repo.ref_commit("minds")
+        with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+            mc.change_rules(self.repo_path, SK["m"], "hardening", rules, mc.shadow(self.repo_path, rules), **kw)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # a key that remembers a history seals no change on a fork of it
+        _, r2 = mc.release(self.repo_path, SK["a"], "b" * 40, ["x OK"])
+        self.assertEqual(mc.witnessed_tip(self.repo_path, PK["a"]), tip)
+        top = repo.ref_commit("minds")
+        below = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{tip}^"], capture_output=True, text=True,
+                               check=True).stdout.strip()
+        subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", below], check=True)
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.change_rules(self.repo_path, [SK["a"]], "hardening", rules, mc.shadow(self.repo_path, rules), **kw)
+        subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", top], check=True)
+
+        # two seals pass, by the command line, and the change governs
+        manifest = self.repo_path / "manifest.json"
+        manifest.write_text(json.dumps(mc.shadow(self.repo_path, rules)))
+        inp = self.repo_path / "input.bin"
+        inp.write_bytes(kw["input"])
+        argv = ["change-rules", "hardening", rules.hex(), "--manifest", str(manifest), "--input", str(inp),
+                "--budget", str(kw["budget"]), "--refusal", str(kw["refusal"])]
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+                run(*argv, "--key", str(files["m"]))
+            self.assertEqual(run(*argv, "--key", str(files["m"]), "--key", str(files["a"])), 0)
+        self.assertEqual(mc.governing_rules(repo), rules)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+        self.assertEqual(mc.replay_changes(self.repo_path)[0][1], "REPLAYED")
+        # and a join by the command line, which needs both too
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
+            with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+                run("join", PK["c"].hex(), "c", "--key", str(files["m"]))
+            self.assertEqual(run("join", PK["c"].hex(), "c", "--key", str(files["m"]), "--key", str(files["a"])), 0)
+        self.assertEqual(mc.thresholds(repo), (2, 2))
+
+        # the condition for the first outside key is where whoever runs `join` reads it
+        self.assertIn("Before the first key of someone outside joins", mc.join.__doc__)
+        self.assertIn("Run it before the first key of someone outside joins", (ROOT_DIR / "README.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

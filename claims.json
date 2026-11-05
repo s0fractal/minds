@@ -2544,12 +2544,16 @@
    "status": "proved",
    "witnesses": [
     "lean:one_key_cannot_latch",
-    "test:test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
+    "test:test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds",
+    "test:test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals"
    ],
    "mutants": [
     "m-threshold-join-keeps",
     "m-threshold-rotate",
-    "m-threshold-status"
+    "m-threshold-status",
+    "m-change-rules-all-keys",
+    "m-change-rules-guard",
+    "m-change-rules-cli-keys"
    ]
   }
  ],

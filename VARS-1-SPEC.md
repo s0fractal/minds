@@ -626,7 +626,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 102–109 and 115–119: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
   circuits, what a client names, what a key can still do by an edge, and who can change a status (`GitVarsRepo.power`,
   `proofs/Vars1/Power.lean`) against a search through the gate.
-- `test_vars1.py` tests 110–114, 120–123 and 125: every pair of tips of the live chain reads as one history; forks, rollbacks,
+- `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,
   lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that
   refuses to sign a fork.
 - `proofs/`: the theorems listed in `proofs/README.md`.

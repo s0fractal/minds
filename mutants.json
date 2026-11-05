@@ -2961,10 +2961,34 @@
  },
  "m-rotate-fork-guard": {
   "file": "tools/minds_chain.py",
-  "find": "    for sk in sks:\n        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)\n",
-  "replace": "",
+  "find": "    tip = repo.ref_commit(SCOPE)\n    for sk in sks:\n        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)\n",
+  "replace": "    tip = repo.ref_commit(SCOPE)\n",
   "kills": [
    "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+  ]
+ },
+ "m-change-rules-all-keys": {
+  "file": "tools/minds_chain.py",
+  "find": "[V.Seal.sign(sk, x.id, base_id) for x in cells for sk in sks],",
+  "replace": "[V.Seal.sign(sks[0], x.id, base_id) for x in cells],",
+  "kills": [
+   "test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals"
+  ]
+ },
+ "m-change-rules-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "        raise V.VarsError(\"the chain moved after its shadow replay: run `shadow` again\")\n    for sk in sks:\n        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)\n",
+  "replace": "        raise V.VarsError(\"the chain moved after its shadow replay: run `shadow` again\")\n",
+  "kills": [
+   "test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals"
+  ]
+ },
+ "m-change-rules-cli-keys": {
+  "file": "tools/minds_chain.py",
+  "find": "        files = [v for k, v in pairs if k == \"--key\"]\n",
+  "replace": "        files = [v for k, v in pairs if k == \"--key\"][:1]\n",
+  "kills": [
+   "test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals"
   ]
  }
 }

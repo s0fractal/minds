@@ -52,10 +52,11 @@ GitHub Actions witness (below), whose key is on GitHub.
 
 The admission threshold is 1, so each member alone is the quorum: one may invalidate another's verdict or the ground
 under it, and rotate the others out and release alone after that (`status` says so as `admission.one_key_is_the_quorum`;
-spec §4.2). `minds_chain.py threshold 2` raises it, with one member's key: it removes no key and changes no rules, so it
-takes effect at once, and a member still admits cells alone. It is not done here: it takes the maintainer's key and the
-owner's word, and three early releases whose policy falls back to the admission policy lose Settled until a second member
-attests them. To give each a veto, pin every key when you verify:
+spec §4.2). `minds_chain.py threshold 2` raises it with one member's key: it removes no key and changes no rules, so it
+takes effect at once, and a member still admits cells alone. **Run it before the first key of someone outside joins.** Until
+then it stays at 1 on purpose: every key here is ours, and raising it takes Settled from three early releases, whose policy
+falls back to the admission policy, until a second member attests them. After it, `join` and `change-rules` take `--key` once
+per seal the quorum needs. To give each a veto, pin every key when you verify:
 `vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 
 `join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every

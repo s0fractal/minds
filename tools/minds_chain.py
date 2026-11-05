@@ -17,7 +17,8 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # fresh checkout, then record main
     tools/minds_chain.py join PUBKEY NAME [--key FILE]...
                                               # rotate the roster to add a member's Ed25519 public key (hex), under
-                                              # the thresholds it has, sealed by each FILE or the maintainer key
+                                              # the thresholds it has, sealed by each FILE or the maintainer key.
+                                              # Raise `threshold` first when the key is someone else's (see `join`)
     tools/minds_chain.py threshold N [--key FILE]...
                                               # rotate to the same roster and rules under admission and acceptance
                                               # N-of-n, sealed by each FILE or the maintainer key
@@ -46,7 +47,7 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py shadow RULES [--out FILE]
                                               # every historical tip under its epoch's rules and under RULES: the
                                               # manifest of every difference (commit, cell, bit, old, new)
-    tools/minds_chain.py change-rules CLASS RULES --manifest FILE [--accept DIGEST]
+    tools/minds_chain.py change-rules CLASS RULES --manifest FILE [--accept DIGEST] [--key FILE]...
                 [--input FILE --budget N --refusal N]                       (hardening, tightening)
                 [--counterexample-scope S --counterexample C --cell I --status B --right R]   (correction)
                                               # rotate to RULES with a rules-change decision (VARS-1-SPEC.md §4.3),
@@ -177,7 +178,12 @@ def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: 
 def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
     """Rotate the scope so the roster is the current one plus `pubkey`, under the thresholds it has. Every key of `sks`
     seals it, so a roster whose admission threshold is above 1 needs that many here. Any member may admit cells whatever
-    the threshold; releases are settled only by all of them (see `release`)."""
+    the threshold; releases are settled only by all of them (see `release`).
+
+    Before the first key of someone outside joins, raise the admission threshold to 2 or more (`threshold`): at 1 each key
+    alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2). While
+    every key is ours this stays at 1 on purpose, since raising it costs three early releases their Settled until a second
+    key attests them (`status` says `one_key_is_the_quorum`)."""
     repo = V.GitVarsRepo(repo_dir)
     keys = roster(repo)
     if pubkey in keys:
@@ -252,14 +258,16 @@ def shadow(repo_dir: Path, new_rules: bytes, scope: str = SCOPE) -> Dict[str, ob
     return {**doc, "digest": _digest(doc)}
 
 
-def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifest: Dict[str, object],
+def change_rules(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], kind: str, new_rules: bytes, manifest: Dict[str, object],
                  accept: Optional[str] = None, **fields: object) -> str:
     """Record a rotation of the scope to `new_rules` with a rules-change decision of class `kind` (§4.3), only after
     the shadow replay: `manifest` must be `shadow`'s replay of this chain now. A hardening or an equivalent change
     must leave every historical tip as it was; a correction or a tightening may change some, and is recorded only
     with `accept` equal to the manifest's digest. `fields`: for a correction `counterexample_scope`,
     `counterexample`, `cell`, `status`, `right`; for a hardening or a tightening `input` (bytes), `budget`,
-    `refusal` (the code, negated). The gate then replays the decision's own computations."""
+    `refusal` (the code, negated). Every key of `sks` seals it, so an admission threshold above 1 needs that many here.
+    The gate then replays the decision's own computations."""
+    sks = [sks] if isinstance(sks, bytes) else sks
     if manifest != shadow(repo_dir, new_rules):
         raise V.VarsError("the shadow manifest is not this chain's replay under those rules now: run `shadow` again")
     if manifest["differences"]:
@@ -273,6 +281,8 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
     tip = str(manifest["tip"])  # the chain the manifest replayed; the CAS below refuses if the ref has moved since
     if repo.ref_commit(SCOPE) != tip:
         raise V.VarsError("the chain moved after its shadow replay: run `shadow` again")
+    for sk in sks:
+        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)
     base_id = repo._evaluate_commit_chain(SCOPE, repo.commit_chain(tip))["active_scope_id"]
     base = repo.read_cas_tree(tip)[1][base_id]
     atoms: Dict[bytes, bytes] = {new_rules: V.RULES_ATOMS[new_rules]}
@@ -302,7 +312,7 @@ def change_rules(repo_dir: Path, sk: bytes, kind: str, new_rules: bytes, manifes
                    put(V.atom_utf8(f"{SCOPE} under rules {new_rules.hex()[:12]}")), h_supersedes=put(V.atom_hvec([base_id])),
                    h_loss=put(V.atom_utf8(f"rules change ({kind})")), slots=(base.slots[0], base.slots[1], new_rules))
     cells = [schema, decision, scope]
-    c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, base_id) for x in cells],
+    c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, base_id) for x in cells for sk in sks],
                                     parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c
@@ -1100,7 +1110,10 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "change-rules" and len(argv) >= 5 and argv[3] == "--manifest":
         kind, new_rules = argv[1], bytes.fromhex(argv[2])
-        opts = dict(zip(argv[5::2], argv[6::2]))
+        pairs = list(zip(argv[5::2], argv[6::2]))
+        opts = dict(pairs)
+        files = [v for k, v in pairs if k == "--key"]
+        sks = [bytes.fromhex(Path(f).read_text().strip()) for f in files] or [load_or_create_key(repo_dir)]
         fields: Dict[str, object] = {}
         if kind == "correction":
             fields = {k: opts[f"--{k.replace('_', '-')}"] for k in
@@ -1108,8 +1121,7 @@ def _main(argv: List[str]) -> int:
         elif kind in ("hardening", "tightening"):
             fields = {"input": Path(opts["--input"]).read_bytes(), "budget": opts["--budget"], "refusal": opts["--refusal"]}
         manifest = json.loads(Path(argv[4]).read_text())
-        print(change_rules(repo_dir, load_or_create_key(repo_dir), kind, new_rules, manifest, opts.get("--accept"),
-                           **fields))
+        print(change_rules(repo_dir, sks, kind, new_rules, manifest, opts.get("--accept"), **fields))
         return 0
     if cmd == "evidence":
         print(json.dumps(evidence(repo_dir), indent=2))

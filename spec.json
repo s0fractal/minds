@@ -1401,7 +1401,7 @@
   {
    "kind": "block",
    "section": 6,
-   "text": "- `test_vars1.py` tests 110–114, 120–123 and 125: every pair of tips of the live chain reads as one history; forks, rollbacks,\n  lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that\n  refuses to sign a fork."
+   "text": "- `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,\n  lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that\n  refuses to sign a fork."
   },
   {
    "kind": "block",
