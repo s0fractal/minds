@@ -7850,7 +7850,13 @@ class TestVars1Conformance(unittest.TestCase):
         for name in ("m", "a"):
             files[name] = self.repo_path / f"{name}.seed"
             files[name].write_text(SK[name].hex())
-        run = lambda *argv: mc._main([*argv])
+        def run(*argv):
+            """The command's exit code, or what refused it: a refusal here fails on the assertion and not as a crash."""
+            try:
+                return mc._main([*argv])
+            except V.VarsError as e:
+                return str(e)
+
         with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
             self.assertEqual(run("threshold", "2", "--key", str(files["m"])), 0)
         self.assertEqual(mc.thresholds(repo), (2, 2))
@@ -7880,16 +7886,14 @@ class TestVars1Conformance(unittest.TestCase):
         argv = ["change-rules", "hardening", rules.hex(), "--manifest", str(manifest), "--input", str(inp),
                 "--budget", str(kw["budget"]), "--refusal", str(kw["refusal"])]
         with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
-            with self.assertRaisesRegex(V.VarsError, "admission quorum"):
-                run(*argv, "--key", str(files["m"]))
+            self.assertIn("admission quorum", run(*argv, "--key", str(files["m"])))
             self.assertEqual(run(*argv, "--key", str(files["m"]), "--key", str(files["a"])), 0)
         self.assertEqual(mc.governing_rules(repo), rules)
         self.assertEqual(mc.thresholds(repo), (2, 2))
         self.assertEqual(mc.replay_changes(self.repo_path)[0][1], "REPLAYED")
         # and a join by the command line, which needs both too
         with unittest.mock.patch.object(mc, "ROOT", self.repo_path):
-            with self.assertRaisesRegex(V.VarsError, "admission quorum"):
-                run("join", PK["c"].hex(), "c", "--key", str(files["m"]))
+            self.assertIn("admission quorum", run("join", PK["c"].hex(), "c", "--key", str(files["m"])))
             self.assertEqual(run("join", PK["c"].hex(), "c", "--key", str(files["m"]), "--key", str(files["a"])), 0)
         self.assertEqual(mc.thresholds(repo), (2, 2))
 
