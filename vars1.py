@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import sys
 from collections import deque
+from itertools import combinations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
@@ -43,7 +44,7 @@ from minds_verify import (  # noqa: E402
     H_LENS_KERNEL_V2, H_LENS_KERNEL_V1B, KNOWN_RULES, KERNEL2_MAGIC,
     VarsError, atom_u64, parse_u64, atom_utf8, parse_utf8, validate_utf8_atom, atom_hvec, parse_hvec, atom_pol1,
     parse_pol1, Cell, Seal, SCHEMA_SPECS, build_standard_schemas, STD_SCHEMAS, STD_SCHEMA_ATOMS, H_SCHEMA,
-    KERNEL_BITS, BUNDLE_FORMAT, ATTESTATION_FORMAT, parse_kernel_input, pass3_at_tip, kernel_input_order,
+    KERNEL_BITS, BUNDLE_FORMAT, ATTESTATION_FORMAT, parse_kernel_input, pass3_at_tip, grounded_at_tip, _pass3_tables, kernel_input_order,
     rules_status, verify_projection, verify_attestation,
 )
 
@@ -2469,6 +2470,7 @@ class GitVarsRepo:
         evaluators: Dict[bytes, Tuple[int, Set[bytes]]] = {}
         endorsers: Dict[bytes, Set[bytes]] = {}
         invalidators: Dict[bytes, Set[bytes]] = {}  # evaluators that endorse a live INVALID verdict on the cell
+        counted_witnesses: Dict[bytes, Dict[bytes, Set[bytes]]] = {}  # cell -> its counted witnesses -> their keys
 
         def witness_endorsers(wid: bytes) -> Set[bytes]:
             w_cell = cells[wid]
@@ -2521,6 +2523,7 @@ class GitVarsRepo:
                 continue
 
             valid_endorsers: Set[bytes] = set()
+            counted_by: Dict[bytes, Set[bytes]] = {}  # each counted witness and the keys it counts for this cell
             for wid in children_of[cid]:
                 w = cells[wid]
                 if not active.get(wid, False) or stale.get(wid, False):
@@ -2529,22 +2532,6 @@ class GitVarsRepo:
                     continue
                 if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
                     if w.h_schema != H_SCHEMA["verdict"] or w.h_payload != cid:
-                        continue
-                    # Contradictory active INVALID verdict under the same verifier_id blocks settlement
-                    has_conflict = any(
-                        active.get(bad_id, False)
-                        and not stale.get(bad_id, False)
-                        and bad_c.h_schema == H_SCHEMA["verdict"]
-                        and bad_c.slots[1] == H_VERDICT_INVALID
-                        and bad_c.slots[2] == w.slots[2]
-                        and (
-                            bad_c.h_payload == cid
-                            or (w.slots[0] != H_EMPTY and bad_c.slots[0] == w.slots[0])
-                        )
-                        and bool(witness_endorsers(bad_id) & p_pks)
-                        for bad_id, bad_c in cells.items()
-                    )
-                    if has_conflict:
                         continue
                     req_comp, exp_out = c.slots[1], c.slots[2]
                     if req_comp == H_EMPTY:
@@ -2576,9 +2563,23 @@ class GitVarsRepo:
                 elif c.h_schema == H_SCHEMA["question"]:
                     if w.h_schema != c.slots[0]:
                         continue
-                valid_endorsers |= (witness_endorsers(wid) & p_pks)
+                counted_keys = witness_endorsers(wid) & p_pks
+                if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
+                    # A live INVALID verdict under the same verifier_id withdraws the endorsements of the keys that
+                    # endorse it, and no other key's: a verifier id is free text, so it says nothing about who wrote it
+                    for bad_id, bad_c in cells.items():
+                        if (active.get(bad_id, False) and not stale.get(bad_id, False)
+                                and bad_c.h_schema == H_SCHEMA["verdict"]
+                                and bad_c.slots[1] == H_VERDICT_INVALID
+                                and bad_c.slots[2] == w.slots[2]
+                                and (bad_c.h_payload == cid
+                                     or (w.slots[0] != H_EMPTY and bad_c.slots[0] == w.slots[0]))):
+                            counted_keys = counted_keys - witness_endorsers(bad_id)
+                counted_by[wid] = counted_keys
+                valid_endorsers |= counted_keys
 
             evaluators[cid], endorsers[cid] = (p_thr, set(p_pks)), set(valid_endorsers)
+            counted_witnesses[cid] = counted_by
             invalidators[cid] = set()
             if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"]):
                 for wid, w in cells.items():  # as the conflict check above reads them: by payload, not by edge
@@ -2588,6 +2589,28 @@ class GitVarsRepo:
             is_set = live and len(valid_endorsers) >= p_thr
             settled[cid] = is_set
             provisional[cid] = not is_set
+
+        # Grounded (§4.2): the least fixed point, computed from below. A witness is newer than what it judges and a
+        # ground older than what relies on it, so one sweep need not reach it, and a cell a verdict's own ground rests
+        # on never grounds itself: support that runs in a circle is Settled and not Grounded
+        grounded: Dict[bytes, bool] = {cid: False for cid in forward_order}
+        changed = True
+        while changed:
+            changed = False
+            for cid in forward_order:
+                if grounded[cid] or not settled[cid]:
+                    continue
+                if not all(grounded.get(g, False) for g in hvec_items(cells[cid].h_relies)):
+                    continue
+                if cid in counted_witnesses:
+                    keys: Set[bytes] = set()
+                    for wid, ks in counted_witnesses[cid].items():
+                        if grounded[wid]:
+                            keys |= ks
+                    if len(keys) < evaluators[cid][0]:
+                        continue
+                grounded[cid] = True
+                changed = True
 
         return {
             "kernel_input": fold["kernel_input"],
@@ -2604,11 +2627,175 @@ class GitVarsRepo:
             "stale": stale,
             "settled": settled,
             "provisional": provisional,
+            "grounded": grounded,
+            "counted_witnesses": counted_witnesses,
+            "cumulative_endorsers": cumulative_endorsers,
+            "initial_endorsers": fold["initial_endorsers"],
+            "scope": active_scope_id,
             "evaluators": evaluators,
             "endorsers": endorsers,
             "invalidators": invalidators,
             "parents_of": parents_of,  # the reference graph the rules read in this epoch (v2: typed references)
             "children_of": children_of,
+        }
+
+    def power(self, scope: str, cid: bytes, at: Optional[str] = None) -> Dict[str, object]:
+        """Who can change whether this local contract or decision without a computation stands and is Settled at the tip,
+        read from the rules: for each effect the minimal coalitions of roster keys that reach it by commits of their own,
+        with no rotation (`proofs/Vars1/Power.lean`). It reads Settled, not Grounded, and refuses any other cell.
+        A coalition can attack a cell when it can latch an edge into it (§4.1 latch 3, `CanLatch`): by a new cell of its
+        own, or by adding its seals to an existing cell whose edge is not yet latched. `lose_live`: it can attack the
+        cell or something it relies on, transitively. `lose_settled`: that, or the keys still counted fall below the
+        threshold once it withdraws its own endorsements and the verdicts it can attack fall. `gain_settled`: the keys
+        counted reach the threshold once it attests and the INVALID verdicts it can attack fall. `rotation` is the
+        admission quorum: after the wait (§4.1 latches 4a, 4b) the keys it removes have no move left, and a policy that
+        falls back to the admission policy is its own. It does not reach a cell whose evaluator policy names keys it
+        does not hold except through what that cell rests on and its verdicts, which is what the lists above say of the
+        roster it would leave. A reader who does not watch the chain is protected by its pin, not by the wait (§4.4).
+        `exact` is false when something already points an edge at a cell the status reads (attacking the attacker can bring
+        a cell back, and this table does not follow that), when it reads a foreign cell, or when it rests, along `relies`
+        or through a verdict, on a contract, decision, question or custom schema: then Grounded, which `accepted` asks,
+        turns on quorums this table does not list. It is then the set the frame theorems bound, not a set each of whose
+        coalitions was shown to work, nor every coalition that can change what a reader accepts."""
+        lens = self.lens(scope, at=at)
+        cells, atoms = lens["cells"], lens["atoms"]
+        if (cid not in cells or parse_utf8(atoms[cells[cid].h_slot_name]).split("/", 1)[0] != scope
+                or cells[cid].h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"])
+                or cells[cid].slots[1] != H_EMPTY):
+            raise VarsError("power reads a local contract or decision without a computation")
+        tip = self.ref_commit(scope) if at is None else at
+        _, _, tree_seals = self.read_cas_tree(tip)
+        s_id = lens["scope"]
+        pol_keys = lambda h: (lambda t: (t[0], set(parse_hvec(atoms[t[1]], require_sorted=True))))(parse_pol1(atoms[h]))
+        adm, acc = pol_keys(cells[s_id].slots[0]), pol_keys(cells[s_id].slots[1])
+        roster = sorted(adm[1] | acc[1])
+        if len(roster) > 12:
+            raise VarsError("power enumerates coalitions of a roster of at most 12 keys")
+        hvec = lambda h: [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
+        evalp = lambda c: c.slots[1] if c.h_schema == H_SCHEMA["question"] else c.slots[3]
+
+        def pol(u: bytes) -> Tuple[Tuple[int, Set[bytes]], bool]:  # §4.1: `Pol_i(v)` and `AuthorCanEvict(v)`
+            c = cells[u]
+            if c.h_schema == H_SCHEMA["scope"]:
+                return adm, False
+            if c.h_schema == H_SCHEMA["acceptance"]:
+                return acc, False
+            if c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"]):
+                if c.h_schema != H_SCHEMA["question"] and c.slots[0] == H_OWNER:
+                    return adm, False
+                return (pol_keys(evalp(c)) if evalp(c) != H_EMPTY else adm), True
+            return adm, True
+
+        relies = lambda u: hvec(cells[u].h_relies)
+        attackers: Dict[bytes, List[Tuple[bytes, str]]] = {}
+        for w, c in cells.items():
+            for kind, h in (("invalidates", c.h_invalidates), ("retires", c.h_retires), ("supersedes", c.h_supersedes)):
+                for u in hvec(h):
+                    attackers.setdefault(u, []).append((w, kind))
+        latched = self._evaluate_commit_chain(scope, self.commit_chain(tip))["latched_edge_auth"]
+        backers: Dict[bytes, Set[bytes]] = {}  # the seals under the governing scope, on each cell
+        for x in tree_seals.values():
+            if x.h_scope_ctx == s_id:
+                backers.setdefault(x.h_target, set()).add(x.actor_pubkey)
+
+        def latches(c_keys: Set[bytes], u: bytes, kind: str) -> bool:  # §4.1 latch 3, with the keys behind the source
+            (thr, keys), evict = pol(u)
+            on_roster = c_keys & (acc[1] if cells[u].h_schema == H_SCHEMA["acceptance"] else adm[1])
+            if len(on_roster & keys) >= thr:
+                return True
+            return (kind != "invalidates" and evict and bool(on_roster & lens["initial_endorsers"].get(u, set())))
+
+        def attack(co: Set[bytes], u: bytes) -> bool:
+            if cells[u].h_schema == H_SCHEMA["scope"]:
+                return False  # a scope falls only to a rotation; see `rotation`
+            if co & adm[1] and any(latches(co, u, kind) for kind in ("invalidates", "retires", "supersedes")):
+                return True
+            for w, kind in attackers.get(u, []):  # an edge waiting for seals: the coalition's join those it has
+                if (w, u, kind) in latched or not lens["effective"].get(w, False):
+                    continue
+                if kind == "invalidates" and cells[w].h_schema == H_SCHEMA["verdict"] \
+                        and cells[w].slots[1] != H_VERDICT_INVALID:
+                    continue
+                if latches(co | backers.get(w, set()), u, kind):
+                    return True
+            return False
+
+        def grounds(u: bytes) -> Set[bytes]:
+            seen, todo = set(), [u]
+            while todo:
+                x = todo.pop()
+                if x not in seen:
+                    seen.add(x)
+                    todo += [g for g in relies(x) if g in cells]
+            return seen
+
+        c = cells[cid]
+        live = bool(lens["active"].get(cid) and not lens["stale"].get(cid))
+        reads = grounds(cid)
+        judged = c.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"])
+        verdicts = [w for w, x in cells.items() if judged and x.h_schema == H_SCHEMA["verdict"] and x.h_payload == cid]
+        for w in verdicts:
+            reads |= grounds(w)
+        origin = lambda u: parse_utf8(atoms[cells[u].h_slot_name]).split("/", 1)[0]
+        other_quorum = (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"], H_META_SCHEMA)
+        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)
+                        for x in reads)
+
+        def lose_live(co: Set[bytes]) -> bool:
+            return live and any(attack(co, u) for u in grounds(cid))
+
+        def gone(co: Set[bytes], w: bytes) -> bool:
+            return any(attack(co, u) for u in grounds(w))
+
+        def counted(fallen, undone) -> Set[bytes]:
+            """The keys counted for the cell once the witnesses `fallen` names and the INVALID verdicts `undone` names
+            are gone."""
+            thr_keys = lens["evaluators"].get(cid)
+            if thr_keys is None:
+                return set()
+            keys = thr_keys[1]
+            live_invalid = [b for b in verdicts if cells[b].slots[1] == H_VERDICT_INVALID
+                            and lens["active"].get(b) and not lens["stale"].get(b) and not undone(b)]
+            out: Set[bytes] = set()
+            for w in lens["counted_witnesses"].get(cid, {}):
+                if fallen(w):
+                    continue
+                for k in lens["cumulative_endorsers"].get(w, set()) & keys:
+                    if not any(cells[b].slots[2] == cells[w].slots[2]
+                               and k in lens["cumulative_endorsers"].get(b, set()) for b in live_invalid):
+                        out.add(k)
+            return out
+
+        def lose_settled(co: Set[bytes]) -> bool:
+            if not lens["settled"].get(cid) or cid not in lens["evaluators"]:
+                return False
+            left = counted(lambda w: gone(co, w), lambda b: False)
+            return lose_live(co) or len(left - (co & adm[1])) < lens["evaluators"][cid][0]
+
+        def gain_settled(co: Set[bytes]) -> bool:
+            if lens["settled"].get(cid) or not live or cid not in lens["evaluators"]:
+                return False
+            thr, keys = lens["evaluators"][cid]
+            return len(counted(lambda w: False, lambda b: gone(co, b)) | (co & keys & adm[1])) >= thr
+
+        def minimal(effect) -> List[List[str]]:
+            found: List[Set[bytes]] = []
+            for size in range(1, len(roster) + 1):
+                for co in combinations(roster, size):
+                    s_co = set(co)
+                    if not any(f <= s_co for f in found) and effect(s_co):
+                        found.append(s_co)
+            return [sorted(k.hex() for k in f) for f in found]
+
+        return {
+            "cell": cid.hex(), "scope": scope, "tip": tip,
+            "status": {"live": live, "settled": bool(lens["settled"].get(cid)), "grounded": bool(lens["grounded"].get(cid))},
+            "roster": {"admission": {"threshold": adm[0], "keys": sorted(k.hex() for k in adm[1])},
+                       "acceptance": {"threshold": acc[0], "keys": sorted(k.hex() for k in acc[1])}},
+            "lose_live": minimal(lose_live), "lose_settled": minimal(lose_settled), "gain_settled": minimal(gain_settled),
+            "rotation": {"threshold": adm[0], "keys": sorted(k.hex() for k in adm[1])},
+            "reads": "live and settled, not grounded",
+            "exact": exact,
         }
 
     def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"],
@@ -2640,8 +2827,9 @@ class GitVarsRepo:
         the rules read references in this epoch. Every step runs from a cell to one whose status may read it, never
         back through a shared ground; the path is a route of dependence, not a sufficient explanation, and it is
         empty when no such route exists (a change the hypothesis causes only through the fold, say).
-        A lost row also carries `needs`: the grounds it relies on that no longer stand, and for a decision that lost
-        Settled, its threshold, the endorsements still counted and those that fell away. A held row of a decision
+        A lost row also carries `needs`: the grounds it relies on that no longer stand, for a decision that lost
+        Settled, its threshold, the endorsements still counted and those that fell away, and for a cell that lost
+        Grounded, the grounds that stand and are not Grounded. A held row of a decision
         whose counted endorsements change carries them (threshold, before, after): Settled kept with a thinner
         margin is a consequence no status bit shows. `digest` is SHA-256 over the canonical JSON of both lists:
         two readers who agree on the consequences agree on it, whatever chain or hypothesis produced them.
@@ -2684,7 +2872,7 @@ class GitVarsRepo:
                 if ch not in region and ch not in hyp:
                     region.add(ch)
                     todo.append(ch)
-        bits = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled")
+        bits = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "grounded")
         state = lambda lens, cid: {b: bool(lens[b].get(cid, False)) for b in bits}
         # shortest dependency path: a hypothesis cell to what it names, any cell to what relies on it or to what its
         # verdict judges; never backwards through a shared ground (a reference path either way is not a route of
@@ -2724,6 +2912,16 @@ class GitVarsRepo:
                 now, then = after["endorsers"][cid], before["endorsers"].get(cid, set())
                 out["endorsements"] = {"threshold": thr, "standing": sorted(k.hex() for k in now),
                                        "fell_away": sorted(k.hex() for k in then - now)}
+            if b.get("grounded") and not a.get("grounded"):
+                # what lost it Grounded: along `relies`, and through the verdicts that counted for what it rests on
+                seen, todo = set(), [*relies_on(cid), *before["counted_witnesses"].get(cid, {})]
+                while todo:
+                    x = todo.pop()
+                    if x not in seen and x in before["cells"]:
+                        seen.add(x)
+                        todo += [*relies_on(x), *before["counted_witnesses"].get(x, {})]
+                out["ungrounded"] = sorted(x.hex() for x in seen
+                                           if before["grounded"].get(x, False) and not after["grounded"].get(x, False))
             return out
 
         lost, held = [], []
@@ -2733,8 +2931,10 @@ class GitVarsRepo:
                 continue
             row = {"cell": cid.hex(), "name": name(cid), "path": path(cid)}
             if a != b:
-                lost.append(dict(row, before={k: v for k, v in b.items() if v != a[k]},
-                                 after={k: v for k, v in a.items() if v != b[k]}, needs=needs(cid, b, a)))
+                # Grounded follows Settled down, so it is told only where Settled does not move
+                told = [k for k in bits if b[k] != a[k] and (k != "grounded" or b.get("settled") == a.get("settled"))]
+                lost.append(dict(row, before={k: b[k] for k in told}, after={k: a[k] for k in told},
+                                 needs=needs(cid, b, a)))
             else:
                 thr_keys = after["evaluators"].get(cid)
                 now, then = after["endorsers"].get(cid, set()), before["endorsers"].get(cid, set())

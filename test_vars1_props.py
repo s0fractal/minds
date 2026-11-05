@@ -25,6 +25,10 @@ checks:
   I8  a fresh run of the rules kernel on the lens's kernel input reproduces its Passes 1-2
   I11 Pass 3 recomputed from the kernel's input and output alone (`pass3_at_tip`, what a client holding a projection
       bundle computes) equals the lens's Settled for every contract and decision without required_comp
+  I13 a key's INVALID verdict withdraws its own endorsement and no other key's: Settled equals §4.2 over the input's
+      indices, and the sequences reach tips where the earlier reading (any policy key blocks the verifier id) differs;
+      Grounded is the least fixed point of its equation, by simultaneous rounds from below, implies Settled, and a
+      client's two bounds (`grounded_at_tip`) hold it; the sequences reach a Settled contract that is not Grounded
   I12 on generated finite transition tables and cycle witnesses, true and false, `sigma_resume.verify_cycle` (with the
       table as its transition) and the gate's cycle check (`vars1.gate_cycle_witness`) give the verdict of the model's
       own checker, `checkCycle` of proofs/Vars1/Cycle.lean compiled as `vars1cycle`, and Pass 3's
@@ -124,7 +128,8 @@ EXP = {"K": V.H_K, "I": V.H_I, "EMPTY": V.H_EMPTY, "CYCLE": V.H_CYCLE_PROVEN}
 # What the v2 exploration reached, so its test can tell it reached it: evaluated contracts and decisions where reading
 # the v2 input's payloads and slots by value (as v1 does) would change Pass 3 (I11's power over the reading), and
 # rotations whose wait (§4.1 latch 4a) ended by the removed keys' seals or by its 16 commits
-POWER: Dict[str, int] = {"v2_reading_decides": 0, "wait_ended_by_consent": 0, "wait_expired": 0}
+POWER: Dict[str, int] = {"v2_reading_decides": 0, "wait_ended_by_consent": 0, "wait_expired": 0,
+                         "withdrawal_decides": 0, "settled_not_grounded": 0}
 STATUS_KEYS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "provisional")
 
 
@@ -450,6 +455,8 @@ class Interp:
 class Gen:
     def __init__(self, rng: random.Random, v2: bool = False):
         self.r = rng
+        # I13's draws: their own stream, so a seed writes around them the program it always did
+        self.r_i13 = random.Random(repr(rng.getstate()[1][:4]))
         self.v2 = v2  # draws of the v2-only variants are made only then: a v1 seed writes the program it always did
         self.n = 0
         self.pending: List = []  # follow-up commits of a macro: callables it -> ops, so signers track rotations
@@ -743,9 +750,15 @@ class Gen:
         if r.random() < 0.5:
             keys = self.subset(adm)
             pol = [r.randint(1, len(keys)), keys]
+        # I13: a key's INVALID beside an endorsement that holds the quorum
+        dissent = len(adm) >= 2 and self.r_i13.random() < 0.3
+        if dissent:
+            pol = [1, sorted(adm)]
         hc = self.h()
+        earlier = self.handles(it, lambda hh, m: m["kind"] == "contract" and m["origin"] == SCOPE)
+        rests = {"relies": [self.r_i13.choice(earlier)]} if earlier and self.r_i13.random() < 0.4 else {}  # I13
         ops = [{"op": "cell", "h": hc, "origin": SCOPE, "kind": "contract", "tier": r.choice(["provisional", "owner"]),
-                "req": None, "exp": "EMPTY", "pol": pol, "name": f"{SCOPE}/contract.u{hc}", "edges": {},
+                "req": None, "exp": "EMPTY", "pol": pol, "name": f"{SCOPE}/contract.u{hc}", "edges": rests,
                 "signers": self.signers(it)}]
         if r.random() < 0.5:  # a foreign verdict, endorsed under a self-sealed peer scope sharing a policy key
             peer = r.choice(PEERS)
@@ -792,6 +805,11 @@ class Gen:
                 ops += foreign
             else:
                 self.pending.append(lambda it2, f=foreign: f)
+        if dissent:
+            for code, signers in (("ATTESTED", self.full(adm)), ("INVALID", [self.r_i13.choice(adm)])):
+                hv = self.h()
+                ops.append({"op": "cell", "h": hv, "origin": SCOPE, "kind": "verdict", "target": hc, "code": code,
+                            "vid": "sr", "name": f"{SCOPE}/verdict.u{hv}", "edges": {"attests": [hc]}, "signers": signers})
         for _ in range(r.choice([0, 1, 1, 2, 3])):
             hv = self.h()
             ops.append({"op": "cell", "h": hv, "origin": SCOPE, "kind": "verdict", "target": hc,
@@ -1507,6 +1525,62 @@ def check_tip(it: Interp, prev_latches: Optional[Dict[str, Set]], rng: random.Ra
                 break
     except V.VarsError as e:
         out.append(("I11", f"client Pass 3 raised: {e}"))
+
+    # I13: who a key can withdraw, and what Settled carries across `relies`. Written from §4.2, over the input's indices.
+    try:
+        ki = V.parse_kernel_input(lens["kernel_input"], encoding)
+        t = V._pass3_tables(ki, raw)
+        kc, ends = ki["cells"], t["endorsers"]
+        scope_adm = t["scope"]["slots"][0]
+        for i, c in enumerate(kc):
+            if c["schema"] not in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]) or c["slots"][1] != V.H_EMPTY:
+                continue
+            p = c["slots"][3] if c["slots"][3] != V.H_EMPTY else scope_adm
+            thr, pk = ki["pols"][p][0], set(ki["pols"][p][1])
+            on = [w for w, x in enumerate(kc) if t["live"][w] and x["schema"] == V.H_SCHEMA["verdict"] and x["payload"] == c["id"]]
+            bad = [b for b in on if kc[b]["slots"][1] == V.H_VERDICT_INVALID]
+            good = [w for w in on if i in kc[w]["attests"] and kc[w]["slots"][1] == V.H_ATTESTED and kc[w]["slots"][0] == V.H_EMPTY]
+            pairs = {k for w in good for k in ends(w) & pk
+                     if not any(kc[b]["slots"][2] == kc[w]["slots"][2] and k in ends(b) for b in bad)}
+            by_name = {k for w in good for k in ends(w) & pk  # the reading this replaced: any policy key blocks the id
+                       if not any(kc[b]["slots"][2] == kc[w]["slots"][2] and ends(b) & pk for b in bad)}
+            want = t["live"][i] and len(pairs) >= thr
+            if want != lens["settled"][c["id"]]:
+                out.append(("I13", f"a key's withdrawal: the spec says {want}, lens Settled {lens['settled'][c['id']]} "
+                                   f"for {c['id'].hex()[:10]}"))
+                break
+            if want != (t["live"][i] and len(by_name) >= thr):
+                POWER["withdrawal_decides"] += 1
+        order = list(lens["kernel_order"])
+        hvec = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(atoms[h], require_sorted=True)
+        grounded = {cid: False for cid in order}
+        for _ in range(len(order) + 2):  # simultaneous rounds from below, as `grounded_iter` has them
+            grounded_next = {}
+            for cid in order:
+                ok = lens["settled"][cid] and all(grounded.get(g, False) for g in hvec(cells[cid].h_relies))
+                if ok and cid in lens["counted_witnesses"]:
+                    keys = {k for w, ks in lens["counted_witnesses"][cid].items() if grounded[w] for k in ks}
+                    ok = len(keys) >= lens["evaluators"][cid][0]
+                grounded_next[cid] = bool(ok)
+            if any(grounded[c] and not grounded_next[c] for c in order):
+                out.append(("I13", "a round of Grounded removed a cell"))
+            grounded = grounded_next
+        if grounded != lens["grounded"]:
+            out.append(("I13", "Grounded is not the least fixed point of its equation"))
+        for cid in order:
+            if lens["grounded"][cid] and not lens["settled"][cid]:
+                out.append(("I13", f"Grounded and not Settled: {cid.hex()[:10]}"))
+            if lens["settled"][cid] and not lens["grounded"][cid] and cells[cid].h_schema in (
+                    V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]):
+                POWER["settled_not_grounded"] += 1
+        low, high = V.grounded_at_tip(ki, raw), V.grounded_at_tip(ki, raw, assume_replay=True)
+        for i, c in enumerate(kc):  # a client's bounds hold the lens's answer
+            if low[i] and not lens["grounded"][c["id"]] or lens["grounded"][c["id"]] and not high[i]:
+                out.append(("I13", f"client bounds {low[i]}, {high[i]}, lens Grounded {lens['grounded'][c['id']]}"
+                                   f" for {c['id'].hex()[:10]}"))
+                break
+    except V.VarsError as e:
+        out.append(("I13", f"raised: {e}"))
 
     # I1
     by_name: Dict[bytes, List[bytes]] = {}

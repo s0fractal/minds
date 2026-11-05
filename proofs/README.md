@@ -47,6 +47,16 @@ and, for some theorems, `Classical.choice`.
 | `SigmaEval/ResumeLink.lean` (sigma-glyph) | `book_cycle_no_normal_form` | for Book I: an accepted cycle witness means `_run` of `EvalMachine.step` from the start, at any budget, stops at a term that is a normal form at no budget (no Book I term with a state cycle is known) |
 | `ExecProof.lean` | `pass1_correct` | the executable Pass 1 (`Exec.lean`) satisfies `IsPass1`, and its `sup`/`act` bits are the model's `Superseded`/`Active`, on the world its facts describe |
 | | `stale_correct` | the executable Pass 2 is the model's `Stale = lfp Φ` |
+| `Grounded.lean` | `GΦ_mono`, `grounded_fixed`, `grounded_least` | the operator of Grounded is monotone, and Grounded is its least fixed point |
+| | `grounded_settled`, `grounded_rests`, `lost_quorum_collapses` | Grounded implies Settled; everything a Grounded cell rests on along `relies` is Grounded and Settled; a cell resting on one not Settled is not Grounded |
+| | `settled_not_hereditary` | on a world with faithful presentations, a decision is Settled, relies on a decision no one attested, and is not Grounded |
+| | `circular_support` | a verdict that relies on the decision it judges: both are Settled, the world is a fixed point of the operator, and neither is Grounded |
+| | `grounded_iter` | simultaneous rounds from below reach Grounded within `N + 1` rounds, on `Fin N` |
+| `Power.lean` | `run_latch`, `run2_latch` | over any extension whose seals are old or a coalition's and which makes no rotation (under v2, none waiting at the tip), a new latch into a present cell is one the coalition can make: a quorum of its policy among the source's old endorsers and the coalition, or, on a local cell its author may evict and not for `invalidates`, one of its initial endorsers among them |
+| | `pass1_frame`, `active_frame`, `stale_frame` | if no new edge enters a closed set of local cells, its Pass 1 and Pass 2 bits are unchanged, whatever the rest of the chain does |
+| | `confinement` | the fold's confinement joined to the frame: a set the coalition cannot latch into keeps `Active` over the extension |
+| | `settled_keeps` | a coalition takes back only its own endorsement: a contract or decision stays Settled while the counted keys outside it meet the quorum |
+| | `settled_needs`, `settled_iff_keys` | a coalition settles only with the keys already counted; Settled reads the cell's standing, its policy and the set of keys that count, and nothing else |
 | `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
 | | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
 
@@ -90,10 +100,26 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   some commit, and scope cells are Effective and Accepted (no edge may invalidate or retire a scope cell).
 - `HostSound`: host resource fences only stop a replay; they never alter a reported result.
 - `QuorumMet(∅, p)` is false (`POL1` threshold ≥ 1).
+- For `grounded_settled` and `settled_keeps`: a quorum stays met as endorsers are added (`QuorumMono`, `QuorumAdd`); for
+  `settled_iff_keys`: it depends only on which keys are in the list (`QuorumExt`). `POL1` thresholds count distinct keys.
+- For the frame theorems: the attack relation points from newer to older cells (`rank`), the set is closed under who
+  attacks it and what it supersedes, and only a present cell is Effective. For `settled_keeps`: its witnesses stay
+  witnesses, its endorsers stay endorsers, and every withdrawal after the coalition acts was there or is the coalition's.
+  The frame theorems give all three only where the set holds the verdicts, the INVALID ones too: a coalition that revives
+  another key's dormant INVALID verdict, by invalidating what kept it stale, does take that key's endorsement away, and
+  there the third hypothesis fails. `settled_keeps` does not say a key's endorsement can never be taken; it says one
+  cannot be taken by a verdict of another's own.
 - For `settled_cycle_no_normal_form`: no term hash equals `H_CYCLE_PROVEN` (a term hash is the id of a Book I node,
   `H_CYCLE_PROVEN` the id of the atom `UTF8CYCLE_PROVEN`).
 
 ## Not linked
+
+- Pass 3 and Grounded of `vars1.py` and `verify/minds_verify.py` to `Pass3.lean` and `Grounded.lean`: no Lean executable
+  computes them. They are held to the spec by the property suite's own oracle (I11, I13), not by the model.
+- `confinement` does not state that the fold's `Present` and the Pass 1 equations hold of a given chain: as with `Pin`,
+  they are hypotheses. A rotation the coalition makes is outside it: the gate refuses one without its quorum (E-20), and
+  the model makes no refusal. `GitVarsRepo.power` reads the same rules in Python; a search through the gate holds it
+  (`test_vars1.py` 106), one commit deep, where nothing yet attacks what the status reads.
 
 - `EvalMachine.step` to the Python `step5` (only the differential bridge in sigma-glyph).
 - `sigma_resume._run` to `run`: the loop is transcribed by hand.

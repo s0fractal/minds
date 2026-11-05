@@ -1030,14 +1030,90 @@
   },
   {
    "id": "lens.pass3-exclusion",
-   "quote": "For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with `H_VERDICT_INVALID` and the same `verifier_id`",
+   "quote": "a key's endorsement through a witness is withdrawn if that key endorses an Active, non-Stale verdict with `H_VERDICT_INVALID` and the witness's `verifier_id`",
    "status": "tested",
    "witnesses": [
+    "lean:settled_keeps",
+    "test:test_102_a_key_withdraws_only_its_own_endorsement",
+    "test:test_103_an_invalid_after_the_tip_withdraws_only_its_own_keys",
+    "test:test_108_an_invalid_on_the_checkpoint_withdraws_only_its_own_key",
     "test:test_28_a_later_invalid_withdraws_only_its_own_verifier",
-    "prop:I11"
+    "prop:I11",
+    "prop:I13",
+    "test:test_119_what_a_key_can_still_do_by_an_edge"
    ],
    "mutants": [
-    "m-pass3-exclusion"
+    "m-pass3-exclusion",
+    "m-pass3-any-key",
+    "m-offline-any-key",
+    "m-offline-after-any-key",
+    "m-pass3-same-checkpoint"
+   ]
+  },
+  {
+   "id": "lens.grounded",
+   "quote": "**Grounded** carries Settled across `relies`.",
+   "status": "proved",
+   "witnesses": [
+    "lean:grounded_fixed",
+    "lean:grounded_least",
+    "lean:grounded_rests",
+    "lean:grounded_settled",
+    "lean:settled_not_hereditary",
+    "test:test_104_grounded_carries_settled_across_relies",
+    "prop:I13",
+    "test:test_115_a_clients_grounded_is_the_lenss"
+   ],
+   "mutants": [
+    "m-grounded-relies",
+    "m-grounded-witness",
+    "m-offline-grounded-relies",
+    "m-whatif-grounded",
+    "m-whatif-names"
+   ]
+  },
+  {
+   "id": "lens.grounded-circle",
+   "quote": "a support that runs in a\ncircle is Settled and not Grounded.",
+   "status": "proved",
+   "witnesses": [
+    "lean:circular_support",
+    "test:test_104_grounded_carries_settled_across_relies"
+   ],
+   "mutants": [
+    "m-grounded-from-above"
+   ]
+  },
+  {
+   "id": "lens.grounded-rounds",
+   "quote": "The\nhost computes it by rounds from the empty set; at most `|cells| + 1` are needed",
+   "status": "proved",
+   "witnesses": [
+    "lean:grounded_iter",
+    "prop:I13"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "att.grounded",
+   "quote": "`grounded_at_tip: null`",
+   "status": "tested",
+   "witnesses": [
+    "test:test_109_a_client_does_not_accept_what_is_not_grounded",
+    "prop:I13",
+    "test:test_115_a_clients_grounded_is_the_lenss",
+    "test:test_116_a_withdrawal_after_the_tip_reaches_grounded",
+    "test:test_117_what_a_decision_rests_on_is_named"
+   ],
+   "mutants": [
+    "m-offline-accepted-grounded",
+    "m-offline-grounded-replay",
+    "m-offline-grounded-after",
+    "m-client-withdrawal",
+    "m-client-schema",
+    "m-client-projection",
+    "m-explain-names",
+    "m-explain-needs-replay"
    ]
   },
   {
@@ -1223,7 +1299,7 @@
   },
   {
    "id": "att.later",
-   "quote": "no supplied verdict from after `tip` contradicts it by a policy key.",
+   "quote": "no supplied verdict from after `tip` withdraws what settles it.",
    "status": "tested",
    "witnesses": [
     "test:test_28_a_later_invalid_withdraws_only_its_own_verifier"
@@ -2244,6 +2320,71 @@
     "m-lean-seal-verify",
     "m-lean-seal-ctx",
     "m-lean-ctxs"
+   ]
+  },
+  {
+   "id": "assurance.power-edge",
+   "source": "ASSURANCE.md",
+   "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",
+   "status": "proved",
+   "witnesses": [
+    "lean:run_latch",
+    "lean:run2_latch",
+    "lean:edgeCond_canLatch",
+    "test:test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+   ],
+   "mutants": [
+    "m-power-roster"
+   ]
+  },
+  {
+   "id": "assurance.power-status",
+   "source": "ASSURANCE.md",
+   "quote": "If no new edge enters a closed set of local cells, its Pass 1 and Pass 2 bits are unchanged, whatever the rest of the chain does; a contract or decision stays Settled while the counted keys outside the coalition meet its quorum; Settled reads only its standing, its policy and the set of keys that count",
+   "status": "proved",
+   "witnesses": [
+    "lean:confinement",
+    "lean:pass1_frame",
+    "lean:active_frame",
+    "lean:stale_frame",
+    "lean:settled_keeps",
+    "lean:settled_needs",
+    "lean:settled_iff_keys"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "assurance.power-table",
+   "source": "ASSURANCE.md",
+   "quote": "`GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local contract or decision without a computation, and refuses any other cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts. It reads Settled and not Grounded: `exact` is false where something already points an edge at what the status reads, or where the status rests on another quorum",
+   "status": "tested",
+   "witnesses": [
+    "test:test_106_the_power_table_is_what_a_search_through_the_gate_finds",
+    "test:test_107_what_the_admission_quorum_takes_after_the_wait",
+    "test:test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+   ],
+   "mutants": [
+    "m-power-evict",
+    "m-power-withdraw",
+    "m-power-gain",
+    "m-power-ground",
+    "m-power-refuse",
+    "m-power-exact-attackers",
+    "m-power-exact-quorums",
+    "m-power-backers"
+   ]
+  },
+  {
+   "id": "assurance.grounded-circuit",
+   "source": "ASSURANCE.md",
+   "quote": "A monotone circuit compiles to a chain of linear size, a gate to a decision: AND relies on its inputs, OR carries a verdict per input under a policy of one key; the output's Grounded is the circuit's value, while Settled, which does not cross `relies`, is not",
+   "status": "tested",
+   "witnesses": [
+    "test:test_105_any_monotone_circuit_compiles_to_a_chain"
+   ],
+   "mutants": [
+    "m-grounded-relies",
+    "m-grounded-witness"
    ]
   }
  ],

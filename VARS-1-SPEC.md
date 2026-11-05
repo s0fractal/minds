@@ -300,13 +300,30 @@ else the tip scope's admission policy. A witness `w` is Active, non-Stale, attes
   over its lineage (§5), whose state's term hash is `e`; or a cycle witness of `r` when `e = H_CYCLE_PROVEN`;
 - question: a cell of the expected schema.
 
-For a contract or decision, a witness is excluded if an Active, non-Stale verdict on `v` with
-`H_VERDICT_INVALID` and the same `verifier_id`, endorsed by a key of `EvalPol(v)`, exists. A question has no
-exclusion: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
-for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the union of witness
-endorsers meets `EvalPol(v)`; otherwise **Provisional**. Scope and custom schema cells are Settled iff
+For a contract or decision, a key's endorsement through a witness is withdrawn if that key endorses an Active, non-Stale
+verdict with `H_VERDICT_INVALID` and the witness's `verifier_id`, on `v` or naming the checkpoint or cycle witness the
+witness names. No other key's endorsement is: a verifier id is free text, so it says of who wrote a verdict only what the
+seal says, and one key of a t-of-n policy cannot hold a decision back by naming another's. An edge is another matter: a
+verdict's `Pol_i` is the admission policy (§4.1), so where that threshold is 1, as on `refs/vars/heads/minds`, one key can
+still invalidate another's verdict, and hold a decision back for as long as it keeps doing so; only a rules change could
+alter that. And an endorsement withdrawn this way comes back if the admission quorum invalidates the INVALID verdict. A question has no
+withdrawal: it asks for an answer, and any cell of its expected schema answers it, an INVALID verdict included. `WitnessEndorsers(w)` is `CumulativeEndorsers(w)`
+for a local `w`, else the `ForeignEndorsers` under its live scopes. `v` is **Settled** iff the keys of `EvalPol(v)`
+whose endorsement through some witness is not withdrawn meet its threshold; otherwise **Provisional**. Scope and custom schema cells are Settled iff
 Authorized; a projection is Settled iff its `CumulativeEndorsers` meet its `witness_policy`; every other Active,
 non-Stale cell is Settled.
+
+**Grounded.** `Stale` reads `Active` of what a cell relies on, not its `Settled`: a contract or decision can be Settled while
+a contract or decision it relies on has lost its quorum or never had one. **Grounded** carries Settled across `relies`. It
+is the least fixed point of the monotone equation
+
+`Grounded(v) ⇔ Settled(v) ∧ (∀ d ∈ relies(v): Grounded(d)) ∧ (v is a contract, decision or question ⇒ the keys that count through witnesses that are Grounded meet EvalPol(v))`.
+
+A verdict may rely on the very cell it judges, so the equation is not well founded by age, and a support that runs in a
+circle is Settled and not Grounded. A cell that rests along `relies` on a cell that is not Settled is not Grounded. The
+host computes it by rounds from the empty set; at most `|cells| + 1` are needed, and they change nothing else: Settled
+stays what a reader of the rules above computes, so a chain where nothing relies on a contract, decision, question or custom
+schema has Grounded equal to Settled.
 
 ### 4.3 Rules object
 
@@ -471,7 +488,7 @@ and matching, and known rules; `inspect-projection` checks the bundle against it
 the governing scope cell (its admission policy is the fallback `EvalPol`), the policy, statement, attests and
 verifier atoms, every verdict on the cell, every seal on the cell and on those verdicts, and optionally a projection
 bundle. Over the supplied verdicts it is *attested* when ATTESTED verdicts sealed by distinct keys of `EvalPol`
-meet its threshold, excluding verdicts contradicted by an INVALID verdict of the same verifier sealed by a policy key
+meet its threshold, less each key's endorsement under a verifier id that key's own INVALID verdict withdraws
 (§4.2 Pass 3). A supplier can omit verdicts and seals, so alone this is evidence as supplied, never acceptance.
 
 With a projection whose tip holds the cell, the projection's kernel input is the evidence: it holds every cell and
@@ -479,9 +496,14 @@ every verified seal at `tip`, and its digest is what the witnesses signed. The c
 `EvalPol`'s keys, both in byte order), refuses a bundle that omits any verdict on the cell held at `tip`, and
 recomputes Pass 3 from the input and the kernel's output alone, exactly as the lens does: endorsers of a local
 verdict are its seals; of a foreign verdict, seals under a scope of its origin named by a live acceptance of it or
-of a newer cell of its origin that references it, by that scope's admission keys. The cell is *accepted* when that
-recomputation settles it, the projection is witnessed, and no supplied verdict from after `tip` contradicts it by
-a policy key. Acceptance is about `tip`: the release recorded last is accepted only once a later projection
+of a newer cell of its origin that references it, by that scope's admission keys. It recomputes Grounded the same way, from the
+input and the output; a computation's replay is out of its reach, so where the answer turns on one the result says
+`grounded_at_tip: null` and names the cells (`explain.grounded`). The cell is *accepted* when that recomputation settles it
+and grounds it, the projection is witnessed, and no supplied verdict from after `tip` withdraws what settles it. A result
+that is settled and not grounded says so in `attested_at_tip` and `grounded_at_tip`, and is not accepted; a supplied verdict
+from after `tip` is read for Grounded as for Settled (`grounded_after_tip`), and a withdrawal after `tip` from a cell it
+rests on is not in the bundle.
+Acceptance is about `tip`: the release recorded last is accepted only once a later projection
 covers it. Because the admission quorum may rotate a key out (§3), and releases after that need it no longer, a
 reader who wants certain keys to have a veto pins them: each pinned key must also endorse the cell at `tip` and
 witness the projection. A verdict or seal about another
@@ -518,9 +540,9 @@ reading aid, not authority, and a doubting reader recomputes. For a projection: 
 the witness policy, each seal with its key, context and whether it counted, the policy keys that did not witness,
 and the scope epoch (the governing scope cell at `tip`). For an attestation: the evaluator policy, whether it is
 the cell's own or the scope's admission policy, its threshold and keys; the counted verdicts with their verifier
-ids and the policy keys endorsing each, over the supplied verdicts and at `tip`; the verifiers blocked by INVALID
-verdicts at `tip` and those blocked by INVALID verdicts supplied from after it, with the endorsers so withdrawn;
-the scope epoch; and, for each pinned key, why it is missing (no endorsement at `tip`, an endorsement withdrawn
+ids and the policy keys endorsing each, over the supplied verdicts and at `tip`; the (verifier id, key) pairs that INVALID
+verdicts withdraw at `tip` and those that INVALID verdicts supplied from after it withdraw, with the endorsers so withdrawn;
+what it rests on that is not settled or needs a replay (`grounded`); the scope epoch; and, for each pinned key, why it is missing (no endorsement at `tip`, an endorsement withdrawn
 after `tip`, no witness seal on the projection, or no readable tip at all).
 
 ## 5. Replay against Book I
@@ -548,7 +570,8 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
   bytes from the kernel's own input and fold output (I9), and the model's own fold (`proofs/Vars1/Fold.lean`,
   compiled) computes the kernel's governing scope, Authorized bits and edge authorizations (I10), and Pass 3
   recomputed from the kernel's input and output alone, as an attestation client does, equals the lens's Settled
-  for every contract and decision without `required_comp` (I11); and, on generated transition tables and cycle
+  for every contract and decision without `required_comp` (I11); a key's withdrawal and Grounded equal §4.2 over the input's
+  indices, and a client's two bounds on Grounded hold the lens's answer (I13); and, on generated transition tables and cycle
   witnesses, `sigma_resume.verify_cycle` and the gate's use of it give the verdict of the model's own cycle checker
   (`proofs/Vars1/Cycle.lean`, compiled) (I12). A second run writes chains whose genesis names `H_LENS_KERNEL_V2` and
   checks I0–I8 and I11 on them (I9 and I10 compare a model of v1's input): there the interpreter keeps the rotation
@@ -566,4 +589,7 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 62–74: the classes of rules change (§4.3) with each piece missing or wrong, the commit-count
   bound as a resource hardening on the fuzzer's input, (d), a past change replayed in a fresh clone and its evidence
   missing, nested evidence, a trap told from exhaustion, and the shadow replay before a rotation (AMENDMENTS.md).
+- `test_vars1.py` tests 102–109 and 115–119: a key's withdrawal in the lens and a client, Grounded, its compilation of monotone
+  circuits, what a client names, what a key can still do by an edge, and who can change a status (`GitVarsRepo.power`,
+  `proofs/Vars1/Power.lean`) against a search through the gate.
 - `proofs/`: the theorems listed in `proofs/README.md`.

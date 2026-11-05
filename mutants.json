@@ -219,8 +219,8 @@
  },
  "m-own-verifier": {
   "file": "verify/minds_verify.py",
-  "find": "        if c[\"slots\"][2] in blocked or c[\"slots\"][0] != H_EMPTY",
-  "replace": "        if blocked_after or c[\"slots\"][2] in blocked or c[\"slots\"][0] != H_EMPTY",
+  "find": "        got = {k for k in endorsers(w) & pk if (c[\"slots\"][2], k) not in withdrawn}",
+  "replace": "        got = {k for k in endorsers(w) & pk if not blocked_after and (c[\"slots\"][2], k) not in withdrawn}",
   "kills": [
    "test_28_a_later_invalid_withdraws_only_its_own_verifier"
   ]
@@ -336,11 +336,11 @@
  },
  "m-pass3-exclusion": {
   "file": "vars1.py",
-  "find": "                    if has_conflict:",
-  "replace": "                    if False:",
+  "find": "                            counted_keys = counted_keys - witness_endorsers(bad_id)",
+  "replace": "                            pass",
   "kills": [
    "test_28_a_later_invalid_withdraws_only_its_own_verifier",
-   "test_21_attestation_counts_what_the_lens_counts"
+   "test_102_a_key_withdraws_only_its_own_endorsement"
   ]
  },
  "m-rc-stray-decision": {
@@ -1185,8 +1185,8 @@
  },
  "m-whatif-settled": {
   "file": "vars1.py",
-  "find": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\")",
-  "replace": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\")",
+  "find": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\", \"grounded\")",
+  "replace": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"grounded\")",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
@@ -2448,6 +2448,224 @@
   "replace": "(\"test_vars1\", run([python, \"-m\", \"unittest\", \"test_vars1\"], root))",
   "kills": [
    "test_100_release_checks_run_the_witness_checkers_where_the_commit_carries_them"
+  ]
+ },
+ "m-pass3-any-key": {
+  "file": "vars1.py",
+  "find": "                            counted_keys = counted_keys - witness_endorsers(bad_id)",
+  "replace": "                            counted_keys = set() if witness_endorsers(bad_id) & p_pks else counted_keys",
+  "kills": [
+   "test_102_a_key_withdraws_only_its_own_endorsement"
+  ]
+ },
+ "m-offline-any-key": {
+  "file": "verify/minds_verify.py",
+  "find": "            and kc[b][\"payload\"] == did for k in endorsers(b) & pk}",
+  "replace": "            and kc[b][\"payload\"] == did and endorsers(b) & pk for k in pk}",
+  "kills": [
+   "test_102_a_key_withdraws_only_its_own_endorsement"
+  ]
+ },
+ "m-offline-after-any-key": {
+  "file": "verify/minds_verify.py",
+  "find": "                    if wid not in at_tip and w.slots[1] == H_VERDICT_INVALID for k in signers[wid] & keys}",
+  "replace": "                    if wid not in at_tip and w.slots[1] == H_VERDICT_INVALID and signers[wid] & keys for k in keys}",
+  "kills": [
+   "test_103_an_invalid_after_the_tip_withdraws_only_its_own_keys"
+  ]
+ },
+ "m-grounded-relies": {
+  "file": "vars1.py",
+  "find": "                if not all(grounded.get(g, False) for g in hvec_items(cells[cid].h_relies)):\n                    continue\n",
+  "replace": "",
+  "kills": [
+   "test_104_grounded_carries_settled_across_relies",
+   "test_105_any_monotone_circuit_compiles_to_a_chain"
+  ]
+ },
+ "m-grounded-witness": {
+  "file": "vars1.py",
+  "find": "                        if grounded[wid]:\n                            keys |= ks",
+  "replace": "                        if True:\n                            keys |= ks",
+  "kills": [
+   "test_104_grounded_carries_settled_across_relies",
+   "test_105_any_monotone_circuit_compiles_to_a_chain"
+  ]
+ },
+ "m-grounded-from-above": {
+  "file": "vars1.py",
+  "find": "        grounded: Dict[bytes, bool] = {cid: False for cid in forward_order}\n        changed = True\n",
+  "replace": "        grounded: Dict[bytes, bool] = {cid: bool(settled[cid]) for cid in forward_order}\n        changed = False\n",
+  "kills": [
+   "test_104_grounded_carries_settled_across_relies"
+  ]
+ },
+ "m-offline-grounded-relies": {
+  "file": "verify/minds_verify.py",
+  "find": "            if grounded[i] or not live[i] or not all(grounded[g] for g in c[\"relies\"]):",
+  "replace": "            if grounded[i] or not live[i]:",
+  "kills": [
+   "test_104_grounded_carries_settled_across_relies"
+  ]
+ },
+ "m-offline-accepted-grounded": {
+  "file": "verify/minds_verify.py",
+  "find": "    result[\"accepted\"] = bool(now and grounded is True and pr[\"witnessed\"] and not result[\"required_missing\"])",
+  "replace": "    result[\"accepted\"] = bool(now and pr[\"witnessed\"] and not result[\"required_missing\"])",
+  "kills": [
+   "test_109_a_client_does_not_accept_what_is_not_grounded"
+  ]
+ },
+ "m-offline-grounded-replay": {
+  "file": "verify/minds_verify.py",
+  "find": "                elif not assume_replay or x[\"slots\"][1] != H_REPLAYED:",
+  "replace": "                elif x[\"slots\"][1] != H_REPLAYED:",
+  "kills": [
+   "test_109_a_client_does_not_accept_what_is_not_grounded"
+  ]
+ },
+ "m-power-roster": {
+  "file": "vars1.py",
+  "find": "            on_roster = c_keys & (acc[1] if cells[u].h_schema == H_SCHEMA[\"acceptance\"] else adm[1])\n            if len(on_roster & keys) >= thr:",
+  "replace": "            on_roster = c_keys & (acc[1] if cells[u].h_schema == H_SCHEMA[\"acceptance\"] else adm[1])\n            if len(on_roster & keys) >= 1:",
+  "kills": [
+   "test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+  ]
+ },
+ "m-power-evict": {
+  "file": "vars1.py",
+  "find": "            return (kind != \"invalidates\" and evict and bool(on_roster & lens[\"initial_endorsers\"].get(u, set())))",
+  "replace": "            return False",
+  "kills": [
+   "test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+  ]
+ },
+ "m-power-withdraw": {
+  "file": "vars1.py",
+  "find": "            return lose_live(co) or len(left - (co & adm[1])) < lens[\"evaluators\"][cid][0]",
+  "replace": "            return lose_live(co) or len(left) < lens[\"evaluators\"][cid][0]",
+  "kills": [
+   "test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+  ]
+ },
+ "m-power-gain": {
+  "file": "vars1.py",
+  "find": "            return len(counted(lambda w: False, lambda b: gone(co, b)) | (co & keys & adm[1])) >= thr",
+  "replace": "            return len(counted(lambda w: False, lambda b: gone(co, b))) >= thr",
+  "kills": [
+   "test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+  ]
+ },
+ "m-power-ground": {
+  "file": "vars1.py",
+  "find": "            return live and any(attack(co, u) for u in grounds(cid))",
+  "replace": "            return live and attack(co, cid)",
+  "kills": [
+   "test_106_the_power_table_is_what_a_search_through_the_gate_finds"
+  ]
+ },
+ "m-whatif-grounded": {
+  "file": "vars1.py",
+  "find": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\", \"grounded\")",
+  "replace": "        bits = (\"accepted\", \"invalidated\", \"effective\", \"retired\", \"superseded\", \"active\", \"stale\", \"settled\")",
+  "kills": [
+   "test_104_grounded_carries_settled_across_relies"
+  ]
+ },
+ "m-pass3-same-checkpoint": {
+  "file": "vars1.py",
+  "find": "                                     or (w.slots[0] != H_EMPTY and bad_c.slots[0] == w.slots[0]))):",
+  "replace": "                                     or False)):",
+  "kills": [
+   "test_108_an_invalid_on_the_checkpoint_withdraws_only_its_own_key"
+  ]
+ },
+ "m-offline-grounded-after": {
+  "file": "verify/minds_verify.py",
+  "find": "    grounded, low, high = bounds({pos[d.id]: later_blocks} if later_blocks else None)",
+  "replace": "    grounded, low, high = bounds(None)",
+  "kills": [
+   "test_116_a_withdrawal_after_the_tip_reaches_grounded"
+  ]
+ },
+ "m-client-withdrawal": {
+  "file": "verify/minds_verify.py",
+  "find": "witnesses[i][w] = {k for k in endorsers(w) & pk if (x[\"slots\"][2], k) not in gone}",
+  "replace": "witnesses[i][w] = endorsers(w) & pk",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-client-schema": {
+  "file": "verify/minds_verify.py",
+  "find": "            plain[i] = auth[i]",
+  "replace": "            plain[i] = True",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-client-projection": {
+  "file": "verify/minds_verify.py",
+  "find": "            plain[i] = wp is not None and len(endorsers(i) & set(wp[1])) >= wp[0]",
+  "replace": "            plain[i] = True",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-explain-names": {
+  "file": "verify/minds_verify.py",
+  "find": "                         and x[\"slots\"][1] != H_VERDICT_INVALID and i in x[\"attests\"]]",
+  "replace": "                         and False]",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-explain-needs-replay": {
+  "file": "verify/minds_verify.py",
+  "find": "                                                   and kc[i][\"schema\"] in judges and kc[i][\"slots\"][1] != H_EMPTY),",
+  "replace": "                                                   ),",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-whatif-names": {
+  "file": "vars1.py",
+  "find": "                seen, todo = set(), [*relies_on(cid), *before[\"counted_witnesses\"].get(cid, {})]",
+  "replace": "                seen, todo = set(), [*relies_on(cid)]",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-power-refuse": {
+  "file": "vars1.py",
+  "find": "                or cells[cid].h_schema not in (H_SCHEMA[\"contract\"], H_SCHEMA[\"decision\"])\n                or cells[cid].slots[1] != H_EMPTY):",
+  "replace": "                ):",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-exact-attackers": {
+  "file": "vars1.py",
+  "find": "        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "replace": "        exact = not any(origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-exact-quorums": {
+  "file": "vars1.py",
+  "find": "        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "replace": "        exact = not any(x in attackers or origin(x) != scope",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-backers": {
+  "file": "vars1.py",
+  "find": "                if latches(co | backers.get(w, set()), u, kind):",
+  "replace": "                if latches(co, u, kind):",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
   ]
  }
 }

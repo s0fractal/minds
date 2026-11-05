@@ -33,6 +33,8 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # --assume: no key at all, the seals of roster key PUBKEY supposed
                                               # (zero signatures, `mode: assumed` in the report);
                                               # --restore: the signer's own replacement checks and verdicts too
+    tools/minds_chain.py power CELL           # read only: which coalitions of roster keys can change the status of
+                                              # CELL by commits of their own (`GitVarsRepo.power`)
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -1024,6 +1026,10 @@ def _main(argv: List[str]) -> int:
     if cmd == "what-if" and len(argv) >= 2:
         cells, sk, pk = what_if_args(repo_dir, argv[1:])
         print(json.dumps(what_if(repo_dir, sk, cells, restore="--restore" in argv, assume=pk), indent=2))
+        return 0
+    if cmd == "power" and len(argv) == 2:
+        repo = V.GitVarsRepo(repo_dir)
+        print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))
