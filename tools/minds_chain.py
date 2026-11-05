@@ -19,6 +19,7 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
                                               # verdict, and witness the projections that name your key
+    tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
     tools/minds_chain.py witness --key FILE --name NAME
                                               # as a member: verify-release every release awaiting your key
                                               # (the GitHub Actions witness, .github/workflows/witness.yml)
@@ -57,7 +58,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -778,20 +779,34 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     return [f"{n} {'OK' if g else 'FAILED'}" for n, g in pre] + lines, ok and all(g for _, g in pre)
 
 
-def witnessed_path(repo_dir: Path, pk: bytes) -> Path:
-    """The newest tip that projections this key sealed in this clone name: what it remembers of the one history (§4.4).
-    Beside the keys, unpushed."""
-    return key_path(repo_dir).parent / f"witnessed-{SCOPE}-{pk.hex()}"
+def witnessed_ref(pk: bytes) -> str:
+    """The newest tip that projections this key sealed name: what it remembers of the one history (§4.4). A ref beside the
+    chain's, so the commit stays reachable and a witness with no disk of its own keeps it where it keeps the chain."""
+    return f"refs/vars/witnessed/{SCOPE}/{pk.hex()}"
+
+
+def witnessed_tip(repo_dir: Path, pk: bytes) -> Optional[str]:
+    out = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", witnessed_ref(pk)],
+                         capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def remember_witnessed(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, named: Iterable[str]) -> None:
+    """Remember the newest of the tips `named`, all on the chain up to `tip`. The memory only moves on: a tip it holds that
+    is newer stays, since a commit the chain lost may have named more."""
+    order = {c: i for i, c in enumerate(repo.commit_chain(tip))}
+    newest = max(named, key=lambda t: order[t], default=None)
+    last = witnessed_tip(repo_dir, pk)
+    if newest is not None and (last is None or order[newest] > order.get(last, -1)):
+        subprocess.run(["git", "-C", str(repo_dir), "update-ref", witnessed_ref(pk), newest], check=True)
 
 
 def refuse_a_fork(repo_dir: Path, pk: bytes, tip: str) -> None:
     """A witness vouches for one history (§4.4), so it signs no projection on a chain that does not descend from the tips
-    of the projections it signed before. This clone's memory is all it has: another clone of the key, or a fresh runner,
-    has none and is not protected by this."""
-    mark = witnessed_path(repo_dir, pk)
-    if not mark.exists():
+    of the projections it signed before. Its ref is all it has: a clone that never fetched it is not protected by this."""
+    last = witnessed_tip(repo_dir, pk)
+    if last is None:
         return
-    last = mark.read_text().strip()
     if subprocess.run(["git", "-C", str(repo_dir), "merge-base", "--is-ancestor", last, tip],
                       capture_output=True).returncode != 0:
         raise V.VarsError(f"this key sealed a projection of {last[:12]}, and this chain's tip {tip[:12]} does not descend "
@@ -804,11 +819,7 @@ def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, co
     history is the tips it named, and the published chain can move on from them without this commit and be no fork."""
     refuse_a_fork(repo_dir, pk, tip)
     repo.admit_and_advance(SCOPE, commit, expected_old=tip)
-    if named:
-        order = {c: i for i, c in enumerate(repo.commit_chain(tip))}
-        mark = witnessed_path(repo_dir, pk)
-        mark.parent.mkdir(parents=True, exist_ok=True)
-        mark.write_text(max(named, key=lambda t: order[t]) + "\n")
+    remember_witnessed(repo_dir, repo, pk, tip, named)
 
 
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
@@ -884,7 +895,13 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
     records it (none for ANSWERED_BEFORE)."""
     pk = V.ed25519_pubkey(sk)
     repo = V.GitVarsRepo(repo_dir)
-    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    tip = repo.ref_commit(SCOPE)
+    refuse_a_fork(repo_dir, pk, tip)  # before anything else: a rewritten chain is refused even with nothing to answer
+    atoms, cells, seals = repo.read_cas_tree(tip)
+    # what the chain itself shows this key sealed, so a key that has answered before starts with its memory
+    sealed = {V.parse_utf8(atoms[cells[x.h_target].slots[0]]) for x in seals.values()
+              if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["projection"]}
+    remember_witnessed(repo_dir, repo, pk, tip, sealed)
     mine = [cells[x.h_target] for x in seals.values()
             if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
     answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
@@ -1063,6 +1080,9 @@ def _main(argv: List[str]) -> int:
     if cmd == "power" and len(argv) == 2:
         repo = V.GitVarsRepo(repo_dir)
         print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
+        return 0
+    if cmd == "witnessed-ref" and len(argv) == 3 and argv[1] == "--key":
+        print(witnessed_ref(V.ed25519_pubkey(bytes.fromhex(Path(argv[2]).read_text().strip()))))
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))

@@ -2849,7 +2849,7 @@
  },
  "m-witness-fork-mark": {
   "file": "tools/minds_chain.py",
-  "find": "        mark.write_text(max(named, key=lambda t: order[t]) + \"\\n\")\n",
+  "find": "    remember_witnessed(repo_dir, repo, pk, tip, named)\n",
   "replace": "",
   "kills": [
    "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
@@ -2857,8 +2857,8 @@
  },
  "m-witness-mark-own-commit": {
   "file": "tools/minds_chain.py",
-  "find": "        mark.write_text(max(named, key=lambda t: order[t]) + \"\\n\")\n",
-  "replace": "        mark.write_text(commit + \"\\n\")\n",
+  "find": "    remember_witnessed(repo_dir, repo, pk, tip, named)\n",
+  "replace": "    subprocess.run([\"git\", \"-C\", str(repo_dir), \"update-ref\", witnessed_ref(pk), commit], check=True)\n",
   "kills": [
    "test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
   ]
@@ -2901,6 +2901,38 @@
   "replace": "",
   "kills": [
    "test_123_a_spoiled_bundle_is_refused_and_no_crash"
+  ]
+ },
+ "m-witness-start-guard": {
+  "file": "tools/minds_chain.py",
+  "find": "    refuse_a_fork(repo_dir, pk, tip)  # before anything else: a rewritten chain is refused even with nothing to answer\n",
+  "replace": "",
+  "kills": [
+   "test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
+  ]
+ },
+ "m-witness-from-chain": {
+  "file": "tools/minds_chain.py",
+  "find": "    remember_witnessed(repo_dir, repo, pk, tip, sealed)\n",
+  "replace": "",
+  "kills": [
+   "test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
+  ]
+ },
+ "m-witness-flow-memory": {
+  "file": ".github/workflows/witness.yml",
+  "find": "            git push --atomic origin refs/vars/heads/minds \"$memory\"\n",
+  "replace": "            git push origin refs/vars/heads/minds\n",
+  "kills": [
+   "test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
+  ]
+ },
+ "m-witness-only-forward": {
+  "file": "tools/minds_chain.py",
+  "find": "    if newest is not None and (last is None or order[newest] > order.get(last, -1)):\n",
+  "replace": "    if newest is not None:\n",
+  "kills": [
+   "test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
   ]
  }
 }

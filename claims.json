@@ -2447,17 +2447,22 @@
   },
   {
    "id": "hist.guard",
-   "quote": "Every path of `tools/minds_chain.py` that seals a projection remembers, in that clone, the newest tip its projections name for\nthat key, and refuses to seal on a chain that does not descend from it.",
+   "quote": "Every path of `tools/minds_chain.py` that seals a projection remembers, in a ref `refs/vars/witnessed/<scope>/<key>`, the newest tip its projections name for\nthat key, and refuses to seal on a chain that does not descend from it.",
    "status": "tested",
    "witnesses": [
-    "test:test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
+    "test:test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed",
+    "test:test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
    ],
    "mutants": [
     "m-witness-fork-guard",
     "m-witness-fork-mark",
     "m-witness-mark-own-commit",
     "m-witness-release-guard",
-    "m-witness-ancestor"
+    "m-witness-ancestor",
+    "m-witness-start-guard",
+    "m-witness-from-chain",
+    "m-witness-flow-memory",
+    "m-witness-only-forward"
    ]
   },
   {

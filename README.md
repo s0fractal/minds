@@ -65,7 +65,9 @@ member's own ATTESTED.
 **The GitHub Actions witness** (`.github/workflows/witness.yml`) is a member on a host of its own. Its key is made on a
 GitHub runner (`witness-key.yml`) and kept as a secret of the environment `witness`, which only `main` may deploy to,
 so it never was on the maintainer's machine. Every three hours, and on demand, it runs `minds_chain.py witness`:
-`verify-release` for each release waiting for its key, with nothing cached, then it pushes the verdicts. Like any
+`verify-release` for each release waiting for its key, with nothing cached, then it pushes the verdicts. It keeps the newest tip it sealed in
+`refs/vars/witnessed/minds/<key>` and refuses a chain that does not descend from it. GitHub cannot protect such refs, so whoever
+can rewrite both defeats this; rewriting the chain alone turns its run red. Like any
 member it may admit cells; what it does is what `main`'s workflow says, and whoever controls the owner's GitHub
 account controls that. Its key joined the roster on 2026-10-29 (chain commit `35a2a467`).
 

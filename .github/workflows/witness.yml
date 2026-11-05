@@ -23,7 +23,7 @@ jobs:
     environment: witness
     timeout-minutes: 240
     permissions:
-      contents: write # to push refs/vars/heads/minds
+      contents: write # to push refs/vars/heads/minds and this key's memory beside it
     env:
       # the checks build chain commits with git commit-tree, and so does the verdict
       GIT_AUTHOR_NAME: minds-witness
@@ -63,8 +63,15 @@ jobs:
           key="$RUNNER_TEMP/witness.key"
           (umask 077 && printf %s "$SEED" > "$key")
           outcome=0
+          memory=$(python tools/minds_chain.py witnessed-ref --key "$key")
+          # the fetch above brought what this key remembers: on a chain that does not descend from it, this refuses
           python tools/minds_chain.py witness --key "$key" --name github-actions || outcome=$?
           rm -f "$key"
-          # an INVALID is a verdict too: it is recorded, and the run then fails
-          git push origin refs/vars/heads/minds
+          # an INVALID is a verdict too: it is recorded, and the run then fails. Nothing here is forced: a refusal above
+          # pushes nothing new, and the memory moves only with the chain it names
+          if git rev-parse --verify --quiet "$memory" >/dev/null; then
+            git push --atomic origin refs/vars/heads/minds "$memory"
+          else
+            git push origin refs/vars/heads/minds
+          fi
           exit "$outcome"
