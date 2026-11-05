@@ -106,8 +106,11 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   `settled_iff_keys`: it depends only on which keys are in the list (`QuorumExt`). `POL1` thresholds count distinct keys.
 - For the frame theorems: the attack relation points from newer to older cells (`rank`), the set is closed under who
   attacks it and what it supersedes, and only a present cell is Effective. For `settled_keeps`: its witnesses stay
-  witnesses, its endorsers stay endorsers, and every withdrawal after the coalition acts was there or is the coalition's;
-  the frame theorems give the first where the set holds the verdicts, and `Withdrawn` the last.
+  witnesses, its endorsers stay endorsers, and every withdrawal after the coalition acts was there or is the coalition's.
+  The frame theorems give all three only where the set holds the verdicts, the INVALID ones too: a coalition that revives
+  another key's dormant INVALID verdict, by invalidating what kept it stale, does take that key's endorsement away, and
+  there the third hypothesis fails. `settled_keeps` does not say a key's endorsement can never be taken; it says one
+  cannot be taken by a verdict of another's own.
 - For `settled_cycle_no_normal_form`: no term hash equals `H_CYCLE_PROVEN` (a term hash is the id of a Book I node,
   `H_CYCLE_PROVEN` the id of the atom `UTF8CYCLE_PROVEN`).
 

@@ -1039,7 +1039,8 @@
     "test:test_108_an_invalid_on_the_checkpoint_withdraws_only_its_own_key",
     "test:test_28_a_later_invalid_withdraws_only_its_own_verifier",
     "prop:I11",
-    "prop:I13"
+    "prop:I13",
+    "test:test_119_what_a_key_can_still_do_by_an_edge"
    ],
    "mutants": [
     "m-pass3-exclusion",
@@ -1060,13 +1061,15 @@
     "lean:grounded_settled",
     "lean:settled_not_hereditary",
     "test:test_104_grounded_carries_settled_across_relies",
-    "prop:I13"
+    "prop:I13",
+    "test:test_115_a_clients_grounded_is_the_lenss"
    ],
    "mutants": [
     "m-grounded-relies",
     "m-grounded-witness",
     "m-offline-grounded-relies",
-    "m-whatif-grounded"
+    "m-whatif-grounded",
+    "m-whatif-names"
    ]
   },
   {
@@ -1097,11 +1100,21 @@
    "status": "tested",
    "witnesses": [
     "test:test_109_a_client_does_not_accept_what_is_not_grounded",
-    "prop:I13"
+    "prop:I13",
+    "test:test_115_a_clients_grounded_is_the_lenss",
+    "test:test_116_a_withdrawal_after_the_tip_reaches_grounded",
+    "test:test_117_what_a_decision_rests_on_is_named"
    ],
    "mutants": [
     "m-offline-accepted-grounded",
-    "m-offline-grounded-replay"
+    "m-offline-grounded-replay",
+    "m-offline-grounded-after",
+    "m-client-withdrawal",
+    "m-client-question-withdrawal",
+    "m-client-schema",
+    "m-client-projection",
+    "m-explain-names",
+    "m-explain-needs-replay"
    ]
   },
   {
@@ -2344,17 +2357,22 @@
   {
    "id": "assurance.power-table",
    "source": "ASSURANCE.md",
-   "quote": "`GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts",
+   "quote": "`GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local contract or decision without a computation, and refuses any other cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts. It reads Settled and not Grounded: `exact` is false where something already points an edge at what the status reads, or where the status rests on another quorum",
    "status": "tested",
    "witnesses": [
     "test:test_106_the_power_table_is_what_a_search_through_the_gate_finds",
-    "test:test_107_what_the_admission_quorum_takes_after_the_wait"
+    "test:test_107_what_the_admission_quorum_takes_after_the_wait",
+    "test:test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
    ],
    "mutants": [
     "m-power-evict",
     "m-power-withdraw",
     "m-power-gain",
-    "m-power-ground"
+    "m-power-ground",
+    "m-power-refuse",
+    "m-power-exact-attackers",
+    "m-power-exact-quorums",
+    "m-power-backers"
    ]
   },
   {

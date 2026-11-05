@@ -2670,5 +2670,101 @@
   "kills": [
    "test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed"
   ]
+ },
+ "m-offline-grounded-after": {
+  "file": "verify/minds_verify.py",
+  "find": "    grounded, low, high = bounds({pos[d.id]: later_blocks} if later_blocks else None)",
+  "replace": "    grounded, low, high = bounds(None)",
+  "kills": [
+   "test_116_a_withdrawal_after_the_tip_reaches_grounded"
+  ]
+ },
+ "m-client-withdrawal": {
+  "file": "verify/minds_verify.py",
+  "find": "witnesses[i][w] = {k for k in endorsers(w) & pk if (x[\"slots\"][2], k) not in gone}",
+  "replace": "witnesses[i][w] = endorsers(w) & pk",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-client-question-withdrawal": {
+  "file": "verify/minds_verify.py",
+  "find": "            gone = set() if question else _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())",
+  "replace": "            gone = _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-client-schema": {
+  "file": "verify/minds_verify.py",
+  "find": "            plain[i] = auth[i]",
+  "replace": "            plain[i] = True",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-client-projection": {
+  "file": "verify/minds_verify.py",
+  "find": "            plain[i] = wp is not None and len(endorsers(i) & set(wp[1])) >= wp[0]",
+  "replace": "            plain[i] = True",
+  "kills": [
+   "test_115_a_clients_grounded_is_the_lenss"
+  ]
+ },
+ "m-explain-names": {
+  "file": "verify/minds_verify.py",
+  "find": "                         and x[\"slots\"][1] != H_VERDICT_INVALID and i in x[\"attests\"]]",
+  "replace": "                         and False]",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-explain-needs-replay": {
+  "file": "verify/minds_verify.py",
+  "find": "                                                   and kc[i][\"schema\"] in judges and kc[i][\"slots\"][1] != H_EMPTY),",
+  "replace": "                                                   ),",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-whatif-names": {
+  "file": "vars1.py",
+  "find": "                seen, todo = set(), [*relies_on(cid), *before[\"counted_witnesses\"].get(cid, {})]",
+  "replace": "                seen, todo = set(), [*relies_on(cid)]",
+  "kills": [
+   "test_117_what_a_decision_rests_on_is_named"
+  ]
+ },
+ "m-power-refuse": {
+  "file": "vars1.py",
+  "find": "                or cells[cid].h_schema not in (H_SCHEMA[\"contract\"], H_SCHEMA[\"decision\"])\n                or cells[cid].slots[1] != H_EMPTY):",
+  "replace": "                ):",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-exact-attackers": {
+  "file": "vars1.py",
+  "find": "        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "replace": "        exact = not any(origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-exact-quorums": {
+  "file": "vars1.py",
+  "find": "        exact = not any(x in attackers or origin(x) != scope or (x != cid and cells[x].h_schema in other_quorum)",
+  "replace": "        exact = not any(x in attackers or origin(x) != scope",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
+ },
+ "m-power-backers": {
+  "file": "vars1.py",
+  "find": "                if latches(co | backers.get(w, set()), u, kind):",
+  "replace": "                if latches(co, u, kind):",
+  "kills": [
+   "test_118_power_reads_settled_of_a_decision_and_says_where_it_is_not_exact"
+  ]
  }
 }
