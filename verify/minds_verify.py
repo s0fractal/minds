@@ -735,7 +735,7 @@ def grounded_at_tip(ki: Dict[str, object], output: bytes, assume_replay: bool = 
                 continue
             thr, pk = pols[p][0], set(pols[p][1])
             need[i] = thr
-            gone = set() if question else _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())
+            gone = _withdrawn_by(ki, t, i, pk) | (withdrawn_after or {}).get(i, set())  # a question reads none of it
             for w in children[i]:
                 x = kc[w]
                 if not live[w] or i not in x["attests"]:
