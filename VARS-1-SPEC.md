@@ -320,8 +320,8 @@ is the least fixed point of the monotone equation
 A verdict may rely on the very cell it judges, so the equation is not well founded by age, and a support that runs in a
 circle is Settled and not Grounded. A cell that rests along `relies` on a cell that is not Settled is not Grounded. The
 host computes it by rounds from the empty set; at most `|cells| + 1` are needed, and they change nothing else: Settled
-stays what a reader of the rules above computes, so a chain with no contract or decision on another has Grounded equal to
-Settled.
+stays what a reader of the rules above computes, so a chain where nothing relies on a contract, decision, question or custom
+schema has Grounded equal to Settled.
 
 ### 4.3 Rules object
 
