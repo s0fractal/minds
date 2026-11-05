@@ -2395,7 +2395,7 @@
   },
   {
    "id": "hist.chain",
-   "quote": "A chain is named by its genesis scope cell.",
+   "quote": "A chain is named by its genesis scope cell, which is its scope's name and roster",
    "status": "tested",
    "witnesses": [
     "test:test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both"
@@ -2406,7 +2406,7 @@
   },
   {
    "id": "hist.compare",
-   "quote": "Of two tips of one chain, the input of the one with fewer commits holds exactly\nthe cells of the other born below its commit count, with the same births, and exactly its seals made below that count, by\nthe same keys; so two inputs of one chain always read as one history, and no honest witness is named.",
+   "quote": "Of two tips of one chain, the input of the one with fewer commits holds exactly\nthe cells of the other born below its commit count, with the same births",
    "status": "proved",
    "witnesses": [
     "lean:present_prefix",
@@ -2415,9 +2415,7 @@
     "prop:I14"
    ],
    "mutants": [
-    "m-history-below",
-    "m-history-seal-below",
-    "m-history-key-map"
+    "m-history-below"
    ]
   },
   {
@@ -2427,14 +2425,16 @@
    "witnesses": [
     "test:test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both",
     "test:test_112_a_fork_without_a_shared_key_names_no_one",
-    "test:test_113_one_input_for_one_tip_byte_for_byte"
+    "test:test_113_one_input_for_one_tip_byte_for_byte",
+    "test:test_121_what_two_witnessed_sides_are_worth"
    ],
    "mutants": [
     "m-history-seals",
     "m-history-keys",
+    "m-history-consistent",
     "m-equivocation-needs-key",
-    "m-history-bytes",
-    "m-extends-behind"
+    "m-extends-behind",
+    "m-exit-fork-no-key"
    ]
   },
   {
@@ -2448,25 +2448,87 @@
   },
   {
    "id": "hist.guard",
-   "quote": "`tools/minds_chain.py verify-release` keeps the last tip each key sealed on this host and refuses to seal on a chain that does not descend\nfrom it",
+   "quote": "Every path of `tools/minds_chain.py` that seals a projection remembers, in that clone, the newest tip its projections name for\nthat key, and refuses to seal on a chain that does not descend from it.",
    "status": "tested",
    "witnesses": [
-    "test:test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed"
+    "test:test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed"
    ],
    "mutants": [
     "m-witness-fork-guard",
-    "m-witness-fork-mark"
+    "m-witness-fork-mark",
+    "m-witness-mark-own-commit",
+    "m-witness-release-guard",
+    "m-witness-ancestor"
    ]
   },
   {
    "id": "hist.not",
-   "quote": "A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits, reads as one history.",
+   "quote": "A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits at different counts,\nreads as one history",
    "status": "tested",
    "witnesses": [
-    "test:test_112_a_fork_without_a_shared_key_names_no_one"
+    "test:test_112_a_fork_without_a_shared_key_names_no_one",
+    "test:test_122_two_tips_at_one_count_are_not_one_tip"
    ],
    "mutants": [
     "m-history-below"
+   ]
+  },
+  {
+   "id": "hist.input",
+   "quote": "A reader refuses an input that does not read as one history, as the rules do: a cell born or a seal made beyond its commit\ncount, an index outside what it lists, an edge to a cell not older.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_120_an_input_that_lies_about_its_history_is_refused",
+    "test:test_123_a_spoiled_bundle_is_refused_and_no_crash"
+   ],
+   "mutants": [
+    "m-input-birth",
+    "m-input-seal-commit",
+    "m-input-seal-index",
+    "m-input-edge",
+    "m-input-arity",
+    "m-bundle-object"
+   ]
+  },
+  {
+   "id": "hist.compare-seals",
+   "quote": "exactly its seals made below that count, by\nthe same keys; so two inputs of one chain always read as one history, and no honest witness is named.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_110_every_two_tips_of_the_live_chain_read_as_one_history",
+    "test:test_112_a_fork_without_a_shared_key_names_no_one",
+    "prop:I14"
+   ],
+   "mutants": [
+    "m-history-seal-below",
+    "m-history-key-map"
+   ]
+  },
+  {
+   "id": "hist.tip",
+   "quote": "At one commit count there is one tip, for that tip one input byte for byte, and for that input under its rules one output:",
+   "status": "tested",
+   "witnesses": [
+    "test:test_113_one_input_for_one_tip_byte_for_byte",
+    "test:test_122_two_tips_at_one_count_are_not_one_tip"
+   ],
+   "mutants": [
+    "m-history-tip",
+    "m-history-bytes",
+    "m-history-output"
+   ]
+  },
+  {
+   "id": "hist.report",
+   "quote": "the result says `same_witness_policy` and `overlap_bound`.",
+   "status": "tested",
+   "witnesses": [
+    "test:test_121_what_two_witnessed_sides_are_worth"
+   ],
+   "mutants": [
+    "m-overlap-policy",
+    "m-overlap-witnessed",
+    "m-overlap-bound"
    ]
   }
  ],

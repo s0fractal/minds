@@ -512,12 +512,18 @@ KERNEL_BITS = ("accepted", "invalidated", "effective", "retired", "superseded", 
 BUNDLE_FORMAT = "vars-1.projection-bundle@1"
 
 
+_STANDARD_ARITY = {H_SCHEMA[name]: len(descriptors) for name, descriptors in SCHEMA_SPECS.items()}
+
+
 def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, object]:
     """A kernel input (§4.3) in `encoding` as data: POL1 rosters as key indices, cells in order with their slots,
     edges and references as cell indices, and seals as (target, context, key index, commit). Key bytes are not in the
     input, only their order. A cell's `refs` are the cells its payload and slots name as the rules read them: in v1
     every payload or slot equal to a cell id; in v2 the input's own list (RULES-V2.md §3), each entry checked to name
-    an older cell whose id is the value at its position."""
+    an older cell whose id is the value at its position. An input that does not read as one history is refused here, as
+    the kernel refuses it: a cell born or a seal made beyond its commit count, an index outside what it lists, an edge to
+    a cell not older, a cell of a standard schema with another arity. A reader without the history has no other check
+    of it, and whoever signs an input chooses its bytes."""
     def u32(off: int) -> int:
         if off + 4 > len(kernel_input):
             raise VarsError("kernel input truncated")
@@ -534,18 +540,24 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
     if v2 and u32(0) != KERNEL2_MAGIC:
         raise VarsError("the kernel input is not in the v2 encoding of the rules it names")
     base = 4 if v2 else 0
-    commits, n, p = u32(base), u32(base + 4), u32(base + 12)
+    commits, n, nk, p = u32(base), u32(base + 4), u32(base + 8), u32(base + 12)
     off = base + 16
     pols: Dict[bytes, Tuple[int, List[int]]] = {}
     for _ in range(p):
         k = u32(off + 36)
         pols[take(off, 32)] = (u32(off + 32), [u32(off + 40 + 4 * j) for j in range(k)])
+        if any(x >= nk for x in pols[take(off, 32)][1]):
+            raise VarsError("a kernel input's policy names a key outside its keys")
         off += 40 + 4 * k
     cells = []
     for _ in range(n):
         cid, schema, payload = take(off, 32), take(off + 32, 32), take(off + 64, 32)
         off += 160
         origin, birth, k = u32(off), u32(off + 4), u32(off + 8)
+        if birth >= commits:
+            raise VarsError("a kernel input holds a cell born beyond its commit count")
+        if schema in _STANDARD_ARITY and k != _STANDARD_ARITY[schema]:
+            raise VarsError("a kernel input holds a cell of a standard schema with another arity")
         off += 12
         slots = [take(off + 32 * j, 32) for j in range(k)]
         off += 32 * k
@@ -555,6 +567,8 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
         for _ in range(5):
             m = u32(off)
             edges.append([u32(off + 4 + 4 * j) for j in range(m)])
+            if any(x >= len(cells) for x in edges[-1]):
+                raise VarsError("a kernel input's edge names a cell not older than its own")
             off += 4 + 4 * m
         cell = {"id": cid, "schema": schema, "payload": payload, "origin": origin, "birth": birth, "slots": slots,
                 "relies": edges[0], "attests": edges[1], "edges": edges}
@@ -572,7 +586,13 @@ def parse_kernel_input(kernel_input: bytes, encoding: str = "v1") -> Dict[str, o
             c["refs"] = [pos[x] for x in (c["payload"], *c["slots"]) if x in pos]
     seals = []
     for j in range(u32(off)):
-        seals.append(tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4)))
+        seal = tuple(u32(off + 4 + 16 * j + 4 * i) for i in range(4))
+        for value, bound, name in ((seal[0], n, "target"), (seal[1], n, "context"), (seal[2], nk, "key")):
+            if value >= bound:
+                raise VarsError(f"a kernel input's seal names a {name} outside what it lists")
+        if seal[3] >= commits:
+            raise VarsError("a kernel input holds a seal made beyond its commit count")
+        seals.append(seal)
     if off + 4 + 16 * len(seals) != len(kernel_input):
         raise VarsError("kernel input has trailing bytes")
     return {"commits": commits, "pols": pols, "cells": cells, "seals": seals, "encoding": encoding}
@@ -852,7 +872,7 @@ def verify_projection(bundle: Dict[str, object], require: Optional[List[bytes]] 
     rules, so its identity is the reader's, not the bundle's). Then it is run on the input (`run_rules`): the same
     output is `kernel: "verified_here"`; a refusal or another output raises VarsError; a run that cannot be made
     leaves `kernel: "witnessed"` with the reason in `explain.kernel`."""
-    if bundle.get("format") != BUNDLE_FORMAT:
+    if not isinstance(bundle, dict) or bundle.get("format") != BUNDLE_FORMAT:
         raise VarsError("unknown projection bundle format")
     cell = Cell.decode(bytes.fromhex(bundle["cell"]))
     if cell.h_schema != H_SCHEMA["projection"] or len(cell.slots) != 5:
@@ -974,7 +994,7 @@ def verify_attestation(bundle: Dict[str, object], require: Optional[List[bytes]]
     must also endorse the cell at the tip and witness the projection, and `required_missing` lists those that
     do not (`explain.required` says why). `kernels` and `timeout` are the projection's (`verify_projection`):
     `kernel` says whether its output was the witnesses' word or checked here."""
-    if bundle.get("format") != ATTESTATION_FORMAT:
+    if not isinstance(bundle, dict) or bundle.get("format") != ATTESTATION_FORMAT:
         raise VarsError("unknown attestation bundle format")
     d = Cell.decode(bytes.fromhex(bundle["cell"]))
     if d.h_schema not in (H_SCHEMA["contract"], H_SCHEMA["decision"]) or len(d.slots) != 4:
@@ -1219,6 +1239,8 @@ def compare_projections(a: Dict[str, object], b: Dict[str, object]) -> Dict[str,
     side's commit count, or differs only in empty commits, reads as one history."""
     sides = []
     for bundle in (a, b):
+        if not isinstance(bundle, dict):
+            raise VarsError("a bundle is a JSON object")
         pb = bundle.get("projection") if bundle.get("format") == ATTESTATION_FORMAT else bundle
         if not isinstance(pb, dict):
             raise VarsError("an attestation bundle without a projection says nothing of a history")
@@ -1228,12 +1250,18 @@ def compare_projections(a: Dict[str, object], b: Dict[str, object]) -> Dict[str,
         if r["rules_status"] != "known":
             raise VarsError("a projection whose rules this verifier does not read says nothing of a history")
         ki = parse_kernel_input(bytes.fromhex(pb["input"]), r["explain"]["rules"]["encoding"])
-        sides.append((r, ki, {row["key"] for row in r["explain"]["witness_seals"]}, bytes.fromhex(pb["input"])))
-    (ra, ka, sa, ia), (rb, kb, sb, ib) = sides
+        sides.append((r, ki, {row["key"] for row in r["explain"]["witness_seals"]}, pb))
+    (ra, ka, sa, pa), (rb, kb, sb, pb) = sides
     relation, first = compare_histories(ka, kb)
-    if relation == "same" and ka["encoding"] == kb["encoding"] and ia != ib:
-        relation = "forked"  # one tip has one input, byte for byte; here the difference is in no fact compared
+    if relation == "same" and (ra["tip"] != rb["tip"] or (ka["encoding"] == kb["encoding"] and pa["input"] != pb["input"])
+                               or (ra["rules"] == rb["rules"] and pa["input"] == pb["input"] and pa["output"] != pb["output"])):
+        # One count has one tip, one tip one input, and one input under one rules one output: the difference is in no
+        # fact compared, and it still is not one history
+        relation = "forked"
     sealed_both = sorted(sa & sb)
+    pol_a, pol_b = ra["explain"]["witness_policy"], rb["explain"]["witness_policy"]
+    same_policy = pol_a["id"] == pol_b["id"]
+    both_witnessed = ra["witnessed"] and rb["witnessed"]
     view = lambda r, ki: {"projection": r["projection"], "tip": r["tip"], "commits": ki["commits"],
                           "witnessed": r["witnessed"], "witnesses": r["witnesses"]}
     return {
@@ -1244,6 +1272,10 @@ def compare_projections(a: Dict[str, object], b: Dict[str, object]) -> Dict[str,
         "b": view(rb, kb),
         "sealed_both": sealed_both if relation == "forked" else [],
         "equivocation": relation == "forked" and bool(sealed_both),
+        "same_witness_policy": same_policy,
+        "witnessed_both": sorted(set(ra["witnesses"]) & set(rb["witnesses"])) if relation == "forked" else [],
+        # what `quorum_overlap` promises of the keys that witnessed both: only of one policy, and only if both met it
+        "overlap_bound": (max(0, 2 * pol_a["threshold"] - len(pol_a["keys"])) if same_policy and both_witnessed else None),
     }
 
 
@@ -1255,7 +1287,8 @@ USAGE = """usage: minds_verify.py COMMAND BUNDLE.json [--require PUBKEY]... [--k
   inspect-projection  exit 0 iff it is consistent and witnessed under its own policy (no trust claimed)
   inspect-attestation exit 0 iff it is accepted under the bundle's own scope policy (no trust claimed); its result
                       says `accepted_under_own_policy`, never `accepted`, the word of verify-attestation
-  verify-equivocation exit 0 iff the two bundles' histories fork and a key sealed both: a proof by itself, no pins
+  verify-equivocation exit 0 iff the two bundles' histories fork and a key sealed both: a proof by itself, no pins;
+                      exit 4 for a fork no key sealed both of, which names no one; exit 1 for no fork
   verify-extends      exit 0 iff the second bundle's history is the first's or extends it: run it on the last bundle
                       you accepted and a new one, and verify the new one for the keys you trust as well
 A bundle must read one way: one that is not UTF-8 JSON, or whose object names a key twice, is refused.
@@ -1276,12 +1309,16 @@ def read_bundle(raw: bytes) -> object:
 
     def not_json(token: str) -> object:
         raise VarsError(f"{token} is not JSON")
-    return json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
+    bundle = json.loads(raw.decode("utf-8"), object_pairs_hook=one_reading, parse_constant=not_json)
+    if not isinstance(bundle, dict):
+        raise VarsError("a bundle is a JSON object")
+    return bundle
 
 
 def main(argv: List[str]) -> int:
-    """The command line: exit 0 or 1 is a verdict, 2 a refusal of the bundle or the command line, 3 an error of this
-    file, which no verdict uses (an uncaught Python error would exit 1, the code of a negative verdict)."""
+    """The command line: exit 0, 1 or, for a fork that names no one, 4 is a verdict, 2 a refusal of the bundle or the
+    command line, 3 an error of this file, which no verdict uses (an uncaught Python error would exit 1, the code of a
+    negative verdict)."""
     try:
         return _run(argv)
     except Exception as e:
@@ -1298,7 +1335,7 @@ def _run(argv: List[str]) -> int:
             return 2
         print(json.dumps(result, indent=2, sort_keys=True))
         if argv[0] == "verify-equivocation":
-            return 0 if result["equivocation"] else 1
+            return 0 if result["equivocation"] else 4 if result["relation"] == "forked" else 1
         return 0 if result["relation"] in ("same", "extends") else 1
     cmds = ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation")
     opts = list(zip(argv[2::2], argv[3::2]))

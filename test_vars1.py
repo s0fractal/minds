@@ -6838,7 +6838,249 @@ class TestVars1Conformance(unittest.TestCase):
                 self.assertEqual(V.compare_histories(b, a), ("behind", None))
 
     def _fork_at(self, repo, tip):
+        """The chain is rewritten to `tip`, and the keys forget what they sealed here: to make the fork the proof is for,
+        a key has to get past `refuse_a_fork`, whose own test is 114."""
         subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", tip], check=True)
+        for mark in (self.repo_path / ".git" / "vars").glob("witnessed-*"):
+            mark.unlink()
+
+    def _projection_of(self, repo, scope, tip, key, policy=None, seal_scope=None):
+        """A projection bundle of `tip` that `key` seals, made as a witness would make it, naming the keys of `policy`."""
+        deltas = repo.chain_deltas(repo.commit_chain(tip))
+        kernel_input, _ = V.kernel_facts(scope, deltas)
+        rules = V.chain_rules(scope, deltas)
+        output = V.kernel_runner(rules).run(kernel_input)
+        at: dict[bytes, bytes] = {}
+        put = SmallChain.put
+        thr, names = policy or (1, (key,))
+        pol = put(at, V.atom_pol1(thr, put(at, V.atom_hvec(sorted(PK[n] for n in names)))))
+        cell = V.Cell(V.H_SCHEMA["projection"], put(at, V.atom_utf8(f"{scope}/projection/{tip[:12]}")), V.H_EMPTY,
+                      slots=(put(at, V.atom_utf8(tip)), rules, V.sha256(kernel_input), V.sha256(output), pol))
+        ctx = seal_scope or cell.id
+        keys = [key] if isinstance(key, str) else list(key)
+        return {"format": V.BUNDLE_FORMAT, "cell": cell.encode().hex(), "atoms": sorted(a.hex() for a in at.values()),
+                "seals": [V.Seal.sign(SK[k], cell.id, ctx).encode().hex() for k in keys],
+                "input": kernel_input.hex(), "output": output.hex()}
+
+    def _resigned(self, bundle, raw_input, key="m"):
+        """The same projection with other input bytes, signed by the key that wants them believed."""
+        at: dict[bytes, bytes] = {}
+        put = SmallChain.put
+        old = V.Cell.decode(bytes.fromhex(bundle["cell"]))
+        pol = put(at, V.atom_pol1(1, put(at, V.atom_hvec([PK[key]]))))
+        cell = V.Cell(V.H_SCHEMA["projection"], put(at, V.atom_utf8(f"minds/projection/{V.sha256(raw_input).hex()[:12]}")),
+                      V.H_EMPTY, slots=(put(at, V.atom_utf8("f" * 40)), old.slots[1], V.sha256(raw_input), old.slots[3], pol))
+        return {"format": bundle["format"], "cell": cell.encode().hex(), "atoms": sorted(a.hex() for a in at.values()),
+                "seals": [V.Seal.sign(SK[key], cell.id, cell.id).encode().hex()], "input": raw_input.hex(),
+                "output": bundle["output"]}
+
+    def _forked_bundles(self, mc):
+        """A fork at a release, one key on both sides, three commits on each."""
+        sk = SK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        _, r0 = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
+        fork = repo.ref_commit("minds")
+        _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["x OK"])
+        _, r1b = mc.release(self.repo_path, sk, "c" * 40, ["x OK"])
+        side_a = json.loads(json.dumps(V.export_projection(repo, "minds", r1b["projection"])))
+        self._fork_at(repo, fork)
+        repo = V.GitVarsRepo(self.repo_path)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        w = ch.axiom("the-other-side", at)
+        ch.commit(at, [w], [("m", w)])
+        _, r2 = mc.release(self.repo_path, sk, "d" * 40, ["x OK"])
+        _, r2b = mc.release(self.repo_path, sk, "e" * 40, ["x OK"])
+        side_b = json.loads(json.dumps(V.export_projection(repo, "minds", r2b["projection"])))
+        return side_a, side_b, repo
+
+    def test_120_an_input_that_lies_about_its_history_is_refused(self) -> None:
+        """A forker signs its own inputs, so nothing but the reader's parser stands between it and a lie that hides the
+        fork. A count below a cell's birth or a seal's commit is what the kernel refuses too. Moving its own cells past the
+        other side's count hides nothing: the other side's cells are still missing below it."""
+        mc = self._minds_chain()
+        side_a, side_b, _ = self._forked_bundles(mc)
+        enc = V.verify_projection(side_a)["explain"]["rules"]["encoding"]
+        base = 4 if enc == "v2" else 0
+        raw = bytes.fromhex(side_a["input"])
+        kb = V.parse_kernel_input(bytes.fromhex(side_b["input"]), enc)
+        first = V.compare_histories(V.parse_kernel_input(raw, enc), kb)[1]
+        self.assertIsInstance(first, int)
+
+        def lying_header(count):
+            out = bytearray(raw)
+            struct.pack_into("<I", out, base, count)
+            return bytes(out)
+
+        for bad in (first, 0):
+            with self.assertRaisesRegex(V.VarsError, "beyond its commit count"):
+                V.parse_kernel_input(lying_header(bad), enc)
+            r = None
+            try:
+                r = V.compare_projections(self._resigned(side_a, lying_header(bad)), side_b)
+            except V.VarsError:
+                pass
+            self.assertIsNone(r, "a bundle whose input lies about its commit count reads as a history")
+        # the last seal of an input, with a commit past the count
+        out = bytearray(raw)
+        struct.pack_into("<I", out, len(out) - 4, struct.unpack_from("<I", raw, base)[0])
+        with self.assertRaisesRegex(V.VarsError, "beyond its commit count"):
+            V.parse_kernel_input(bytes(out), enc)
+
+        # every birth and every seal commit moved past the other side's count, the header too: still a fork
+        ka = V.parse_kernel_input(raw, enc)
+        self.assertEqual(V.compare_histories(ka, kb)[0], "forked")
+        shifted = dict(ka, commits=ka["commits"] + 50,
+                       cells=[dict(c, birth=c["birth"] + 50 if c["birth"] >= first else c["birth"]) for c in ka["cells"]],
+                       seals=[(t, x, k, com + 50 if com >= first else com) for t, x, k, com in ka["seals"]])
+        self.assertEqual(V.compare_histories(shifted, kb)[0], "forked")
+
+    def test_121_what_two_witnessed_sides_are_worth(self) -> None:
+        """2q - n is reported, not only proved: whether the sides name one policy, and the keys that bound promises. A fork
+        no key sealed both of has a code of its own, apart from one history."""
+        def side(name, witnesses, policy):
+            path = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+            self.addCleanup(shutil.rmtree, path, True)
+            for args in (("init", "-q"), ("config", "user.name", "x"), ("config", "user.email", "x@x"), ("config", "gc.auto", "0")):
+                subprocess.run(["git", "-C", str(path), *args], check=True)
+            repo = V.GitVarsRepo(path)
+            ch = SmallChain(repo, "s", ("a", "b", "c"), 1, 1, V.H_LENS_KERNEL_V2)
+            at: dict[bytes, bytes] = {}
+            x = ch.axiom(name, at)
+            ch.commit(at, [x], [("a", x)])
+            return self._projection_of(repo, "s", ch.tip, witnesses, policy=policy, seal_scope=ch.s.id)
+
+        folder = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, folder, True)
+        shutil.copy(ROOT_DIR / "verify" / "minds_verify.py", folder)
+
+        def run(a, b):
+            (folder / "a.json").write_text(json.dumps(a))
+            (folder / "b.json").write_text(json.dumps(b))
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", "verify-equivocation", "a.json", "b.json"],
+                                 cwd=folder, capture_output=True, text=True)
+            return out.returncode, json.loads(out.stdout) if out.stdout else None
+
+        three = (2, ("a", "b", "c"))
+        code, r = run(side("left", ("a", "b"), three), side("right", ("b", "c"), three))  # 2-of-3 on each side
+        self.assertEqual((code, r["equivocation"], r.get("same_witness_policy"), r.get("overlap_bound")), (0, True, True, 1))
+        self.assertEqual(r.get("witnessed_both"), [PK["b"].hex()])
+        self.assertGreaterEqual(len(r.get("witnessed_both")), r.get("overlap_bound"))  # what `quorum_overlap` proves
+        # one of three on each side: no bound, and no key sealed both, a fork that names no one
+        one = (1, ("a", "b", "c"))
+        code, r = run(side("left", ("a",), one), side("right", ("b",), one))
+        self.assertEqual((code, r["relation"], r["equivocation"], r.get("same_witness_policy"), r.get("overlap_bound")),
+                         (4, "forked", False, True, 0))
+        # two policies: the theorem does not speak
+        code, r = run(side("left", ("a", "b"), (2, ("a", "b"))), side("right", ("c",), (1, ("c",))))
+        self.assertEqual((code, r["relation"], r.get("same_witness_policy"), r.get("overlap_bound")), (4, "forked", False, None))
+        # one history keeps its own code
+        a = side("left", ("a",), one)
+        self.assertEqual(run(a, a)[0], 1)
+        # a side its own policy does not witness promises nothing
+        code, r = run(side("left", ("a",), three), side("right", ("a",), three))
+        self.assertEqual((code, r["equivocation"], r.get("overlap_bound"), r.get("witnessed_both")),
+                         (0, True, None, [PK["a"].hex()]))
+
+    def test_122_two_tips_at_one_count_are_not_one_tip(self) -> None:
+        """Two commits at one count are two tips, whatever their inputs say: a fork, here in empty commits. At different
+        counts empty commits do read as one history, as §4.4 says. Two outputs of one input are a false output."""
+        mc = self._minds_chain()
+        sk = SK["m"]
+        mc.init(self.repo_path, sk)
+        repo = V.GitVarsRepo(self.repo_path)
+        fork = repo.ref_commit("minds")
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        ch.commit({}, [], [])
+        tip_a = repo.ref_commit("minds")
+        env = dict(os.environ, GIT_COMMITTER_DATE="2001-01-01T00:00:00Z", GIT_AUTHOR_DATE="2001-01-01T00:00:00Z")
+
+        def empty(parent):
+            tree = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{parent}^{{tree}}"],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+            return subprocess.run(["git", "-C", str(self.repo_path), "commit-tree", tree, "-p", parent, "-m", "the other side"],
+                                  capture_output=True, text=True, check=True, env=env).stdout.strip()
+
+        tip_b = empty(fork)
+        self.assertNotEqual(tip_a, tip_b)
+        ctx = mc.governing_scope(repo)
+        a = self._projection_of(repo, "minds", tip_a, "m", seal_scope=ctx)
+        b = self._projection_of(repo, "minds", tip_b, "m", seal_scope=ctx)
+        self.assertEqual(a["input"], b["input"])
+        r = V.compare_projections(a, b)
+        self.assertEqual((r["relation"], r["equivocation"], r["first_difference"]), ("forked", True, None))
+        self.assertEqual(V.compare_projections(a, a)["relation"], "same")
+        # at different counts, a fork in empty commits only is not seen: this is what the spec says it does not tell
+        c = self._projection_of(repo, "minds", empty(tip_b), "m", seal_scope=ctx)
+        self.assertEqual(V.compare_projections(a, c)["relation"], "extends")
+
+        # one tip, one input, two outputs: at least one is false, and the key sealed both
+        raw_out = bytearray(bytes.fromhex(a["output"]))
+        raw_out[-1] ^= 1
+        at: dict[bytes, bytes] = {}
+        put = SmallChain.put
+        old = V.Cell.decode(bytes.fromhex(a["cell"]))
+        pol = put(at, V.atom_pol1(1, put(at, V.atom_hvec([PK["m"]]))))
+        liar = V.Cell(V.H_SCHEMA["projection"], put(at, V.atom_utf8("minds/projection/other-output")), V.H_EMPTY,
+                      slots=(old.slots[0], old.slots[1], old.slots[2], V.sha256(bytes(raw_out)), pol))
+        at[old.slots[0]] = V.atom_utf8(tip_a)
+        d = {"format": a["format"], "cell": liar.encode().hex(), "atoms": sorted(x.hex() for x in at.values()),
+             "seals": [V.Seal.sign(SK["m"], liar.id, ctx).encode().hex()], "input": a["input"], "output": bytes(raw_out).hex()}
+        r = V.compare_projections(a, d)
+        self.assertEqual((r["relation"], r["equivocation"], r["sealed_both"]), ("forked", True, [PK["m"].hex()]))
+
+    def test_123_a_spoiled_bundle_is_refused_and_no_crash(self) -> None:
+        """Bytes no verifier signed for, and bytes a forker did: every answer is a verdict or a refusal. Exit 3 is an error of
+        this file, which no bundle may reach."""
+        mc = self._minds_chain()
+        side_a, side_b, _ = self._forked_bundles(mc)
+        folder = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, folder, True)
+        shutil.copy(ROOT_DIR / "verify" / "minds_verify.py", folder)
+        (folder / "b.json").write_text(json.dumps(side_b))
+
+        def run(a, cmd="verify-equivocation"):
+            (folder / "a.json").write_text(a if isinstance(a, str) else json.dumps(a))
+            out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", cmd, "a.json", "b.json"], cwd=folder,
+                                 capture_output=True, text=True)
+            return out.returncode, out.stderr
+
+        for shape in ("[]", "3", "null", '"x"'):
+            for cmd in ("verify-equivocation", "verify-extends"):
+                code, err = run(shape, cmd)
+                self.assertEqual((shape, cmd, code), (shape, cmd, 2), err)
+            (folder / "a.json").write_text(shape)
+            for cmd in ("verify-projection", "verify-attestation", "inspect-projection", "inspect-attestation"):
+                out = subprocess.run([sys.executable, "-I", "-S", "minds_verify.py", cmd, "a.json", "--require", "00" * 32],
+                                     cwd=folder, capture_output=True, text=True)
+                self.assertEqual((shape, cmd, out.returncode), (shape, cmd, 2), out.stderr)
+        code, err = run({"format": V.ATTESTATION_FORMAT, "projection": []})
+        self.assertEqual(code, 2, err)
+
+        enc = V.verify_projection(side_a)["explain"]["rules"]["encoding"]
+        raw = bytes.fromhex(side_a["input"])
+        ki = V.parse_kernel_input(raw, enc)
+        n = len(ki["cells"])
+        for field, name in ((0, "target"), (1, "context"), (2, "key")):
+            out = bytearray(raw)
+            struct.pack_into("<I", out, len(out) - 16 + 4 * field, 0xFFFFFF)
+            with self.assertRaisesRegex(V.VarsError, f"seal names a {name} outside"):
+                V.parse_kernel_input(bytes(out), enc)
+            self.assertEqual(run(self._resigned(side_a, bytes(out)))[0], 2)
+
+        # any word of the input changed, under the forker's signature: a verdict or a refusal, never a crash
+        import random
+        rng = random.Random(20261105)
+        codes = set()
+        for _ in range(60):
+            out = bytearray(raw)
+            at = rng.randrange(0, len(out) - 4, 4)
+            struct.pack_into("<I", out, at, rng.choice((0, 1, 2, 0xFF, n, n + 1, 0xFFFFFFFF, rng.getrandbits(32))))
+            code, err = run(self._resigned(side_a, bytes(out)))
+            self.assertIn(code, (0, 1, 2, 4), err)
+            codes.add(code)
+        self.assertIn(2, codes)
 
     def test_111_two_bundles_prove_a_fork_and_a_key_that_sealed_both(self) -> None:
         """The two bundles alone, in a fresh folder, with no repository: a fork, the keys that sealed both sides, a
@@ -6902,7 +7144,20 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("without its input", err)
 
-        # a chain of another genesis, under the same key: two chains are not a fork
+        # one scope and one roster are one chain to this check, begun twice or not: a key on both is named
+        other = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
+        self.addCleanup(shutil.rmtree, other, True)
+        for args in (("init", "-q"), ("config", "user.name", "x"), ("config", "user.email", "x@x"), ("config", "gc.auto", "0")):
+            subprocess.run(["git", "-C", str(other), *args], check=True)
+        mc.init(other, sk)
+        again = V.GitVarsRepo(other)
+        self.assertEqual(mc.governing_scope(again), mc.governing_scope(repo))
+        mc.release(other, sk, "2" * 40, ["x OK"])
+        _, r9 = mc.release(other, sk, "3" * 40, ["x OK"])
+        code, r, _ = run("verify-equivocation", side_a, V.export_projection(again, "minds", r9["projection"]))
+        self.assertEqual((code, r["relation"], r["sealed_both"]), (0, "forked", [pk.hex()]))
+
+        # a chain of another genesis, under the same key: another scope, so two chains and no fork
         with unittest.mock.patch.object(mc, "SCOPE", "another"):
             mc.init(self.repo_path, sk)
             _, r3 = mc.release(self.repo_path, sk, "f" * 40, ["x OK"])
@@ -6969,6 +7224,18 @@ class TestVars1Conformance(unittest.TestCase):
         p = parsed(chain("u", lambda ch, b: cell(ch, "x", "a")))
         q = parsed(chain("v", lambda ch, b: (cell(ch, "x", "a"), cell(ch, "y", "b"))))
         self.assertEqual(V.compare_histories(p, q), ("extends", None))
+
+        # a policy atom only the shorter side holds, in a commit with no cell: it is not a prefix of the other
+        def orphan(ch, b):
+            at: dict[bytes, bytes] = {}
+            ch.policy(at, 1, ["a"])
+            ch.commit(at, [], [])
+        def blank(ch, b):
+            ch.commit({}, [], [])
+            cell(ch, "y", "a")
+        p = parsed(chain("o", orphan))
+        q = parsed(chain("w", blank))
+        self.assertEqual(V.compare_histories(p, q)[0], "forked")
 
         # a key joins whose bytes sort before the others': every key index shifts, and it is still one history
         path = Path(tempfile.mkdtemp(dir=self.repo_path.parent))
@@ -7100,64 +7367,74 @@ class TestVars1Conformance(unittest.TestCase):
                          V.parse_kernel_input(bytes.fromhex(side_b["input"]), "v1")["commits"])
         self.assertEqual((r["relation"], r["equivocation"], r["sealed_both"]), ("forked", True, [PK["m"].hex()]))
 
-    def test_114_a_witness_signs_nothing_on_a_fork_of_what_it_signed(self) -> None:
-        """A witness remembers the last tip it sealed on this host and refuses a chain that does not descend from it. A
-        host with no such memory, as a fresh runner is, is not protected."""
+    def test_114_a_clone_seals_no_projection_on_a_fork_of_what_it_sealed(self) -> None:
+        """Every path that seals a projection, in one clone: it remembers the newest tip those projections name, and refuses
+        a chain that does not descend from it. A verdict lost in a push race is no fork. Another clone, or a fresh runner,
+        has no such memory."""
         mc = self._minds_chain()
         mc.init(self.repo_path, SK["m"])
         repo = V.GitVarsRepo(self.repo_path)
         mc.join(self.repo_path, SK["m"], PK["b"], "bob")
         ok = lambda *a, **kw: (["x OK"], True)
-        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
-        fork = repo.ref_commit("minds")
         mark = mc.witnessed_path(self.repo_path, PK["b"])
         remembered = lambda: mark.read_text().strip() if mark.exists() else None
+        rewrite = lambda tip: subprocess.run(["git", "-C", str(self.repo_path), "update-ref", "refs/vars/heads/minds", tip],
+                                             check=True)
+
+        _, r1 = mc.release(self.repo_path, SK["m"], "a" * 40, ["x OK"])
+        named_by_r1 = V.parse_utf8(repo.lens("minds")["atoms"][repo.lens("minds")["cells"][r1["projection"]].slots[0]])
+        parent = repo.ref_commit("minds")
         c1, good, _ = mc.verify_release(self.repo_path, SK["b"], r1["decision"], "bob", checks=ok)
+        self.assertEqual((good, remembered()), (True, named_by_r1))  # what it sealed names this tip, not its own commit
+
+        # Bob's commit loses a push race: the published chain moves on from the same parent without it. No fork of
+        # anything Bob sealed, so he answers again
+        rewrite(parent)
+        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
+        at: dict[bytes, bytes] = {}
+        other = ch.axiom("someone-else-pushed-first", at)
+        ch.commit(at, [other], [("m", other)])
+        again, good, _ = mc.verify_release(self.repo_path, SK["b"], r1["decision"], "bob", checks=ok)
         self.assertTrue(good)
-        self.assertEqual(remembered(), c1)
-        # extending what it signed goes on
+
+        # extending goes on, and the memory follows the newest tip sealed
         _, r2 = mc.release(self.repo_path, SK["m"], "b" * 40, ["x OK"])
-        c2, good, _ = mc.verify_release(self.repo_path, SK["b"], r2["decision"], "bob", checks=ok)
-        self.assertEqual(remembered(), c2)
-        # the chain is rewritten under the witness
-        self._fork_at(repo, fork)
-        repo = V.GitVarsRepo(self.repo_path)
+        named_by_r2 = V.parse_utf8(repo.lens("minds")["atoms"][repo.lens("minds")["cells"][r2["projection"]].slots[0]])
+        fork = repo.ref_commit("minds")
+        mc.verify_release(self.repo_path, SK["b"], r2["decision"], "bob", checks=ok)
+        self.assertEqual(remembered(), named_by_r2)
+
+        # the chain is rewritten below what it sealed: refused, and no ref moves
+        below = subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{named_by_r2}^"], capture_output=True,
+                               text=True, check=True).stdout.strip()
+        rewrite(below)
+        mine = mc.witnessed_path(self.repo_path, PK["m"])
+        mine.unlink()  # whoever rewrites has no memory of it: its own guard has its turn below
         _, r3 = mc.release(self.repo_path, SK["m"], "c" * 40, ["x OK"])
         tip = repo.ref_commit("minds")
         with self.assertRaisesRegex(V.VarsError, "sign a fork"):
             mc.verify_release(self.repo_path, SK["b"], r3["decision"], "bob", checks=ok)
         self.assertEqual(repo.ref_commit("minds"), tip)
-        # no memory, no protection: this is what a fresh runner has
+
+        # `release` seals a projection as well: one path, one guard
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.release(self.repo_path, SK["b"], "d" * 40, ["x OK"])
+        self.assertEqual(repo.ref_commit("minds"), tip)
+        # the key `release` sealed for remembers too, and refuses on a fork of that
+        self.assertTrue(mine.exists())
+        rewrite(below)
+        mine.unlink()
+        mc.release(self.repo_path, SK["m"], "e" * 40, ["x OK"])
+        sealed = mine.read_text().strip()
+        rewrite(subprocess.run(["git", "-C", str(self.repo_path), "rev-parse", f"{sealed}^"], capture_output=True, text=True,
+                               check=True).stdout.strip())
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.release(self.repo_path, SK["m"], "f" * 40, ["x OK"])
+
+        # no memory, no protection: this is what another clone or a fresh runner has
+        mine.unlink()
         mark.unlink()
-        mc.verify_release(self.repo_path, SK["b"], r3["decision"], "bob", checks=ok)
-        mc.join(self.repo_path, sk, PK["a"], "a")
-        mc.join(self.repo_path, sk, PK["b"], "b")
-        ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
-        at: dict[bytes, bytes] = {}
-        pol = ch.policy(at, 1, ["m", "a", "b"])
-        r0 = ch.decision("r0", at, pol)
-        ch.commit(at, [r0], [("m", r0)])
-        at = {}
-        d = ch.decision("d", at, pol)
-        ch.commit(at, [d], [("m", d)])
-        at = {}
-        founded = ch.verdict("founded", at, d.id, V.H_ATTESTED, "ana")
-        unfounded = ch.verdict("unfounded", at, d.id, V.H_ATTESTED, "bo", relies=[r0.id])
-        ch.commit(at, [founded, unfounded], [("a", founded), ("b", unfounded)])
-        _, rel = mc.release(self.repo_path, sk, "a" * 40, ["x OK"])
-        pc = repo.lens("minds")["cells"][rel["projection"]]
-        ch.commit({}, [], [("a", pc), ("b", pc)])
-        bundle = lambda: json.loads(json.dumps(V.export_attestation(repo, "minds", d.id, rel["projection"])))
-        r = V.verify_attestation(bundle())
-        self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["accepted"]), (True, True, True))
-        at = {}
-        x = ch.verdict("x", at, d.id, V.H_VERDICT_INVALID, "ana")
-        ch.commit(at, [x], [("a", x)])
-        lens = repo.lens("minds")
-        self.assertEqual((lens["settled"][d.id], lens["grounded"][d.id]), (True, False))
-        r = V.verify_attestation(bundle())
-        self.assertEqual((r["attested_at_tip"], r["grounded_at_tip"], r["contradicted_after_tip"]), (True, True, False))
-        self.assertEqual((r.get("grounded_after_tip"), r["accepted"]), (False, False))
+        mc.release(self.repo_path, SK["m"], "1" * 40, ["x OK"])
 
     def test_117_what_a_decision_rests_on_is_named(self) -> None:
         """A decision is ungrounded because of what its verdict rests on: a client and what-if name that, and not only
