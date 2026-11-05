@@ -2555,6 +2555,67 @@
     "m-change-rules-guard",
     "m-change-rules-cli-keys"
    ]
+  },
+  {
+   "id": "cross.uniform",
+   "quote": "a source's edges into two foreign targets of one\npolicy latch together or not at all",
+   "status": "proved",
+   "witnesses": [
+    "lean:cross_seal_uniform",
+    "lean:run_uniform",
+    "lean:run2_uniform",
+    "lean:no_faithful_import",
+    "test:test_127_an_import_does_not_read_as_its_source"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cross.reach",
+   "quote": "An edge into a target whose policy `A`'s roster cannot meet, such as a decision whose\nevaluator policy names only `B`'s keys, is out of `A`'s reach.",
+   "status": "proved",
+   "witnesses": [
+    "lean:edgeCond_out_of_reach",
+    "test:test_127_an_import_does_not_read_as_its_source"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cross.faithful",
+   "quote": "`Active` and `Stale` agree if the\nlatched edges into it do",
+   "status": "proved",
+   "witnesses": [
+    "lean:import_faithful",
+    "lean:stale_faithful"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cross.follow",
+   "quote": "with no cross-seal and no supersedes edge of its own, a foreign\ncell stands while `A` pins it, and a cell `A` does not accept does not stand.",
+   "status": "proved",
+   "witnesses": [
+    "lean:pinned_active",
+    "lean:unpinned_not_active",
+    "test:test_128_what_a_scope_can_do_instead"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "cross.lag",
+   "quote": "`vars1.lag` (`minds_chain.py lag REPO SCOPE`) reads the two chains and moves nothing",
+   "status": "tested",
+   "witnesses": [
+    "test:test_129_lag_reads_what_two_scopes_disagree_on"
+   ],
+   "mutants": [
+    "m-lag-follow-drop",
+    "m-lag-rests",
+    "m-lag-edges",
+    "m-lag-reach",
+    "m-lag-cross-seal",
+    "m-lag-scope",
+    "m-lag-pins"
+   ]
   }
  ],
  "informative": [

@@ -547,6 +547,21 @@ memory ref is rewritten with the chain: it can sign a fork unknowingly, and the 
 A fork that has not yet passed the shorter side's commit count, or that differs only in empty commits at different counts,
 reads as one history; and that an input is faithful to a chain is still the witnesses' word (§4.3).
 
+**Between two scopes.** A cell of `B` imported into `A` is the same bytes under two folds, and `A`'s statuses on it need not be
+`B`'s. Only `A`'s keys count in `A`, and a seal is on a cell, not on an edge, so a source's edges into two foreign targets of one
+policy latch together or not at all: `A` can latch an edge `B` has not, and a cell whose edges `B` latched only in part has no
+seal of `A` that reads it as `B` does. An edge into a target whose policy `A`'s roster cannot meet, such as a decision whose
+evaluator policy names only `B`'s keys, is out of `A`'s reach. A decision that falls back to the admission policy reads `A`'s and not `B`'s.
+On a set closed under who attacks it and what it supersedes, local or pinned on each side, `Active` and `Stale` agree if the
+latched edges into it do; that is the exact condition, and it is not one `A` can always arrange without another form of import.
+What `A` can do with its own acceptance is follow whether a cell stands: with no cross-seal and no supersedes edge of its own, a foreign
+cell stands while `A` pins it, and a cell `A` does not accept does not stand. A verdict comes across as it is, so a withdrawal reaches a
+decision of a policy of its own without `A`'s seal. A cell that supersedes another needs `A`'s cross-seal to stand, and a rebinding
+of a decision of `B`'s keys therefore cannot stand in `A`.
+`vars1.lag` (`minds_chain.py lag REPO SCOPE`) reads the two chains and moves nothing: which cells stand on one side and not the other,
+the edges only one side latched, what here rests on them, and what `A` can do about each. Acceptance is not transitive, so none of
+this passes through a third scope.
+
 **Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of
 `sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies
 that file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require
@@ -629,4 +644,5 @@ term depth 4096) is admitted on structure alone as `NOT_ASSESSED`, and so is eve
 - `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,
   lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that
   refuses to sign a fork.
+- `test_vars1.py` tests 127–129: an import that does not read as its source, what a scope can do instead, and `lag`.
 - `proofs/`: the theorems listed in `proofs/README.md`.
