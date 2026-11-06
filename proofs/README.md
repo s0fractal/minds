@@ -60,6 +60,11 @@ and, for some theorems, `Classical.choice`.
 | | `settled_needs`, `settled_iff_keys` | a coalition settles only with the keys already counted; Settled reads the cell's standing, its policy and the set of keys that count, and nothing else |
 | `History.lean` | `present_prefix`, `born_prefix` | the cells of a tip are exactly the cells of a later tip of the chain born before its count, with the same births: two tips of one chain read as one history by their cells |
 | | `quorum_overlap` | two lists of distinct keys of a policy of `n` hold at least `\|A\| + \|B\| - n` keys in common |
+| `Morphism.lean` | `cross_seal_uniform`, `run_uniform`, `run2_uniform` | a cross-seal is on a cell: into two foreign targets of one policy, a source's edges latch together or not at all |
+| | `no_faithful_import` | so where a source's edges are latched only in part in its own scope, no chain of the importing scope reads both as its source does |
+| | `edgeCond_out_of_reach` | into a foreign target whose policy no keys of the roster meet, no seal latches an edge |
+| | `import_faithful`, `stale_faithful` | on a closed set, local or pinned on each side, `Active` and `Stale` of two scopes agree if the latched edges into it do |
+| | `pinned_active`, `unpinned_not_active` | with no latched edge into it and no supersedes edge, a foreign cell stands while its scope pins it; one it does not accept does not stand |
 | `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
 | | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
 
@@ -119,6 +124,8 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
 
 - Pass 3 and Grounded of `vars1.py` and `verify/minds_verify.py` to `Pass3.lean` and `Grounded.lean`: no Lean executable
   computes them. They are held to the spec by the property suite's own oracle (I11, I13), not by the model.
+- `Morphism.lean`'s two worlds are hypotheses on two scopes' readings of one set of cells (`SameBytes`, `Faithful`), not two chains folded
+  side by side, and no theorem reaches Pass 3 across scopes: tests 127 and 128 hold what Settled does, and `vars1.lag` has no model.
 - `confinement` does not state that the fold's `Present` and the Pass 1 equations hold of a given chain: as with `Pin`,
   they are hypotheses. A rotation the coalition makes is outside it: the gate refuses one without its quorum (E-20), and
   the model makes no refusal. `GitVarsRepo.power` reads the same rules in Python; a search through the gate holds it

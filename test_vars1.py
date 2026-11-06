@@ -7902,5 +7902,269 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertIn("Run it before the first key of someone outside joins", (ROOT_DIR / "README.md").read_text())
 
 
+    # ---------- two scopes: §4.4 Between two scopes, proofs/Vars1/Morphism.lean ----------
+
+    def _two_scopes(self, adm_there=2):
+        """A scope `alpha` that imports from a scope `beta`, in one repository."""
+        here = SmallChain(self.repo, "alpha", ("a", "b"), 1, 1, V.H_LENS_KERNEL_V2)
+        there = SmallChain(self.repo, "beta", ("p", "q", "c"), adm_there, 1, V.H_LENS_KERNEL_V2)
+        return here, there
+
+    def _import(self, here, there, cells, accept=None, cross=()):
+        """A commit of `here` carrying `cells` of `there` with their own seals and its scope, acceptances of `accept` (all of them
+        by default), and `here`'s cross-seals on `cross`. Returns the acceptances."""
+        atoms_there, _, seals_there = self.repo.read_cas_tree(there.tip)
+        _, cells_here, _ = self.repo.read_cas_tree(here.tip)
+        at = dict(atoms_there)
+        new = [c for c in cells if c.id not in cells_here]
+        if there.s.id not in cells_here:
+            new = [there.s, *new]
+        seals = [x for x in seals_there.values() if x.h_target in {c.id for c in new}]
+        accs = []
+        for c in (cells if accept is None else accept):
+            acc = V.Cell(V.H_SCHEMA["acceptance"], here.put(at, V.atom_utf8(f"alpha/accept.{c.id.hex()[:12]}.{len(cells_here)}")), c.id,
+                         slots=(here.put(at, V.atom_utf8("beta")), there.s.id))
+            accs.append(acc)
+        seals += [V.Seal.sign(SK["a"], x.id, here.s.id) for x in accs]
+        seals += [V.Seal.sign(SK["a"], x.id, here.s.id) for x in cross]
+        tip = here.tip
+        c = self.repo.build_candidate_commit("alpha", at, [*new, *accs], seals, parent_commit=tip)
+        self.repo.admit_and_advance("alpha", c, expected_old=tip)
+        return accs
+
+    def _notice(self, ch, name, targets, keys, kind="invalidates"):
+        at: dict[bytes, bytes] = {}
+        base = ch.axiom(name, at)
+        vec = ch.put(at, V.atom_hvec(sorted(targets)))
+        n = V.Cell(base.h_schema, base.h_slot_name, base.h_payload, **(
+            {"h_invalidates": vec} if kind == "invalidates" else {"h_retires": vec, "h_loss": ch.put(at, V.atom_utf8("gone"))}))
+        ch.commit(at, [n], [(k, n) for k in keys])
+        return n
+
+    def test_127_an_import_does_not_read_as_its_source(self) -> None:
+        """A cross-seal is on a cell, and only `A`'s keys count in `A`. So `A` can latch an edge `B` has not; a cell whose edges `B`
+        latched only in part has no seal of `A` that reads it as `B` does; and an edge into a decision of `B`'s keys is out of `A`'s
+        reach. A decision that falls back to the admission policy reads `A`'s policy, not `B`'s."""
+        standing = lambda L, c: bool(L["active"][c.id] and not L["stale"][c.id])
+
+        # an edge B has not authorized: A's cross-seal latches it, and x is dead here and alive there
+        here, there = self._two_scopes()
+        at: dict[bytes, bytes] = {}
+        x = there.axiom("x", at)
+        there.commit(at, [x], [("p", x), ("q", x)])
+        self._import(here, there, [x])
+        w = self._notice(there, "w", [x.id], ["c"])
+        self.assertTrue(standing(there.lens(), x))
+        self._import(here, there, [w], cross=[w])
+        self.assertFalse(standing(here.lens(), x))
+
+        # and the exact condition met: an edge B latched by its quorum, into a cell of no policy of its own, and A's cross-seal
+        # latches it too. Here every status agrees, which is what `import_faithful` says of such a set
+        at = {}
+        y = there.axiom("y", at)
+        there.commit(at, [y], [("p", y), ("q", y)])
+        self._import(here, there, [y])
+        wy = self._notice(there, "wy", [y.id], ["p", "q"])
+        self._import(here, there, [wy], cross=[wy])
+        L, M = here.lens(), there.lens()
+        for c in (y, wy):
+            for bit in ("invalidated", "retired", "superseded", "active", "stale"):
+                self.assertEqual((c.id.hex(), bit, bool(L[bit][c.id])), (c.id.hex(), bit, bool(M[bit][c.id])))
+
+        # two edges of one source, one latched in B: neither choice of A reads both
+        for cross in (False, True):
+            tag = "y" if cross else "n"
+            here2 = SmallChain(self.repo, f"al{tag}", ("a", "b"), 1, 1, V.H_LENS_KERNEL_V2)
+            there2 = SmallChain(self.repo, f"be{tag}", ("p", "q", "c"), 2, 1, V.H_LENS_KERNEL_V2)
+            at = {}
+            x1, x2 = there2.axiom("x1", at), there2.axiom("x2", at)
+            there2.commit(at, [x1, x2], [("p", x1), ("q", x1), ("q", x2), ("c", x2)])
+            w = self._notice(there2, "w", [x1.id, x2.id], ["p"], kind="retires")  # p endorsed x1 at birth, and not x2
+            L = there2.lens()
+            self.assertEqual((standing(L, x1), standing(L, x2)), (False, True))
+            atoms_there, _, seals_there = self.repo.read_cas_tree(there2.tip)
+            at = dict(atoms_there)
+            ids = [c.id for c in (x1, x2, w)]
+            accs = [V.Cell(V.H_SCHEMA["acceptance"], here2.put(at, V.atom_utf8(f"al{tag}/accept.{i}")), c,
+                           slots=(here2.put(at, V.atom_utf8(f"be{tag}")), there2.s.id)) for i, c in enumerate(ids)]
+            seals = [v for v in seals_there.values() if v.h_target in {*ids, there2.s.id}]
+            seals += [V.Seal.sign(SK["a"], a.id, here2.s.id) for a in accs]
+            if cross:
+                seals.append(V.Seal.sign(SK["a"], w.id, here2.s.id))
+            tip = here2.tip
+            c = self.repo.build_candidate_commit(f"al{tag}", at, [there2.s, x1, x2, w, *accs], seals, parent_commit=tip)
+            self.repo.admit_and_advance(f"al{tag}", c, expected_old=tip)
+            L = here2.lens()
+            self.assertEqual((standing(L, x1), standing(L, x2)), (False, False) if cross else (True, True))
+
+        # an edge into a decision whose evaluator policy names only B's keys: A's cross-seal does not reach it
+        at = {}
+        pol = there.policy(at, 2, ["p", "q", "c"])
+        d = there.decision("d", at, pol)
+        there.commit(at, [d], [("p", d), ("q", d)])
+        self._import(here, there, [d])
+        kill = self._notice(there, "kill", [d.id], ["p", "q"])
+        self.assertFalse(standing(there.lens(), d))
+        self._import(here, there, [kill], cross=[kill])
+        self.assertTrue(standing(here.lens(), d))
+
+        # Settled: a verdict's seals count under the scope A pinned, for a policy of its own; a fallback reads A's admission
+        at = {}
+        fall = there.decision("fall", at, V.H_EMPTY)
+        there.commit(at, [fall], [("p", fall), ("q", fall)])
+        at = {}
+        v_d = there.verdict("v-d", at, d.id, V.H_ATTESTED, "pe")
+        v_f = there.verdict("v-f", at, fall.id, V.H_ATTESTED, "pe")
+        there.commit(at, [v_d, v_f], [("p", v_d), ("q", v_d), ("p", v_f), ("q", v_f)])
+        self._import(here, there, [fall, v_d, v_f])
+        L, M = here.lens(), there.lens()
+        self.assertEqual((M["settled"][fall.id], L["settled"][fall.id]), (True, False))
+
+    def test_128_what_a_scope_can_do_instead(self) -> None:
+        """With no cross-seal, per cell, a scope follows whether a cell stands by its own acceptance alone, whoever's keys hold it:
+        a cell `B` keeps stands while pinned, and one `B` lost falls when `A` drops the pin, and comes back on a new one. A withdrawal
+        comes across as it is. What cannot be followed: a rebinding of a decision of `B`'s keys, whose supersedes edge `A` cannot latch."""
+        here, there = self._two_scopes()
+        standing = lambda L, c: bool(L["active"][c.id] and not L["stale"][c.id])
+        at: dict[bytes, bytes] = {}
+        pol = there.policy(at, 2, ["p", "q", "c"])
+        x1, x2 = there.axiom("x1", at), there.axiom("x2", at)
+        d = there.decision("d", at, pol)
+        there.commit(at, [x1, x2, d], [("p", x1), ("q", x1), ("q", x2), ("c", x2), ("p", d), ("q", d)])
+        accs = dict(zip(("x1", "x2", "d"), self._import(here, there, [x1, x2, d])))
+
+        # B loses x1 to a notice sealed by its initial endorser, and d to its quorum. Nothing of it needs A's seal on it
+        self._notice(there, "w", [x1.id, x2.id], ["p"], kind="retires")
+        self._notice(there, "kill", [d.id], ["p", "q"])
+        M = there.lens()
+        self.assertEqual((standing(M, x1), standing(M, x2), standing(M, d)), (False, True, False))
+        L = here.lens()
+        self.assertEqual((standing(L, x1), standing(L, x2), standing(L, d)), (True, True, True))
+        self._notice(here, "drop-x1", [accs["x1"].id], ["a"])
+        self._notice(here, "drop-d", [accs["d"].id], ["a"])
+        L = here.lens()
+        self.assertEqual((standing(L, x1), standing(L, x2), standing(L, d)), (False, True, False))
+
+        # what rests on it here falls with it, and it comes back on a new acceptance
+        at = {}
+        mine = here.axiom("mine", at, relies=[x1.id])
+        here.commit(at, [mine], [("a", mine)])
+        self.assertTrue(here.lens()["stale"][mine.id] or not here.lens()["active"][mine.id])
+        self._import(here, there, [], accept=[x1])
+        L = here.lens()
+        self.assertEqual((standing(L, x1), standing(L, mine)), (True, True))
+
+        # a withdrawal comes across without A's seal: Settled of a policy of its own follows
+        at = {}
+        p1 = there.policy(at, 2, ["p", "q", "c"])
+        e = there.decision("e", at, p1)
+        there.commit(at, [e], [("p", e), ("q", e)])
+        at = {}
+        va, vb = there.verdict("va", at, e.id, V.H_ATTESTED, "pe"), there.verdict("vb", at, e.id, V.H_ATTESTED, "qu")
+        there.commit(at, [va, vb], [("p", va), ("q", vb), ("q", va), ("p", vb)])
+        self._import(here, there, [e, va, vb])
+        self.assertEqual((there.lens()["settled"][e.id], here.lens()["settled"][e.id]), (True, True))
+        at = {}
+        no = there.verdict("no", at, e.id, V.H_VERDICT_INVALID, "pe")
+        there.commit(at, [no], [("p", no), ("q", no)])
+        at = {}
+        no2 = there.verdict("no2", at, e.id, V.H_VERDICT_INVALID, "qu")
+        there.commit(at, [no2], [("p", no2), ("q", no2)])
+        self._import(here, there, [no, no2])
+        self.assertEqual((there.lens()["settled"][e.id], here.lens()["settled"][e.id]), (False, False))
+
+        # a rebinding: B's new binding of a decision of its keys stands in B. In A its supersedes edge can never latch
+        at = {}
+        p2 = there.policy(at, 2, ["p", "q", "c"])
+        old = there.decision("rebound", at, p2)
+        there.commit(at, [old], [("p", old), ("q", old)])
+        self._import(here, there, [old])
+        at = {}
+        new = V.Cell(old.h_schema, old.h_slot_name, there.put(at, V.atom_utf8("rebound again")), h_supersedes=there.put(at, V.atom_hvec([old.id])),
+                     h_loss=there.put(at, V.atom_utf8("rebound")), slots=old.slots)
+        at.update({h: there.repo_atom(h) for h in old.slots if there.has_atom(h)})
+        at[old.h_slot_name] = there.repo_atom(old.h_slot_name)
+        there.commit(at, [new], [("p", new), ("q", new)])
+        self.assertEqual((standing(there.lens(), new), standing(there.lens(), old)), (True, False))
+        self._import(here, there, [new], cross=[new])
+        L = here.lens()
+        self.assertEqual((standing(L, new), standing(L, old)), (False, True))
+
+    def test_129_lag_reads_what_two_scopes_disagree_on(self) -> None:
+        """`lag`: which imported cells stand on one side and not the other, why, what `A` can do about it, and what here rests on them.
+        It reads, and moves no ref."""
+        here, there = self._two_scopes()
+        at: dict[bytes, bytes] = {}
+        pol = there.policy(at, 2, ["p", "q", "c"])
+        x, y, z = there.axiom("x", at), there.axiom("y", at), there.axiom("z", at)
+        d = there.decision("d", at, pol)
+        there.commit(at, [x, y, z, d], [("p", c) for c in (x, y, z, d)] + [("q", c) for c in (x, y, z, d)])
+        accs = dict(zip("xyzd", self._import(here, there, [x, y, z, d])))
+        at = {}
+        mine = here.axiom("mine", at, relies=[x.id])
+        ours = here.decision("ours", at, V.H_EMPTY, relies=[mine.id])
+        here.commit(at, [mine, ours], [("a", mine), ("a", ours)])
+        lag = lambda: V.lag(self.repo, "alpha", self.repo, "beta")
+        r = lag()
+        self.assertEqual((r["shared"], r["lag"]), (4, []))  # the four cells; a scope cell is no claim of either side
+
+        # B loses x by a notice A has not imported: dead there, alive here, and A can drop the pin; what rests here is named
+        wx = self._notice(there, "wx", [x.id], ["p", "q"])
+        tips = (here.tip, there.tip)
+        row = {w["cell"]: w for w in lag()["lag"]}
+        self.assertEqual(sorted(row), [x.id.hex()])
+        rx = row[x.id.hex()]
+        self.assertEqual((rx["stands_here"], rx["stands_there"], rx["follow"]), (True, False, "drop-acceptance"))
+        self.assertEqual(rx["edges_there_only"], [{"source": wx.id.hex(), "kind": "invalidates", "source_here": False}])
+        self.assertEqual(rx["pinned_by"], [accs["x"].id.hex()])
+        self.assertEqual(rx["rests_here"], sorted(c.id.hex() for c in (mine, ours)))
+        self.assertEqual((here.tip, there.tip), tips)
+
+        # A follows by dropping the pin: in step again on whether it stands, and the edge A has not latched still shows
+        self._notice(here, "drop-x", [accs["x"].id], ["a"])
+        row = {w["cell"]: w for w in lag()["lag"]}
+        self.assertEqual((row[x.id.hex()]["stands_here"], row[x.id.hex()]["stands_there"], row[x.id.hex()]["follow"]), (False, False, None))
+
+        # an edge A latched and B did not: dead here, alive there, and only undoing the source would bring it back
+        wy = self._notice(there, "wy", [y.id], ["c"])
+        self._import(here, there, [wy], cross=[wy])
+        ry = {w["cell"]: w for w in lag()["lag"]}[y.id.hex()]
+        self.assertEqual((ry["stands_here"], ry["stands_there"], ry["follow"]), (False, True, "invalidate-source-here"))
+        self.assertEqual(ry["edges_here_only"], [{"source": wy.id.hex(), "kind": "invalidates", "source_here": True}])
+
+        # a cell A dropped and B keeps: accept it again
+        self._notice(here, "drop-z", [accs["z"].id], ["a"])
+        rz = {w["cell"]: w for w in lag()["lag"]}[z.id.hex()]
+        self.assertEqual((rz["stands_here"], rz["stands_there"], rz["follow"]), (False, True, "accept"))
+
+        # a rebinding of a cell of no policy of its own: its supersedes edge waits for A, and A's seal brings the two sides together
+        at = {}
+        u = there.axiom("u", at)
+        there.commit(at, [u], [("p", u), ("q", u)])
+        self._import(here, there, [u])
+        at = {h: there.repo_atom(h) for h in u.slots if there.has_atom(h)}
+        at[u.h_slot_name] = there.repo_atom(u.h_slot_name)
+        nu = V.Cell(u.h_schema, u.h_slot_name, there.put(at, V.atom_utf8("u again")), h_supersedes=there.put(at, V.atom_hvec([u.id])),
+                    h_loss=there.put(at, V.atom_utf8("rebound")), slots=u.slots)
+        there.commit(at, [nu], [("p", nu), ("q", nu)])
+        self._import(here, there, [nu])
+        rn = {w["cell"]: w for w in lag()["lag"]}.get(nu.id.hex(), {})
+        self.assertEqual((rn.get("stands_here"), rn.get("stands_there"), rn.get("follow")), (False, True, "cross-seal"))
+        self._import(here, there, [nu], accept=[], cross=[nu])
+        self.assertEqual(sorted({w["cell"] for w in lag()["lag"]} & {u.id.hex(), nu.id.hex()}), [])
+
+        # a rebinding of a decision of B's keys: out of A's reach
+        at = {}
+        new = V.Cell(d.h_schema, d.h_slot_name, there.put(at, V.atom_utf8("d again")), h_supersedes=there.put(at, V.atom_hvec([d.id])),
+                     h_loss=there.put(at, V.atom_utf8("rebound")), slots=d.slots)
+        at.update({h: there.repo_atom(h) for h in d.slots if there.has_atom(h)})
+        at[d.h_slot_name] = there.repo_atom(d.h_slot_name)
+        there.commit(at, [new], [("p", new), ("q", new)])
+        self._import(here, there, [new], cross=[new])
+        rows = {w["cell"]: w for w in lag()["lag"]}
+        self.assertEqual((rows[new.id.hex()]["stands_here"], rows[new.id.hex()]["stands_there"], rows[new.id.hex()]["follow"]),
+                         (False, True, "out-of-reach"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

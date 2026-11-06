@@ -1295,6 +1295,23 @@
   {
    "kind": "block",
    "section": 4,
+   "carries": [
+    "cross.uniform",
+    "cross.reach",
+    "cross.faithful",
+    "cross.follow",
+    "cross.lag"
+   ],
+   "text": "**Between two scopes.** A cell of `B` imported into `A` is the same bytes under two folds, and `A`'s statuses on it need not be\n`B`'s. Only `A`'s keys count in `A`, and a seal is on a cell, not on an edge, so a source's edges into two foreign targets of one\npolicy latch together or not at all: `A` can latch an edge `B` has not, and a cell whose edges `B` latched only in part has no\nseal of `A` that reads it as `B` does. An edge into a target whose policy `A`'s roster cannot meet, such as a decision whose\nevaluator policy names only `B`'s keys, is out of `A`'s reach. A decision that falls back to the admission policy reads `A`'s and not `B`'s.\nOn a set closed under who attacks it and what it supersedes, local or pinned on each side, `Active` and `Stale` agree if the\nlatched edges into it do; that is the exact condition, and it is not one `A` can always arrange without another form of import.\nWhat `A` can do with its own acceptance is follow whether a cell stands: with no cross-seal and no supersedes edge of its own, a foreign\ncell stands while `A` pins it, and a cell `A` does not accept does not stand. A verdict comes across as it is, so a withdrawal reaches a\ndecision of a policy of its own without `A`'s seal. A cell that supersedes another needs `A`'s cross-seal to stand, and a rebinding\nof a decision of `B`'s keys therefore cannot stand in `A`.\n`vars1.lag` (`minds_chain.py lag REPO SCOPE`) reads the two chains and moves nothing: which cells stand on one side and not the other,\nthe edges only one side latched, what here rests on them, and what `A` can do about each. Acceptance is not transitive, so none of\nthis passes through a third scope."
+  },
+  {
+   "kind": "gap",
+   "section": 4,
+   "text": ""
+  },
+  {
+   "kind": "block",
+   "section": 4,
    "text": "**Offline verifier.** Both checks live in one standard-library file, `verify/minds_verify.py`, with no import of\n`sigma-glyph`, no git and no network; `vars1.py` delegates to it, so there is one implementation. A client copies\nthat file alone and runs `python3 -I minds_verify.py verify-projection|verify-attestation BUNDLE.json --require\nPUBKEY...` or `inspect-projection|inspect-attestation BUNDLE.json` (same arguments and exit codes). Atoms that need Book I to decode (SGS1 states, SigmaNodeV2 nodes) are refused offline;\nno bundle check reads one. A bundle must read one way: one that is not UTF-8 JSON, or in which an object names a\nkey twice, is refused (exit 2), since readers differ on which value of a repeated key counts. A crash of the\nverifier exits 3, which no verdict uses. The verifier reads every rules identity the host implements, by its table\n`KNOWN_RULES`: `H_LENS_KERNEL` and `H_LENS_KERNEL_V1B` in v1's input encoding, `H_LENS_KERNEL_V2` in v2's, whose\nreferences are the input's own list (RULES-V2.md §3), each entry checked to name an older cell whose id is the value\nat its position; an input not in the encoding of the rules its projection names is refused. `vars1.py` refuses to\nload if it implements rules the verifier does not read in the same encoding. A projection naming other rules is\nreported `rules_status: \"unsupported\"` — its seals and digests are checked, but its input and output are not read as\nstatuses, scope or Pass 3, and nothing is accepted on it (`verify-projection` exits 1). That the output is what the\nrules give the input is otherwise the witnesses' word (`kernel: \"witnessed\"`): a reader who has Node may supply the\nrules module (`--kernel FILE`, used only if its SHA-256 is the projection's rules), which is then run on the input;\nthe same output is `kernel: \"verified_here\"`, a refusal or another output refuses the bundle, a run that cannot be\nmade leaves `witnessed` with its reason, and `verify-*` with `--kernel` exits 0 only when the output was checked.\nNode is the `node` on PATH, run with an empty environment, so no startup code the reader's environment names\n(`NODE_OPTIONS`) runs beside the module, whose hash covers only its own bytes; the run compares the raw output before\nany of it is read, and an output naming a scope outside its input is refused.",
    "carries": [
     "offline.alone",
@@ -1401,7 +1418,7 @@
   {
    "kind": "block",
    "section": 6,
-   "text": "- `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,\n  lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that\n  refuses to sign a fork."
+   "text": "- `test_vars1.py` tests 110–114, 120–123, 125 and 126: every pair of tips of the live chain reads as one history; forks, rollbacks,\n  lying inputs and other chains from two bundles alone, in a fresh folder; what two witnessed sides are worth; a clone that\n  refuses to sign a fork.\n- `test_vars1.py` tests 127–129: an import that does not read as its source, what a scope can do instead, and `lag`."
   },
   {
    "kind": "block",

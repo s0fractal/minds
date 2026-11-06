@@ -42,6 +42,8 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # --restore: the signer's own replacement checks and verdicts too
     tools/minds_chain.py power CELL           # read only: which coalitions of roster keys can change the status of
                                               # CELL by commits of their own (`GitVarsRepo.power`)
+    tools/minds_chain.py lag REPO SCOPE       # read only: which cells of SCOPE in REPO that this chain holds stand on one
+                                              # side and not the other, why, and what this scope can do (`vars1.lag`)
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
@@ -1140,6 +1142,9 @@ def _main(argv: List[str]) -> int:
     if cmd == "power" and len(argv) == 2:
         repo = V.GitVarsRepo(repo_dir)
         print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
+        return 0
+    if cmd == "lag" and len(argv) == 3:
+        print(json.dumps(V.lag(V.GitVarsRepo(repo_dir), SCOPE, V.GitVarsRepo(Path(argv[1])), argv[2]), indent=2))
         return 0
     if cmd == "witnessed-ref" and len(argv) == 3 and argv[1] == "--key":
         print(witnessed_ref(V.ed25519_pubkey(bytes.fromhex(Path(argv[2]).read_text().strip()))))

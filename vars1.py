@@ -2954,6 +2954,94 @@ class GitVarsRepo:
 
 
 # ---------------------------------------------------------------------------
+# §4.4 Between two scopes: what they disagree on, read from both and changing neither
+# ---------------------------------------------------------------------------
+def lag(here: "GitVarsRepo", scope_here: str, there: "GitVarsRepo", scope_there: str, at: Optional[str] = None) -> Dict[str, object]:
+    """Which cells of `scope_there` that `scope_here` holds stand on one side and not on the other, or have latched edges into them
+    on one side only, at the two tips (or `at` for `there`). It reads both lenses and moves nothing. Each row says why, what here
+    rests on the cell, and `follow`, what `scope_here` can do with its own keys to read it as the other side does:
+    `drop-acceptance` (its pins are listed), `accept`, `cross-seal` (a supersedes edge of the cell waits for it),
+    `invalidate-source-here` (it latched an edge the other side did not, and latches do not come undone), `out-of-reach` (the edge
+    it would need is under a policy its roster cannot meet), or none when the cell stands alike. A source of an edge that this
+    scope does not hold shows as `source_here: false`: that is the notice it has not imported. Nothing here is authority, and
+    what the other side says is only as fresh as what it was read at."""
+    tip_h, tip_t = here.ref_commit(scope_here), at or there.ref_commit(scope_there)
+    if tip_h is None or tip_t is None:
+        raise VarsError("lag reads two chains that exist")
+    a, b = here.lens(scope_here), there.lens(scope_there, at=at)
+    edges_a = here._evaluate_commit_chain(scope_here, here.commit_chain(tip_h))["latched_edge_auth"]
+    edges_b = there._evaluate_commit_chain(scope_there, there.commit_chain(tip_t))["latched_edge_auth"]
+    cells, atoms = a["cells"], a["atoms"]
+    origin = lambda c: parse_utf8(atoms[c.h_slot_name]).split("/", 1)[0]
+    hvec = lambda h: [] if h == H_EMPTY else parse_hvec(atoms[h], require_sorted=True)
+    # a scope cell comes across to carry seals, and is read by the acceptance that pins it: it is no claim of either side here
+    shared = sorted(c for c, x in cells.items() if origin(x) == scope_there and c in b["cells"]
+                    and x.h_schema != H_SCHEMA["scope"])
+    stands = lambda lens, c: bool(lens["active"].get(c) and not lens["stale"].get(c))
+    # the live acceptances here and what each carries: its payload, and what cells of its origin it reaches by reference
+    pins: Dict[bytes, List[bytes]] = {}
+    for acc, x in cells.items():
+        if x.h_schema != H_SCHEMA["acceptance"] or not stands(a, acc):
+            continue
+        seen, todo = set(), [x.h_payload]
+        while todo:
+            u = todo.pop()
+            if u in cells and u not in seen and origin(cells[u]) == scope_there:
+                seen.add(u)
+                todo += list(a["parents_of"][u])
+        for u in seen:
+            pins.setdefault(u, []).append(acc)
+    relied_by: Dict[bytes, Set[bytes]] = {}
+    for c, x in cells.items():
+        for d in hvec(x.h_relies):
+            relied_by.setdefault(d, set()).add(c)
+    s_id = a["scope"]
+    pol_keys = lambda h: (lambda t: (t[0], set(parse_hvec(atoms[t[1]], require_sorted=True))))(parse_pol1(atoms[h]))
+    adm = pol_keys(cells[s_id].slots[0])
+
+    def reachable(v: bytes) -> bool:  # §4.1: into a foreign cell only a quorum of `Pol_i(v)` under this scope's roster
+        x = cells[v]
+        evaluated = x.h_schema in (H_SCHEMA["contract"], H_SCHEMA["decision"], H_SCHEMA["question"])
+        slot = (x.slots[1] if x.h_schema == H_SCHEMA["question"] else x.slots[3]) if evaluated else H_EMPTY
+        owner = x.h_schema != H_SCHEMA["question"] and evaluated and x.slots[0] == H_OWNER
+        thr, keys = adm if slot == H_EMPTY or owner else pol_keys(slot)
+        return len(keys & adm[1]) >= thr
+
+    rows: List[Dict[str, object]] = []
+    for c in shared:
+        into = lambda edges: {(w, kind) for w, v, kind in edges if v == c}
+        only_b, only_a = into(edges_b) - into(edges_a), into(edges_a) - into(edges_b)
+        here_stands, there_stands = stands(a, c), stands(b, c)
+        if here_stands == there_stands and not only_a and not only_b:
+            continue
+        follow: Optional[str] = None
+        if here_stands and not there_stands:
+            follow = "drop-acceptance"
+        elif there_stands and not here_stands:
+            waiting = [u for u in hvec(cells[c].h_supersedes) if (c, u, "supersedes") not in edges_a]
+            if only_a:
+                follow = "invalidate-source-here"
+            elif not a["accepted"].get(c):
+                follow = "accept"
+            elif waiting:
+                follow = "cross-seal" if all(reachable(u) for u in waiting) else "out-of-reach"
+        rest, todo = set(), list(relied_by.get(c, ()))
+        while todo:
+            u = todo.pop()
+            if u not in rest:
+                rest.add(u)
+                todo += list(relied_by.get(u, ()))
+        side = lambda pairs: sorted(({"source": w.hex(), "kind": kind, "source_here": w in cells} for w, kind in pairs),
+                                    key=lambda r: (r["source"], r["kind"]))
+        rows.append({"cell": c.hex(), "name": parse_utf8(atoms[cells[c].h_slot_name]), "stands_here": here_stands,
+                     "stands_there": there_stands, "edges_there_only": side(only_b), "edges_here_only": side(only_a),
+                     "pinned_by": sorted(x.hex() for x in pins.get(c, [])), "rests_here": sorted(x.hex() for x in rest),
+                     "follow": follow})
+    return {"here": {"scope": scope_here, "tip": tip_h}, "there": {"scope": scope_there, "tip": tip_t},
+            "shared": len(shared), "lag": rows}
+
+
+# ---------------------------------------------------------------------------
 # §4.4 Projection bundles: what a client without the repository holds and checks (checked by verify/minds_verify.py)
 # ---------------------------------------------------------------------------
 def export_projection(repo: "GitVarsRepo", scope: str, projection_id: bytes, with_data: bool = True) -> Dict[str, object]:

@@ -116,6 +116,13 @@ determine what exactly needs reassessment; this document promises no instant glo
 Future check: a concrete counterexample reaches a consumer and causes a checkable revision of a dependent decision.
 The earlier result stays history with its own context.
 
+Found since (VARS-1-SPEC.md §4.4 "Between two scopes"; `proofs/Vars1/Morphism.lean`): a status is relative to the scope that
+reads it, and there is no homomorphism from one scope's statuses to another's. An importer cannot in general reproduce its
+source's latches, because a seal is on a cell and not on an edge. What it can do is follow whether a cell stands, by its own
+acceptance, told by a read-only comparison (`vars1.lag`), and its dependents then revise as above. So a spore's revision is a
+receiver's own act on evidence it has checked, as this section asks, and never a status delivered from elsewhere. A rebinding
+of a decision under keys the receiver lacks cannot be followed this way: if a spore needs that, it needs a new form of import.
+
 ### AS-7. A client's self-test has an independent anchor
 
 Canonical positive and negative vectors help to detect a faulty client. Their identity, their expected answers and

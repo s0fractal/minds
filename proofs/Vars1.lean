@@ -18,3 +18,4 @@ import Vars1.Witness
 import Vars1.Grounded
 import Vars1.Power
 import Vars1.History
+import Vars1.Morphism

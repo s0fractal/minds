@@ -2990,5 +2990,61 @@
   "kills": [
    "test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals"
   ]
+ },
+ "m-lag-follow-drop": {
+  "file": "vars1.py",
+  "find": "            follow = \"drop-acceptance\"\n",
+  "replace": "            follow = None\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-rests": {
+  "file": "vars1.py",
+  "find": "                todo += list(relied_by.get(u, ()))\n",
+  "replace": "                pass\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-edges": {
+  "file": "vars1.py",
+  "find": "        only_b, only_a = into(edges_b) - into(edges_a), into(edges_a) - into(edges_b)\n",
+  "replace": "        only_b, only_a = set(), into(edges_a) - into(edges_b)\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-reach": {
+  "file": "vars1.py",
+  "find": "        return len(keys & adm[1]) >= thr\n",
+  "replace": "        return True\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-cross-seal": {
+  "file": "vars1.py",
+  "find": "                follow = \"cross-seal\" if all(reachable(u) for u in waiting) else \"out-of-reach\"\n",
+  "replace": "                follow = \"out-of-reach\"\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-scope": {
+  "file": "vars1.py",
+  "find": "    shared = sorted(c for c, x in cells.items() if origin(x) == scope_there and c in b[\"cells\"]\n                    and x.h_schema != H_SCHEMA[\"scope\"])\n",
+  "replace": "    shared = sorted(c for c, x in cells.items() if origin(x) == scope_there and c in b[\"cells\"])\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-lag-pins": {
+  "file": "vars1.py",
+  "find": "            pins.setdefault(u, []).append(acc)\n",
+  "replace": "            pass\n",
+  "kills": [
+   "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
  }
 }
