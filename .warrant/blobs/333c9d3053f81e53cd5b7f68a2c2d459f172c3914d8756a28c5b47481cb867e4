@@ -1,0 +1,37 @@
+# Codex verdict: G8 v2-fold obligation
+
+Verdict: accept the specific obligation version below.
+
+- Repository: s0fractal/minds
+- Base M: f8810272aa3cf72d6570f232780aeae163df327e
+- Obligation D: cf64847eab0845d804e16d7d0575b3dc33b7784ff4a413cd42963b3f84b2346e
+- Version T: 7f88ba506bfdf89528b64a1c7d9302390934446d69cfee552dcd260ed99c6588
+- Reviewed evidence: 713c1187a8c05946e6a56232150a2661ba5fb1d394795dcb60c0208dfc00ec97
+
+The due command and MCP context independently confirm T is the leaf of D, awaits codex's roadmap/acceptor verdict, and has no open requirements. MCP validates the configured codex key against M's trust configuration. PR #52 merged as 7beb35c1e28c070db8c958d017567d747311bedd; PR #59 merged as 4bea27be9bbc5ab08b350aca58c373a763e23d9a. Both the named commits are ancestors of M. Fold2.lean and Vars1FoldMain.lean are unchanged from PR #52's merge, and test 88's AST is unchanged from code head 23dbdaeee2587e5bebfedd95eabb2d277d82f7c6.
+
+## Proof and implementation reading
+
+Read World2, St2, latch2, settle2, step2 and run2 against kernel2/src/lib.rs's fold and specification latches 4a/4b. Removed keys are computed separately for admission and acceptance policies; a rules change waits despite consent; veto detection precedes expiry and persists through cancellation; waiting/cancelled scope edges are withheld. Vars1FoldMain runs run2 for V=2 facts. I10 derives the model fold's input from kernel input bytes and compares scope, Authorized and all edge latches; I9 derives the proved Passes 1-2 facts using the v2 typed reference list.
+
+Built `lake build vars1exec vars1fold vars1cycle Vars1` from M in a separate review clone. Printed axioms for stateAt2_mono, stateAt2_append, run2_v1, moves_notice, step2_governs, step2_vetoes, waiting_withheld, waiting_not_active and vetoed_never_governs. All use only propext and Quot.sound; step2_vetoes uses only propext. No sorryAx dependency.
+
+The six latch claims fold.rotation-epoch, fold.rotation-waits, fold.rotation-edge, fold.rotation-ends, fold.rules-wait and fold.rules-veto are proved in claims.json with the corresponding Lean witnesses. The claims checker passes at M: 194 claims, including 34 proved, and 420 mutants. Existing unrelated assumed/unburned claims remain outside this obligation.
+
+## Runtime and adversarial validation
+
+Tests ran in an isolated clone of M, with MINDS_REQUIRE_LEAN=1, MINDS_REQUIRE_CHAIN=1, the installed pinned sigma-glyph dependency, and freshly built Lean executables. Fetched refs/vars/* from origin into that review clone.
+
+- Test 88 plus the entire property module: 11 tests passed, no skips. Default exploration includes 36 v1 sequences of 10 commits and 16 v2 sequences of 24 commits, plus the regression and cycle checks.
+- I9/I10 passed on every one of the 83 live-chain tips ending at 7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d, covering both v1 and v2 epochs.
+- Conformance tests 85 and 86 passed (2 tests): timeout, immediate and late consent, unchanged rosters, and v1 epochs.
+- Independently captured test 88's six inputs at commit counts 5, 6, 23, 18, 19, 19. Their governing scope names other rules than genesis respectively false, false, false, false, true, false. All six yield no I9/I10 differences. This verifies the governing input missing in challenge a6cb6991 is present.
+- Eight targeted mutants killed: m-88-rules-governs, m-fold2-facts-typed, m-4a-kernel-delay, m-4a-kernel-consent, m-4a-kernel-v1, m-4b-kernel-change, m-4b-kernel-veto, m-4b-kernel-cancelled. The first two were killed before the initial runner stopped because Cargo was absent from PATH; the six kernel mutants then passed with the installed Cargo directory added to PATH. A crash was not counted as a kill.
+- Additional independent model mutation: changed Fold2 DELAY from 16 to 15, rebuilt vars1fold, and replayed the six captured inputs. I10 detected scope disagreement at the 15th-commit waiting input (model 30, kernel 6) and the last-commit veto input (model 31, kernel 9). Restored the original source and rebuilt successfully.
+- CI source requires fetching refs/vars/*, builds the Lean proofs/executables, and makes missing chain/Lean coverage fail. Read .github/workflows/check.yml; no fresh remote CI run is claimed here.
+
+The roadmap checker passes with 18 lineages and zero problems. The original waker worktree's source remains untouched; only this cited evidence blob and the MCP acceptance are to be left there.
+
+## Claim boundary
+
+Acceptance is of D's stated Lean-model proofs and differential coverage. It is not a refinement proof of Rust, proof of decoding/history completeness, or proof of the kernel's refusal paths. The wait theorems retain Fresh and the stated admitted-rotation hypotheses. Rules-change differential coverage is the six test-88 inputs; the property generator and live v2 chain have no rules-changing rotation. These are explicit residuals in T, not work this obligation still owes.
