@@ -593,6 +593,72 @@ class T(unittest.TestCase):
         self.assertEqual(len(held_), sum(bool(lens["settled"].get(x)) for x in decisions))
         self.assertGreater(len(held_), 0)
 
+    def test_14_the_lean_prover_finds_a_derivation_wherever_the_checker_holds_one(self):
+        """`vars1witness --prove` builds the derivation from the store alone (proofs/Vars1/WitnessComplete.lean `prove`;
+        `witness_complete`: on its fragment the checker accepts it whenever the model holds the decision Settled). On
+        both generated histories, before the failure and after it, it accepts exactly the decisions for which
+        prove.py's term is HELD; on every decision of the live chain at its tip, where no edge touches a cone, exactly
+        those the lens holds Settled. Skipped without the Lean checker or the chain, unless MINDS_REQUIRE_LEAN=1 and
+        MINDS_REQUIRE_CHAIN=1."""
+        if not LEAN.exists():
+            if os.environ.get("MINDS_REQUIRE_LEAN") == "1":
+                self.fail("MINDS_REQUIRE_LEAN=1, but proofs/.lake/build/bin/vars1witness is not built")
+            self.skipTest("proofs/.lake/build/bin/vars1witness is not built")
+
+        def lean_proves(path, tip, scope, d):
+            t = {"format": CK.FORMAT, "scope": scope, "tip": tip, "decision": d.hex(), "cone": [], "endorsements": []}
+            try:
+                line = CK.lean_line(str(path), t, None, prove=True)
+            except CK.Refused:
+                return False
+            out = subprocess.run([str(LEAN), "--prove"], input=line + "\n", capture_output=True, text=True,
+                                 check=True).stdout.strip()
+            self.assertIn(out, ("ACCEPT", "REJECT"))
+            return out == "ACCEPT"
+
+        seen = set()
+        for i in (0, 1):
+            h, ch, path, before, after = history_chain(i)
+            for tip in (before, after):
+                for dd in h["decisions"]:
+                    d = ch["ids"][dd["id"]]
+                    try:
+                        r = held(path, PR.prove(ch["repo"], HI.SCOPE, d, tip))
+                        r = r["result"] if r["result"] != "NOT_COVERED" else f"NOT_COVERED {r['code']}"
+                    except PR.NotHeld:
+                        r = "NOT_HELD"
+                    self.assertEqual(lean_proves(path, tip, HI.SCOPE, d), r == "HELD", (i, tip, dd["id"], r))
+                    seen.add(r)
+        self.assertEqual(seen, {"HELD", "NOT_HELD"})
+        # outside the fragment completeness is not claimed: the lens settles d, and no derivation the checker accepts
+        # exists (a cone cell with a withdrawn notice on it; an INVALID verdict on d that withdraws one key only)
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        n = c.axiom("notice/g", invalidates=[g])
+        c.commit((n, "cy"))
+        c.commit((c.axiom("notice/not-g", invalidates=[n]), "bo"))
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
+        self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        c.commit((c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy"), "cy"))
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
+        self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
+
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        lens = repo.lens("minds", at=tip)
+        accepted = 0
+        for dec in (cid for cid, c in lens["cells"].items() if c.h_schema == V.H_SCHEMA["decision"]):
+            settled = bool(lens["settled"].get(dec)) and bool(lens["active"].get(dec)) and not lens["stale"].get(dec)
+            self.assertEqual(lean_proves(ROOT, tip, "minds", dec), settled, dec.hex())
+            accepted += settled
+        self.assertGreater(accepted, 0)
+
 
 def mutants() -> int:
     """Run every named test unmutated (refuse a red baseline), then each mutant of mutants.json against a copy of

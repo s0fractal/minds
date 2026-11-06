@@ -7,10 +7,12 @@ and `Lfp.lean`). The positive part of the rules says two things:
 - a cell stands while what it relies on stands;
 - a decision is Settled while enough policy keys seal ATTESTED verdicts on it.
 
-Where no edge touches a decision's cone, being in force amounts to having a derivation. This is argued below, not
-proved:
+Where no edge touches a decision's cone, being in force amounts to having a derivation:
 - if the decision is in force, its cone and enough sealed verdicts exist (completeness);
 - if they exist, it is in force (soundness: What HELD establishes, below).
+
+For the checker written in Lean both directions are proved on that fragment (The Lean checker, below). For
+`check.py` they are argued and tested.
 
 Curry–Howard adds that the derivation can be an object: a term that a checker type-checks.
 
@@ -121,6 +123,38 @@ it relies on, which earlier lines conclude. So soundness holds for any solution 
 The Lean checker checks one thing that `check.py` leaves to the gate: a counted verdict's witness slot is empty. On an
 admitted chain it holds, so the two checkers do not differ there.
 
+**Completeness** (`proofs/Vars1/WitnessComplete.lean`). `prove` builds a derivation from the store alone:
+- stand lines for the decision and for every verdict that counts for it (an ATTESTED verdict with an empty witness slot
+  that judges and attests it, and that meets the stand conditions down its `relies`);
+- an endorse line for every key of the decision's evaluator policy with a seal on such a verdict, under a scope of the
+  chain and by a key of that scope's roster;
+- the settle line.
+
+`witness_complete`: if the model holds the decision `Settled`, `accepts` takes that derivation. With
+`witness_sound`, `accepts_iff_settled`: on the fragment the checker decides `Settled`. Axioms `propext` and
+`Quot.sound` only.
+
+The fragment (`Fragment`) is where the checker's rules read as the model's:
+- the decision requires no computation;
+- no INVALID verdict judges it (the model withdraws only the keys that seal one, under the verdict's verifier id;
+  the checker refuses any);
+- its live cone (the decision, the verdicts of `W_max`, what they rely on) holds local cells that supersede nothing
+  and that no cell of the store invalidates, retires or supersedes (the model counts only an authorized edge from an
+  Effective cell; the checker refuses any).
+
+Completeness needs the decode to be complete, where soundness needs it faithful (`PinComplete`):
+- what a live cell relies on is live (`stale_complete` proves it of Pass 2 `Stale`);
+- the store holds a seal for every cumulative endorser of a local cell, under a scope of the chain, by a key of its
+  roster;
+- a policy that meets its quorum does so with threshold many distinct keys of it;
+- the decision's evaluator policy is among the decoded ones.
+
+It also needs a rank of `relies` that bounds the prover's depth. Cells are named by the hash of their contents, so
+none relies on one that names it.
+
+`check.py --lean --prove` writes the store with every seal that verifies on a verdict of the decision, and no
+derivation; `vars1witness --prove` runs `prove` on it, to a depth one more than the store's cells, then `accepts`.
+
 **Rotations.** A seal counts under the scope that governed the commit that admitted it (§4.1: each is checked under
 its own commit's scope), so after a rotation the seals made before it still count. The checker reads the governing
 chain from the store: the one scope cell no other supersedes (which must be the reader's pin, if one is given), then
@@ -194,10 +228,11 @@ histories: a project of three maintainers whose ground fails, the generator of t
 | 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8, one that is not an object, and one holding `NaN` or an infinity, which Python's json reads and JSON does not have. A crash exits 3. |
 | 12 | Rotations under v1 and v2: decisions approved before and after a key joins are HELD, seals read under the scope that governed each; a pin of the replaced scope is NOT_COVERED (`WAITING`); after a v1 rotation drops a key, that key's earlier seal counts and a seal by it under the new scope is refused (`KEY`). |
 | 13 | **The live chain** `refs/vars/heads/minds` at its tip: the prover finds a witness for exactly the decisions the lens settles, and both checkers hold each (34 of 46 at `57035e8`). CI requires the chain. |
+| 14 | **Completeness.** `vars1witness --prove`, given only the store, accepts exactly the decisions whose `prove.py` term is HELD, on both histories before the failure and after it, and exactly the decisions the lens settles on the live chain (34 of 47 at `7c6899b`). Outside the fragment it does not accept what the lens settles: a withdrawn notice in the cone, an INVALID verdict that withdraws one key. |
 
-**Mutants.** `mutants.json` has one mutant per check: 44, all killed. Five of them break the decode that `check.py
+**Mutants.** `mutants.json` has one mutant per check: 45, all killed. Five of them break the decode that `check.py
 --lean` writes: kill edges dropped, INVALID verdicts not marked, seals written without verifying, a seal's scope
-replaced, only the tip's scope written as one that governed. The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
+replaced, only the tip's scope written as one that governed. A sixth writes the prover no seals (`m-prove-seals`). The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 
@@ -217,16 +252,17 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
   audited. Weak keys are refused by `[8]A = 0`.
 - **The guards on a forged store's object layout** (cell length, HVEC order, POL1 bounds, UTF8) keep the checker
   total. They are not claims and no mutant burns them.
-- **A proof of `check.py`.** Its soundness is tested, not proved. What is proved is the Lean checker, and only given
-  `Pin`. The decode that both checkers read the store through (hashes, layout, Ed25519) is Python, tested and not
+- **A proof of `check.py`.** Its soundness is tested, not proved. What is proved is the Lean checker, sound given
+  `Pin` and complete on its fragment given `PinComplete`. The decode that both checkers read the store through (hashes, layout, Ed25519) is Python, tested and not
   proved.
 - **The cost of a check.** The check is linear in the store, not in the term: the term is short, but its negative part
   reads everything.
 
 ## What would take it further (not done)
 
-`ASSURANCE.md` carries what this spike establishes as three claims: `assurance.witness-held` and
-`assurance.witness-one-reading` (tested), and `assurance.witness-lean` (proved; roadmap G7).
+`ASSURANCE.md` carries what this spike establishes as four claims: `assurance.witness-held` and
+`assurance.witness-one-reading` (tested), `assurance.witness-lean` (proved; roadmap G7) and
+`assurance.witness-complete` (proved).
 
 - **The decode in Lean.** `vars1witness` reads what `check.py` decoded. Reading the git tree, hashing (Book I's
   `SigmaEval/Sha256.lean`) and parsing cells in Lean would leave Ed25519 as the only part of the decode outside it.
@@ -236,4 +272,5 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
   instead of on the reader's store. That is where `verify/minds_verify.py`'s attestation bundles are.
 - **Edges that do not count.** A term could carry, for each edge into the cone, a proof that it does not count: its
   source is invalidated, or the edge is unauthorized. That is stratified negation, and it would bring rebinding and
-  withdrawn notices into the fragment.
+  withdrawn notices into the fragment. Completeness would then have to be proved again on the larger fragment:
+  the two cases test 14 shows outside it are where it would start.

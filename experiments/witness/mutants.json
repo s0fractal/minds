@@ -218,5 +218,10 @@
   "find": "    out += [ids[chain[0]], pol(pol0), len(chain), *(n for x in chain for n in (ids[x], pol(cells[x][\"slots\"][0])))]",
   "replace": "    out += [ids[chain[0]], pol(pol0), 1, ids[chain[0]], pol(pol0)]",
   "kills": "test_12_a_seal_counts_under_the_scope_that_governed_it"
+ },
+ "m-prove-seals": {
+  "find": "    named = [s for _, s in ends] if not prove else [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
+  "replace": "    named = [s for _, s in ends] if True else [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
+  "kills": "test_14_the_lean_prover_finds_a_derivation_wherever_the_checker_holds_one"
  }
 }

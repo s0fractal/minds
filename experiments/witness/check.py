@@ -3,6 +3,7 @@
 
     python3 -I check.py REPO TERM.json [--scope-cell HEX]
     python3 -I check.py --lean REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness
+    python3 -I check.py --lean --prove REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness --prove
 
 A witness (format `minds.witness.held@1`) is a proof term for one decision at one commit: the decision's cone (the
 cells it and its counted verdicts rely on, closed under `relies`) and seals, by distinct keys of its evaluator
@@ -402,14 +403,18 @@ LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 
                SCHEMA["cycle_witness"]: 8, SCHEMA["computation"]: 9, SCHEMA["axiom"]: 10}  # anything else: 11
 
 
-def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None) -> str:
+def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None, prove: bool = False) -> str:
     """The store at the term's tip and the term as a derivation, in the line `vars1witness` reads
     (proofs/Vars1WitnessMain.lean). The decode is this file's: what `_read` refuses is refused here, and only seals that
     verify are written. The rest is the Lean checker's to judge: the cone, the kill edges, the verdicts, the keys.
 
     The derivation: a `stand` line per cone cell, each after the cells it relies on, whose premises are that each of
     them stands; an `endorse` line per endorsement; and a `settle` line for the decision whose premises are that it
-    and each endorsing verdict stand and every endorsement."""
+    and each endorsing verdict stand and every endorsement.
+
+    With `prove`, the term's cone and endorsements are not read: the line carries every seal that verifies on a
+    verdict whose payload is the decision, and no derivation, for `vars1witness --prove` to build one from the store
+    alone (proofs/Vars1/WitnessComplete.lean `prove`)."""
     d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, scope_cell)
     order = sorted(cells)
     ids = {cid: i for i, cid in enumerate(order)}
@@ -442,12 +447,17 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
         thr, ks = policy(atoms, h)
         out += [pol(h), thr, len(ks), *(key(k) for k in sorted(ks))]
     good = []
-    for w, s in ends:
+    named = [s for _, s in ends] if not prove else [sid for sid, x in seals.items() if x["target"] in cells
+                                                    and cells[x["target"]]["schema"] == SCHEMA["verdict"]
+                                                    and cells[x["target"]]["payload"] == d]
+    for s in named:
         x = seals.get(s)
         if x is not None and ed25519_verify(x["key"], x["signed"], x["signature"]):
             good.append((num(x["target"]), num(x["ctx"]), key(x["key"])))
     good = list(dict.fromkeys(good))
     out += [len(good), *(n for g in good for n in g)]
+    if prove:
+        return " ".join(map(str, out + [0, num(d)]))
 
     stands, seen = [], set()
 
@@ -476,6 +486,8 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
 def main(argv: List[str]) -> int:
     lean = argv[:1] == ["--lean"]
     argv = argv[1:] if lean else argv
+    prove = lean and argv[:1] == ["--prove"]
+    argv = argv[1:] if prove else argv
     if len(argv) not in (2, 4) or (len(argv) == 4 and (argv[2] != "--scope-cell"
                                                        or not re.fullmatch(r"[0-9a-f]{64}", argv[3]))):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
@@ -485,7 +497,7 @@ def main(argv: List[str]) -> int:
             raw, pin = f.read(), bytes.fromhex(argv[3]) if len(argv) == 4 else None
         if lean:
             try:
-                print(lean_line(argv[0], read_term(raw), pin))
+                print(lean_line(argv[0], read_term(raw), pin, prove))
                 return 0
             except Refused as e:
                 out = {"result": e.result, "code": e.code, "detail": e.detail}

@@ -2323,6 +2323,21 @@
    ]
   },
   {
+   "id": "assurance.witness-complete",
+   "source": "ASSURANCE.md",
+   "quote": "`vars1witness --prove` accepts the derivation it builds from the store whenever the model of §4.2 holds the decision `Settled`",
+   "status": "proved",
+   "witnesses": [
+    "lean:witness_complete",
+    "lean:accepts_iff_settled",
+    "lean:stale_complete",
+    "witness:test_14_the_lean_prover_finds_a_derivation_wherever_the_checker_holds_one"
+   ],
+   "mutants": [
+    "m-prove-seals"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",
