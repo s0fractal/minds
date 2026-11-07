@@ -1,0 +1,631 @@
+{
+ "advisories": 1360,
+ "db": "99670cfc0bc574433034b75876a4b791ccaa2efb",
+ "tags": [
+  {
+   "commit": "cb30338b5eb50429cae23517d16c13e03018e6eb",
+   "hits": [
+    {
+     "crate": "ctutils@0.4.2",
+     "date": "2026-10-23",
+     "id": "RUSTSEC-2026-0385",
+     "kind": "vulnerability",
+     "withdrawn": null
+    },
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 218,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-09-29",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "cb30338b5eb50429cae23517d16c13e03018e6eb",
+   "hits": [
+    {
+     "crate": "bincode@1.3.3",
+     "date": "2025-12-16",
+     "id": "RUSTSEC-2025-0141",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    },
+    {
+     "crate": "pqcrypto-dilithium@0.5.0",
+     "date": "2024-10-24",
+     "id": "RUSTSEC-2024-0380",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "pqcrypto-internals@0.2.11",
+     "date": "2026-06-04",
+     "id": "RUSTSEC-2026-0163",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "pqcrypto-traits@0.3.5",
+     "date": "2026-06-04",
+     "id": "RUSTSEC-2026-0162",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "docs/reviews/2026-09-24/evidence/harness-Cargo.lock",
+   "packages": 183,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-09-29",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "cb30338b5eb50429cae23517d16c13e03018e6eb",
+   "hits": [
+    {
+     "crate": "bincode@1.3.3",
+     "date": "2025-12-16",
+     "id": "RUSTSEC-2025-0141",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "pqcrypto-dilithium@0.5.0",
+     "date": "2024-10-24",
+     "id": "RUSTSEC-2024-0380",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "pqcrypto-internals@0.2.11",
+     "date": "2026-06-04",
+     "id": "RUSTSEC-2026-0163",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "pqcrypto-traits@0.3.5",
+     "date": "2026-06-04",
+     "id": "RUSTSEC-2026-0162",
+     "kind": "unmaintained",
+     "withdrawn": null
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "docs/reviews/2026-09-26/evidence/Cargo.lock",
+   "packages": 64,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-09-29",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "cb30338b5eb50429cae23517d16c13e03018e6eb",
+   "hits": [
+    {
+     "crate": "ctutils@0.4.2",
+     "date": "2026-10-23",
+     "id": "RUSTSEC-2026-0385",
+     "kind": "vulnerability",
+     "withdrawn": null
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "docs/reviews/2026-09-27/evidence/Cargo.lock",
+   "packages": 85,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-09-29",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "cb30338b5eb50429cae23517d16c13e03018e6eb",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 29,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-09-29",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "4f7750cc94495f22aada7ad3d67a4886986a37fa",
+   "hits": [
+    {
+     "crate": "ctutils@0.4.2",
+     "date": "2026-10-23",
+     "id": "RUSTSEC-2026-0385",
+     "kind": "vulnerability",
+     "withdrawn": null
+    },
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 218,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-05",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "4f7750cc94495f22aada7ad3d67a4886986a37fa",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 29,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-05",
+   "tag_date": "2026-10-10"
+  },
+  {
+   "commit": "47996ce4866a3076b11fd1514fac41f0824f5153",
+   "hits": [
+    {
+     "crate": "ctutils@0.4.2",
+     "date": "2026-10-23",
+     "id": "RUSTSEC-2026-0385",
+     "kind": "vulnerability",
+     "withdrawn": null
+    },
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    },
+    {
+     "crate": "tokio@1.53.1",
+     "date": "2026-10-13",
+     "id": "RUSTSEC-2026-0386",
+     "kind": "unsound",
+     "withdrawn": null
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 216,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-12",
+   "tag_date": "2026-10-12"
+  },
+  {
+   "commit": "47996ce4866a3076b11fd1514fac41f0824f5153",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 32,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-12",
+   "tag_date": "2026-10-12"
+  },
+  {
+   "commit": "0fec343aef3226c275ac7dd1a17ed9d07679fb62",
+   "hits": [
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 216,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "0fec343aef3226c275ac7dd1a17ed9d07679fb62",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 32,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "0fec343aef3226c275ac7dd1a17ed9d07679fb62",
+   "hits": [],
+   "lockfile": "fuzz/Cargo.lock",
+   "packages": 16,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "0f74ee68d39538ac6b4ce61dd82f4a92bc090cce",
+   "hits": [
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 216,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28-pre-rc1",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "0f74ee68d39538ac6b4ce61dd82f4a92bc090cce",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 32,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28-pre-rc1",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "0f74ee68d39538ac6b4ce61dd82f4a92bc090cce",
+   "hits": [],
+   "lockfile": "fuzz/Cargo.lock",
+   "packages": 16,
+   "release": false,
+   "repo": "sokol-core",
+   "tag": "archive/2026-10-28-pre-rc1",
+   "tag_date": "2026-10-28"
+  },
+  {
+   "commit": "ee16318a3dc92d5238afc99f45b23a035bcec158",
+   "hits": [
+    {
+     "crate": "humantime@2.4.0",
+     "date": "2025-03-08",
+     "id": "RUSTSEC-2025-0014",
+     "kind": "unmaintained",
+     "withdrawn": "2025-03-12"
+    }
+   ],
+   "lockfile": "Cargo.lock",
+   "packages": 216,
+   "release": true,
+   "repo": "sokol-core",
+   "tag": "v0.1.0-rc.1",
+   "tag_date": "2026-10-29"
+  },
+  {
+   "commit": "ee16318a3dc92d5238afc99f45b23a035bcec158",
+   "hits": [],
+   "lockfile": "ebpf/Cargo.lock",
+   "packages": 32,
+   "release": true,
+   "repo": "sokol-core",
+   "tag": "v0.1.0-rc.1",
+   "tag_date": "2026-10-29"
+  },
+  {
+   "commit": "ee16318a3dc92d5238afc99f45b23a035bcec158",
+   "hits": [],
+   "lockfile": "fuzz/Cargo.lock",
+   "packages": 16,
+   "release": true,
+   "repo": "sokol-core",
+   "tag": "v0.1.0-rc.1",
+   "tag_date": "2026-10-29"
+  },
+  {
+   "commit": "67462640de26dc74acdebb45d41960c2f89724bb",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/adr-008-rev15-candidate",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "c78e866420f016adf706f3806593cebc05e47dd0",
+   "hits": [],
+   "lockfile": "experiments/exp-002/wasm/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/adr-009-candidate",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "c78e866420f016adf706f3806593cebc05e47dd0",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/adr-009-candidate",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "959c5e6471e59db9705871ee11e8b9c134f38b3c",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/book1-en-normative",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "196c45a2f9074a472b96af1a6bae2c67533edbb1",
+   "hits": [],
+   "lockfile": "experiments/exp-002/wasm/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/internal-substrate-brief",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "196c45a2f9074a472b96af1a6bae2c67533edbb1",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-09-03/internal-substrate-brief",
+   "tag_date": "2026-09-03"
+  },
+  {
+   "commit": "96414ab0b14f5430641c3da424f684c5eae821ad",
+   "hits": [],
+   "lockfile": "experiments/exp-002/wasm/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-10-31/before-echo-retirement",
+   "tag_date": "2026-10-23"
+  },
+  {
+   "commit": "96414ab0b14f5430641c3da424f684c5eae821ad",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-10-31/before-echo-retirement",
+   "tag_date": "2026-10-23"
+  },
+  {
+   "commit": "96414ab0b14f5430641c3da424f684c5eae821ad",
+   "hits": [],
+   "lockfile": "impl-rs/wasm-resume/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "sigma-glyph",
+   "tag": "archive/2026-10-31/before-echo-retirement",
+   "tag_date": "2026-10-23"
+  },
+  {
+   "commit": "bed389d7bdb6527a4eca71ddb26dd3d6e43b42ff",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.6.4",
+   "tag_date": "2026-07-08"
+  },
+  {
+   "commit": "1c2148e226037ad5a6bbec8861dc833b024623e3",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.6.5",
+   "tag_date": "2026-07-09"
+  },
+  {
+   "commit": "a7e8c71a33487b1c0ce7fa3a20c6cc6afb8b343e",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.6.6",
+   "tag_date": "2026-07-10"
+  },
+  {
+   "commit": "ef4e30637e3b9e681124ba9f2270afb8bf5b6aa6",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.6.6.post1",
+   "tag_date": "2026-07-30"
+  },
+  {
+   "commit": "16a1355142d0234ba0dcc519d674bb26b42a1d82",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.6.7",
+   "tag_date": "2026-07-31"
+  },
+  {
+   "commit": "9d10bbc2e92fdc394b488dc381e9b2a0942b7ea5",
+   "hits": [],
+   "lockfile": "experiments/exp-002/wasm/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.7.0",
+   "tag_date": "2026-09-17"
+  },
+  {
+   "commit": "9d10bbc2e92fdc394b488dc381e9b2a0942b7ea5",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.7.0",
+   "tag_date": "2026-09-17"
+  },
+  {
+   "commit": "3890daebf8c6c2b9d6746b606f05274e03295c65",
+   "hits": [],
+   "lockfile": "experiments/exp-002/wasm/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.8.0",
+   "tag_date": "2026-10-19"
+  },
+  {
+   "commit": "3890daebf8c6c2b9d6746b606f05274e03295c65",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.8.0",
+   "tag_date": "2026-10-19"
+  },
+  {
+   "commit": "3890daebf8c6c2b9d6746b606f05274e03295c65",
+   "hits": [],
+   "lockfile": "impl-rs/wasm-resume/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v0.8.0",
+   "tag_date": "2026-10-19"
+  },
+  {
+   "commit": "321504a02c0d0a87eeb6b5dd4760a9b22a6d53af",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v1.0.0",
+   "tag_date": "2026-11-01"
+  },
+  {
+   "commit": "321504a02c0d0a87eeb6b5dd4760a9b22a6d53af",
+   "hits": [],
+   "lockfile": "impl-rs/wasm-resume/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v1.0.0",
+   "tag_date": "2026-11-01"
+  },
+  {
+   "commit": "67aedac1f926198496f0e57809e7324e2a348d12",
+   "hits": [],
+   "lockfile": "impl-rs/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v1.0.1",
+   "tag_date": "2026-11-01"
+  },
+  {
+   "commit": "67aedac1f926198496f0e57809e7324e2a348d12",
+   "hits": [],
+   "lockfile": "impl-rs/wasm-resume/Cargo.lock",
+   "packages": 1,
+   "release": true,
+   "repo": "sigma-glyph",
+   "tag": "v1.0.1",
+   "tag_date": "2026-11-01"
+  },
+  {
+   "commit": "c5dab7486332765f7d27b273ea7ab847630afbb2",
+   "hits": [],
+   "lockfile": "kernel/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "minds",
+   "tag": "archive/pre-publish",
+   "tag_date": "2026-10-19"
+  },
+  {
+   "commit": "25ec8fccb1602afda9a192c4469e402c548cb7bb",
+   "hits": [],
+   "lockfile": "kernel/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "minds",
+   "tag": "archive/rules-v2-prototype",
+   "tag_date": "2026-10-20"
+  },
+  {
+   "commit": "25ec8fccb1602afda9a192c4469e402c548cb7bb",
+   "hits": [],
+   "lockfile": "kernel2/Cargo.lock",
+   "packages": 1,
+   "release": false,
+   "repo": "minds",
+   "tag": "archive/rules-v2-prototype",
+   "tag_date": "2026-10-20"
+  }
+ ],
+ "withdrawn": 25
+}
