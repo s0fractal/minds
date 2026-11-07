@@ -70,9 +70,29 @@
   "kills": "test_09_the_store_is_read_from_bytes"
  },
  "m-invalid-verdict": {
-  "find": "    if any(c[\"schema\"] == SCHEMA[\"verdict\"] and c[\"payload\"] == d",
-  "replace": "    if any(False and c[\"payload\"] == d",
+  "find": "        for b in invalid:\n",
+  "replace": "        for b in []:\n",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+ },
+ "m-withdraw-verifier": {
+  "find": "            if cells[b][\"slots\"][2:3] == v[\"slots\"][2:3] and sealed(b, x[\"key\"]):",
+  "replace": "            if sealed(b, x[\"key\"]):",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+ },
+ "m-withdraw-key": {
+  "find": "        return any(y[\"target\"] == b and y[\"key\"] == k and ",
+  "replace": "        return any(y[\"target\"] == b and ",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+ },
+ "m-withdraw-stands": {
+  "find": "                if stands(b):",
+  "replace": "                if True:",
   "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-withdraw-standing": {
+  "find": "                if stands(b):",
+  "replace": "                if False:",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
  },
  "m-cone-missing": {
   "find": "    if missing:\n",
@@ -187,7 +207,17 @@
  "m-lean-invalid": {
   "find": "                int(slots[1:2] == [H_VERDICT_INVALID]),",
   "replace": "                0,",
-  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+ },
+ "m-lean-verifier": {
+  "find": "                num(slots[2]) if kind == 5 and len(slots) > 2 else 0]",
+  "replace": "                0]",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+ },
+ "m-lean-invalid-seals": {
+  "find": "    named += [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
+  "replace": "    named += [] and [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
+  "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
  },
  "m-lean-seal-verify": {
   "find": "        if x is not None and ed25519_verify(x[\"key\"], x[\"signed\"], x[\"signature\"]):",

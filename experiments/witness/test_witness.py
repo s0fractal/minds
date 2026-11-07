@@ -236,6 +236,33 @@ def cas(kind: str, raw: bytes):
     return f"cas/{kind}/{h[:2]}/{h[2:]}", raw
 
 
+def lean_proves(path, tip, scope, d) -> bool:
+    """`vars1witness --prove` on the store at `tip` for `d`, as `check.py --lean --prove` writes it: ACCEPT or not."""
+    t = {"format": CK.FORMAT, "scope": scope, "tip": tip, "decision": d.hex(), "cone": [], "endorsements": []}
+    try:
+        line = CK.lean_line(str(path), t, None, prove=True)
+    except CK.Refused:
+        return False
+    out = subprocess.run([str(LEAN), "--prove"], input=line + "\n", capture_output=True, text=True,
+                         check=True).stdout.strip()
+    assert out in ("ACCEPT", "REJECT"), out
+    return out == "ACCEPT"
+
+
+def stale_invalid_chain():
+    """basic(), then two INVALID verdicts on d: bo's, under its own verifier id, relies on a ground a notice
+    invalidates, so it is Stale and withdraws nothing; cy's, under its own, withdraws cy's endorsement. The lens
+    settles d by ana and bo; that bo's INVALID verdict is not live is what no checker here derives."""
+    c = Chain(scratch())
+    g, k, d, vs = c.basic()
+    h = c.axiom("ground/h")
+    c.commit((h, "bo"))
+    c.commit((c.verdict(d, "decision/d/invalid-by-bo", [h], code=V.H_VERDICT_INVALID, verifier="bo"), "bo"))
+    c.commit((c.axiom("notice/h", invalidates=[h]), "ana"))
+    c.commit((c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy"), "cy"))
+    return c, d, vs
+
+
 class T(unittest.TestCase):
     def test_01_ed25519_is_rfc8032_strict_and_cofactorless(self):
         """RFC 8032 §7.1 tests 1 and 2 verify, and vars1's own signatures verify; a changed message, S + L, a key of
@@ -381,9 +408,9 @@ class T(unittest.TestCase):
 
     def test_08_outside_the_fragment_the_answer_is_not_covered(self):
         """Settled by the lens but outside the fragment: a ground whose notice was itself invalidated, an INVALID
-        verdict on the decision, a rotation that may wait (under v2 it drops a key without that key's seal), rules other
-        than v1 and v2, two scope cells that supersede one. And a decision whose unauthorized supersedes edge leaves it
-        not Active is not HELD either."""
+        verdict that would withdraw a named endorsement and does not meet the stand conditions, a rotation that may wait
+        (under v2 it drops a key without that key's seal), rules other than v1 and v2, two scope cells that supersede
+        one. And a decision whose unauthorized supersedes edge leaves it not Active is not HELD either."""
         c = Chain(scratch())
         g, k, d, vs = c.basic()
         n = c.axiom("notice/g", invalidates=[g])
@@ -394,12 +421,11 @@ class T(unittest.TestCase):
         r = c.check(PR.prove(c.repo, SCOPE, d.id))
         self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "KILL_EDGE"), r)
 
-        c = Chain(scratch())
-        g, k, d, vs = c.basic()
-        bad = c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy")
-        c.commit((bad, "cy"))
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id), "cy's INVALID withdraws cy's verifier only")
-        r = c.check(PR.prove(c.repo, SCOPE, d.id))
+        c, d, vs = stale_invalid_chain()
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id), "bo's INVALID verdict is Stale: ana and bo count")
+        t = PR.prove(c.repo, SCOPE, d.id)
+        self.assertEqual({e["verdict"] for e in t["endorsements"]}, {vs["ana"].id.hex(), vs["bo"].id.hex()})
+        r = c.check(t)
         self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "INVALID_VERDICT"), r)
 
         c = Chain(scratch(), rules=V.H_LENS_KERNEL_V2)
@@ -605,17 +631,6 @@ class T(unittest.TestCase):
                 self.fail("MINDS_REQUIRE_LEAN=1, but proofs/.lake/build/bin/vars1witness is not built")
             self.skipTest("proofs/.lake/build/bin/vars1witness is not built")
 
-        def lean_proves(path, tip, scope, d):
-            t = {"format": CK.FORMAT, "scope": scope, "tip": tip, "decision": d.hex(), "cone": [], "endorsements": []}
-            try:
-                line = CK.lean_line(str(path), t, None, prove=True)
-            except CK.Refused:
-                return False
-            out = subprocess.run([str(LEAN), "--prove"], input=line + "\n", capture_output=True, text=True,
-                                 check=True).stdout.strip()
-            self.assertIn(out, ("ACCEPT", "REJECT"))
-            return out == "ACCEPT"
-
         seen = set()
         for i in (0, 1):
             h, ch, path, before, after = history_chain(i)
@@ -631,7 +646,8 @@ class T(unittest.TestCase):
                     seen.add(r)
         self.assertEqual(seen, {"HELD", "NOT_HELD"})
         # outside the fragment completeness is not claimed: the lens settles d, and no derivation the checker accepts
-        # exists (a cone cell with a withdrawn notice on it; an INVALID verdict on d that withdraws one key only)
+        # exists (a cone cell with a withdrawn notice on it; an INVALID verdict that is not live, which the checker
+        # counts as withdrawing the key that seals it)
         c = Chain(scratch())
         g, k, d, vs = c.basic()
         n = c.axiom("notice/g", invalidates=[g])
@@ -639,9 +655,7 @@ class T(unittest.TestCase):
         c.commit((c.axiom("notice/not-g", invalidates=[n]), "bo"))
         self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
         self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
-        c = Chain(scratch())
-        g, k, d, vs = c.basic()
-        c.commit((c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy"), "cy"))
+        c, d, _ = stale_invalid_chain()
         self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
         self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
 
@@ -658,6 +672,54 @@ class T(unittest.TestCase):
             self.assertEqual(lean_proves(ROOT, tip, "minds", dec), settled, dec.hex())
             accepted += settled
         self.assertGreater(accepted, 0)
+
+    def test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it(self):
+        """An INVALID verdict on the decision withdraws an endorsement under its own verifier id by a key that seals it,
+        and no other (§4.2 Pass 3: a verifier id is free text): a term that names such an endorsement is REFUSED
+        (`WITHDRAWN`), the others are HELD where their keys meet the threshold, on both checkers. `vars1witness --prove`
+        accepts exactly where the lens settles. Three INVALID verdicts by the keys of d's 2-of-3 policy: cy under its own
+        id, cy under ana's, and ana and bo each under their own."""
+        prove_lean = LEAN.exists() or os.environ.get("MINDS_REQUIRE_LEAN") == "1"
+
+        def outcome(c, d, verdicts):
+            r = c.check(term(c.repo, c.tip, d.id, [v.id for v in verdicts]))
+            return r["result"], r.get("code"), len(r.get("endorsers", []))
+
+        # cy, under its own verifier id: its endorsement through its own verdict is withdrawn, ana's and bo's stand
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        c.commit((c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy"), "cy"))
+        lens = c.repo.lens(SCOPE)
+        self.assertTrue(lens["settled"].get(d.id))
+        self.assertEqual(lens["counted_witnesses"][d.id].get(vs["cy"].id, set()), set(), "the lens withdraws cy")
+        self.assertEqual(outcome(c, d, vs.values()), ("REFUSED", "WITHDRAWN", 0))
+        self.assertEqual(outcome(c, d, [vs["cy"]]), ("REFUSED", "WITHDRAWN", 0))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]]), ("HELD", None, 2))
+        self.assertEqual(c.check(PR.prove(c.repo, SCOPE, d.id))["result"], "HELD")
+        if prove_lean:
+            self.assertTrue(lean_proves(c.path, c.tip, SCOPE, d.id))
+
+        # cy, under ana's verifier id: it withdraws only cy's keys under that id, and cy sealed no verdict under it
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        c.commit((c.verdict(d, "decision/d/invalid-as-ana", [k], code=V.H_VERDICT_INVALID, verifier="ana"), "cy"))
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
+        self.assertEqual(outcome(c, d, vs.values()), ("HELD", None, 3))
+        if prove_lean:
+            self.assertTrue(lean_proves(c.path, c.tip, SCOPE, d.id))
+
+        # ana and bo, each under its own: only cy's endorsement is left, one key of two
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        c.commit(*((c.verdict(d, f"decision/d/invalid-by-{m}", [k], code=V.H_VERDICT_INVALID, verifier=m), m)
+                   for m in ("ana", "bo")))
+        self.assertFalse(c.repo.lens(SCOPE)["settled"].get(d.id))
+        self.assertEqual(outcome(c, d, vs.values()), ("REFUSED", "WITHDRAWN", 0))
+        self.assertEqual(outcome(c, d, [vs["cy"]]), ("REFUSED", "THRESHOLD", 0))
+        with self.assertRaises(PR.NotHeld):
+            PR.prove(c.repo, SCOPE, d.id)
+        if prove_lean:
+            self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
 
 
 def mutants() -> int:
