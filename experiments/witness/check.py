@@ -15,10 +15,11 @@ What HELD rests on (README.md):
 - the positive part is checked from bytes: every object hashes to its name, the seals verify under their keys, each
   under a scope of the governing chain and by a key of its roster, the keys are in the evaluator policy that the
   decision's id fixes, and the threshold is met;
-- the negative part (no cell invalidates, retires or supersedes a cone cell; no INVALID verdict judges the
-  decision; the scope cells are the governing chain, under v1 or v2, and its newest rotation cannot be waiting; no
-  foreign cells) is read over the store at the tip, so it holds only if that store is the admitted chain, complete:
-  the reader's pin, which this file does not check (it runs no gate).
+- the negative part (no cell invalidates, retires or supersedes a cone cell; no INVALID verdict on the decision,
+  under an endorsing verdict's verifier id, is sealed by the endorsing key; the scope cells are the governing chain,
+  under v1 or v2, and its newest rotation cannot be waiting; no foreign cells) is read over the store at the tip, so
+  it holds only if that store is the admitted chain, complete: the reader's pin, which this file does not check (it
+  runs no gate).
 
 Outside the fragment the answer is NOT_COVERED, never HELD: the lens decides there.
 
@@ -341,9 +342,6 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
         raise refuse("DECISION", "not a contract or decision cell of the store")
     if dc["slots"][1:2] != [H_EMPTY]:
         raise uncovered("COMPUTATION", "the decision requires a computation: replay decides it")
-    if any(c["schema"] == SCHEMA["verdict"] and c["payload"] == d and c["slots"][1:2] == [H_VERDICT_INVALID]
-           for c in cells.values()):
-        raise uncovered("INVALID_VERDICT", "an INVALID verdict judges the decision")
 
     # the cone: present, closed under relies, holding the decision and every endorsing verdict
     missing = [x for x in cone if x not in cells]
@@ -371,6 +369,25 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
     own = dc["slots"][3:4]
     thr, keys = policy(atoms, own[0] if own and own[0] != H_EMPTY else sc["slots"][0])
     rosters = {x: policy(atoms, cells[x]["slots"][0])[1] for x in chain}
+    # an INVALID verdict on the decision withdraws an endorsement under its verifier id by a key that seals it, and no
+    # other (§4.2 Pass 3: a verifier id is free text), if it is live: the checker tells that only where it meets the
+    # stand conditions, as a cone cell does (What HELD establishes, 1-2)
+    invalid = [b for b, c in cells.items() if c["schema"] == SCHEMA["verdict"] and c["payload"] == d
+               and c["slots"][1:2] == [H_VERDICT_INVALID]]
+    targets = {t for c in cells.values() for kind in ("invalidates", "retires", "supersedes")
+               for t in hvec(atoms, c[kind])}
+    memo: Dict[bytes, bool] = {}
+
+    def stands(x: bytes) -> bool:
+        if x not in memo:
+            c = cells.get(x)
+            memo[x] = (c is not None and x not in targets and not hvec(atoms, c["supersedes"])
+                       and all(stands(r) for r in hvec(atoms, c["relies"])))
+        return memo[x]
+
+    def sealed(b: bytes, k: bytes) -> bool:
+        return any(y["target"] == b and y["key"] == k and y["ctx"] in chain and k in rosters[y["ctx"]]
+                   and ed25519_verify(y["key"], y["signed"], y["signature"]) for y in seals.values())
     counted: Set[bytes] = set()
     for w, s in ends:
         v = cells.get(w, {"schema": None, "slots": []})
@@ -389,6 +406,13 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
             raise refuse("SEAL", f"{s.hex()} does not verify")
         if x["key"] not in keys:
             raise refuse("KEY", f"{x['key'].hex()} is not a key of the evaluator policy")
+        for b in invalid:
+            if cells[b]["slots"][2:3] == v["slots"][2:3] and sealed(b, x["key"]):
+                if stands(b):
+                    raise refuse("WITHDRAWN", f"{b.hex()}, an INVALID verdict under {w.hex()}'s verifier id sealed "
+                                 f"by {x['key'].hex()}, withdraws that endorsement")
+                raise uncovered("INVALID_VERDICT", f"{b.hex()} would withdraw {x['key'].hex()}'s endorsement through "
+                                f"{w.hex()}, and whether it is live the fragment does not decide")
         counted.add(x["key"])
     if len(counted) < thr:
         raise refuse("THRESHOLD", f"{len(counted)} distinct policy keys of {thr}")
@@ -406,7 +430,8 @@ LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 
 def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None, prove: bool = False) -> str:
     """The store at the term's tip and the term as a derivation, in the line `vars1witness` reads
     (proofs/Vars1WitnessMain.lean). The decode is this file's: what `_read` refuses is refused here, and only seals that
-    verify are written. The rest is the Lean checker's to judge: the cone, the kill edges, the verdicts, the keys.
+    verify are written, with every one on an INVALID verdict (the Lean checker reads from them which keys an INVALID
+    verdict withdraws). The rest is the Lean checker's to judge: the cone, the kill edges, the verdicts, the keys.
 
     The derivation: a `stand` line per cone cell, each after the cells it relies on, whose premises are that each of
     them stands; an `endorse` line per endorsement; and a `settle` line for the decision whose premises are that it
@@ -433,7 +458,8 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
         out += [kind, int(local), ids[c["payload"]] + 1 if c["payload"] in cells else 0,
                 0 if custom == H_EMPTY else pol(custom) + 1, int(slots[1:2] == [H_ATTESTED]),
                 int(slots[1:2] == [H_VERDICT_INVALID]), int(slots[:1] in ([], [H_EMPTY])),
-                int(kind not in (2, 3) or slots[1:2] == [H_EMPTY])]
+                int(kind not in (2, 3) or slots[1:2] == [H_EMPTY]),
+                num(slots[2]) if kind == 5 and len(slots) > 2 else 0]
         for edge in EDGES:
             items = hvec(atoms, c[edge])
             out += [len(items), *map(num, items)]
@@ -450,6 +476,9 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     named = [s for _, s in ends] if not prove else [sid for sid, x in seals.items() if x["target"] in cells
                                                     and cells[x["target"]]["schema"] == SCHEMA["verdict"]
                                                     and cells[x["target"]]["payload"] == d]
+    named += [sid for sid, x in seals.items() if x["target"] in cells
+              and cells[x["target"]]["schema"] == SCHEMA["verdict"]
+              and cells[x["target"]]["slots"][1:2] == [H_VERDICT_INVALID]]
     for s in named:
         x = seals.get(s)
         if x is not None and ed25519_verify(x["key"], x["signed"], x["signature"]):

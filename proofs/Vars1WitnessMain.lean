@@ -10,8 +10,8 @@ length, then its items.
 
 * `N`, then per cell: `schema` (0 scope, 1 acceptance, 2 contract, 3 decision, 4 question, 5 verdict, 6 metaSchema,
   7 checkpoint, 8 cycleWitness, 9 computation, 10 axiom, 11 other), `isLocal`, `payload+1`, `customPol+1`,
-  `attested`, `invalid`, `witnessEmpty`, `reqEmpty`, then the lists `relies`, `attests`, `supersedes`, `retires`,
-  `invalidates`;
+  `attested`, `invalid`, `witnessEmpty`, `reqEmpty`, `verifier` (a number naming a verdict's verifier id, the same
+  for the same id), then the lists `relies`, `attests`, `supersedes`, `retires`, `invalidates`;
 * `scope`, `pol0`; the scopes that governed (a list of `scope pol0`); the policies (a list of `id thr keys`); the
   seals (a list of `target ctx key`);
 * the lines (a list of `rule concl premises`: rule 0 stand, 1 endorse, 2 settle; a conclusion is `0 c`, `1 w k`
@@ -60,6 +60,7 @@ structure Row where
   invalid : Bool := false
   witnessEmpty : Bool := true
   reqEmpty : Bool := true
+  verifier : Nat := 0
   relies : List Nat := []
   attests : List Nat := []
   supersedes : List Nat := []
@@ -76,12 +77,13 @@ def row : Parser Row := do
   let invalid ← flag
   let witnessEmpty ← flag
   let reqEmpty ← flag
+  let verifier ← nat
   let relies ← listOf nat
   let attests ← listOf nat
   let supersedes ← listOf nat
   let retires ← listOf nat
   let invalidates ← listOf nat
-  pure { schema, isLocal, payload, customPol, attested, invalid, witnessEmpty, reqEmpty, relies, attests,
+  pure { schema, isLocal, payload, customPol, attested, invalid, witnessEmpty, reqEmpty, verifier, relies, attests,
          supersedes, retires, invalidates }
 
 def concl : Parser (Concl Nat Nat) := do
@@ -125,7 +127,7 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
       payload := fun c => (r c).payload
       customPol := fun c => (r c).customPol
       verdict := fun c => { attested := (r c).attested, replayed := false, invalid := (r c).invalid,
-                            witness := if (r c).witnessEmpty then none else some c, verifier := 0 }
+                            witness := if (r c).witnessEmpty then none else some c, verifier := (r c).verifier }
       req := fun c => if (r c).reqEmpty then none else some 0
       seals, scope, pol0, ctxs
       pols := pols.map (·.1)
