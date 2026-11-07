@@ -1,7 +1,9 @@
-import Vars1.Witness
+import Vars1.WitnessComplete
 
 /-! `vars1witness`: one line in (a store and a derivation, as `experiments/witness/check.py --lean` writes them),
-`ACCEPT` or `REJECT` out (`Vars1.Witness.accepts`), `E` for a line it cannot read.
+`ACCEPT` or `REJECT` out (`Vars1.Witness.accepts`), `E` for a line it cannot read. With `--prove` the line's
+derivation is not read: the checker runs on the one `Vars1.Witness.prove` builds from the store alone, to a depth one
+more than the store's cells (`check.py --lean --prove` writes such a line, with every seal on the decision's verdicts).
 
 Every number is a natural. Cells are `0 … N-1`; an id the store does not hold gets a number `≥ N`. A list is its
 length, then its items.
@@ -131,19 +133,23 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
       thr := fun p => ((pol p).map (·.2.1)).getD 0 }
   pure (S, lines, d)
 
-def evalLine (s : String) : String :=
+def evalLine (prove? : Bool) (s : String) : String :=
   let ts := ((s.replace "\n" " ").splitOn " ").filter (· ≠ "") |>.map String.toNat?
   if ts.any Option.isNone then "E" else
   match (input.run (ts.filterMap id)) with
-  | some ((S, lines, d), _) => if accepts S lines d then "ACCEPT" else "REJECT"
+  | some ((S, lines, d), _) =>
+    if accepts S (if prove? then prove S (S.cells.length + 1) d else lines) d then "ACCEPT" else "REJECT"
   | none => "E"
 
-partial def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
+partial def loop (prove? : Bool) (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
   let l ← stdin.getLine
   if l.isEmpty then return
-  stdout.putStrLn (evalLine l)
+  stdout.putStrLn (evalLine prove? l)
   stdout.flush
-  loop stdin stdout
+  loop prove? stdin stdout
 
-def main : IO Unit := do
-  loop (← IO.getStdin) (← IO.getStdout)
+def main (args : List String) : IO UInt32 := do
+  match args with
+  | [] => loop false (← IO.getStdin) (← IO.getStdout); pure 0
+  | ["--prove"] => loop true (← IO.getStdin) (← IO.getStdout); pure 0
+  | _ => IO.eprintln "usage: vars1witness [--prove] < lines"; pure 2
