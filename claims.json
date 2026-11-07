@@ -2245,7 +2245,8 @@
     "witness:test_10_the_checker_runs_alone",
     "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
     "witness:test_13_every_decision_of_the_live_chain",
-    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it",
+    "witness:test_16_kill_edges_that_do_not_count"
    ],
    "mutants": [
     "m-ed-small-order",
@@ -2271,8 +2272,6 @@
     "m-cone-decision",
     "m-cone-verdict",
     "m-cone-closed",
-    "m-kill-outgoing",
-    "m-kill-incoming",
     "m-policy-own",
     "m-verdict-schema",
     "m-verdict-attested",
@@ -2286,7 +2285,21 @@
     "m-threshold-distinct",
     "m-waiting",
     "m-pin-old",
-    "m-seal-roster"
+    "m-seal-roster",
+    "m-killed",
+    "m-latch-undecided",
+    "m-latch-quorum",
+    "m-latch-author",
+    "m-eff-attackers",
+    "m-dead-eff",
+    "m-non-inv",
+    "m-unsup-direct",
+    "m-unsup-trans",
+    "m-retires",
+    "m-outgoing",
+    "m-down-relies",
+    "m-down-dead",
+    "m-owner"
    ]
   },
   {
@@ -2311,14 +2324,18 @@
    "status": "proved",
    "witnesses": [
     "lean:witness_sound",
+    "lean:latch_sound",
+    "lean:unlatched_sound",
     "lean:edge_present",
     "lean:stale_pin",
+    "lean:stale_complete",
     "witness:test_04_after_the_failure_held_only_what_the_lens_settles",
     "witness:test_08_outside_the_fragment_the_answer_is_not_covered",
     "witness:test_09_the_store_is_read_from_bytes",
     "witness:test_12_a_seal_counts_under_the_scope_that_governed_it",
     "witness:test_13_every_decision_of_the_live_chain",
-    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it",
+    "witness:test_16_kill_edges_that_do_not_count"
    ],
    "mutants": [
     "m-lean-kill-edges",
@@ -2327,7 +2344,10 @@
     "m-lean-invalid-seals",
     "m-lean-seal-verify",
     "m-lean-seal-ctx",
-    "m-lean-ctxs"
+    "m-lean-ctxs",
+    "m-lean-edge-seals",
+    "m-lean-owner",
+    "m-lean-edge-pols"
    ]
   },
   {
@@ -2338,12 +2358,24 @@
    "witnesses": [
     "lean:witness_complete",
     "lean:accepts_iff_settled",
-    "lean:stale_complete",
+    "lean:kernel_iff",
     "witness:test_14_the_lean_prover_finds_a_derivation_wherever_the_checker_holds_one",
-    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
+    "witness:test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it",
+    "witness:test_16_kill_edges_that_do_not_count"
    ],
    "mutants": [
     "m-prove-seals"
+   ]
+  },
+  {
+   "id": "assurance.witness-kernel",
+   "source": "ASSURANCE.md",
+   "quote": "the Pass 1 equations for `Invalidated` and `Effective` have at most one solution for a given `Accepted`",
+   "status": "proved",
+   "witnesses": [
+    "lean:pass1_kernel_unique",
+    "lean:IsPass1.kernel_unique",
+    "lean:kernel_iff"
    ]
   },
   {

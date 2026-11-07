@@ -3,19 +3,21 @@ import Vars1.WitnessComplete
 /-! `vars1witness`: one line in (a store and a derivation, as `experiments/witness/check.py --lean` writes them),
 `ACCEPT` or `REJECT` out (`Vars1.Witness.accepts`), `E` for a line it cannot read. With `--prove` the line's
 derivation is not read: the checker runs on the one `Vars1.Witness.prove` builds from the store alone, to a depth one
-more than the store's cells (`check.py --lean --prove` writes such a line, with every seal on the decision's verdicts).
+more than the store's cells, which bounds both ranks it recurses over (`check.py --lean --prove` writes such a line,
+with every seal on the decision's verdicts).
 
 Every number is a natural. Cells are `0 … N-1`; an id the store does not hold gets a number `≥ N`. A list is its
 length, then its items.
 
 * `N`, then per cell: `schema` (0 scope, 1 acceptance, 2 contract, 3 decision, 4 question, 5 verdict, 6 metaSchema,
   7 checkpoint, 8 cycleWitness, 9 computation, 10 axiom, 11 other), `isLocal`, `payload+1`, `customPol+1`,
-  `attested`, `invalid`, `witnessEmpty`, `reqEmpty`, `verifier` (a number naming a verdict's verifier id, the same
-  for the same id), then the lists `relies`, `attests`, `supersedes`, `retires`, `invalidates`;
+  `ownerPol`, `attested`, `invalid`, `witnessEmpty`, `reqEmpty`, `verifier` (a number naming a verdict's verifier
+  id, the same for the same id), then the lists `relies`, `attests`, `supersedes`, `retires`, `invalidates`;
 * `scope`, `pol0`; the scopes that governed (a list of `scope pol0`); the policies (a list of `id thr keys`); the
   seals (a list of `target ctx key`);
-* the lines (a list of `rule concl premises`: rule 0 stand, 1 endorse, 2 settle; a conclusion is `0 c`, `1 w k`
-  or `2 d`; premises are a list of conclusions);
+* the lines (a list of `rule concl premises`: rule 0 stand, 1 endorse, 2 settle, 3 latch, 4 unlatch, 5 dead, 6 eff,
+  7 unsup, 8 down; a conclusion is `0 c`, `1 w k`, `2 d`, `3 y x kind`, `4 y x kind` (kind 0 supersedes,
+  1 retires, 2 invalidates), `5 x`, `6 y`, `7 w` or `8 b`; premises are a list of conclusions);
 * the decision. -/
 
 open Vars1 Vars1.Witness
@@ -56,6 +58,7 @@ structure Row where
   isLocal : Bool := false
   payload : Option Nat := none
   customPol : Option Nat := none
+  ownerPol : Bool := false
   attested : Bool := false
   invalid : Bool := false
   witnessEmpty : Bool := true
@@ -73,6 +76,7 @@ def row : Parser Row := do
   let isLocal ← flag
   let payload ← opt
   let customPol ← opt
+  let ownerPol ← flag
   let attested ← flag
   let invalid ← flag
   let witnessEmpty ← flag
@@ -83,14 +87,25 @@ def row : Parser Row := do
   let supersedes ← listOf nat
   let retires ← listOf nat
   let invalidates ← listOf nat
-  pure { schema, isLocal, payload, customPol, attested, invalid, witnessEmpty, reqEmpty, verifier, relies, attests,
+  pure { schema, isLocal, payload, customPol, ownerPol, attested, invalid, witnessEmpty, reqEmpty, verifier, relies, attests,
          supersedes, retires, invalidates }
+
+def kind : Parser Kind := do
+  match ← nat with
+  | 0 => pure .supersedes | 1 => pure .retires | 2 => pure .invalidates
+  | _ => failure
 
 def concl : Parser (Concl Nat Nat) := do
   match ← nat with
   | 0 => pure (.stands (← nat))
   | 1 => do let w ← nat; let k ← nat; pure (.endorsed w k)
   | 2 => pure (.settled (← nat))
+  | 3 => do let y ← nat; let x ← nat; let k ← kind; pure (.latch y x k)
+  | 4 => do let y ← nat; let x ← nat; let k ← kind; pure (.unlatched y x k)
+  | 5 => pure (.dead (← nat))
+  | 6 => pure (.eff (← nat))
+  | 7 => pure (.unsup (← nat))
+  | 8 => pure (.down (← nat))
   | _ => failure
 
 def line : Parser (Line Nat Nat) := do
@@ -98,6 +113,12 @@ def line : Parser (Line Nat Nat) := do
     | 0 => pure Rule.stand
     | 1 => pure Rule.endorse
     | 2 => pure Rule.settle
+    | 3 => pure Rule.latch
+    | 4 => pure Rule.unlatch
+    | 5 => pure Rule.dead
+    | 6 => pure Rule.eff
+    | 7 => pure Rule.unsup
+    | 8 => pure Rule.down
     | _ => failure
   let c ← concl
   let prem ← listOf concl
@@ -126,6 +147,7 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
       invalidates := fun c => (r c).invalidates
       payload := fun c => (r c).payload
       customPol := fun c => (r c).customPol
+      ownerPol := fun c => (r c).ownerPol
       verdict := fun c => { attested := (r c).attested, replayed := false, invalid := (r c).invalid,
                             witness := if (r c).witnessEmpty then none else some c, verifier := (r c).verifier }
       req := fun c => if (r c).reqEmpty then none else some 0

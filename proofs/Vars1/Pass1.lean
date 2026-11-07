@@ -91,6 +91,58 @@ theorem superseded_of_active_reach (Eff Acc Ret : C → Prop) {c p : C}
 
 end Pass1
 
+/-! ## Pass 1 has one kernel on a ranked store
+
+`Invalidated` and `Effective` are fixed by two of the Pass 1 equations (`IsPass1.inv_eq`, `eff_eq`): `Effective` is
+a kernel, in Richardson's sense, of the digraph of authorized invalidates edges from Accepted killers. Cells are
+named by the hash of their contents, so a cell invalidates only cells that name no one naming it: there is a rank
+`ht` that every invalidates edge from a present cell climbs. On such a store the equations have at most one solution
+for a given `Accepted`, by induction on the rank: a cell's status is fixed by the status of the cells that attack it.
+The witness prover computes one (`effB`, `effB_iff` in `Vars1/WitnessComplete.lean`), so there is exactly one; a
+liar's paradox ("this notice invalidates itself") cannot be written. -/
+
+/-- **The Pass 1 kernel is unique.** Two solutions of the `Invalidated`/`Effective` equations over the same
+`Accepted`, on a store whose invalidates edges climb a rank, agree on every cell. -/
+theorem pass1_kernel_unique (W : World C K P) (AE : C → C → Kind → Bool) (Present Acc : C → Prop)
+    (ht : C → Nat) (hht : ∀ w v, Present w → v ∈ (W.info w).invalidates → ht w < ht v)
+    {Inv Eff Inv' Eff' : C → Prop}
+    (hinv : ∀ v, Inv v ↔ ∃ w, Eff w ∧ Acc w ∧ v ∈ (W.info w).invalidates ∧ AE w v .invalidates = true ∧
+      ((W.info w).schema ≠ .verdict ∨ (W.info w).verdictInvalid = true))
+    (heff : ∀ u, Eff u ↔ Present u ∧ ¬ Inv u)
+    (hinv' : ∀ v, Inv' v ↔ ∃ w, Eff' w ∧ Acc w ∧ v ∈ (W.info w).invalidates ∧ AE w v .invalidates = true ∧
+      ((W.info w).schema ≠ .verdict ∨ (W.info w).verdictInvalid = true))
+    (heff' : ∀ u, Eff' u ↔ Present u ∧ ¬ Inv' u) :
+    ∀ v, (Inv v ↔ Inv' v) ∧ (Eff v ↔ Eff' v) := by
+  have key : ∀ m v, ht v < m → (Inv v ↔ Inv' v) := by
+    intro m
+    induction m with
+    | zero => intro v h; exact absurd h (Nat.not_lt_zero _)
+    | succ m ih =>
+      intro v hv
+      have heq : ∀ w, Present w → v ∈ (W.info w).invalidates → (Eff w ↔ Eff' w) := by
+        intro w hp hw
+        have hlt : ht w < m := by have := hht w v hp hw; omega
+        rw [heff, heff', ih w hlt]
+      constructor
+      · intro h
+        obtain ⟨w, hw, ha, hvw, hae, hk⟩ := (hinv v).mp h
+        exact (hinv' v).mpr ⟨w, (heq w ((heff w).mp hw).1 hvw).mp hw, ha, hvw, hae, hk⟩
+      · intro h
+        obtain ⟨w, hw, ha, hvw, hae, hk⟩ := (hinv' v).mp h
+        exact (hinv v).mpr ⟨w, (heq w ((heff' w).mp hw).1 hvw).mpr hw, ha, hvw, hae, hk⟩
+  intro v
+  have hi := key (ht v + 1) v (Nat.lt_succ_self _)
+  exact ⟨hi, by rw [heff, heff', hi]⟩
+
+/-- `pass1_kernel_unique` for two readings that meet all of §4.2 Pass 1 (`IsPass1`) with the same `Accepted`. -/
+theorem IsPass1.kernel_unique {W : World C K P} {AE : C → C → Kind → Bool} {Present isIntrinsic : C → Prop}
+    {Auth : C → Bool} {Inv Eff Ret Inv' Eff' Ret' Acc : C → Prop}
+    (h1 : IsPass1 W AE Present isIntrinsic Auth Inv Eff Ret Acc)
+    (h2 : IsPass1 W AE Present isIntrinsic Auth Inv' Eff' Ret' Acc)
+    (ht : C → Nat) (hht : ∀ w v, Present w → v ∈ (W.info w).invalidates → ht w < ht v) :
+    ∀ v, (Inv v ↔ Inv' v) ∧ (Eff v ↔ Eff' v) :=
+  pass1_kernel_unique W AE Present Acc ht hht h1.inv_eq h1.eff_eq h2.inv_eq h2.eff_eq
+
 theorem SupPath.mono (W : World C K P) {AE AE' : C → C → Kind → Bool}
     (h : ∀ w v k, AE w v k = true → AE' w v k = true) {x p : C}
     (hp : SupPath W AE x p) : SupPath W AE' x p := by

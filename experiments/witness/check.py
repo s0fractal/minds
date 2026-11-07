@@ -43,6 +43,7 @@ H_VERDICT_INVALID = bytes.fromhex("b3966965c112d6d2613255fc018e34774dbc17c851770
 H_LENS_KERNEL = bytes.fromhex("874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb")
 H_LENS_KERNEL_V2 = bytes.fromhex("1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e")
 H_META_SCHEMA = bytes.fromhex("7f0f250c08d367c8f2ba2c3b700f1a9bacbb44c240dade81c5c39c9ea7f9f15e")
+H_OWNER = bytes.fromhex("4f97d7922a77cd279f75b8483542a9235330d4402ab15373e23c21bb7877905e")
 SCHEMA = {name: bytes.fromhex(h) for name, h in {
     "axiom": "aaf70509e078bf1f833492eb82a116e4122232d424cf1668c05a9dd25855dcda",
     "contract": "391bbd2090d93f580fe033df9109cff948d46a07db24b9db05d55dc84e84277b",
@@ -146,6 +147,7 @@ def ed25519_verify(pub: bytes, msg: bytes, sig: bytes) -> bool:
 
 # --- the store at a commit -----------------------------------------------------------------------------------------
 
+KILLS = ("supersedes", "retires", "invalidates")  # the Lean checker's kinds 0, 1, 2
 ENTRY = re.compile(r"(100644) blob ([0-9a-f]{40}|[0-9a-f]{64})\tcas/(atoms|cells|seals)/([0-9a-f]{2})/([0-9a-f]{62})")
 EDGES = ("relies", "attests", "supersedes", "retires", "invalidates")
 
@@ -335,6 +337,165 @@ def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
     return d, cone, ends, atoms, cells, seals, chain, sc
 
 
+# --- the rules both checkers read the store by ----------------------------------------------------------------------
+
+def _and(xs) -> Optional[bool]:
+    """Kleene's AND: False if one is False, else None if one is None, else True."""
+    out: Optional[bool] = True
+    for x in xs:
+        if x is False:
+            return False
+        if x is None:
+            out = None
+    return out
+
+
+def _or(xs) -> Optional[bool]:
+    """Kleene's OR: True if one is True, else None if one is None, else False."""
+    out: Optional[bool] = False
+    for x in xs:
+        if x is True:
+            return True
+        if x is None:
+            out = None
+    return out
+
+
+class Rules:
+    """The rules of the Lean checker (proofs/Vars1/Witness.lean), read over the store at the tip. Each answer is True
+    when the Lean checker can derive it, False when it can derive the opposite (an edge `unlatched` against `latch`, a
+    cell `dead` against `eff`, ...), and None when the store does not decide it: an edge whose quorum fails while a key
+    of its target seals its source (the author clause reads InitialEndorsers, fixed at the target's birth), an edge to
+    an acceptance cell, or one from a scope or schema cell whose quorum is met."""
+
+    def __init__(self, atoms, cells, seals, chain, scope: str) -> None:
+        self.atoms, self.cells, self.seals, self.chain, self.scope = atoms, cells, seals, chain, scope
+        self.rosters = {x: policy(atoms, cells[x]["slots"][0])[1] for x in chain}
+        self.on: Dict[bytes, List[bytes]] = {}
+        for sid, y in seals.items():
+            self.on.setdefault(y["target"], []).append(sid)
+        self.sources: Dict[Tuple[str, bytes], List[bytes]] = {}
+        for cid in sorted(cells):
+            for kind in KILLS:
+                for t in hvec(atoms, cells[cid][kind]):
+                    self.sources.setdefault((kind, t), []).append(cid)
+        self.ok: Dict[bytes, bool] = {}
+        self.memo: Dict[tuple, Optional[bool]] = {}
+
+    def verifies(self, sid: bytes) -> bool:
+        if sid not in self.ok:
+            y = self.seals[sid]
+            self.ok[sid] = ed25519_verify(y["key"], y["signed"], y["signature"])
+        return self.ok[sid]
+
+    def into(self, kind: str, x: bytes) -> List[bytes]:
+        """The cells with an edge of `kind` to `x`."""
+        return self.sources.get((kind, x), [])
+
+    def sealers(self, y: bytes, ctx: bytes) -> Set[bytes]:
+        """The keys of the verified seals on `y` under the scope cell `ctx`, by keys of its admission roster."""
+        return {self.seals[sid]["key"] for sid in self.on.get(y, ()) if self.seals[sid]["ctx"] == ctx
+                and self.seals[sid]["key"] in self.rosters[ctx] and self.verifies(sid)}
+
+    def local(self, x: bytes) -> bool:
+        return x in STANDARD or origin(self.atoms, self.cells[x]) == self.scope
+
+    def non_inv(self, w: bytes) -> bool:
+        c = self.cells[w]
+        return c["schema"] == SCHEMA["verdict"] and c["slots"][1:2] != [H_VERDICT_INVALID]
+
+    def pol_at(self, ctx: bytes, x: bytes) -> bytes:
+        """Pol(x) while `ctx` governed (§4.1's table, the acceptance row aside)."""
+        c, adm = self.cells[x], self.cells[ctx]["slots"][0]
+        if c["schema"] in (SCHEMA["contract"], SCHEMA["decision"]):
+            own = c["slots"][3] if len(c["slots"]) > 3 else H_EMPTY
+            return adm if c["slots"][:1] == [H_OWNER] or own == H_EMPTY else own
+        if c["schema"] == SCHEMA["question"]:
+            own = c["slots"][1] if len(c["slots"]) > 1 else H_EMPTY
+            return adm if own == H_EMPTY else own
+        return adm
+
+    def can_evict(self, x: bytes) -> bool:
+        c = self.cells[x]
+        if c["schema"] == SCHEMA["scope"]:
+            return False
+        if c["schema"] in (SCHEMA["contract"], SCHEMA["decision"]):
+            return c["slots"][:1] != [H_OWNER]
+        return True
+
+    def meets(self, y: bytes, ctx: bytes, x: bytes) -> bool:
+        thr, keys = policy(self.atoms, self.pol_at(ctx, x))
+        return len(self.sealers(y, ctx) & keys) >= thr
+
+    def latch(self, y: bytes, x: bytes, kind: str) -> Optional[bool]:
+        """Did the edge y -> x of `kind` latch (§4.1 latch 3)? True by a quorum of Pol(x) under a scope that governed;
+        False when under none it meets Pol(x) and the author clause cannot apply."""
+        c, t = self.cells.get(y), self.cells.get(x)
+        if c is None or t is None or x not in hvec(self.atoms, c[kind]):
+            return None
+        if t["schema"] == SCHEMA["acceptance"] or c["schema"] == SCHEMA["scope"]:
+            return None
+        if any(self.meets(y, ctx, x) for ctx in self.chain):
+            return None if c["schema"] == H_META_SCHEMA else True
+        if kind != "invalidates" and self.can_evict(x) and self.local(x):
+            ys = set().union(*(self.sealers(y, ctx) for ctx in self.chain))
+            if ys & set().union(*(self.sealers(x, ctx) for ctx in self.chain)):
+                return None
+        return False
+
+    def _memo(self, key: tuple, f) -> Optional[bool]:
+        if key not in self.memo:
+            self.memo[key] = None  # a cycle, which content addressing rules out, reads as undecided
+            self.memo[key] = f()
+        return self.memo[key]
+
+    def eff(self, y: bytes) -> Optional[bool]:
+        """Effective: every cell that invalidates y is a verdict that is not INVALID, is dead, or did not latch."""
+        def f():
+            if y not in self.cells:
+                return False
+
+            def covered(w):
+                if self.non_inv(w):
+                    return True
+                return _or(x for x in (_not(self.latch(w, y, "invalidates")), self.dead(w)))
+            return _and(covered(w) for w in self.into("invalidates", y))
+        return self._memo(("eff", y), f)
+
+    def dead(self, x: bytes) -> Optional[bool]:
+        """Invalidated: an Effective local killer (not a verdict, or an INVALID one) invalidates x by a latched edge."""
+        return self._memo(("dead", x), lambda: _or(
+            _and((self.latch(y, x, "invalidates"), self.eff(y))) for y in self.into("invalidates", x)
+            if self.local(y) and not self.non_inv(y)))
+
+    def unsup(self, w: bytes) -> Optional[bool]:
+        """Not Superseded: every cell that supersedes w did not latch, or is dead and not Superseded itself."""
+        return self._memo(("unsup", w), lambda: _and(
+            _or((_not(self.latch(u, w, "supersedes")), _and((self.dead(u), self.unsup(u)))))
+            for u in self.into("supersedes", w)))
+
+    def stand(self, c: bytes) -> Optional[bool]:
+        """Active and not Stale: local, Effective, not Superseded, not Retired by a cell that counts, its supersedes
+        edges latched, and what it relies on standing."""
+        def f():
+            if c not in self.cells or not self.local(c):
+                return False
+            return _and((self.eff(c), self.unsup(c),
+                         _and(_or((_not(self.latch(w, c, "retires")), self.dead(w))) for w in self.into("retires", c)),
+                         _and(self.latch(c, u, "supersedes") for u in hvec(self.atoms, self.cells[c]["supersedes"])),
+                         _and(self.stand(r) for r in hvec(self.atoms, self.cells[c]["relies"]))))
+        return self._memo(("stand", c), f)
+
+    def down(self, b: bytes) -> Optional[bool]:
+        """Not live because Invalidated, or because it relies on a cell that is down."""
+        return self._memo(("down", b), lambda: _or((self.dead(b), _or(
+            self.down(r) for r in hvec(self.atoms, self.cells[b]["relies"])) if b in self.cells else False)))
+
+
+def _not(x: Optional[bool]) -> Optional[bool]:
+    return None if x is None else not x
+
+
 def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str, object]:
     d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, pin)
     dc = cells.get(d)
@@ -355,14 +516,18 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
     for x in present:
         if any(r not in cone for r in hvec(atoms, cells[x]["relies"])):
             raise refuse("CONE_OPEN", f"{x.hex()} relies on a cell outside the cone")
+    # every cone cell stands: the edges into it and its own supersedes edges are read by the rules (Rules)
+    rules = Rules(atoms, cells, seals, chain, term["scope"])
+    standing = {x: rules.stand(x) for x in present}
     for x in present:
-        if hvec(atoms, cells[x]["supersedes"]):
-            raise uncovered("KILL_EDGE", f"{x.hex()} supersedes a cell")
-    for cid, c in cells.items():
-        for kind in ("invalidates", "retires", "supersedes"):
-            hit = cone.intersection(hvec(atoms, c[kind]))
-            if hit:
-                raise uncovered("KILL_EDGE", f"{cid.hex()} {kind} {min(hit).hex()} of the cone")
+        if standing[x] is False:
+            raise refuse("KILLED", f"{x.hex()} does not stand: an edge that counts invalidates, retires or supersedes it "
+                         "or what it relies on, or one of its supersedes edges did not latch")
+    for x in present:
+        if standing[x] is None:
+            raise uncovered("LATCH", f"whether {x.hex()} stands the store does not decide: an edge into or out of what "
+                            "it rests on may have latched by the author clause, which reads its target's initial "
+                            "endorsers")
 
     # the endorsements: ATTESTED verdicts on the decision, each sealed under a scope that governed, by a key of its
     # admission roster, by distinct keys of the evaluator policy
@@ -370,20 +535,10 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
     thr, keys = policy(atoms, own[0] if own and own[0] != H_EMPTY else sc["slots"][0])
     rosters = {x: policy(atoms, cells[x]["slots"][0])[1] for x in chain}
     # an INVALID verdict on the decision withdraws an endorsement under its verifier id by a key that seals it, and no
-    # other (§4.2 Pass 3: a verifier id is free text), if it is live: the checker tells that only where it meets the
-    # stand conditions, as a cone cell does (What HELD establishes, 1-2)
+    # other (§4.2 Pass 3: a verifier id is free text), if it is live: the checker tells that where it stands, as a cone
+    # cell does, and that it is not where it is down (Invalidated, or resting on an Invalidated cell)
     invalid = [b for b, c in cells.items() if c["schema"] == SCHEMA["verdict"] and c["payload"] == d
                and c["slots"][1:2] == [H_VERDICT_INVALID]]
-    targets = {t for c in cells.values() for kind in ("invalidates", "retires", "supersedes")
-               for t in hvec(atoms, c[kind])}
-    memo: Dict[bytes, bool] = {}
-
-    def stands(x: bytes) -> bool:
-        if x not in memo:
-            c = cells.get(x)
-            memo[x] = (c is not None and x not in targets and not hvec(atoms, c["supersedes"])
-                       and all(stands(r) for r in hvec(atoms, c["relies"])))
-        return memo[x]
 
     def sealed(b: bytes, k: bytes) -> bool:
         return any(y["target"] == b and y["key"] == k and y["ctx"] in chain and k in rosters[y["ctx"]]
@@ -408,9 +563,11 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
             raise refuse("KEY", f"{x['key'].hex()} is not a key of the evaluator policy")
         for b in invalid:
             if cells[b]["slots"][2:3] == v["slots"][2:3] and sealed(b, x["key"]):
-                if stands(b):
+                if rules.stand(b) is True:
                     raise refuse("WITHDRAWN", f"{b.hex()}, an INVALID verdict under {w.hex()}'s verifier id sealed "
                                  f"by {x['key'].hex()}, withdraws that endorsement")
+                if rules.down(b) is True:
+                    continue  # not live: it withdraws nothing
                 raise uncovered("INVALID_VERDICT", f"{b.hex()} would withdraw {x['key'].hex()}'s endorsement through "
                                 f"{w.hex()}, and whether it is live the fragment does not decide")
         counted.add(x["key"])
@@ -430,17 +587,21 @@ LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 
 def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None, prove: bool = False) -> str:
     """The store at the term's tip and the term as a derivation, in the line `vars1witness` reads
     (proofs/Vars1WitnessMain.lean). The decode is this file's: what `_read` refuses is refused here, and only seals that
-    verify are written, with every one on an INVALID verdict (the Lean checker reads from them which keys an INVALID
-    verdict withdraws). The rest is the Lean checker's to judge: the cone, the kill edges, the verdicts, the keys.
+    verify are written: every one on an INVALID verdict (the Lean checker reads from them which keys an INVALID verdict
+    withdraws), on a cell with an invalidates, retires or supersedes edge, and on a cell such an edge retires or
+    supersedes (it reads from them whether the edge latched). The rest is the Lean checker's to judge.
 
-    The derivation: a `stand` line per cone cell, each after the cells it relies on, whose premises are that each of
-    them stands; an `endorse` line per endorsement; and a `settle` line for the decision whose premises are that it
-    and each endorsing verdict stand and every endorsement.
+    The derivation: for each cone cell, after the cells it relies on, the lines the rules (Rules) derive for it (edges
+    `latch`ed or `unlatched`, cells `dead` or `eff`, `unsup`), then its `stand` line; an `endorse` line per endorsement;
+    `down` lines for the INVALID verdicts on the decision the rules prove not live; and a `settle` line whose premises
+    are that the decision and each endorsing verdict stand, every endorsement, and those `down` lines. A conclusion the
+    rules do not derive is left out, and the line that needs it fails in the Lean checker.
 
     With `prove`, the term's cone and endorsements are not read: the line carries every seal that verifies on a
     verdict whose payload is the decision, and no derivation, for `vars1witness --prove` to build one from the store
     alone (proofs/Vars1/WitnessComplete.lean `prove`)."""
     d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, scope_cell)
+    rules = Rules(atoms, cells, seals, chain, term["scope"])
     order = sorted(cells)
     ids = {cid: i for i, cid in enumerate(order)}
     num = lambda h: ids.setdefault(h, len(ids))  # noqa: E731  an id the store does not hold gets a number >= N
@@ -456,7 +617,8 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
         custom = slots[3] if kind in (2, 3) and len(slots) > 3 else slots[1] if kind == 4 and len(slots) > 1 else H_EMPTY
         local = cid in STANDARD or origin(atoms, c) == term["scope"]
         out += [kind, int(local), ids[c["payload"]] + 1 if c["payload"] in cells else 0,
-                0 if custom == H_EMPTY else pol(custom) + 1, int(slots[1:2] == [H_ATTESTED]),
+                0 if custom == H_EMPTY else pol(custom) + 1, int(kind in (2, 3) and slots[:1] == [H_OWNER]),
+                int(slots[1:2] == [H_ATTESTED]),
                 int(slots[1:2] == [H_VERDICT_INVALID]), int(slots[:1] in ([], [H_EMPTY])),
                 int(kind not in (2, 3) or slots[1:2] == [H_EMPTY]),
                 num(slots[2]) if kind == 5 and len(slots) > 2 else 0]
@@ -468,6 +630,15 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
                      and len(cells[d]["slots"]) > 3 and cells[d]["slots"][3] != H_EMPTY else [])
     out += [ids[chain[0]], pol(pol0), len(chain), *(n for x in chain for n in (ids[x], pol(cells[x]["slots"][0])))]
     used += [cells[x]["slots"][0] for x in chain]
+    # the policies an edge reads: Pol(x) of every cell x an edge reaches is a scope's admission policy, written above,
+    # or x's own, written here whatever its tier, which the Lean checker reads from its row
+    sources = {cid for cid, c in cells.items() if any(hvec(atoms, c[k]) for k in KILLS)}
+    targets = {t for cid in sources for k in KILLS for t in hvec(atoms, cells[cid][k]) if t in cells}
+
+    def own(cid: bytes) -> bytes:
+        slots, kind = cells[cid]["slots"], LEAN_SCHEMA.get(cells[cid]["schema"], 11)
+        return slots[3] if kind in (2, 3) and len(slots) > 3 else slots[1] if kind == 4 and len(slots) > 1 else H_EMPTY
+    used += [own(t) for t in sorted(targets) if own(t) != H_EMPTY]
     out += [len(set(used))]
     for h in dict.fromkeys(used):
         thr, ks = policy(atoms, h)
@@ -479,6 +650,8 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     named += [sid for sid, x in seals.items() if x["target"] in cells
               and cells[x["target"]]["schema"] == SCHEMA["verdict"]
               and cells[x["target"]]["slots"][1:2] == [H_VERDICT_INVALID]]
+    evicted = {t for cid in sources for k in ("retires", "supersedes") for t in hvec(atoms, cells[cid][k])}
+    named += sorted(sid for sid, x in seals.items() if x["target"] in sources | evicted)
     for s in named:
         x = seals.get(s)
         if x is not None and ed25519_verify(x["key"], x["signed"], x["signature"]):
@@ -488,7 +661,61 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     if prove:
         return " ".join(map(str, out + [0, num(d)]))
 
-    stands, seen = [], set()
+    lines: List[Tuple[int, tuple, list]] = []
+    made: Set[tuple] = set()
+    tag = {"stands": 0, "endorsed": 1, "settled": 2, "latch": 3, "unlatched": 4, "dead": 5, "eff": 6, "unsup": 7,
+           "down": 8}
+
+    def put(concl: tuple, prem: list) -> tuple:
+        if concl not in made:
+            made.add(concl)
+            lines.append((tag[concl[0]], concl, [p for p in prem if p is not None]))
+        return concl
+
+    def edge(y: bytes, x: bytes, kind: str) -> Optional[tuple]:
+        l = rules.latch(y, x, kind)
+        return None if l is None else put(("latch" if l else "unlatched", y, x, kind), [])
+
+    def eff(y: bytes) -> Optional[tuple]:
+        if rules.eff(y) is not True:
+            return None
+        prem = [edge(w, y, "invalidates") if rules.latch(w, y, "invalidates") is False else dead(w)
+                for w in rules.into("invalidates", y) if not rules.non_inv(w)]
+        return put(("eff", y), prem)
+
+    def dead(x: bytes) -> Optional[tuple]:
+        if rules.dead(x) is not True:
+            return None
+        prem = [p for y in rules.into("invalidates", x) if rules.local(y) and not rules.non_inv(y)
+                and rules.latch(y, x, "invalidates") is True and rules.eff(y) is True
+                for p in (edge(y, x, "invalidates"), eff(y))]
+        return put(("dead", x), prem)
+
+    def unsup(w: bytes) -> Optional[tuple]:
+        if rules.unsup(w) is not True:
+            return None
+        prem = [p for u in rules.into("supersedes", w) for p in
+                ((edge(u, w, "supersedes"),) if rules.latch(u, w, "supersedes") is False else (dead(u), unsup(u)))]
+        return put(("unsup", w), prem)
+
+    def down(b: bytes) -> Optional[tuple]:
+        if rules.down(b) is not True:
+            return None
+        prem = [dead(b)] if rules.dead(b) is True else [down(r) for r in hvec(atoms, cells[b]["relies"])
+                                                       if rules.down(r) is True]
+        return put(("down", b), prem)
+
+    def stand(x: bytes) -> None:
+        prem: list = []
+        if x in cells:
+            prem += [eff(x), unsup(x)]
+            prem += [edge(w, x, "retires") if rules.latch(w, x, "retires") is False else dead(w)
+                     for w in rules.into("retires", x)]
+            prem += [edge(x, u, "supersedes") for u in hvec(atoms, cells[x]["supersedes"])]
+            prem += [("stands", r) for r in hvec(atoms, cells[x]["relies"])]
+        put(("stands", x), prem)
+
+    seen: Set[bytes] = set()
 
     def visit(x: bytes) -> None:
         if x in seen:
@@ -498,17 +725,25 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
             for r in hvec(atoms, cells[x]["relies"]):
                 if r in cone:
                     visit(r)
-        stands.append(x)
+        stand(x)
     for x in sorted(cone):
         visit(x)
     by = [(w, seals[s]["key"] if s in seals else ("absent", s)) for w, s in ends]
-    lines = [[0, 0, num(x), *([len(hvec(atoms, cells[x]["relies"]))] + [n for r in hvec(atoms, cells[x]["relies"])
-                                                                         for n in (0, num(r))]
-                              if x in cells else [0])] for x in stands]
-    lines += [[1, 1, num(w), key(k), 0] for w, k in by]
-    prem = [[0, num(d)]] + [p for w, k in by for p in ([0, num(w)], [1, num(w), key(k)])]
-    lines.append([2, 2, num(d), len(prem), *(n for p in prem for n in p)])
-    out += [len(lines), *(n for ln in lines for n in ln), num(d)]
+    for w, k in by:
+        put(("endorsed", w, k), [])
+    downs = [down(b) for b in sorted(cells) if cells[b]["schema"] == SCHEMA["verdict"] and cells[b]["payload"] == d
+             and cells[b]["slots"][1:2] == [H_VERDICT_INVALID]]
+    prem = [("stands", d)] + [p for w, k in by for p in (("stands", w), ("endorsed", w, k))] + downs
+    put(("settled", d), prem)
+
+    def enc(c: tuple) -> List[int]:
+        if c[0] == "endorsed":
+            return [1, num(c[1]), key(c[2])]
+        if c[0] in ("latch", "unlatched"):
+            return [tag[c[0]], num(c[1]), num(c[2]), KILLS.index(c[3])]
+        return [tag[c[0]], num(c[1])]
+    out += [len(lines), *(n for rule, c, ps in lines for n in (rule, *enc(c), len(ps), *(m for p in ps for m in enc(p)))),
+            num(d)]
     return " ".join(map(str, out))
 
 
