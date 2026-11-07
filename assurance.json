@@ -577,7 +577,7 @@
    }
   },
   {
-   "md": "\n## A witness checked without the lens (experiments/witness)\n\nA spike: a decision's cone and the seals that settle it, as a proof term that `experiments/witness/check.py`\nchecks against the store's bytes, sharing no code with `vars1.py` or the offline verifier. The same term, as a\nderivation, is checked by a checker written in Lean (`proofs/Vars1/Witness.lean`, compiled as `vars1witness`)\nwhose acceptance carries a theorem, and on its fragment the converse: a prover in Lean finds the derivation\nwhenever the model holds the decision Settled (`proofs/Vars1/WitnessComplete.lean`). What neither covers is in the README: the negative part (no edge kills\nthe cone) is read over the store at the tip, which the reader pins as the admitted chain.\n\n"
+   "md": "\n## A witness checked without the lens (experiments/witness)\n\nA spike: a decision's cone and the seals that settle it, as a proof term that `experiments/witness/check.py`\nchecks against the store's bytes, sharing no code with `vars1.py` or the offline verifier. The same term, as a\nderivation, is checked by a checker written in Lean (`proofs/Vars1/Witness.lean`, compiled as `vars1witness`)\nwhose acceptance carries a theorem, and on its fragment the converse: a prover in Lean finds the derivation\nwhenever the model holds the decision Settled (`proofs/Vars1/WitnessComplete.lean`). Both checkers prove, from the\nstore, that an edge into the cone does not count (it did not latch, or its source is itself Invalidated): stratified\nnegation over Pass 1, whose kernel content addressing makes unique. What neither covers is in the README: that there is\nno further edge, verdict or seal is read over the store at the tip, which the reader pins as the admitted chain.\n\n"
   },
   {
    "table": {
@@ -589,8 +589,8 @@
     "rows": [
      [
       "`check.py` answers `HELD` for a witness term only if the lens holds its decision Settled at the term's tip, provided the store at the tip is that scope's admitted chain; outside its fragment the answer is `NOT_COVERED`",
-      "Tested, exhaustively over every subset of verdicts on two generated histories after a failure, on rotations under v1 and v2, and on every decision of the live chain at its tip, with a mutant for every check; the argument from §4.2 is prose here; `vars1witness` (below) carries it as a theorem",
-      "`experiments/witness/test_witness.py` 01–10, 12, 13; README.md"
+      "Tested, exhaustively over every subset of verdicts on two generated histories after a failure, on rotations under v1 and v2, on kill edges into the cone that count and that do not, and on every decision of the live chain at its tip, with a mutant for every check; the argument from §4.2 is prose here; `vars1witness` (below) carries it as a theorem",
+      "`experiments/witness/test_witness.py` 01–10, 12, 13, 16; README.md"
      ],
      [
       "The term reads one way: a witness term that is not UTF-8 JSON, or whose object names a key twice, is refused (`FORMAT`), and a crash of the checker exits 3, which no verdict uses",
@@ -598,14 +598,19 @@
       "`experiments/witness/test_witness.py` 11"
      ],
      [
-      "`vars1witness` answers `ACCEPT` for a derivation only if the model of §4.2 holds its decision `Settled` at the tip, given that the store `check.py --lean` decoded agrees with the model there and is the scope's admitted chain (`Pin`)",
-      "Proved (`witness_sound`; axioms `propext` and `Quot.sound` only; `edge_present` and `stale_pin` prove two of `Pin`'s hypotheses of the model's fold and Pass 2). The decode is tested: `check.py` and `vars1witness` agree on every term of tests 03–09, 12, 13 and 15, every decision the lens settles on the live chain included, and seven mutants of the decode break that agreement",
-      "`proofs/Vars1/Witness.lean`; `experiments/witness/test_witness.py` 03–09, 12, 13; README.md"
+      "`vars1witness` answers `ACCEPT` for a derivation only if the model of §4.2 holds its decision `Settled` at the tip, given that the store `check.py --lean` decoded agrees with the model there and is the scope's admitted chain (`Pin`): an edge into the cone does not count when it is proved not to have latched or its source is proved Invalidated, and an INVALID verdict withdraws nothing when it is proved not live",
+      "Proved (`witness_sound`; axioms `propext` and `Quot.sound` only; `edge_present`, `stale_pin` and `stale_complete` prove three of `Pin`'s hypotheses of the model's fold and Pass 2; that a quorum of seals under a scope of the chain latches an edge, and that the decode holds every seal on an edge's ends, are hypotheses). The decode is tested: `check.py` and `vars1witness` agree on every term of tests 03–09, 12, 13, 15 and 16, every decision the lens settles on the live chain included, and ten mutants of the decode break that agreement or the agreement of `vars1witness --prove` with the lens",
+      "`proofs/Vars1/Witness.lean`; `experiments/witness/test_witness.py` 03–09, 12, 13, 15, 16; README.md"
      ],
      [
-      "`vars1witness --prove` accepts the derivation it builds from the store whenever the model of §4.2 holds the decision `Settled`, on the fragment where the decision requires no computation, every INVALID verdict on it is live, and its live cone (the decision, the verdicts that count and what they rely on) holds local cells that supersede nothing and that no cell invalidates, retires or supersedes; given that the decode is complete as well as faithful (`Pin`, `PinComplete`) and that `relies` has a rank. With soundness, it accepts there exactly when the model holds the decision `Settled`",
-      "Proved (`witness_complete`, `accepts_iff_settled`; axioms `propext` and `Quot.sound` only; `stale_complete` proves one of `PinComplete`'s hypotheses of Pass 2). The completeness of the decode is tested: on both generated histories, before the failure and after it, `vars1witness --prove` accepts exactly the decisions whose `prove.py` term is HELD; on every decision of the live chain, exactly those the lens settles (34 of 47 at `7c6899b7`); where INVALID verdicts withdraw one key or none, exactly where the lens settles. Outside the fragment (a withdrawn notice in the cone, a Stale INVALID verdict that the checker counts as withdrawing a key) it does not accept decisions the lens settles. A mutant that writes it no seals breaks that agreement",
-      "`proofs/Vars1/WitnessComplete.lean`; `experiments/witness/test_witness.py` 14; README.md"
+      "`vars1witness --prove` accepts the derivation it builds from the store whenever the model of §4.2 holds the decision `Settled`, on the fragment where the decision requires no computation, every cell of the store is local, the store decides every edge the derivation reads (every invalidates edge, and every retires or supersedes edge into the decision's cone or into what supersedes it, or out of its cone: an edge that fails its quorum while a key of its target seals its source is left out, since the author clause reads the target's initial endorsers), and every INVALID verdict on the decision is live or not live through an Invalidated cell; given that the decode is complete as well as faithful (`Pin`, `PinComplete`) and that `relies`, invalidates and supersedes have ranks. With soundness, it accepts there exactly when the model holds the decision `Settled`",
+      "Proved (`witness_complete`, `accepts_iff_settled`; axioms `propext` and `Quot.sound` only). The completeness of the decode is tested: on both generated histories, before the failure and after it, `vars1witness --prove` accepts exactly the decisions whose `prove.py` term is HELD; on every decision of the live chain, exactly those the lens settles (34 of 47 at `7c6899b7`, where no edge reaches a cone); where INVALID verdicts withdraw one key or none, and on kill edges that count and that do not (withdrawn notices, Stale and Invalidated INVALID verdicts, retirements, supersessions, rebindings), exactly where the lens settles. Outside the fragment (a retires edge whose latch reads its target's initial endorsers, a retired INVALID verdict) it does not accept decisions the lens settles. A mutant that writes it no seals breaks that agreement",
+      "`proofs/Vars1/WitnessComplete.lean`; `experiments/witness/test_witness.py` 14, 16; README.md"
+     ],
+     [
+      "On a store whose invalidates edges climb a rank, which content addressing gives, the Pass 1 equations for `Invalidated` and `Effective` have at most one solution for a given `Accepted`; on a store of local cells whose invalidates edges it decides, the witness prover's `effB` and `deadB` are that solution",
+      "Proved (`pass1_kernel_unique`, `IsPass1.kernel_unique`, `kernel_iff`; axioms `propext` and `Quot.sound` only)",
+      "`proofs/Vars1/Pass1.lean`; `proofs/Vars1/WitnessComplete.lean`"
      ]
     ]
    }

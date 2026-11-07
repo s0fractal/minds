@@ -137,6 +137,20 @@ class Chain:
         self.tip, self.atoms = tip, {}
         return tip
 
+    def seal(self, cell: V.Cell, member: str) -> str:
+        """Admit a seal by `member` on a cell the chain already holds, under the governing scope, and nothing else."""
+        tip = self.repo.build_candidate_commit(SCOPE, {}, [], [V.Seal.sign(self.sk[member], cell.id, self.ctx)],
+                                               parent_commit=self.tip)
+        self.repo.admit_and_advance(SCOPE, tip, expected_old=self.tip)
+        self.tip = tip
+        return tip
+
+    def owned(self, name: str, relies, thr: int, members=MEMBERS) -> V.Cell:
+        """A decision of tier owner: its own policy evaluates it, and the admission policy governs its edges."""
+        return V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=self.utf8(f"{SCOPE}/{name}"),
+                      h_payload=self.utf8(name), **self._edges(relies, {}),
+                      slots=(V.H_OWNER, V.H_EMPTY, V.H_EMPTY, self.pol(self.atoms, thr, members)))
+
     def basic(self):
         """ground g -> check k -> decision d (2 of 3), approved by ana, bo and cy, each relying on k."""
         g = self.axiom("ground/g")
@@ -249,6 +263,49 @@ def lean_proves(path, tip, scope, d) -> bool:
     return out == "ACCEPT"
 
 
+def lens_settles(c, d) -> bool:
+    lens = c.repo.lens(SCOPE)
+    return bool(lens["settled"].get(d.id) and lens["active"].get(d.id) and not lens["stale"].get(d.id))
+
+
+def author_chain(late: bool):
+    """g -> e -> d: e a decision whose own policy is 2 of 3, sealed by ana at its birth; d (2 of 3) approved by ana and
+    bo; a cell w that retires e, sealed by one key. Its quorum fails; the author clause latches it when that key is one
+    of e's initial endorsers. With `late`, bo seals e after its birth and w is bo's: bo is no initial endorser, so the
+    edge does not latch and the lens settles d; otherwise w is ana's and e is Retired. Either way some key seals both e
+    and w, which is all the store at the tip shows: the checkers cannot tell the two apart."""
+    c = Chain(scratch())
+    g = c.axiom("ground/g")
+    c.commit((g, "ana"))
+    e = c.decision("decision/e", [g], thr=2)
+    c.commit((e, "ana"))
+    if late:
+        c.seal(e, "bo")
+    d = c.decision("decision/d", [e], thr=2)
+    vs = {m: c.verdict(d, f"decision/d/by-{m}", [e], verifier=m) for m in ("ana", "bo")}
+    c.commit((d, "ana"), *((v, m) for m, v in vs.items()))
+    c.commit((c.axiom("retire/e", retires=[e]), "bo" if late else "ana"))
+    return c, d, vs
+
+
+def retired_invalid_chain():
+    """g -> k -> d, d 3 of 3, approved by all three; cy's INVALID verdict under its own id relies on k, and a cell cy
+    seals retires it. A retired verdict is not Active, so it withdraws nothing and the lens settles d; the checkers
+    prove a verdict not live only through an Invalidated cell, so they cannot count cy's key."""
+    c = Chain(scratch())
+    g = c.axiom("ground/g")
+    c.commit((g, "ana"))
+    k = c.axiom("check/k", [g])
+    c.commit((k, "bo"))
+    d = c.decision("decision/d", [k], thr=3)
+    vs = {m: c.verdict(d, f"decision/d/by-{m}", [k], verifier=m) for m in MEMBERS}
+    c.commit((d, "ana"), *((v, m) for m, v in vs.items()))
+    b = c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy")
+    c.commit((b, "cy"))
+    c.commit((c.axiom("retire/invalid", retires=[b]), "cy"))
+    return c, d, vs
+
+
 def stale_invalid_chain():
     """basic(), then two INVALID verdicts on d: bo's, under its own verifier id, relies on a ground a notice
     invalidates, so it is Stale and withdraws nothing; cy's, under its own, withdraws cy's endorsement. The lens
@@ -297,8 +354,9 @@ class T(unittest.TestCase):
         self.assertLessEqual(mods, {"hashlib", "json", "re", "subprocess", "sys", "typing"})
         self.assertEqual(CK.SCHEMA, {k: V.H_SCHEMA[k] for k in CK.SCHEMA})
         self.assertEqual(CK.STANDARD, {c.id for c in V.STD_SCHEMAS.values()})
-        self.assertEqual((CK.H_EMPTY, CK.H_ATTESTED, CK.H_VERDICT_INVALID, CK.H_LENS_KERNEL, CK.H_META_SCHEMA),
-                         (V.H_EMPTY, V.H_ATTESTED, V.H_VERDICT_INVALID, V.H_LENS_KERNEL, V.H_META_SCHEMA))
+        self.assertEqual((CK.H_EMPTY, CK.H_ATTESTED, CK.H_VERDICT_INVALID, CK.H_LENS_KERNEL, CK.H_META_SCHEMA,
+                          CK.H_OWNER),
+                         (V.H_EMPTY, V.H_ATTESTED, V.H_VERDICT_INVALID, V.H_LENS_KERNEL, V.H_META_SCHEMA, V.H_OWNER))
 
     def test_03_before_the_failure_every_decision_is_held(self):
         """On a history of each size, every decision in force before the notice gets a witness the checker holds."""
@@ -331,7 +389,8 @@ class T(unittest.TestCase):
                         seen.add((out["result"], out.get("code")))
                         if out["result"] == "HELD":
                             self.assertTrue(settled, (i, dd["id"], out))
-        self.assertTrue({("NOT_COVERED", "KILL_EDGE"), ("REFUSED", "THRESHOLD"), ("HELD", None)} <= seen, seen)
+        self.assertTrue({("REFUSED", "KILLED"), ("REFUSED", "THRESHOLD"), ("HELD", None)} <= seen, seen)
+        self.assertFalse({x for x in seen if x[0] == "NOT_COVERED"}, "every edge of these histories is decided")
 
     def test_05_a_term_that_hides_part_of_its_cone_is_refused(self):
         """A lost decision cannot be passed off by leaving the fallen ground or a stale verdict out of the cone."""
@@ -347,7 +406,7 @@ class T(unittest.TestCase):
         r = held(path, term(repo, after, lost, vs, cone=closure(repo, after, [lost])))
         self.assertEqual((r["result"], r.get("code")), ("REFUSED", "CONE_OPEN"), "a stale verdict outside the cone")
         r = held(path, term(repo, after, own, verdicts_on(repo, after, own)))
-        self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "KILL_EDGE"), "the whole cone holds the fallen ground")
+        self.assertEqual((r["result"], r.get("code")), ("REFUSED", "KILLED"), "the whole cone holds the fallen ground")
 
     def test_06_a_wrong_term_is_refused_for_its_reason(self):
         c = Chain(scratch())
@@ -407,25 +466,20 @@ class T(unittest.TestCase):
             self.assertEqual((r["result"], r.get("code")), ("REFUSED", code), (code, r))
 
     def test_08_outside_the_fragment_the_answer_is_not_covered(self):
-        """Settled by the lens but outside the fragment: a ground whose notice was itself invalidated, an INVALID
-        verdict that would withdraw a named endorsement and does not meet the stand conditions, a rotation that may wait
-        (under v2 it drops a key without that key's seal), rules other than v1 and v2, two scope cells that supersede
-        one. And a decision whose unauthorized supersedes edge leaves it not Active is not HELD either."""
-        c = Chain(scratch())
-        g, k, d, vs = c.basic()
-        n = c.axiom("notice/g", invalidates=[g])
-        c.commit((n, "cy"))
-        m = c.axiom("notice/not-g", invalidates=[n])
-        c.commit((m, "bo"))
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id), "the notice is withdrawn: the lens settles d")
-        r = c.check(PR.prove(c.repo, SCOPE, d.id))
-        self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "KILL_EDGE"), r)
+        """Outside the fragment the answer is NOT_COVERED: an edge into the cone whose quorum fails while a key of its
+        target seals its source (the author clause reads the target's initial endorsers, which the store at the tip does
+        not show), whether it latched or not; an INVALID verdict that would withdraw a named key and is retired; a
+        rotation that may wait (under v2 it drops a key without that key's seal); rules other than v1 and v2; two scope
+        cells that supersede one."""
+        for late in (False, True):
+            c, d, vs = author_chain(late)
+            self.assertEqual(lens_settles(c, d), late, "the lens: Retired by the author clause, unless bo sealed e late")
+            r = c.check(term(c.repo, c.tip, d.id, [v.id for v in vs.values()]))
+            self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "LATCH"), (late, r))
 
-        c, d, vs = stale_invalid_chain()
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id), "bo's INVALID verdict is Stale: ana and bo count")
-        t = PR.prove(c.repo, SCOPE, d.id)
-        self.assertEqual({e["verdict"] for e in t["endorsements"]}, {vs["ana"].id.hex(), vs["bo"].id.hex()})
-        r = c.check(t)
+        c, d, vs = retired_invalid_chain()
+        self.assertTrue(lens_settles(c, d), "cy's INVALID verdict is retired: all three keys count")
+        r = c.check(PR.prove(c.repo, SCOPE, d.id))
         self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", "INVALID_VERDICT"), r)
 
         c = Chain(scratch(), rules=V.H_LENS_KERNEL_V2)
@@ -452,21 +506,6 @@ class T(unittest.TestCase):
                                              *(cas("atoms", x) for x in a.values())])
             r = c.check(dict(t, tip=tip))
             self.assertEqual((r["result"], r.get("code")), ("NOT_COVERED", code), r)
-
-        c = Chain(scratch())
-        g = c.axiom("ground/g")
-        c.commit((g, "ana"))
-        d1 = c.decision("decision/d", [g], thr=3, members=MEMBERS)
-        c.commit((d1, ("ana", "bo")))
-        d2 = c.decision("decision/d", [g], thr=1, members=MEMBERS, supersedes=[d1])
-        v2 = c.verdict(d2, "decision/d2/by-ana", [g])
-        c.commit((d2, "cy"), (v2, "ana"))
-        lens = c.repo.lens(SCOPE)
-        self.assertFalse(lens["active"].get(d2.id), "cy meets neither d1's policy (3 of 3) nor any of its initial "
-                         "endorsers (ana, bo): the supersedes edge is not authorized, so d2 is not Active")
-        r = c.check(term(c.repo, c.tip, d2.id, [v2.id]))
-        self.assertNotEqual(r["result"], "HELD", r)
-        self.assertEqual(r.get("code"), "KILL_EDGE", r)
 
     def test_09_the_store_is_read_from_bytes(self):
         """Objects the gate never saw: a seal that does not verify, a seal under another scope, bytes that do not hash
@@ -624,7 +663,7 @@ class T(unittest.TestCase):
         `witness_complete`: on its fragment the checker accepts it whenever the model holds the decision Settled). On
         both generated histories, before the failure and after it, it accepts exactly the decisions for which
         prove.py's term is HELD; on every decision of the live chain at its tip, where no edge touches a cone, exactly
-        those the lens holds Settled. Skipped without the Lean checker or the chain, unless MINDS_REQUIRE_LEAN=1 and
+        those the lens holds Settled. Test 16 covers the edges that do not count. Skipped without the Lean checker or the chain, unless MINDS_REQUIRE_LEAN=1 and
         MINDS_REQUIRE_CHAIN=1."""
         if not LEAN.exists():
             if os.environ.get("MINDS_REQUIRE_LEAN") == "1":
@@ -646,18 +685,11 @@ class T(unittest.TestCase):
                     seen.add(r)
         self.assertEqual(seen, {"HELD", "NOT_HELD"})
         # outside the fragment completeness is not claimed: the lens settles d, and no derivation the checker accepts
-        # exists (a cone cell with a withdrawn notice on it; an INVALID verdict that is not live, which the checker
-        # counts as withdrawing the key that seals it)
-        c = Chain(scratch())
-        g, k, d, vs = c.basic()
-        n = c.axiom("notice/g", invalidates=[g])
-        c.commit((n, "cy"))
-        c.commit((c.axiom("notice/not-g", invalidates=[n]), "bo"))
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
-        self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
-        c, d, _ = stale_invalid_chain()
-        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
-        self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
+        # exists (a retires edge into the cone that did not latch, whose source a key of its target seals after the
+        # target's birth; an INVALID verdict that is retired, which the checker cannot prove not live)
+        for c, d in (author_chain(True)[:2], retired_invalid_chain()[:2]):
+            self.assertTrue(lens_settles(c, d))
+            self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
 
         repo = V.GitVarsRepo(ROOT)
         tip = repo.ref_commit("minds")
@@ -720,6 +752,105 @@ class T(unittest.TestCase):
             PR.prove(c.repo, SCOPE, d.id)
         if prove_lean:
             self.assertFalse(lean_proves(c.path, c.tip, SCOPE, d.id))
+
+    def test_16_kill_edges_that_do_not_count(self):
+        """An edge into the cone that does not count leaves the decision held, on both checkers, and one that counts
+        refuses the term (KILLED); `vars1witness --prove` accepts exactly where the lens settles. The cases: a notice
+        withdrawn by a second notice, and a third that withdraws the second; INVALID verdicts that are Stale or
+        Invalidated, which withdraw nothing, beside a live one, which does; an ATTESTED verdict's invalidates edge,
+        which counts for nothing; a retirement, and one whose retirer is invalidated; a supersession, one whose
+        superseder is invalidated, and one where that superseder is itself superseded; a rebinding whose supersedes
+        edge latched, and one whose edge did not (test 08's unauthorized supersedes); a notice on a decision of tier
+        owner, whose edges the admission policy governs."""
+        prove_lean = LEAN.exists() or os.environ.get("MINDS_REQUIRE_LEAN") == "1"
+
+        def outcome(c, d, verdicts, lens: bool):
+            self.assertEqual(lens_settles(c, d), lens, d.id.hex())
+            if prove_lean:
+                self.assertEqual(lean_proves(c.path, c.tip, SCOPE, d.id), lens, d.id.hex())
+            r = c.check(term(c.repo, c.tip, d.id, [v.id for v in verdicts]))
+            if lens:
+                self.assertEqual(c.check(PR.prove(c.repo, SCOPE, d.id))["result"], "HELD")
+            return r["result"], r.get("code")
+
+        held_, killed = ("HELD", None), ("REFUSED", "KILLED")
+        # notices: g is invalidated by n, n by m, m by o
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        n = c.axiom("notice/g", invalidates=[g])
+        c.commit((n, "cy"))
+        m = c.axiom("notice/not-g", invalidates=[n])
+        c.commit((m, "bo"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_, "n is dead: g stands")
+        c.commit((c.axiom("notice/not-not-g", invalidates=[m]), "ana"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], False), killed, "m is dead, n Effective: g falls")
+
+        # INVALID verdicts: bo's is Stale, so it withdraws nothing; cy's is live
+        c, d, vs = stale_invalid_chain()
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_)
+        self.assertEqual(outcome(c, d, list(vs.values()), True), ("REFUSED", "WITHDRAWN"))
+        # bo's INVALID verdict is itself invalidated
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        b = c.verdict(d, "decision/d/invalid-by-bo", [k], code=V.H_VERDICT_INVALID, verifier="bo")
+        c.commit((b, "bo"))
+        c.commit((c.axiom("notice/invalid-by-bo", invalidates=[b]), "ana"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_)
+
+        # an ATTESTED verdict (on another decision) that invalidates g: a verdict kills only if it is INVALID
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        e = c.decision("decision/e", [g], thr=1)
+        w = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=c.utf8(f"{SCOPE}/decision/e/by-cy"), h_payload=e.id,
+                   h_attests=c.hv([e.id]), h_invalidates=c.hv([g.id]), slots=(V.H_EMPTY, V.H_ATTESTED, c.utf8("cy")))
+        c.commit((e, "cy"), (w, "cy"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_)
+
+        # a retirement of g, then an invalidation of its retirer
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        r = c.axiom("retire/g", retires=[g])
+        c.commit((r, "cy"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], False), killed)
+        c.commit((c.axiom("notice/retire", invalidates=[r]), "bo"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_)
+
+        # g superseded by u; u invalidated; u superseded by v, so g is Superseded through it
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        u = c.axiom("ground/g", supersedes=[g])
+        c.commit((u, "ana"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], False), killed, "u is Effective: g is Superseded")
+        c.commit((c.axiom("notice/u", invalidates=[u]), "bo"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], True), held_, "u is Invalidated and not Superseded")
+        c.commit((c.axiom("ground/g", supersedes=[u]), "cy"))
+        self.assertEqual(outcome(c, d, [vs["ana"], vs["bo"]], False), killed, "u is Superseded: so is g, through u")
+
+        # rebinding: d2 supersedes d1 (2 of 3) by an edge ana and bo latch; then one cy alone does not
+        for sealers, lens in ((("ana", "bo"), True), (("cy",), False)):
+            c = Chain(scratch())
+            g = c.axiom("ground/g")
+            c.commit((g, "ana"))
+            d1 = c.decision("decision/d", [g], thr=2 if lens else 3)
+            c.commit((d1, ("ana", "bo")))
+            d2 = c.decision("decision/d", [g], thr=1, supersedes=[d1])
+            v2 = c.verdict(d2, "decision/d2/by-ana", [g])
+            c.commit((d2, sealers), (v2, "ana"))
+            self.assertEqual(outcome(c, d2, [v2], lens), held_ if lens else killed, sealers)
+
+        # a decision of tier owner relied upon, invalidated by one key: the admission policy (1 of 3) governs it,
+        # not its own policy (3 of 3)
+        c = Chain(scratch())
+        g = c.axiom("ground/g")
+        c.commit((g, "ana"))
+        e = c.owned("decision/e", [g], thr=3)
+        c.commit((e, "ana"))
+        d = c.decision("decision/d", [e], thr=1)
+        v = c.verdict(d, "decision/d/by-ana", [e])
+        c.commit((d, "ana"), (v, "ana"))
+        self.assertEqual(outcome(c, d, [v], True), held_)
+        c.commit((c.axiom("notice/e", invalidates=[e]), "cy"))
+        self.assertEqual(outcome(c, d, [v], False), killed)
 
 
 def mutants() -> int:

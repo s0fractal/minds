@@ -85,12 +85,12 @@
   "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
  },
  "m-withdraw-stands": {
-  "find": "                if stands(b):",
+  "find": "                if rules.stand(b) is True:",
   "replace": "                if True:",
-  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+  "kills": "test_16_kill_edges_that_do_not_count"
  },
  "m-withdraw-standing": {
-  "find": "                if stands(b):",
+  "find": "                if rules.stand(b) is True:",
   "replace": "                if False:",
   "kills": "test_15_an_invalid_verdict_withdraws_only_the_keys_that_seal_it"
  },
@@ -112,16 +112,6 @@
  "m-cone-closed": {
   "find": "        if any(r not in cone for r in hvec(atoms, cells[x][\"relies\"])):",
   "replace": "        if False:",
-  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
- },
- "m-kill-outgoing": {
-  "find": "        if hvec(atoms, cells[x][\"supersedes\"]):",
-  "replace": "        if False:",
-  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
- },
- "m-kill-incoming": {
-  "find": "            if hit:",
-  "replace": "            if False:",
   "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
  },
  "m-policy-own": {
@@ -202,7 +192,7 @@
  "m-lean-kill-edges": {
   "find": "            items = hvec(atoms, c[edge])\n",
   "replace": "            items = hvec(atoms, c[edge]) if edge in (\"relies\", \"attests\") else []\n",
-  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+  "kills": "test_16_kill_edges_that_do_not_count"
  },
  "m-lean-invalid": {
   "find": "                int(slots[1:2] == [H_VERDICT_INVALID]),",
@@ -253,5 +243,90 @@
   "find": "    named = [s for _, s in ends] if not prove else [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
   "replace": "    named = [s for _, s in ends] if True else [sid for sid, x in seals.items() if x[\"target\"] in cells\n",
   "kills": "test_14_the_lean_prover_finds_a_derivation_wherever_the_checker_holds_one"
+ },
+ "m-killed": {
+  "find": "        if standing[x] is False:",
+  "replace": "        if False:",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-latch-undecided": {
+  "find": "        if standing[x] is None:",
+  "replace": "        if False:",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-latch-quorum": {
+  "find": "        return len(self.sealers(y, ctx) & keys) >= thr",
+  "replace": "        return len(self.sealers(y, ctx) & keys) > thr",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-latch-author": {
+  "find": "            if ys & set().union(*(self.sealers(x, ctx) for ctx in self.chain)):",
+  "replace": "            if False:",
+  "kills": "test_08_outside_the_fragment_the_answer_is_not_covered"
+ },
+ "m-eff-attackers": {
+  "find": "            return _and(covered(w) for w in self.into(\"invalidates\", y))",
+  "replace": "            return True",
+  "kills": "test_05_a_term_that_hides_part_of_its_cone_is_refused"
+ },
+ "m-dead-eff": {
+  "find": "_and((self.latch(y, x, \"invalidates\"), self.eff(y)))",
+  "replace": "_and((self.latch(y, x, \"invalidates\"), True))",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-non-inv": {
+  "find": "        return c[\"schema\"] == SCHEMA[\"verdict\"] and c[\"slots\"][1:2] != [H_VERDICT_INVALID]",
+  "replace": "        return False",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-unsup-direct": {
+  "find": "_and((self.dead(u), self.unsup(u)))",
+  "replace": "self.unsup(u)",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-unsup-trans": {
+  "find": "_and((self.dead(u), self.unsup(u)))",
+  "replace": "self.dead(u)",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-retires": {
+  "find": "                         _and(_or((_not(self.latch(w, c, \"retires\")), self.dead(w))) for w in self.into(\"retires\", c)),",
+  "replace": "                         True,",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-outgoing": {
+  "find": "                         _and(self.latch(c, u, \"supersedes\") for u in hvec(self.atoms, self.cells[c][\"supersedes\"])),",
+  "replace": "                         True,",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-down-relies": {
+  "find": "            self.down(r) for r in hvec(self.atoms, self.cells[b][\"relies\"])) if b in self.cells else False)))",
+  "replace": "            False for r in hvec(self.atoms, self.cells[b][\"relies\"])) if b in self.cells else False)))",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-down-dead": {
+  "find": "lambda: _or((self.dead(b), _or(",
+  "replace": "lambda: _or((False, _or(",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-owner": {
+  "find": "            return adm if c[\"slots\"][:1] == [H_OWNER] or own == H_EMPTY else own",
+  "replace": "            return adm if own == H_EMPTY else own",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-lean-owner": {
+  "find": "int(kind in (2, 3) and slots[:1] == [H_OWNER])",
+  "replace": "0",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-lean-edge-seals": {
+  "find": "    named += sorted(sid for sid, x in seals.items() if x[\"target\"] in sources | evicted)",
+  "replace": "    named += []",
+  "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-lean-edge-pols": {
+  "find": "    used += [own(t) for t in sorted(targets) if own(t) != H_EMPTY]",
+  "replace": "    used += []",
+  "kills": "test_16_kill_edges_that_do_not_count"
  }
 }

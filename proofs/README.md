@@ -29,6 +29,7 @@ and, for some theorems, `Classical.choice`.
 | | `waiting_withheld`, `waiting_not_active` | a scope whose rotation waits, or was vetoed, latches no edge, so it is not Active and the Active local scope stays the governing one |
 | | `vetoed_never_governs` | a vetoed rules change never becomes the governing scope |
 | `Pass1.lean` | `unique_active_binding` | under §1.2 Rule 6, two local non-scope cells with one name are never both Active |
+| | `pass1_kernel_unique`, `IsPass1.kernel_unique` | on a store whose invalidates edges climb a rank (content addressing gives one), the Pass 1 equations for `Invalidated` and `Effective` have at most one solution for a given `Accepted`: Pass 1 is a unique kernel |
 | `Scope.lean` | `governed_superseded`, `unique_active_scope` | under the gate's rotation rule, a scope that no longer governs is superseded by a later scope; an Active local scope is the governing one |
 | `Pass2.lean`, `Lfp.lean` | `Φ_mono`, `stale_fixed`, `stale_least` | the Pass 2 operator is monotone; `Stale` is its least fixed point |
 | | `sweep_reaches_stale` | the spec's round (live acceptance first, then an in-place sweep) reaches `Stale` within `|cells|+1` rounds, in any cell order |
@@ -65,11 +66,12 @@ and, for some theorems, `Classical.choice`.
 | | `edgeCond_out_of_reach` | into a foreign target whose policy no keys of the roster meet, no seal latches an edge |
 | | `import_faithful`, `stale_faithful` | on a closed set, local or pinned on each side, `Active` and `Stale` of two scopes agree if the latched edges into it do |
 | | `pinned_active`, `unpinned_not_active` | with no latched edge into it and no supersedes edge, a foreign cell stands while its scope pins it; one it does not accept does not stand |
-| `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`); an INVALID verdict withdraws only a key that seals it, under the verifier id of the verdict it withdraws, as §4.2 Pass 3 |
-| | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
-| `WitnessComplete.lean` | `witness_complete` | on its fragment (no computation, every INVALID verdict on the decision live, a live cone of local cells that supersede nothing and that no edge reaches), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies` has a rank |
+| `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`); edges into the cone that do not count (proved unlatched, or from an Invalidated source) are admitted, an INVALID verdict withdraws only a key that seals it, under the verifier id of the verdict it withdraws, and nothing when proved not live, as §4.2 Pass 3 |
+| | `latch_sound`, `unlatched_sound` | a quorum of `Pol(x)` sealing an edge's source under a scope of the chain latches it; none under any, with no key sealing both ends where the author clause applies, means it did not latch (given `Pin.latch`, `Pin.unlatch`) |
+| | `edge_present`, `stale_pin`, `stale_complete` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it, both ways for an active local cell (three of `Pin`'s hypotheses) |
+| `WitnessComplete.lean` | `kernel_iff` | on a store of local cells whose invalidates edges it decides, the prover's `effB` and `deadB` are the model's `Effective` and `Invalidated` above the rank |
+| | `witness_complete` | on its fragment (no computation, only local cells, every edge the derivation reads decided by the store, every INVALID verdict on the decision live or not live through an Invalidated cell), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies`, invalidates and supersedes have ranks |
 | | `accepts_iff_settled` | with `witness_sound`: there the checker accepts the prover's derivation exactly when the model holds the decision `Settled` |
-| | `stale_complete` | Pass 2 `Stale` meets what `PinComplete` asks of it: what an active cell that is not stale relies on is active and not stale |
 
 ## Executable lens
 

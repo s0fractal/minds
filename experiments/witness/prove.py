@@ -2,8 +2,8 @@
 
 The prover may use anything: it reads the lens through vars1.py. What it produces is checked by check.py, which
 uses none of it. A decision the lens does not hold Settled gets no witness (NotHeld). Among its standing ATTESTED
-verdicts the prover prefers those whose cones no cell invalidates, retires or supersedes, since check.py covers
-only such cones; it names only the keys the lens counts through each (an INVALID verdict under the same verifier id
+verdicts the prover prefers those whose cones no cell invalidates, retires or supersedes, since such cones need
+no edge decided; it names only the keys the lens counts through each (an INVALID verdict under the same verifier id
 withdraws the keys that seal it), and takes verdicts until their distinct policy keys meet the threshold.
 """
 import sys
