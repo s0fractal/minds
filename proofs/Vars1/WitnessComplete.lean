@@ -9,8 +9,9 @@ rules read as the model's. `prove` builds a derivation from the store alone, and
 there (`accepts_iff_settled`).
 
 The fragment (`Fragment`) is where the checker's syntactic rules and the model's read the same:
-* the decision requires no computation, and no INVALID verdict of the store judges it (the model withdraws only the
-  keys that seal one under the verifier id of the verdict it withdraws; the checker refuses any);
+* the decision requires no computation, and every INVALID verdict on it is local and live (the model withdraws a key
+  through a verdict only by a live INVALID verdict under the same verifier id that the key seals; the checker does
+  not ask whether it is live);
 * every cell of the decision's live cone (`Cone`: the decision, the verdicts of `W_max`, and what they rely on) is
   local, supersedes nothing, and no cell of the store invalidates, retires or supersedes it (the model counts only an
   authorized edge from an Effective cell; the checker refuses any).
@@ -59,19 +60,24 @@ def countable (n : Nat) (d w : C) : Bool :=
 def counted (n : Nat) (d : C) : List C := S.cells.filter (countable S n d)
 
 /-- The endorsements the prover names: a key of `d`'s evaluator policy that seals a counted verdict under a scope of
-the chain, as a key of that scope's roster. -/
+the chain, as a key of that scope's roster, and that no INVALID verdict of the store withdraws. -/
 def pairs (n : Nat) (d : C) : List (C × K) :=
-  (counted S n d).flatMap fun w => ((S.keys (evalPol S d)).filter fun k => endorseOK S w k []).map fun k => (w, k)
+  (counted S n d).flatMap fun w =>
+    ((S.keys (evalPol S d)).filter fun k => endorseOK S w k [] && !(S.cells.any (withdraws S d w k))).map
+      fun k => (w, k)
 
 def endorseLine (p : C × K) : Line C K := ⟨.endorse, .endorsed p.1 p.2, []⟩
 
 theorem mem_pairs {n : Nat} {d w : C} {k : K} (h : (w, k) ∈ pairs S n d) :
-    w ∈ counted S n d ∧ k ∈ S.keys (evalPol S d) ∧ endorseOK S w k [] = true := by
+    w ∈ counted S n d ∧ k ∈ S.keys (evalPol S d) ∧ endorseOK S w k [] = true ∧
+      S.cells.any (withdraws S d w k) = false := by
   obtain ⟨w', hw', hm⟩ := List.mem_flatMap.mp h
   obtain ⟨k', hk', he⟩ := List.mem_map.mp hm
   simp only [Prod.mk.injEq] at he
   obtain ⟨rfl, rfl⟩ := he
-  exact ⟨hw', (List.mem_filter.mp hk').1, (List.mem_filter.mp hk').2⟩
+  have hf := (List.mem_filter.mp hk').2
+  simp only [Bool.and_eq_true, Bool.not_eq_true'] at hf
+  exact ⟨hw', (List.mem_filter.mp hk').1, hf.1, hf.2⟩
 
 def settlePrem (n : Nat) (d : C) : List (Concl C K) :=
   .stands d :: ((counted S n d).map .stands ++ (pairs S n d).map fun p => .endorsed p.1 p.2)
@@ -245,11 +251,12 @@ inductive Cone (W : World C K P) (X : Pass3In C K P) (cells : List C) (d : C) : 
   | verdict {w : C} : InWmax W X cells d w → Cone W X cells d w
   | relies {c r : C} : Cone W X cells d c → r ∈ (W.info c).relies → Cone W X cells d r
 
-/-- The fragment of `d`: no computation, no INVALID verdict on `d`, and a cone of local cells that supersede nothing
-and that no cell of the store invalidates, retires or supersedes. -/
+/-- The fragment of `d`: no computation, every INVALID verdict on `d` local and live, and a cone of local cells that
+supersede nothing and that no cell of the store invalidates, retires or supersedes. -/
 structure Fragment (W : World C K P) (X : Pass3In C K P) (d : C) : Prop where
   req : S.req d = none
-  noInvalid : judgedInvalid S d = false
+  invalidLive : ∀ b ∈ S.cells, S.schema b = .verdict → S.payload b = some d → (S.verdict b).invalid = true →
+    S.isLocal b = true ∧ Live X b
   cone : ∀ c, Cone W X S.cells d c → S.isLocal c = true ∧ S.supersedes c = [] ∧ killed S c = false
 
 /-- Pass 2 `Stale` satisfies what `PinComplete.reliesLive` asks of `X.stale`: what an active cell that is not stale
@@ -323,7 +330,7 @@ theorem witness_complete (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret 
       obtain ⟨w, k⟩ := p
       have hok : lineOK S done (endorseLine (w, k)) = true := by
         simp only [lineOK, endorseLine, List.all_nil, Bool.true_and]
-        exact (mem_pairs S hp).2.2
+        exact (mem_pairs S hp).2.2.1
       exact ⟨_, run_single S hok, List.mem_cons_self, fun q hq => List.mem_cons_of_mem _ hq⟩) o2
   -- the settle line
   have hep : Vars1.evalPol W X d = Witness.evalPol S d := by
@@ -357,7 +364,7 @@ theorem witness_complete (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret 
       simp only [countable, Bool.and_eq_true, decide_eq_true_eq]
       refine ⟨⟨⟨⟨⟨stands w hconew hwc, hvs'⟩, (pin.payload w hwc d hd).mp hvp⟩, pin.attests w hwc ▸ hatt⟩, ?_⟩, ?_⟩
       · exact (pin.verdict w hwc hvs').1 ▸ hva
-      · exact (pin.verdict w hwc hvs').2.2.mp hvw
+      · exact (pin.verdict w hwc hvs').2.2.1.mp hvw
     have hlocal := (hf.cone w hconew).1
     have hend : k ∈ X.cumulative w := by
       have := hcnt'.1
@@ -368,8 +375,39 @@ theorem witness_complete (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret 
     have hseal : endorseOK S w k [] = true := by
       simp only [endorseOK, List.isEmpty_nil, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq, List.any_eq_true]
       exact ⟨⟨hwc, hlocal⟩, cp, hcp, hroster, s, hs, ⟨ht, hctx⟩, hkey⟩
+    -- an INVALID verdict the checker finds `withdraws` is live on the fragment, so the model withdraws `k` too
+    have hnot : ¬ Withdrawn W X S.cells d w k := by
+      have := hcnt'.2
+      rw [pin.schema d hd] at this
+      rcases hsch with h | h <;> rw [h] at this <;> exact this
+    have hnw : S.cells.any (withdraws S d w k) = false := by
+      apply List.any_eq_false.mpr
+      intro b hb hwd
+      simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at hwd
+      obtain ⟨⟨⟨⟨hbs, hbp⟩, hbi⟩, hbver⟩, hloc⟩ := hwd
+      obtain ⟨hbl, hblive⟩ := hf.invalidLive b hb hbs hbp hbi
+      have hsb : sealedBy S b k = true := by
+        rcases hloc with h | h
+        · rw [hbl] at h
+          exact Bool.noConfusion h
+        · exact h
+      simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hsb
+      obtain ⟨cp', hcp', hroster', s', hs', ⟨ht', hctx'⟩, hks'⟩ := hsb
+      have hcum : k ∈ X.cumulative b := by
+        have := pin.cumulative s' hs' cp' hcp' hctx' (ht' ▸ hbl) (hks' ▸ hroster')
+        rw [ht', hks'] at this
+        exact this
+      apply hnot
+      refine ⟨b, hb, hblive, (pin.schema b hb).trans hbs, Or.inl ((pin.payload b hb d hd).mpr hbp), ?_, ?_, ?_⟩
+      · rw [(pin.verdict b hb hbs).2.1]
+        exact hbi
+      · rw [(pin.verdict b hb hbs).2.2.2, (pin.verdict w hwc hvs').2.2.2]
+        exact hbver
+      · unfold witnessEndorsers
+        rw [pin.isLocal b hb, hbl, if_pos rfl]
+        exact hcum
     refine ⟨w, List.mem_flatMap.mpr ⟨w, List.mem_filter.mpr ⟨hwc, hcountable⟩, ?_⟩⟩
-    exact List.mem_map.mpr ⟨k, List.mem_filter.mpr ⟨hkK k hk, hseal⟩, rfl⟩
+    exact List.mem_map.mpr ⟨k, List.mem_filter.mpr ⟨hkK k hk, by simp [hseal, hnw]⟩, rfl⟩
   have hsettle : lineOK S o3 ⟨.settle, .settled d, settlePrem S n d⟩ = true := by
     simp only [lineOK, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq]
     refine ⟨?_, ?_⟩
@@ -379,20 +417,19 @@ theorem witness_complete (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret 
       · exact hs3 _ (hs2 _ hg1)
       · exact hs3 _ (hg2 w hw)
       · exact hg3 q hq
-    · simp only [settleOK, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true',
-        List.all_eq_true]
-      refine ⟨⟨⟨⟨⟨⟨⟨hd, hsch⟩, hf.req⟩, hf.noInvalid⟩, List.mem_cons_self⟩, hpol⟩, ?_⟩, ?_⟩
+    · simp only [settleOK, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, List.all_eq_true]
+      refine ⟨⟨⟨⟨⟨⟨hd, hsch⟩, hf.req⟩, List.mem_cons_self⟩, hpol⟩, ?_⟩, ?_⟩
       · intro p hp
         simp only [settlePrem, List.mem_cons, List.mem_append, List.mem_map] at hp
         rcases hp with rfl | ⟨w, hw, rfl⟩ | ⟨⟨w, k⟩, hwk, rfl⟩
         · rfl
         · rfl
-        · obtain ⟨hw', hkK', -⟩ := mem_pairs S hwk
+        · obtain ⟨hw', hkK', -, hnw'⟩ := mem_pairs S hwk
           have hc := (List.mem_filter.mp hw').2
           simp only [countable, Bool.and_eq_true, decide_eq_true_eq] at hc
           obtain ⟨⟨⟨⟨⟨-, hvs⟩, hvp⟩, hva⟩, hvt⟩, hvw⟩ := hc
-          simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq]
-          refine ⟨⟨⟨⟨⟨⟨?_, hvs⟩, hvp⟩, hva⟩, hvt⟩, hvw⟩, hkK'⟩
+          simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true']
+          refine ⟨⟨⟨⟨⟨⟨⟨?_, hvs⟩, hvp⟩, hva⟩, hvt⟩, hvw⟩, hkK'⟩, hnw'⟩
           simp only [settlePrem, List.mem_cons, List.mem_append, List.mem_map]
           exact Or.inr (Or.inl ⟨w, hw', rfl⟩)
       · refine Nat.le_trans hthr (nodup_length_le hnd ?_)

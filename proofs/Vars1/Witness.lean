@@ -18,15 +18,19 @@ conclusion of an earlier line (the form of open-ontologies' `OOCert.horn_certifi
 * `endorse w k` concludes that key `k` endorses `w`: a seal of the store on the local cell `w`, under one of the
   scope cells that governed the chain (`ctxs`: the scope at the tip and each one it supersedes back to the genesis),
   by `k`, a key of that scope's admission roster. No premises.
-* `settle d` concludes that `d` is `Settled`: `d` is a contract or decision that requires no computation, no
-  INVALID verdict of the store judges it, `d` stands, and the endorsements among its premises, each on a standing
-  ATTESTED verdict with an empty witness slot that judges and attests `d`, count at least the threshold of `d`'s
-  evaluator policy in distinct keys of that policy.
+* `settle d` concludes that `d` is `Settled`: `d` is a contract or decision that requires no computation, `d`
+  stands, and the endorsements among its premises, each on a standing ATTESTED verdict with an empty witness slot
+  that judges and attests `d`, by a key of `d`'s evaluator policy that no INVALID verdict of the store withdraws,
+  count at least the policy's threshold in distinct keys. An INVALID verdict on `d` withdraws a key's endorsement
+  through `w` when it is under `w`'s verifier id and the key seals it (`withdraws`), as §4.2 Pass 3 does for a live
+  one; the checker does not ask whether it is live, so a withdrawal the model would not make only leaves a key out.
 
-The negative part is read over the whole store (`Store.cells`): no kill edge, no INVALID verdict. That the store
-is complete, the scope's admitted chain at the tip, is the reader's pin. It enters `witness_sound` as hypotheses
-(`Pin`), with the faithfulness of the decode that read the store from bytes: hashes, cell layout and signatures are
-checked by `check.py`, which emits the store and the derivation (`check.py --lean`), not here.
+The negative part is read over the whole store (`Store.cells`): no kill edge, no INVALID verdict that withdraws a
+counted key. That the store is complete, the scope's admitted chain at the tip, is the reader's pin. It enters
+`witness_sound` as hypotheses (`Pin`), with the faithfulness of the decode that read the store from bytes: hashes,
+cell layout and signatures are checked by `check.py`, which emits the store and the derivation (`check.py --lean`),
+not here. The seals an INVALID verdict carries are part of the negative part: the decode writes all of them
+(`Pin.invalidSeals`).
 -/
 
 set_option linter.unusedSectionVars false
@@ -85,9 +89,17 @@ variable (S : Store C K P)
 def killed (c : C) : Bool :=
   S.cells.any fun x => decide (c ∈ S.invalidates x) || decide (c ∈ S.retires x) || decide (c ∈ S.supersedes x)
 
-/-- An INVALID verdict of the store judges `d`. -/
-def judgedInvalid (d : C) : Bool :=
-  S.cells.any fun b => decide (S.schema b = .verdict) && decide (S.payload b = some d) && (S.verdict b).invalid
+/-- A seal of the store on `b` by `k`, under a scope cell that governed, by a key of that scope's admission roster. -/
+def sealedBy (b : C) (k : K) : Bool :=
+  S.ctxs.any fun cp => decide (k ∈ S.keys cp.2) &&
+    S.seals.any fun s => decide (s.target = b) && decide (s.ctx = cp.1) && decide (s.key = k)
+
+/-- `b` may withdraw `k`'s endorsement of `d` through `w`: it is an INVALID verdict on `d` under `w`'s verifier id,
+and `k` seals it, or it is foreign, whose endorsers the store does not show. Whether `b` is live is not asked: a
+withdrawal the model does not make only leaves a key uncounted. -/
+def withdraws (d w : C) (k : K) (b : C) : Bool :=
+  decide (S.schema b = .verdict) && decide (S.payload b = some d) && (S.verdict b).invalid &&
+    decide ((S.verdict b).verifier = (S.verdict w).verifier) && (!S.isLocal b || sealedBy S b k)
 
 /-- `EvalPol(d)` as the store gives it. -/
 def evalPol (d : C) : P := (S.customPol d).getD S.pol0
@@ -102,11 +114,12 @@ def endorseOK (w : C) (k : K) (prem : List (Concl C K)) : Bool :=
       S.seals.any fun s => decide (s.target = w) && decide (s.ctx = cp.1) && decide (s.key = k)
 
 /-- An endorsement premise `endorsed w k` of `settle d`: `w` stands among the premises and is an ATTESTED verdict
-with an empty witness slot that judges and attests `d`, and `k` is a key of `d`'s evaluator policy. -/
+with an empty witness slot that judges and attests `d`, `k` is a key of `d`'s evaluator policy, and no INVALID
+verdict of the store may withdraw it (`withdraws`). -/
 def countsFor (d : C) (prem : List (Concl C K)) (w : C) (k : K) : Bool :=
   decide (Concl.stands w ∈ prem) && decide (S.schema w = .verdict) && decide (S.payload w = some d) &&
     decide (d ∈ S.attests w) && (S.verdict w).attested && decide ((S.verdict w).witness = none) &&
-    decide (k ∈ S.keys (evalPol S d))
+    decide (k ∈ S.keys (evalPol S d)) && !(S.cells.any (withdraws S d w k))
 
 /-- The keys of the endorsement premises. -/
 def endorsedKeys : List (Concl C K) → List K
@@ -121,7 +134,7 @@ def dedup : List K → List K
 
 def settleOK (d : C) (prem : List (Concl C K)) : Bool :=
   decide (d ∈ S.cells) && (decide (S.schema d = .decision) || decide (S.schema d = .contract)) &&
-    decide (S.req d = none) && !judgedInvalid S d && decide (Concl.stands d ∈ prem) &&
+    decide (S.req d = none) && decide (Concl.stands d ∈ prem) &&
     decide (evalPol S d ∈ S.pols) &&
     prem.all (fun p => match p with
       | .endorsed w k => countsFor S d prem w k
@@ -153,10 +166,12 @@ def accepts (lines : List (Line C K)) (d : C) : Bool :=
 `X` are the model's own reading of the scope's admitted chain; `S` is what the decode read from its bytes.
 
 * The decode is faithful: on every cell of the store, `W` and `X` agree with `S` on the fields the checker reads
-  (a payload as far as it names a cell of the store; of a verdict, whether it is ATTESTED, whether INVALID and
-  whether its witness slot is empty; of a contract or decision, whether it requires a computation); a cell is
-  `Present` exactly when the store holds it; a decoded policy meets its quorum with threshold many distinct keys
-  of it.
+  (a payload as far as it names a cell of the store; of a verdict, whether it is ATTESTED, whether INVALID, whether
+  its witness slot is empty, and its verifier id; of a contract or decision, whether it requires a computation); a
+  cell is `Present` exactly when the store holds it; a decoded policy meets its quorum with threshold many distinct
+  keys of it.
+* The decode holds every seal of an INVALID verdict: each cumulative endorser of a local INVALID verdict has a seal
+  of the store on it, under a scope cell that governed, by a key of that scope's roster.
 * The store at the tip is the admitted chain: the Pass 1 equations hold (`IsPass1`); an edge latches only from a
   present cell (`edge_present` proves it of the fold); `X.active` is Pass 1 `Active`; `X.stale` satisfies the
   Pass 2 equation (`stale_pin` proves it of `Stale`); and a verified seal under a scope cell that governed, by a key
@@ -174,7 +189,8 @@ structure Pin (W : World C K P) (AE : C → C → Kind → Bool) (Present isIntr
   payload : ∀ c ∈ S.cells, ∀ d ∈ S.cells, (W.info c).payload = some d ↔ S.payload c = some d
   customPol : ∀ c ∈ S.cells, (W.info c).customPol = S.customPol c
   verdict : ∀ c ∈ S.cells, S.schema c = .verdict → (X.verdict c).attested = (S.verdict c).attested ∧
-    (X.verdict c).invalid = (S.verdict c).invalid ∧ ((X.verdict c).witness = none ↔ (S.verdict c).witness = none)
+    (X.verdict c).invalid = (S.verdict c).invalid ∧ ((X.verdict c).witness = none ↔ (S.verdict c).witness = none) ∧
+    (X.verdict c).verifier = (S.verdict c).verifier
   req : ∀ c ∈ S.cells, (S.schema c = .decision ∨ S.schema c = .contract) → (X.req c = none ↔ S.req c = none)
   scope : X.scopeTip = S.scope
   pol0 : (W.info S.scope).pol0 = S.pol0
@@ -187,6 +203,8 @@ structure Pin (W : World C K P) (AE : C → C → Kind → Bool) (Present isIntr
   stale : ∀ v, X.stale v → (∃ d ∈ (W.info v).relies, ¬ X.active d ∨ X.stale d) ∨ (W.info v).isLocal = false
   cumulative : ∀ s ∈ S.seals, ∀ cp ∈ S.ctxs, s.ctx = cp.1 → S.isLocal s.target = true → s.key ∈ S.keys cp.2 →
     s.key ∈ X.cumulative s.target
+  invalidSeals : ∀ b ∈ S.cells, S.schema b = .verdict → (S.verdict b).invalid = true → S.isLocal b = true →
+    ∀ k ∈ X.cumulative b, ∃ cp ∈ S.ctxs, k ∈ S.keys cp.2 ∧ ∃ s ∈ S.seals, s.target = b ∧ s.ctx = cp.1 ∧ s.key = k
 
 variable (W : World C K P) (X : Pass3In C K P) (wmax : C → List C) (cnt : C → C → List K)
 
@@ -315,9 +333,8 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
     (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {d : C} {prem : List (Concl C K)}
     (hok : settleOK S d prem = true) (hprem : ∀ p ∈ prem, Holds S W X wmax cnt p) :
     Holds S W X wmax cnt (.settled d) := by
-  simp only [settleOK, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true',
-    List.all_eq_true] at hok
-  obtain ⟨⟨⟨⟨⟨⟨⟨hd, hsch⟩, hreq⟩, hinv⟩, hsd⟩, hpol⟩, hall⟩, hthr⟩ := hok
+  simp only [settleOK, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, List.all_eq_true] at hok
+  obtain ⟨⟨⟨⟨⟨⟨hd, hsch⟩, hreq⟩, hsd⟩, hpol⟩, hall⟩, hthr⟩ := hok
   have hlive : Live X d := (hprem _ hsd).2
   have hep : Vars1.evalPol W X d = Witness.evalPol S d := by
     unfold Vars1.evalPol Witness.evalPol
@@ -328,8 +345,8 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
       k ∈ S.keys (Witness.evalPol S d) := by
     intro w k hmem
     have hc := hall _ hmem
-    simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq] at hc
-    obtain ⟨⟨⟨⟨⟨⟨hsw, hvw⟩, hpw⟩, haw⟩, hatt⟩, hwit⟩, hkey⟩ := hc
+    simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at hc
+    obtain ⟨⟨⟨⟨⟨⟨⟨hsw, hvw⟩, hpw⟩, haw⟩, hatt⟩, hwit⟩, hkey⟩, hnot⟩ := hc
     obtain ⟨hw, hlw⟩ := hprem _ hsw
     have hin : InWmax W X S.cells d w := by
       refine ⟨hw, hlw, pin.attests w hw ▸ haw, ?_⟩
@@ -340,22 +357,36 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
                ∃ c, (X.verdict w).witness = some c ∧ Live X c ∧ X.replayOK c d) := by
         refine ⟨pin.schema w hw ▸ hvw, (pin.payload w hw d hd).mpr hpw, ?_⟩
         rw [(pin.req d hd hsch).mpr hreq]
-        exact ⟨(pin.verdict w hw hvw).2.2.mpr hwit, (pin.verdict w hw hvw).1 ▸ hatt⟩
+        exact ⟨(pin.verdict w hw hvw).2.2.1.mpr hwit, (pin.verdict w hw hvw).1 ▸ hatt⟩
       rw [pin.schema d hd]
       rcases hsch with h | h <;> rw [h] <;> exact hrest
-    -- no INVALID verdict judges `d`, and `w` names no witness: nothing withdraws `k`
+    -- an INVALID verdict on `d` under `w`'s verifier id that `k` endorses is one the checker found `withdraws`,
+    -- and `w` names no witness: nothing withdraws `k`
     have hnw : ¬ Withdrawn W X S.cells d w k := by
-      rintro ⟨b, hb, -, hbv, hbp, hbi, -, -⟩
+      rintro ⟨b, hb, -, hbv, hbp, hbi, hbver, hbk⟩
       rcases hbp with hbp | ⟨hwn, -⟩
-      · have : judgedInvalid S d = true := by
-          simp only [judgedInvalid, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
-          have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
-          refine ⟨b, hb, ⟨hbs, (pin.payload b hb d hd).mp hbp⟩, ?_⟩
+      · have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
+        have hbi' : (S.verdict b).invalid = true := by
           rw [← (pin.verdict b hb hbs).2.1]
           exact hbi
-        rw [hinv] at this
-        exact Bool.noConfusion this
-      · exact hwn ((pin.verdict w hw hvw).2.2.mpr hwit)
+        have hwd : withdraws S d w k b = true := by
+          simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true']
+          refine ⟨⟨⟨⟨hbs, (pin.payload b hb d hd).mp hbp⟩, hbi'⟩, ?_⟩, ?_⟩
+          · rw [← (pin.verdict b hb hbs).2.2.2, ← (pin.verdict w hw hvw).2.2.2]
+            exact hbver
+          · cases hlb : S.isLocal b with
+            | false => exact Or.inl rfl
+            | true =>
+              refine Or.inr ?_
+              have hk : k ∈ X.cumulative b := by
+                unfold witnessEndorsers at hbk
+                rw [pin.isLocal b hb, hlb, if_pos rfl] at hbk
+                exact hbk
+              obtain ⟨cp, hcp, hroster, s, hs, ht, hctx, hks⟩ := pin.invalidSeals b hb hbs hbi' hlb k hk
+              simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+              exact ⟨cp, hcp, hroster, s, hs, ⟨ht, hctx⟩, hks⟩
+        exact List.any_eq_false.mp hnot b hb hwd
+      · exact hwn ((pin.verdict w hw hvw).2.2.1.mpr hwit)
     have hcounts : Counts W X S.cells d w k := by
       refine ⟨hprem _ hmem, ?_⟩
       rw [pin.schema d hd]

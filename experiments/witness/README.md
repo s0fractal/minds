@@ -29,8 +29,8 @@ Here the term is the decision's **cone** together with its **endorsements**:
 - it uses the standard library only.
 
 Where Curry–Howard stops is the finding. The term proves what holds. That nothing kills the cone (no notice, no
-retirement, no supersession, no INVALID verdict) is not part of any term: it is read over the whole store at the tip,
-a closed-world assumption.
+retirement, no supersession, no INVALID verdict that withdraws a named key) is not part of any term: it is read over
+the whole store at the tip, a closed-world assumption.
 
 ```
 python3 -I experiments/witness/check.py REPO TERM.json [--scope-cell HEX]
@@ -64,7 +64,11 @@ checker it is a theorem.
    - It requires no computation.
    - Each endorsing verdict is in the cone, so it is Active and not Stale. It is a verdict on the decision, ATTESTED,
      and attests the decision.
-   - No INVALID verdict judges the decision, so no key's endorsement is withdrawn.
+   - No endorsement is withdrawn. §4.2 withdraws a key's endorsement through a verdict by a live INVALID verdict on
+     the decision under the same verifier id that the key seals, and by no other: a verifier id is free text. The
+     checker finds every INVALID verdict on the decision under an endorsing verdict's id and sealed by the endorsing
+     key. If one meets the stand conditions of step 1 down its `relies` (so it is live), the term is `REFUSED`
+     (`WITHDRAWN`); if one does not, whether it withdraws is the lens's to say (`NOT_COVERED`, `INVALID_VERDICT`).
    - Each seal is in the store at the tip, under the only scope cell, and verifies. Its key is one of `EvalPol(d)`:
      the decision's own policy, else the scope's admission policy.
    - The distinct keys meet the threshold.
@@ -80,8 +84,9 @@ is settled too, read `grounded` in the lens, or `grounded_at_tip` of an attestat
   pins.
 - The threshold is met.
 
-**What is read over the store, and holds only if the store is complete.** There is no kill edge, no INVALID verdict,
-no second scope and no foreign cell. `check.py` runs no gate: that the tip is the admitted chain is the reader's pin.
+**What is read over the store, and holds only if the store is complete.** There is no kill edge, no INVALID verdict
+that an endorsing key seals under its verdict's verifier id, no second scope and no foreign cell. `check.py` runs no
+gate: that the tip is the admitted chain is the reader's pin.
 
 **One gate rule is relied on, not rechecked.** Evaluator keys lie within the admission roster (§3 step 3). So a seal
 by an evaluator key is an admitted endorsement.
@@ -99,16 +104,23 @@ conclusion of an earlier line, as in open-ontologies' `OOCert.horn_certificate_s
 |---|---|---|
 | `stand c` | `c` stands (`Active`, not `Stale`) | `c` is a local cell of the store; no cell of the store invalidates, retires or supersedes it; it supersedes nothing; its premises are exactly that each cell it relies on stands |
 | `endorse w k` | `k` is among `w`'s endorsers | a seal of the store on the local cell `w`, under the scope cell, by `k`, a key of the admission roster |
-| `settle d` | `d` is `Settled` | `d` is a contract or decision that requires no computation and no INVALID verdict of the store judges; `d` stands; each endorsement among its premises is on a standing ATTESTED verdict, with an empty witness slot, that judges and attests `d`, by a key of `d`'s evaluator policy; the distinct keys meet its threshold |
+| `settle d` | `d` is `Settled` | `d` is a contract or decision that requires no computation; `d` stands; each endorsement among its premises is on a standing ATTESTED verdict, with an empty witness slot, that judges and attests `d`, by a key of `d`'s evaluator policy that no INVALID verdict of the store withdraws (one on `d`, under the verdict's verifier id, that the key seals, or a foreign one); the distinct keys meet its threshold |
 
 `check.py --lean` writes the line `vars1witness` reads: the store at the tip, decoded by `check.py`, and the term as
 a derivation. The decoder writes a `stand` line per cone cell, after the cells it relies on, an `endorse` line per
-endorsement and one `settle` line. It writes only the seals that verify. The Lean checker answers `ACCEPT` or `REJECT`.
+endorsement and one `settle` line. It writes only the seals that verify: the term's, and every one on an INVALID
+verdict, from which the checker reads what each withdraws. The Lean checker answers `ACCEPT` or `REJECT`.
+
+The Lean checker does not ask whether an INVALID verdict is live. A withdrawal the model would not make only leaves a
+key uncounted, so soundness holds; where it matters, `check.py` answers `NOT_COVERED` and the Lean checker `REJECT`.
 
 **What the theorem assumes** (`Pin`, hypotheses, not axioms):
 - **The decode is faithful.** On every cell of the store, the model agrees with what `check.py` decoded in the
-  fields the checker reads. A cell is present exactly when the store holds it. A decoded policy meets its quorum with
-  threshold many distinct keys.
+  fields the checker reads, a verdict's verifier id among them. A cell is present exactly when the store holds it. A
+  decoded policy meets its quorum with threshold many distinct keys.
+- **The decode holds every seal of an INVALID verdict.** Each cumulative endorser of a local INVALID verdict has a
+  seal of the store on it, under a scope that governed, by a key of its roster: the absence of a withdrawal is read
+  from them, so it is part of the negative part.
   Hashes, the cell layout and the signatures are `check.py`'s. They are tested, not proved.
 - **The store at the tip is the admitted chain.** This is the reader's pin, as for `check.py`, and it has these parts:
   - the Pass 1 equations hold;
@@ -136,8 +148,8 @@ admitted chain it holds, so the two checkers do not differ there.
 
 The fragment (`Fragment`) is where the checker's rules read as the model's:
 - the decision requires no computation;
-- no INVALID verdict judges it (the model withdraws only the keys that seal one, under the verdict's verifier id;
-  the checker refuses any);
+- every INVALID verdict on it is local and live (the model withdraws a key only through a live one; the checker does
+  not ask);
 - its live cone (the decision, the verdicts of `W_max`, what they rely on) holds local cells that supersede nothing
   and that no cell of the store invalidates, retires or supersedes (the model counts only an authorized edge from an
   Effective cell; the checker refuses any).
@@ -176,14 +188,16 @@ Outside the fragment the answer is `NOT_COVERED` and never `HELD`: there, the le
 | `RULES` | a scope of the chain names rules other than v1 and v2 |
 | `FOREIGN` | the store holds a cell of another origin |
 | `COMPUTATION` | the decision requires a computation, which replay decides |
-| `INVALID_VERDICT` | an INVALID verdict judges the decision |
+| `INVALID_VERDICT` | an INVALID verdict on the decision, under an endorsing verdict's verifier id and sealed by the endorsing key, does not meet the stand conditions: whether it is live, and so withdraws the key, the lens decides |
 | `KILL_EDGE` | a cone cell is invalidated, retired or superseded by any cell, or supersedes one |
 
 The fragment is small, and the reason is the finding again. Test 08 shows decisions that the lens settles and the
 checker leaves `NOT_COVERED`:
 - a ground whose notice was itself invalidated;
-- an INVALID verdict from another verifier;
+- an INVALID verdict that would withdraw a named key and is itself Stale;
 - a rotation under v2 that drops a key without that key's seal, so it waits.
+
+An INVALID verdict that withdraws one key, and leaves the others, is inside (test 15).
 
 To prove that an edge *does not count*, a term would need a proof that its source is itself invalidated, or that it
 is unauthorized: negation in strata, not a Horn derivation. A decision rebound by `supersedes`, which real chains do,
@@ -204,11 +218,12 @@ rotations of the fragment, and test 13 holds every decision the lens settles the
 | `VERDICT` | an endorsement is not an ATTESTED verdict on the decision |
 | `SEAL` | a seal is not on its verdict, is under a scope that did not govern, or does not verify |
 | `KEY` | a seal's key is not in the roster of the scope it is under, or not in the evaluator policy |
+| `WITHDRAWN` | an endorsement is withdrawn: an INVALID verdict on the decision under its verdict's verifier id, sealed by its key and meeting the stand conditions |
 | `THRESHOLD` | there are too few distinct policy keys |
 
 ## Evidence
 
-`test_witness.py` holds the tests; chains are admitted through the real gate. Every check in tests 03–09, 12 and 13 runs both
+`test_witness.py` holds the tests; chains are admitted through the real gate. Every check in tests 03–09, 12, 13 and 15 runs both
 checkers on the same term and requires that `vars1witness` answers `ACCEPT` exactly when `check.py` answers `HELD`. It
 does so wherever the Lean checker is built, and fails where `MINDS_REQUIRE_LEAN=1` and it is not, as in CI. `histories.py` generates the
 histories: a project of three maintainers whose ground fails, the generator of the withdrawn G6 pilot
@@ -222,17 +237,20 @@ histories: a project of three maintainers whose ground fails, the generator of t
 | 04 | **Soundness, exhaustively on two histories after the failure.** A decision the lens settles gets a HELD witness; one it does not gets none. No term over any subset of a decision's verdicts, each with its whole cone, is HELD for a decision the lens does not settle. There are 222 such terms. Of the 93 for lost decisions, none is HELD: 86 are NOT_COVERED (`KILL_EDGE`) and 7 REFUSED (`THRESHOLD`). Of the 129 for settled decisions, 59 are HELD, 58 REFUSED (`THRESHOLD`, one key) and 12 NOT_COVERED (a stale verdict in the subset). |
 | 05 | A lost decision cannot be passed off by leaving the fallen ground, or a stale verdict, out of the cone. |
 | 06–07 | A wrong term is refused for its own reason, including verdicts that judge or attest another decision, a NOT_ASSESSED verdict, a custom-schema cell shaped like a verdict, and a key outside the evaluator policy. |
-| 08 | Outside the fragment the answer is NOT_COVERED: a rotation under v2 that waits, rules other than v1 and v2, two scope cells superseding one. A decision left not Active by an unauthorized supersedes edge is not HELD. |
+| 08 | Outside the fragment the answer is NOT_COVERED: a withdrawn notice in the cone, a Stale INVALID verdict that would withdraw a named key, a rotation under v2 that waits, rules other than v1 and v2, two scope cells superseding one. A decision left not Active by an unauthorized supersedes edge is not HELD. |
 | 09 | A store the gate never saw: a seal that does not verify, a seal under another scope, bytes that do not hash to their name, a missing object, an entry outside `cas/`, a decision requiring a computation, a foreign cell. |
 | 10 | `check.py`, copied alone into an empty folder and run with `-I`, works. |
 | 11 | A term that names its decision twice, the held one last, is refused, and so is one that names a seal twice. So are a truncated term, one that is not UTF-8, one that is not an object, and one holding `NaN` or an infinity, which Python's json reads and JSON does not have. A crash exits 3. |
 | 12 | Rotations under v1 and v2: decisions approved before and after a key joins are HELD, seals read under the scope that governed each; a pin of the replaced scope is NOT_COVERED (`WAITING`); after a v1 rotation drops a key, that key's earlier seal counts and a seal by it under the new scope is refused (`KEY`). |
 | 13 | **The live chain** `refs/vars/heads/minds` at its tip: the prover finds a witness for exactly the decisions the lens settles, and both checkers hold each (34 of 46 at `57035e8`). CI requires the chain. |
-| 14 | **Completeness.** `vars1witness --prove`, given only the store, accepts exactly the decisions whose `prove.py` term is HELD, on both histories before the failure and after it, and exactly the decisions the lens settles on the live chain (34 of 47 at `7c6899b`). Outside the fragment it does not accept what the lens settles: a withdrawn notice in the cone, an INVALID verdict that withdraws one key. |
+| 14 | **Completeness.** `vars1witness --prove`, given only the store, accepts exactly the decisions whose `prove.py` term is HELD, on both histories before the failure and after it, and exactly the decisions the lens settles on the live chain (34 of 47 at `7c6899b`). Outside the fragment it does not accept what the lens settles: a withdrawn notice in the cone, a Stale INVALID verdict that the checker counts as withdrawing a key. |
+| 15 | **INVALID verdicts withdraw their own keys only.** Against d's 2-of-3 policy: cy's INVALID verdict under its own verifier id withdraws cy's endorsement (a term naming it is REFUSED, `WITHDRAWN`; ana's and bo's are HELD); cy's under ana's id withdraws nothing (all three HELD); ana's and bo's, each under its own, leave one key (REFUSED, and no witness). `vars1witness --prove` accepts exactly where the lens settles. |
 
-**Mutants.** `mutants.json` has one mutant per check: 45, all killed. Five of them break the decode that `check.py
---lean` writes: kill edges dropped, INVALID verdicts not marked, seals written without verifying, a seal's scope
-replaced, only the tip's scope written as one that governed. A sixth writes the prover no seals (`m-prove-seals`). The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
+**Mutants.** `mutants.json` has one mutant per check: 51, all killed. Seven of them break the decode that `check.py
+--lean` writes: kill edges dropped, INVALID verdicts not marked, verifier ids not written, an INVALID verdict's seals
+not written, seals written without verifying, a seal's scope replaced, only the tip's scope written as one that
+governed. Another writes the prover no seals (`m-prove-seals`). Of the withdrawal, each part has one: INVALID verdicts
+not read, the verifier id or the key not compared, and the stand conditions taken as always met or never. The agreement of the two checkers kills them. `--mutants` runs the named tests unmutated first and
 refuses a red baseline. It then runs each mutant without a bytecode cache and requires its test to fail on an
 assertion.
 
@@ -270,7 +288,11 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
 - **The negative part as data.** A projection's kernel input already commits, by a witnessed digest, to every cell
   and seal at its tip. Read from there instead of a git store, the absences would rest on the projection's witnesses
   instead of on the reader's store. That is where `verify/minds_verify.py`'s attestation bundles are.
-- **Edges that do not count.** A term could carry, for each edge into the cone, a proof that it does not count: its
-  source is invalidated, or the edge is unauthorized. That is stratified negation, and it would bring rebinding and
-  withdrawn notices into the fragment. Completeness would then have to be proved again on the larger fragment:
-  the two cases test 14 shows outside it are where it would start.
+- **Edges that do not count.** INVALID verdicts that withdraw only their own keys are inside (test 15). A term could
+  also carry, for each edge into the cone, a proof that it does not count: its source is invalidated, or the edge is
+  unauthorized. That is stratified negation, and it would bring rebinding, withdrawn notices and Stale INVALID verdicts
+  into the fragment. Both kinds of proof can be read from the store at the tip: §4.1 counts every seal on an edge's
+  source under the governing scope, not only one commit's, so whether an edge latched under a scope of the chain is
+  decided by the seals under it there are. The exception is the author clause of supersedes and retires, which reads
+  the target's InitialEndorsers, fixed at its birth commit. Test 14's two cases outside the fragment are where it
+  would start.

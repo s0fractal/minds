@@ -3,7 +3,8 @@
 The prover may use anything: it reads the lens through vars1.py. What it produces is checked by check.py, which
 uses none of it. A decision the lens does not hold Settled gets no witness (NotHeld). Among its standing ATTESTED
 verdicts the prover prefers those whose cones no cell invalidates, retires or supersedes, since check.py covers
-only such cones; it takes verdicts until their distinct policy keys meet the threshold.
+only such cones; it names only the keys the lens counts through each (an INVALID verdict under the same verifier id
+withdraws the keys that seal it), and takes verdicts until their distinct policy keys meet the threshold.
 """
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ def prove(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str]
         return out
 
     standing = lambda c: lens["active"].get(c) and not lens["stale"].get(c)  # noqa: E731
+    counts = lens["counted_witnesses"].get(decision, {})
     verdicts = [w for w in cells.values() if w.h_schema == V.H_SCHEMA["verdict"] and w.h_payload == decision
                 and decision in hv(w.h_attests) and w.slots[0] == V.H_EMPTY and w.slots[1] == V.H_ATTESTED
                 and standing(w.id)]
@@ -55,7 +57,7 @@ def prove(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str]
     for w in sorted(verdicts, key=lambda w: (not clean(w), w.id)):
         new = sorted((s.actor_pubkey, sid) for sid, s in seals.items() if s.h_target == w.id
                      and s.actor_pubkey in rosters.get(s.h_scope_ctx, ()) and s.actor_pubkey in keys
-                     and s.actor_pubkey not in counted)
+                     and s.actor_pubkey in counts.get(w.id, ()) and s.actor_pubkey not in counted)
         if not new:
             continue
         chosen.append(w.id)

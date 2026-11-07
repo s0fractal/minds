@@ -65,9 +65,9 @@ and, for some theorems, `Classical.choice`.
 | | `edgeCond_out_of_reach` | into a foreign target whose policy no keys of the roster meet, no seal latches an edge |
 | | `import_faithful`, `stale_faithful` | on a closed set, local or pinned on each side, `Active` and `Stale` of two scopes agree if the latched edges into it do |
 | | `pinned_active`, `unpinned_not_active` | with no latched edge into it and no supersedes edge, a foreign cell stands while its scope pins it; one it does not accept does not stand |
-| `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`) |
+| `Witness.lean` | `witness_sound` | the witness checker `accepts` a derivation ⟹ the model holds its decision `Settled`, given that the decoded store agrees with the model and is the admitted chain (`Pin`); an INVALID verdict withdraws only a key that seals it, under the verifier id of the verdict it withdraws, as §4.2 Pass 3 |
 | | `edge_present`, `stale_pin` | the fold latches an edge only from a present cell, and Pass 2 `Stale` satisfies the equation `Pin` asks of it (two of `Pin`'s hypotheses) |
-| `WitnessComplete.lean` | `witness_complete` | on its fragment (no computation, no INVALID verdict on the decision, a live cone of local cells that supersede nothing and that no edge reaches), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies` has a rank |
+| `WitnessComplete.lean` | `witness_complete` | on its fragment (no computation, every INVALID verdict on the decision live, a live cone of local cells that supersede nothing and that no edge reaches), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies` has a rank |
 | | `accepts_iff_settled` | with `witness_sound`: there the checker accepts the prover's derivation exactly when the model holds the decision `Settled` |
 | | `stale_complete` | Pass 2 `Stale` meets what `PinComplete` asks of it: what an active cell that is not stale relies on is active and not stale |
 
