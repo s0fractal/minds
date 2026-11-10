@@ -2,11 +2,13 @@
 
     .venv/bin/python experiments/witness/test_witness.py              # the tests
     .venv/bin/python experiments/witness/test_witness.py --mutants    # each mutant in mutants.json must fail its test
+    .venv/bin/python experiments/witness/test_witness.py --mutants ID...   # the named ones
 
 A mutant must fail its named test on an assertion (an error is not a kill), and the named tests must pass unmutated
 first. Chains are built through the real gate (vars1.py); the checker under test is check.py, or the file named by
-WITNESS_SOURCE (a mutant).
+WITNESS_SOURCE (a mutant); the frame under test (tests 17-19) is frame.py, or the file named by FRAME_SOURCE.
 """
+import collections
 import contextlib
 import hashlib
 import importlib.util
@@ -14,6 +16,7 @@ import io
 import itertools
 import json
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -39,11 +42,14 @@ def _load(name: str, path: Path):
 
 SOURCE = Path(os.environ.get("WITNESS_SOURCE", HERE / "check.py"))
 CK = _load("witness_check", SOURCE)
+FR = _load("witness_frame", Path(os.environ.get("FRAME_SOURCE", HERE / "frame.py")))
+LIVE_TIP = "7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d"  # refs/vars/heads/minds on 2026-11-07: test 19's named tip
 LEAN = ROOT / "proofs" / ".lake" / "build" / "bin" / "vars1witness"
 WORK = Path.home() / "Projects" / ".worktrees" / "witness-work"
 WORK.mkdir(parents=True, exist_ok=True)
 MEMBERS = ("ana", "bo", "cy")
 SCOPE = "proj"
+MUTATED = {"check.py": "WITNESS_SOURCE", "frame.py": "FRAME_SOURCE"}  # the files mutants.json mutates, and how a test takes a copy
 _CACHE = {}
 
 
@@ -853,10 +859,366 @@ class T(unittest.TestCase):
         self.assertEqual(outcome(c, d, [v], False), killed)
 
 
-def mutants() -> int:
+    # --- what a reader must read (frame.py, proofs/Vars1/Reader.lean) ---------------------------------------------
+
+    def _step(self, c, d, act, grounded=False):
+        """What `touches` says of the objects `act` adds to the chain, against d's frame before it, and whether d's
+        status changed: (reason or None, changed). Where nothing touches the frame the status must be the same."""
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        fr = FR.frame(T, d.id, grounded)
+        before = status(T.lens, d.id, grounded)
+        act()
+        c.ctx = c.governing()
+        t = FR.touches(T, fr, *FR.delta(T, c.tip))
+        after = status(c.repo.lens(SCOPE, at=c.tip), d.id, grounded)
+        if t is None:
+            self.assertEqual(before, after, f"nothing touched the frame of {d.id.hex()[:8]}, yet its status changed")
+        return (t[0] if t else None, before != after)
+
+    def test_17_a_status_is_unchanged_while_nothing_touches_its_frame(self):
+        """`settled_frame` and `grounded_frame` on chains through the gate: each kind of object that can change a
+        decision's status touches its frame, by the rule that names it, and changes the status; what touches nothing
+        changes nothing. The cases: a notice on the cone, and a second notice that revives it; a notice whose edge
+        one more seal latches; a seal that completes a quorum; an INVALID verdict that names the decision by payload
+        alone; an answer that attests a question; a notice on what only a verdict relies on; a retirement and a
+        supersession; a rotation, for a decision that reads the scope's policy and for one with its own; a rotation
+        that waits under v2 and governs sixteen commits later with no new cell; and, for Grounded, a withdrawal from a
+        decision the decision relies on, which leaves it Settled; a rebinding whose supersedes edge a late seal of the
+        replaced cell's author latches. Then every pair of tips of every chain, both frames."""
+        chains, step = [], self._step
+
+        def chain(**kw):
+            chains.append(Chain(scratch(), **kw))
+            return chains[-1]
+
+        touched = lambda reason: (reason, True)  # noqa: E731
+        c = chain()
+        g, k, d, vs = c.basic()
+        x = c.axiom("ground/x")
+        self.assertEqual(step(c, d, lambda: c.commit((x, "cy"))), (None, False), "an unrelated cell")
+        self.assertEqual(step(c, d, lambda: c.commit((c.axiom("notice/x", invalidates=[x]), "bo"))), (None, False))
+        self.assertEqual(step(c, d, lambda: c.seal(x, "ana")), (None, False), "a seal on an unrelated cell")
+        n = c.axiom("notice/g", invalidates=[g])
+        self.assertEqual(step(c, d, lambda: c.commit((n, "cy"))), touched("EDGE"), "a notice on the ground")
+        m = c.axiom("notice/not-g", invalidates=[n])
+        self.assertEqual(step(c, d, lambda: c.commit((m, "bo"))), touched("EDGE"), "the notice is invalidated: revived")
+
+        c = chain()
+        g, k, d, vs = c.basic()
+        n = c.axiom("notice/d", invalidates=[d])
+        self.assertEqual(step(c, d, lambda: c.commit((n, "ana"))), ("EDGE", False), "one key of d's 2 of 3: no latch")
+        self.assertEqual(step(c, d, lambda: c.seal(n, "bo")), touched("SEAL"), "the second seal latches the edge")
+
+        c = chain()
+        g = c.axiom("ground/g")
+        c.commit((g, "ana"))
+        d = c.decision("decision/d", [g], thr=2)
+        v = c.verdict(d, "decision/d/by-ana", [g], verifier="ana")
+        c.commit((d, "ana"), (v, "ana"))
+        self.assertEqual(step(c, d, lambda: c.seal(v, "bo")), touched("SEAL"), "a second key seals the verdict")
+
+        c = chain()
+        g = c.axiom("ground/g")
+        c.commit((g, "ana"))
+        d = c.decision("decision/d", [g], thr=3)
+        vs = {m: c.verdict(d, f"decision/d/by-{m}", [g], verifier=m) for m in MEMBERS}
+        c.commit((d, "ana"), *((v, m) for m, v in vs.items()))
+        bad = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=c.utf8(f"{SCOPE}/decision/d/no-by-cy"), h_payload=d.id,
+                     slots=(V.H_EMPTY, V.H_VERDICT_INVALID, c.utf8("cy")))
+        self.assertEqual(step(c, d, lambda: c.commit((bad, "cy"))), touched("JUDGE"), "INVALID, by payload alone")
+
+        c = chain()
+        q = V.Cell(V.H_SCHEMA["question"], c.utf8(f"{SCOPE}/question/q"), c.utf8("is it so?"),
+                   slots=(V.H_SCHEMA["axiom"], V.H_EMPTY))
+        c.commit((q, "ana"))
+        ans = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=c.utf8(f"{SCOPE}/answer/q"), h_payload=c.utf8("it is"),
+                     h_attests=c.hv([q.id]))
+        self.assertEqual(step(c, q, lambda: c.commit((ans, "bo"))), touched("JUDGE"), "an answer attests the question")
+
+        c = chain()
+        g, k2 = c.axiom("ground/g"), c.axiom("ground/k2")
+        c.commit((g, "ana"), (k2, "bo"))
+        d = c.decision("decision/d", [g], thr=2)
+        vs = {m: c.verdict(d, f"decision/d/by-{m}", [k2], verifier=m) for m in ("ana", "bo")}
+        c.commit((d, "ana"), *((v, m) for m, v in vs.items()))
+        self.assertEqual(step(c, d, lambda: c.commit((c.axiom("notice/k2", invalidates=[k2]), "cy"))),
+                         touched("EDGE"), "a notice on what only the verdicts rely on")
+
+        for edge in ("retires", "supersedes"):
+            c = chain()
+            g, k, d, vs = c.basic()
+            r = c.axiom("ground/g" if edge == "supersedes" else "retire/g", **{edge: [g]})
+            self.assertEqual(step(c, d, lambda: c.commit((r, "ana"))), touched("EDGE"), edge)
+
+        c = chain()
+        g, k, d, vs = c.basic()
+        e = V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=c.utf8(f"{SCOPE}/decision/e"), h_payload=c.utf8("e"),
+                   h_relies=c.hv([k.id]), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        ve = c.verdict(e, "decision/e/by-cy", [k], verifier="cy")
+        c.commit((e, "cy"), (ve, "cy"))
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(e.id), "cy is one of the scope's admission keys")
+        rot = lambda: c.rotate(("ana", "bo"), "cy leaves")  # noqa: E731
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        frames = FR.frame(T, e.id), FR.frame(T, d.id)
+        self.assertEqual(step(c, e, rot), touched("SCOPE"), "e reads the scope's policy: the rotation is in its frame")
+        self.assertEqual(FR.touches(T, frames[1], *FR.delta(T, c.tip)), None, "d names its own policy: it is not")
+        self.assertTrue(c.repo.lens(SCOPE)["settled"].get(d.id))
+
+        c = chain(rules=V.H_LENS_KERNEL_V2)
+        g, k, d, vs = c.basic()
+        e = V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=c.utf8(f"{SCOPE}/decision/e"), h_payload=c.utf8("e"),
+                   h_relies=c.hv([k.id]), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        ve = c.verdict(e, "decision/e/by-cy", [k], verifier="cy")
+        c.commit((e, "cy"), (ve, "cy"))
+        self.assertEqual(step(c, e, lambda: c.rotate(("ana", "bo"), "cy leaves")), ("SCOPE", False), "it waits")
+        self.assertEqual(c.governing(), c.scope.id)
+
+        def sixteen():
+            for i in range(17):
+                c.ctx = c.governing()
+                c.commit((c.axiom(f"filler/{i}"), "ana"))
+
+        self.assertEqual(step(c, e, sixteen), touched("WAITING"), "the wait ends in commits that add no scope cell")
+        self.assertNotEqual(c.governing(), c.scope.id)
+
+        c = chain()
+        g = c.axiom("ground/g")
+        c.commit((g, "ana"))
+        d1 = c.decision("decision/d1", [g], thr=3)
+        vs = {m: c.verdict(d1, f"decision/d1/by-{m}", [g], verifier=m) for m in MEMBERS}
+        d2 = c.decision("decision/d2", [d1], thr=1)
+        v2 = c.verdict(d2, "decision/d2/by-ana", [g], verifier="ana")
+        c.commit((d1, "ana"), *((v, m) for m, v in vs.items()), (d2, "ana"), (v2, "ana"))
+        self.assertTrue(c.repo.lens(SCOPE)["grounded"].get(d2.id))
+        bad = c.verdict(d1, "decision/d1/no-by-cy", [g], code=V.H_VERDICT_INVALID, verifier="cy")
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        settled_frame = FR.frame(T, d2.id)
+        self.assertEqual(step(c, d2, lambda: c.commit((bad, "cy")), grounded=True), touched("JUDGE"),
+                         "d1 loses its quorum: d2 is Settled and no longer Grounded")
+        self.assertEqual(FR.touches(T, settled_frame, *FR.delta(T, c.tip)), None, "Settled of d2 does not read d1's verdicts")
+        lens = c.repo.lens(SCOPE)
+        self.assertEqual((lens["settled"].get(d2.id), lens["grounded"].get(d2.id), lens["settled"].get(d1.id)),
+                         (True, False, False))
+
+        c = chain()
+        g = c.axiom("ground/g")
+        c.commit((g, "ana"))
+        d1 = c.decision("decision/d", [g], thr=3)
+        c.commit((d1, "ana"))
+        d2 = c.decision("decision/d", [g], thr=1, supersedes=[d1])
+        v2 = c.verdict(d2, "decision/d2/by-cy", [g], verifier="cy")
+        c.commit((d2, "cy"), (v2, "cy"))
+        self.assertFalse(c.repo.lens(SCOPE)["active"].get(d2.id), "cy alone latches no edge onto d1")
+        self.assertEqual(step(c, d2, lambda: c.seal(d2, "ana")), touched("SEAL"),
+                         "ana sealed d1 at its birth: its seal on d2 latches the rebinding, and d2 stands")
+
+        seen = collections.Counter()
+        for c in chains:
+            seen += frame_holds(self, c.repo, SCOPE, c.repo.commit_chain(c.tip))
+        if os.environ.get("FRAME_STATS"):
+            print("test 17", dict(seen))
+        self.assertGreater(seen["untouched"], 100, seen)
+        self.assertGreater(seen["changed"], 20, seen)
+
+    def test_18_random_extensions_keep_what_nothing_touches(self):
+        """Random perturbations through the gate: from a base with a ground, two decisions of their own policy (one
+        relying on the other), one that reads the scope's policy and a question, 60 random commits (cells, notices on
+        any cell, verdicts ATTESTED and INVALID under any verifier id, late seals, retirements, supersessions, a
+        rotation), under each of v1 and v2 and under an admission threshold of 1 and of 2. Over every pair of tips and
+        every evaluated cell, a frame that nothing touches keeps its status, Settled and Grounded."""
+        seen = collections.Counter()
+        for seed, rules, thr in ((1, V.H_LENS_KERNEL, 1), (2, V.H_LENS_KERNEL_V2, 1), (3, V.H_LENS_KERNEL, 2)):
+            c, tips = random_walk(seed, rules, thr, 60)
+            self.assertGreater(len(tips), 40, "most random commits are admitted")
+            seen += frame_holds(self, c.repo, SCOPE, tips)
+        if os.environ.get("FRAME_STATS"):
+            print("test 18", dict(seen))
+        self.assertGreater(seen["untouched"], 1000, seen)
+        self.assertGreater(seen["changed"], 100, seen)
+        for reason in ("EDGE", "JUDGE", "SEAL", "SCOPE"):
+            self.assertGreater(seen[reason], 0, seen)
+
+    def test_19_the_live_chain_at_a_named_tip(self):
+        """On refs/vars/heads/minds. (1) Renewal: for every tip, every decision there and every later tip, a frame
+        that the commits between do not touch keeps its status at the later tip, so a witness is renewed by reading
+        those commits alone. (2) The table of README.md at the tip of 2026-11-07, byte for byte: what a Settled
+        decision's status reads (2, 3 and 39 cells of 651), the bytes of that against the attestation bundle a client
+        receives, and the decisions that read the scope's policy (3 of 47). (3) `bundle_at` is `vars1.export_attestation`
+        at the ref's tip. Skipped when the chain is not fetched, unless MINDS_REQUIRE_CHAIN=1."""
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        chain = repo.commit_chain(tip)
+        self.assertIn(LIVE_TIP, chain)
+        seen = frame_holds(self, repo, "minds", chain, schemas=("decision",))
+        if os.environ.get("FRAME_STATS"):
+            print("test 19", dict(seen))
+        self.assertGreater(seen["untouched"], 10000, seen)
+        self.assertGreater(seen["changed"], 0, seen)
+        pinned = json.loads((HERE / "frame-minds-7c6899b.json").read_text())
+        self.assertEqual(FR.measure(V, repo, "minds", LIVE_TIP, PR.prove), pinned)
+        mmm = pinned["min_median_max"]
+        self.assertEqual((pinned["store"]["cells"], pinned["decisions"], pinned["settled"], mmm["read"]),
+                         (651, 47, 34, [2, 3.0, 39]))
+        self.assertEqual(pinned["scope_caveat"], {"decisions": 3, "settled": 3})
+        self.assertLess(mmm["message_json"][2] * 8, mmm["bundle_json"][0], "the message is under an eighth of the bundle")
+        T = FR.Tip(V, repo, "minds", tip)
+        for d in [x for x, c in T.cells.items() if c.h_schema == V.H_SCHEMA["decision"]][:3]:
+            pid = FR.covering_at(T, d)
+            self.assertEqual(FR.bundle_at(T, d, pid), V.export_attestation(repo, "minds", d, pid))
+
+    def test_20_the_message_carries_what_its_proof_names(self):
+        """The draft message for "d is in force at T" (frame.py `message`): its proof part holds every cell of the
+        term's cone, every endorsing seal, each scope cell a seal is under with its roster, and the decision's policy,
+        each object hashing to the name the term or another object of the message gives it; and it is the attestation
+        bundle's facts about d, without the tip. Nothing in it says that no other cell, verdict or seal touches the
+        frame: that is the vouch, which this test leaves empty."""
+        c = Chain(scratch())
+        g, k, d, vs = c.basic()
+        s1 = c.rotate((*MEMBERS, "dee"), "dee joins")
+        c.ctx = s1.id
+        c.seal(vs["cy"], "dee")
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        t = PR.prove(c.repo, SCOPE, d.id)
+        self.assertEqual(c.check(t)["result"], "HELD")
+        msg = FR.message(T, t, {})
+        self.assertEqual(msg["claim"], {"scope": SCOPE, "decision": d.id.hex(), "tip": c.tip, "epoch": s1.id.hex(),
+                                        "rules": V.H_LENS_KERNEL.hex()})
+        have = {hashlib.sha256(bytes.fromhex(x)).digest() for part in ("cells", "seals", "scopes", "atoms")
+                for x in msg["proof"][part]}
+        self.assertTrue({bytes.fromhex(x) for x in t["cone"]} <= have)
+        self.assertTrue({bytes.fromhex(e["seal"]) for e in t["endorsements"]} <= have)
+        self.assertTrue({s1.id, c.scope.id} <= have, "the seals are under the first scope, the tip under the second")
+        self.assertTrue({d.slots[3], T.cells[c.scope.id].slots[0], T.cells[s1.id].slots[0]} <= have)
+        self.assertEqual(len(msg["proof"]["scopes"]), 2)
+        bundle = FR.bundle_at(T, d.id)
+        self.assertEqual(bundle, V.export_attestation(c.repo, SCOPE, d.id))
+        self.assertIn(bundle["cell"], msg["proof"]["cells"])
+        self.assertTrue(set(msg["proof"]["seals"]) <= set(bundle["seals"]))
+
+
+def status(lens, d: bytes, grounded: bool = True):
+    """(stands, Settled) of a cell, and Grounded where the frame is Grounded's."""
+    st = (bool(lens["active"].get(d)) and not lens["stale"].get(d), bool(lens["settled"].get(d)))
+    return (*st, bool(lens["grounded"].get(d))) if grounded else st
+
+
+def frame_holds(test, repo, scope: str, tips, schemas=("contract", "decision", "question")) -> collections.Counter:
+    """Over every tip of `tips` (a chain's tips, oldest first), every evaluated cell there, its frame for Settled and
+    its frame for Grounded, and every later tip: if no object of the commits between touches the frame, the status at
+    the later tip is the status at the earlier. Returns how often nothing touched, each reason something did, and how
+    often the status then changed."""
+    Ts = [FR.Tip(V, repo, scope, t) for t in tips]
+    per = [FR.delta(Ts[j - 1], tips[j]) if j else None for j in range(len(tips))]
+    wanted = {V.H_SCHEMA[s] for s in schemas}
+    seen = collections.Counter()
+    for i, T in enumerate(Ts):
+        subjects = sorted(x for x, c in T.cells.items() if c.h_schema in wanted)
+        if not subjects:
+            continue
+        atoms, memo = {}, {}
+        open_ = {(d, gr): FR.frame(T, d, gr) for d in subjects for gr in (False, True)}
+        for j in range(i + 1, len(Ts)):
+            atoms.update(per[j][0])
+            for (d, gr), fr in list(open_.items()):
+                t = FR.touches(T, fr, atoms, per[j][1], per[j][2], memo)
+                before, after = status(T.lens, d, gr), status(Ts[j].lens, d, gr)
+                if t is None:
+                    test.assertEqual(before, after, f"nothing touched the frame of {d.hex()[:8]} "
+                                     f"({'Grounded' if gr else 'Settled'}) between tips {i} and {j}, yet its status changed")
+                    seen["untouched"] += 1
+                else:  # the same object touches it at every later tip
+                    seen[t[0]] += 1
+                    seen["changed"] += any(status(Ts[m].lens, d, gr) != before for m in range(j, len(Ts)))
+                    del open_[(d, gr)]
+    return seen
+
+
+def random_walk(seed: int, rules: bytes, thr: int, steps: int):
+    """A chain and its tips: a base, then `steps` random commits, each admitted by the gate or left out."""
+    rnd = random.Random(seed)
+    c = Chain(scratch(), rules=rules, admission=(thr, MEMBERS))
+    tips = [c.tip]
+    g, k = c.axiom("ground/g"), c.axiom("check/k")
+    c.commit((g, MEMBERS[:thr]), (k, MEMBERS[:thr]))
+    d1 = c.decision("decision/d1", [k], thr=2)
+    d2 = c.decision("decision/d2", [d1], thr=1)
+    e = V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=c.utf8(f"{SCOPE}/decision/e"), h_payload=c.utf8("e"),
+               h_relies=c.hv([g.id]), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+    q = V.Cell(V.H_SCHEMA["question"], c.utf8(f"{SCOPE}/question/q"), c.utf8("q"), slots=(V.H_SCHEMA["axiom"], V.H_EMPTY))
+    c.commit(*((x, MEMBERS[:thr]) for x in (d1, d2, e, q)))
+    tips.append(c.tip)
+    plain, decisions, names = [g, k], [d1, d2, e], {}
+    everything = [g, k, d1, d2, e, q]
+    members = list(MEMBERS)
+    for i in range(steps):
+        who = rnd.choice(members)
+        kind = rnd.choice(("axiom", "notice", "notice", "attest", "attest", "attest", "invalid", "seal", "seal", "retire",
+                           "supersede", "answer", "rotate"))
+        try:
+            if kind == "axiom":
+                x = c.axiom(f"cell/{i}", [rnd.choice(plain)])
+                c.commit((x, who))
+                plain.append(x)
+            elif kind == "notice":
+                x = c.axiom(f"notice/{i}", invalidates=[rnd.choice(everything)])
+                c.commit((x, who))
+            elif kind in ("attest", "invalid"):
+                d = rnd.choice(decisions)
+                x = c.verdict(d, f"verdict/{i}", [rnd.choice(plain)], verifier=rnd.choice(members),
+                              code=V.H_ATTESTED if kind == "attest" else V.H_VERDICT_INVALID)
+                c.commit((x, who))
+            elif kind == "seal":
+                c.seal(rnd.choice(everything), who)
+                x = None
+            elif kind == "retire":
+                x = c.axiom(f"retire/{i}", retires=[rnd.choice(everything)])
+                c.commit((x, who))
+            elif kind == "supersede":
+                old = rnd.choice(plain)
+                name = names.get(old.id, V.parse_utf8(c.repo.read_cas_tree(c.tip)[0][old.h_slot_name]).split("/", 1)[1])
+                x = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=c.utf8(f"{SCOPE}/{name}"), h_payload=c.utf8(f"again/{i}"),
+                           h_supersedes=c.hv([old.id]), h_loss=c.utf8("replaced"))
+                c.commit((x, who))
+                names[x.id] = name
+                plain.append(x)
+            elif kind == "answer":
+                x = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=c.utf8(f"{SCOPE}/answer/{i}"),
+                           h_payload=c.utf8(f"answer/{i}"), h_attests=c.hv([q.id]))
+                c.commit((x, who))
+            else:
+                keep = rnd.sample(list(MEMBERS), rnd.choice((2, 3)))
+                x = c.rotate(tuple(sorted(keep)), f"rotation/{i}", sealer=who)
+        except V.VarsError:
+            c.atoms = {}
+            continue
+        if x is not None:
+            everything.append(x)
+        c.ctx = c.governing()
+        members = [m for m in MEMBERS if c.pk[m] in roster_keys(c)] or list(MEMBERS)
+        tips.append(c.tip)
+    return c, tips
+
+
+def roster_keys(c) -> set:
+    atoms, cells, _ = c.repo.read_cas_tree(c.tip)
+    return set(V.parse_hvec(atoms[V.parse_pol1(atoms[cells[c.ctx].slots[0]])[1]], require_sorted=True))
+
+
+def mutants(only=()) -> int:
     """Run every named test unmutated (refuse a red baseline), then each mutant of mutants.json against a copy of
-    check.py, with no bytecode cache: its test must fail on an assertion. Returns the number that survived."""
+    its file (check.py, or the `file` it names: frame.py), with no bytecode cache: its test must fail on an
+    assertion. Returns the number that survived."""
     ms = json.loads((HERE / "mutants.json").read_text())
+    if only:
+        missing = sorted(set(only) - set(ms))
+        if missing:
+            print(f"no such mutant: {' '.join(missing)}")
+            return len(missing)
+        ms = {mid: m for mid, m in ms.items() if mid in only}
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     run = lambda test, extra: subprocess.run([sys.executable, str(Path(__file__)), f"T.{test}"],  # noqa: E731
                                              capture_output=True, text=True, env={**env, **extra}, cwd=ROOT)
@@ -865,16 +1227,18 @@ def mutants() -> int:
             print(f"BASELINE_RED {test}")
             return len(ms)
     survived = 0
-    src = (HERE / "check.py").read_text()
+    sources = {name: (HERE / name).read_text() for name in MUTATED}
     for mid, m in ms.items():
+        name = m.get("file", "check.py")
+        src = sources[name]
         if src.count(m["find"]) != 1:
-            print(f"lost     {mid}: its text is not in check.py exactly once")
+            print(f"lost     {mid}: its text is not in {name} exactly once")
             survived += 1
             continue
         copy = WORK / f"mutant-{mid}.py"
         try:
             copy.write_text(src.replace(m["find"], m["replace"]))
-            r = run(m["kills"], {"WITNESS_SOURCE": str(copy)})
+            r = run(m["kills"], {MUTATED[name]: str(copy)})
         finally:
             copy.unlink(missing_ok=True)
         out = r.stdout + r.stderr
@@ -885,6 +1249,6 @@ def mutants() -> int:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--mutants"]:
-        sys.exit(1 if mutants() else 0)
+    if sys.argv[1:2] == ["--mutants"]:  # --mutants [ID...]: all of them, or the named ones
+        sys.exit(1 if mutants(sys.argv[2:]) else 0)
     unittest.main(argv=[sys.argv[0], *sys.argv[1:]], verbosity=1)

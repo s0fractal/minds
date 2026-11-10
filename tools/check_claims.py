@@ -138,11 +138,11 @@ def main(argv: list[str]) -> int:
     spec_doc = json.loads(arg("--spec-data", ROOT / "spec.json").read_text())
     data = json.loads(arg("--claims", ROOT / "claims.json").read_text())
     mutants = json.loads((ROOT / "mutants.json").read_text())
-    for mid, mu in json.loads((ROOT / WITNESS / "mutants.json").read_text()).items():  # one file, its own harness
+    for mid, mu in json.loads((ROOT / WITNESS / "mutants.json").read_text()).items():  # its own harness
         if mid in mutants:
             print(f"mutant id in both mutants.json and {WITNESS}/mutants.json: {mid}")
             return 1
-        mutants[mid] = {**mu, "file": f"{WITNESS}/check.py"}
+        mutants[mid] = {**mu, "file": f"{WITNESS}/{mu.get('file', 'check.py')}"}  # check.py, or the file it names
     claims, informative = data["claims"], data["informative"]
     errors: list[str] = []
     spec_text = render_spec(spec_doc)

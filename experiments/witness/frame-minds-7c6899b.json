@@ -1,0 +1,87 @@
+{
+ "decisions": 47,
+ "governing_scope": "17d9caa7e0569deb6c658f6bbe376e97dcca7e25fb09fb7743520d3902ca2a9c",
+ "kernel_input_at_tip": 170084,
+ "min_median_max": {
+  "bundle_bytes": [
+   155041,
+   155802.0,
+   169186
+  ],
+  "bundle_input": [
+   150784,
+   150784.0,
+   163532
+  ],
+  "bundle_json": [
+   310324,
+   311855.0,
+   338629
+  ],
+  "cone": [
+   2,
+   3.0,
+   39
+  ],
+  "frame_bytes": [
+   1179,
+   1833.0,
+   15890
+  ],
+  "frame_json": [
+   2427,
+   3747.0,
+   32092
+  ],
+  "guard": [
+   2,
+   3.0,
+   39
+  ],
+  "guard_grounded": [
+   2,
+   3.0,
+   39
+  ],
+  "message_json": [
+   9509,
+   10090.0,
+   38624
+  ],
+  "proof_json": [
+   6787,
+   7368.0,
+   36233
+  ],
+  "read": [
+   2,
+   3.0,
+   39
+  ],
+  "vouch_json": [
+   2036,
+   2367.0,
+   2367
+  ],
+  "watched_seals": [
+   1,
+   2.0,
+   3
+  ]
+ },
+ "rules": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e",
+ "scope": "minds",
+ "scope_caveat": {
+  "decisions": 3,
+  "settled": 3
+ },
+ "settled": 34,
+ "store": {
+  "atoms": 1210,
+  "cells": 651,
+  "commits": 83,
+  "seals": 684
+ },
+ "tip": "7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d",
+ "with_bundle": 34
+}

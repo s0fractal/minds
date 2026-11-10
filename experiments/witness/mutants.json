@@ -328,5 +328,77 @@
   "find": "    used += [own(t) for t in sorted(targets) if own(t) != H_EMPTY]",
   "replace": "    used += []",
   "kills": "test_16_kill_edges_that_do_not_count"
+ },
+ "m-frame-edge": {
+  "file": "frame.py",
+  "find": "        if any(t in guard for field in EVICT for t in hv(getattr(c, field))):",
+  "replace": "        if False:",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-edge-kinds": {
+  "file": "frame.py",
+  "find": "EVICT = (\"h_invalidates\", \"h_retires\", \"h_supersedes\")",
+  "replace": "EVICT = (\"h_invalidates\",)",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-guard-up": {
+  "file": "frame.py",
+  "find": "        for y in into.get(x, set()) | set(T.hv(cells[x].h_supersedes)):",
+  "replace": "        for y in set(T.hv(cells[x].h_supersedes)):",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-guard-superseded": {
+  "file": "frame.py",
+  "find": "        for y in into.get(x, set()) | set(T.hv(cells[x].h_supersedes)):",
+  "replace": "        for y in into.get(x, set()):",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-watch-sources": {
+  "file": "frame.py",
+  "find": "\"watch\": sorted(judges | sources | latching),",
+  "replace": "\"watch\": sorted(judges | latching),",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-watch-judges": {
+  "file": "frame.py",
+  "find": "\"watch\": sorted(judges | sources | latching),",
+  "replace": "\"watch\": sorted(sources | latching),",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-judge-attests": {
+  "file": "frame.py",
+  "find": "        if any(t in ev for t in hv(c.h_attests)):",
+  "replace": "        if False:",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-judge-payload": {
+  "file": "frame.py",
+  "find": "and (c.h_payload in ev or named_slot(V, c) in named):",
+  "replace": "and (named_slot(V, c) in named):",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-scope": {
+  "file": "frame.py",
+  "find": "            if fr[\"fallback\"]:\n                return (\"SCOPE\", cid.hex())",
+  "replace": "            if False:\n                return (\"SCOPE\", cid.hex())",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-waiting": {
+  "file": "frame.py",
+  "find": "    if fr[\"fallback\"] and fr[\"waiting\"]:",
+  "replace": "    if False:",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-grounded": {
+  "file": "frame.py",
+  "find": "    while grounded:",
+  "replace": "    while False:",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-frame-judges-rely": {
+  "file": "frame.py",
+  "find": "    read = down({d} | judges | named)\n",
+  "replace": "    read = down({d}) | judges | named\n",
+  "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
  }
 }
