@@ -2379,6 +2379,88 @@
    ]
   },
   {
+   "id": "assurance.reader-frame",
+   "source": "ASSURANCE.md",
+   "quote": "Between two tips that agree on what `Settled(d)` reads, a contract, decision or question `d` is Settled at both or at neither",
+   "status": "proved",
+   "witnesses": [
+    "lean:settled_frame",
+    "lean:grounded_frame",
+    "lean:inWmax_frame",
+    "lean:withdrawn_frame",
+    "lean:counts_frame"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "assurance.reader-scope",
+   "source": "ASSURANCE.md",
+   "quote": "A decision that names no evaluator policy reads the governing scope's admission policy at the tip",
+   "status": "proved",
+   "witnesses": [
+    "lean:settled_reads_tip_scope",
+    "witness:test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+   ],
+   "mutants": [
+    "m-frame-scope",
+    "m-frame-waiting"
+   ]
+  },
+  {
+   "id": "assurance.reader-bound",
+   "source": "ASSURANCE.md",
+   "quote": "Adding to any one commit of a chain a cell that invalidates `d` and the seals of a quorum of `Pol(d)` under the scope governing there leaves `d` Invalidated at the tip",
+   "status": "proved",
+   "witnesses": [
+    "lean:killer_latches",
+    "lean:killer_latches2",
+    "lean:unread_commit_decides",
+    "lean:unread_commit_decides2",
+    "lean:reader_must_read",
+    "lean:reader_reads_commit"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "assurance.reader-state",
+   "source": "ASSURANCE.md",
+   "quote": "Two prefixes with one fold state have one fold state after every continuation, and no cell can be dropped from it",
+   "status": "proved",
+   "witnesses": [
+    "lean:fold_state_suffices",
+    "lean:fold_state_suffices2",
+    "lean:dead_cell_silent",
+    "lean:revived",
+    "lean:dropped_cell_distinguishes"
+   ],
+   "mutants": []
+  },
+  {
+   "id": "assurance.reader-touches",
+   "source": "ASSURANCE.md",
+   "quote": "`frame.py` answers that no object of the commits between two tips touches a cell's frame only where the lens gives the cell the same standing",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_17_a_status_is_unchanged_while_nothing_touches_its_frame",
+    "witness:test_18_random_extensions_keep_what_nothing_touches",
+    "witness:test_19_the_live_chain_at_a_named_tip"
+   ],
+   "mutants": [
+    "m-frame-edge",
+    "m-frame-edge-kinds",
+    "m-frame-guard-up",
+    "m-frame-guard-superseded",
+    "m-frame-watch-sources",
+    "m-frame-watch-judges",
+    "m-frame-judge-attests",
+    "m-frame-judge-payload",
+    "m-frame-scope",
+    "m-frame-waiting",
+    "m-frame-grounded",
+    "m-frame-judges-rely"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",

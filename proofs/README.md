@@ -72,6 +72,18 @@ and, for some theorems, `Classical.choice`.
 | `WitnessComplete.lean` | `kernel_iff` | on a store of local cells whose invalidates edges it decides, the prover's `effB` and `deadB` are the model's `Effective` and `Invalidated` above the rank |
 | | `witness_complete` | on its fragment (no computation, only local cells, every edge the derivation reads decided by the store, every INVALID verdict on the decision live or not live through an Invalidated cell), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies`, invalidates and supersedes have ranks |
 | | `accepts_iff_settled` | with `witness_sound`: there the checker accepts the prover's derivation exactly when the model holds the decision `Settled` |
+| `Reader.lean` | `settled_frame` | between two tips that agree on what `Settled(d)` reads (`Reads`, on a set `Pr`), a contract, decision or question `d` is Settled at both or at neither. `Reads` asks: `d` is in `Pr`; every cell that judges `d` (`Judges`: it attests `d`, or is an INVALID verdict on `d` or on the checkpoint a cell attesting `d` names) is in both stores or in neither, is in `Pr`, and has the same endorsers; every checkpoint such a cell names is in `Pr`; every cell of `Pr` is live at both tips or at neither; the cells' verdict fields, `required_comp`, expected schema and replay result are the same; and `d` names an evaluator policy of its own or the two governing scopes have one admission policy. Also `QuorumExt` and faithful presentations at both tips |
+| | `inWmax_frame`, `withdrawn_frame`, `counts_frame` | under `Reads`, `W_max(d)`, each withdrawal through a cell attesting `d`, and the keys that count are the same at both tips |
+| | `grounded_frame` | on a set `Pr` closed under `relies` and under the witnesses of what it holds, whose cells are live and Authorized at both tips or at neither, and each contract, decision or question of which `Reads` relates, `Grounded` is the same at both tips |
+| | `settled_reads_tip_scope` | two tips with the same cells, seals, standing and presentations, differing in the governing scope alone, and a decision with no evaluator policy of its own: Settled at one, not at the other. `Reads.policy` cannot be dropped |
+| | `killer_latches`, `killer_latches2` | add to any commit a cell `z` that invalidates `d` and seals on `z`, under the governing scope, by keys of its roster for `d` that meet `Pol(d)`: the edge `z → d` is latched after the commit (v1; v2 when `z` is not a withheld scope). `QuorumAdd` |
+| | `unread_commit_decides`, `unread_commit_decides2` | so for any chain `pre ++ cm :: post`, the chain with that cell and those seals added to `cm` has `d` Invalidated and not Effective at its tip, under every reading of Pass 1 over the fold's latches in which `z` is present, Accepted and named by no present cell's invalidates edge. The two chains agree on every commit but one |
+| | `Reader.blind`, `reader_must_read` | a reader (an adaptive strategy that reads list positions and then answers) answers alike on two lists that agree wherever it read; so if they agree off position `j` and differ in a status it answers correctly on both, it read `j` |
+| | `reader_reads_commit` | for the v1 fold: a reader that answers, correctly on the chain and on the chain with the killer, a status that on the latter holds only if `d` is Effective (`StandsAt`), reads the commit `cm` of a chain where the status holds. Hypotheses as `unread_commit_decides`, `z` local |
+| | `fold_state_suffices`, `fold_state_suffices2` | two prefixes with one fold state have one fold state after every continuation |
+| | `revived` | a present cell is Effective once every Effective cell that invalidates it by a latched edge has a fresh killer (`FreshKiller`: present, Accepted, its edge latched, named by no present cell's invalidates edge) |
+| | `dead_cell_silent` | drop a cell that is not Effective from the store: with the same latches and the same `Accepted`, on a store whose invalidates edges climb a rank, `Effective` of every other cell is unchanged |
+| | `dropped_cell_distinguishes` | `x` invalidates `v` by a latched edge and is `v`'s only attacker; where every Effective cell invalidating `x` has a fresh killer, the store that holds `x` has `v` not Effective and the store that dropped `x` has `v` Effective |
 
 ## Executable lens
 
@@ -122,6 +134,19 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   another key's dormant INVALID verdict, by invalidating what kept it stale, does take that key's endorsement away, and
   there the third hypothesis fails. `settled_keeps` does not say a key's endorsement can never be taken; it says one
   cannot be taken by a verdict of another's own.
+- For `settled_frame` and `grounded_frame`: that the cells of the frame are live at both tips or at neither is a
+  hypothesis (`Reads.live`). `active_frame` and `stale_frame` give it on a set of local cells closed under `relies`, under
+  what it supersedes and under who attacks it, into which no new edge latches; the two are not composed into one theorem,
+  because Pass 2 is stated on `Fin N` and Pass 3 on an abstract `Live`. The rules are the same at both tips (one `World`):
+  a rules change reads the history again, and no frame survives it.
+- For `unread_commit_decides`: the model makes no refusal. The gate refuses a cell that names a cell not yet in the
+  store, so on an admitted chain the commit `cm` is `d`'s own or a later one; the theorem holds of any commit because the
+  model's fold latches such an edge. The killer `z` is a hypothesis: a cell whose content invalidates `d`, which no
+  present cell names, with a quorum of `Pol(d)` in the governing roster. A quorum that the roster cannot meet (a
+  decision of tier provisional whose evaluator policy names keys outside it) leaves no such commit, and then the bound
+  says nothing.
+- For `dead_cell_silent`: both readings have one `Accepted` (every cell local, or acceptance untouched by the dropped
+  cell).
 - For `settled_cycle_no_normal_form`: no term hash equals `H_CYCLE_PROVEN` (a term hash is the id of a Book I node,
   `H_CYCLE_PROVEN` the id of the atom `UTF8CYCLE_PROVEN`).
 
@@ -135,6 +160,12 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   they are hypotheses. A rotation the coalition makes is outside it: the gate refuses one without its quorum (E-20), and
   the model makes no refusal. `GitVarsRepo.power` reads the same rules in Python; a search through the gate holds it
   (`test_vars1.py` 106), one commit deep, where nothing yet attacks what the status reads.
+
+- `experiments/witness/frame.py` to `Reader.lean`: the program that computes a frame and says whether later commits touch
+  it is Python. Tests 17–19 of `experiments/witness/test_witness.py` hold "nothing touches it" to the lens's statuses
+  through the gate and on every pair of tips of the live chain; no Lean executable computes a frame. `Reader`, the
+  strategy of `reader_reads_commit`, reads commits by position and is no model of a program with an index of reverse
+  edges: a reader given a commitment to who names a cell is outside it, which is the point.
 
 - `EvalMachine.step` to the Python `step5` (only the differential bridge in sigma-glyph).
 - `sigma_resume._run` to `run`: the loop is transcribed by hand.
@@ -171,4 +202,7 @@ pooling seals across scopes; a verifier that ignores the parent's status (also r
 `pre_lineage_unsound`); dropping the `spent_total`, state or normal-form checks; counting a host
 local outcome as `REPLAYED`; replaying from the start regardless of the parent; in `checkCycle`, dropping the
 return-to-entry, actions-done, prefix-spent, entry-state or `n = 0` check, or miscounting `runN`'s actions; in Pass 3,
-a cycle witness of another computation.
+a cycle witness of another computation. Three break `Reader.lean` and leave `Power.lean` and `Grounded.lean` building:
+a witness that need not attest what it judges (`inWmax_frame`), an INVALID verdict that withdraws whatever cell it is on
+(`withdrawn_frame`), an evaluator policy that is always the tip scope's (`evalPol_frame`). A killer that need not be
+Effective breaks `Pass1.lean` first, and an invalidates edge that also needs an initial endorser breaks `Power.lean` first.

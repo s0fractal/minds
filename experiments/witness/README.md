@@ -311,8 +311,19 @@ histories: a project of three maintainers whose ground fails, the generator of t
 | 14 | **Completeness.** `vars1witness --prove`, given only the store, accepts exactly the decisions whose `prove.py` term is HELD, on both histories before the failure and after it, and exactly the decisions the lens settles on the live chain (34 of 47 at `7c6899b`). Outside the fragment it does not accept what the lens settles: a retires edge that did not latch, whose source a key of its target sealed after the target's birth; a retired INVALID verdict that the checker cannot prove not live. |
 | 15 | **INVALID verdicts withdraw their own keys only.** Against d's 2-of-3 policy: cy's INVALID verdict under its own verifier id withdraws cy's endorsement (a term naming it is REFUSED, `WITHDRAWN`; ana's and bo's are HELD); cy's under ana's id withdraws nothing (all three HELD); ana's and bo's, each under its own, leave one key (REFUSED, and no witness). `vars1witness --prove` accepts exactly where the lens settles. |
 | 16 | **Kill edges that do not count.** Notices: g invalidated by n is HELD once m invalidates n, and REFUSED (`KILLED`) once o invalidates m. INVALID verdicts: one that is Stale, or Invalidated, withdraws nothing (HELD), beside a live one, which does (`WITHDRAWN`). An ATTESTED verdict's invalidates edge counts for nothing. A retirement, a supersession, and a supersession through a superseder that is itself superseded, are `KILLED`; with the retirer or the superseder invalidated, HELD. A rebinding whose supersedes edge two keys latch is HELD; one that one key cannot latch is `KILLED` (the lens: not Active). A notice on a decision of tier owner latches by the admission policy, not the decision's own. In every case both checkers agree, and `vars1witness --prove` accepts exactly where the lens settles. |
+| 17 | **A status is unchanged while nothing touches its frame** (`frame.py`). Through the gate, each kind of object that can change a status touches the frame by the rule that names it, and changes the status: a notice on the cone (`EDGE`) and a second notice that revives it; a notice whose edge one more seal latches (`SEAL`); a seal that completes a quorum; an INVALID verdict that names the decision by payload alone (`JUDGE`); an answer that attests a question; a notice on what only a verdict relies on; a retirement and a supersession; a rebinding that a late seal of the replaced cell's author latches; a rotation, which is in the frame of a decision that reads the scope's policy (`SCOPE`) and not of one with its own; a rotation that waits under v2 and governs sixteen commits later with no new cell (`WAITING`); and, for Grounded, a withdrawal from a decision the decision relies on, which leaves it Settled. Then over every pair of tips of these chains: a frame nothing touches keeps its status. |
+| 18 | **Random extensions.** Sixty random commits on a base of two decisions (one relying on the other), a decision that reads the scope's policy and a question, under v1 and v2 and under an admission threshold of 1 and of 2: over every pair of tips and every evaluated cell, a frame nothing touches keeps Settled and Grounded (4,315 such frames; 420 touched ones changed). |
+| 19 | **The live chain.** Every tip, every decision there, every later tip: a frame the commits between do not touch keeps its status (60,642 at `7c6899b`, none changed). The table below at `7c6899b`, byte for byte (`frame-minds-7c6899b.json`). `bundle_at` is `vars1.export_attestation` at the ref's tip. CI requires the chain. |
+| 20 | The draft message's proof part holds every object its term names, each hashing to its name: the cone, the endorsing seals, the scope cells the seals are under with their rosters, the decision's policy. |
 
-**Mutants.** `mutants.json` has one mutant per check: 66, all killed. Ten of them break the decode that `check.py
+**Mutants.** `mutants.json` has one mutant per check: 78, all killed. Twelve are of `frame.py` (`"file": "frame.py"`), one per rule of
+the frame: new edges not read, only invalidates edges read, the cells that attack the frame's attackers left out, the cells a
+member supersedes left out, seals on an edge's source not watched, seals on a judge not watched, a cell that attests not
+read, a verdict by payload not read, a rotation not read, a waiting rotation not read, the frame of Grounded taken as
+Settled's, and what a judge relies on left out. Each is killed in test 17 on the status changing where the frame said nothing
+touched it, not on a reason's name. Three rules have no mutant, because no chain here exercises them: a rotation to other
+rules touches every frame (no rules change here gives a cell another status), a frame holding a foreign cell is
+`NOT_COVERED`, and a verdict on a checkpoint a judge names is a judge (no decision here requires a computation). Of the other 66, ten break the decode that `check.py
 --lean` writes: kill edges dropped, INVALID verdicts not marked, verifier ids not written, an INVALID verdict's seals
 not written, seals written without verifying, a seal's scope replaced, only the tip's scope written as one that
 governed, the seals on an edge's ends not written, a decision's tier not written, the policies an edge reads not
@@ -337,6 +348,111 @@ the kill-edge rules (2026-11-07):
 The witness is small, but checking it is no faster: it reads the whole store. What it gains is independence (no
 kernel, no vars1.py, no witnesses' word) and an explanation (which cells and which keys hold the decision).
 
+## What a reader must read (`frame.py`, `proofs/Vars1/Reader.lean`)
+
+The witness is small and its check reads the whole store. This is why, and how small the message can be.
+
+**The frame.** `Settled(d)` reads, at a tip:
+- `d`, every cell that **judges** it (a cell that attests it, a verdict on it, a verdict on a checkpoint or cycle
+  witness one of those names), the checkpoints they name, and everything those rely on: the cells whose standing it reads
+  (`read`);
+- every cell with an invalidates, retires or supersedes edge into that set, latched or not, and every cell a member
+  supersedes, to the fixed point: the cells whose Pass 1 bits that standing reads (`guard`);
+- the seals on the judges (their endorsers are counted) and on the sources of edges into `guard` (a seal can latch the
+  edge);
+- for a `d` that names no evaluator policy, the governing scope's admission policy: **the scope caveat**.
+
+`Grounded(d)` reads the same of every contract, decision or question the set reaches, their judges included.
+`settled_frame` and `grounded_frame` (Lean) say that between two tips that agree on these, the status is the same;
+`settled_reads_tip_scope` that the caveat cannot be dropped. `frame.py` computes the frame, and `touches` says whether an
+object of later commits touches it: a new cell with an edge into `guard` (`EDGE`), a new cell that judges (`JUDGE`), a
+new seal on a watched cell (`SEAL`), and for a cell under the caveat a new scope cell (`SCOPE`) or a rotation that
+waited at the earlier tip (`WAITING`); a rotation to other rules touches every frame (`RULES`), since other rules read
+the history again. The frame theorems ask every cell of `guard` to be local.
+
+**Renewal.** A witness for `d` at `T` is a witness at a later `T'` if no object of the commits between touches the
+frame (tests 17–19). A commit names its parent, so that the reader has every commit between is checked from their ids;
+nobody's word is needed for it. On the live chain, of the frames of every decision at every tip, 60,642 pairs with a
+later tip are untouched and 2,600 touched, 2,334 of those by the one rotation from v1 to v2.
+
+**The lower bound.** The frame cannot be closed from inside the store: nothing in a cell names what refers to it.
+`unread_commit_decides`: add to any one commit a cell that invalidates `d` and the seals of a quorum of `Pol(d)`, and
+`d` is Invalidated at the tip whatever the rest is. `reader_reads_commit`: so a reader that reads commits by position
+reads every such commit before it answers correctly. A commit that only adds a seal can do it too, where it completes
+the quorum of an edge whose source is already there (test 17, `SEAL`); that case is tested, not proved. Checking a
+witness is therefore linear in the commits since `d`'s birth for any reader with no commitment to reverse edges, and
+this is the exact sense in which the negative part of a witness has no address.
+
+**No snapshot.** Under one set of rules the fold's state decides the fold of every continuation
+(`fold_state_suffices`), and it is as large as the store: every present cell, every latch, every cell's
+InitialEndorsers, and the continuation's commits carry the seals of their trees. Nothing in it can be dropped. An
+Invalidated cell changes no `Effective` bit now (`dead_cell_silent`) and a status later: invalidate what invalidated
+it, and it is Effective again (`revived`), so the store that kept it and the store that dropped it differ on a cell
+both hold (`dropped_cell_distinguishes`; through the gate, test 16's notices and test 17's revival). So the question of
+snapshots is closed for a reader who wants every later status: nothing compresses but the bytes no rule reads
+(statements and other atoms the kernel's input already leaves out). A rules change reads each commit again under the
+new rules, and that, not the statuses, is what the log is kept for.
+
+**Measured** on `refs/vars/heads/minds` at `7c6899b` (2026-11-07), over the 34 decisions the lens settles of 47, in a
+store of 651 cells, 684 seals and 83 commits (`python experiments/witness/frame.py . minds 7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d`;
+test 19 pins the output):
+
+| | least | median | most |
+|---|---|---|---|
+| cells the status reads (`read`; the same as `guard`, and as the frame of Grounded: no edge enters any) | 2 | 3 | 39 |
+| seals on watched cells | 1 | 2 | 3 |
+| the frame's cells, seals and atoms, bytes | 1,179 | 1,833 | 15,890 |
+| the same as JSON with hex, as bundles travel | 2,427 | 3,747 | 32,092 |
+| proof part of the draft message, JSON | 6,787 | 7,368 | 36,233 |
+| vouch (a projection's cell, atoms and witness seals), JSON | 2,036 | 2,367 | 2,367 |
+| draft message, JSON | 9,509 | 10,090 | 38,624 |
+| attestation bundle with its covering projection (spec §4.4), JSON | 310,324 | 311,855 | 338,629 |
+| the objects of that bundle, bytes | 155,041 | 155,802 | 169,186 |
+| of which the kernel's input | 150,784 | 150,784 | 163,532 |
+
+Three of the 47 decisions name no evaluator policy and read the scope's; all three are Settled. The kernel's input at the
+tip itself is 170,084 bytes. The proof part is larger than the frame because it carries the four scope cells the seals
+are under, each with its roster, and the term.
+
+**The message.** "`d` is in force at `T`" carries three things (`frame.py` `message`, format `minds.inforce.draft@0`, a
+draft that no verifier reads; spec §4.4 is unchanged):
+
+1. **The claim**: scope, `d`, the tip's commit id, the governing scope cell at the tip (the epoch) and the rules
+   identity. The epoch fixes the evaluator policy of a decision under the caveat and ends the chain of scope cells the
+   seals count under; the rules identity is what the frame theorems hold under.
+2. **The proof**, which travels and is checked from bytes: a `minds.witness.held@1` term with the objects it names
+   (the cone's cells, the endorsing seals, the scope cells with their rosters, the policy). It proves the positive part:
+   the objects hash to their names, the seals verify under distinct keys of the policy the decision's id fixes, on
+   ATTESTED verdicts that judge and attest it, and the cone is closed under `relies`. With the sources of the edges into
+   the cone and their seals it would also prove that an edge that is there does not count (the stratified part, which
+   both checkers derive from a store). Its size follows the cone and the threshold, not the store.
+3. **The vouch**, which is someone's word: that the tip holds no further cell with an edge into the frame, no further
+   cell that judges `d`, and no further seal on a watched cell. By the lower bound nothing short of reading every commit
+   establishes it, so it is said by whoever did, under keys the reader pinned beforehand, and bound to the tip, the
+   epoch, the rules identity, `d` and the frame (a digest of the ids `frame` lists), so that the word is about this
+   frame's closed world and nothing else.
+
+**Is a projection's seal that vouch?** It vouches for more and for less, and not in a form a small message can use.
+- *More.* Its witnesses seal `(tip, rules, input, state)`, where `input` is the digest of the kernel's whole input: every
+  cell and every verified seal at the tip. That fixes the closed world of every decision at once.
+- *Not usable.* The digest is of the whole input as one string. It says that nothing else touches `d`'s frame only to a
+  reader who holds the input and recomputes; no part of it can be opened. The attestation bundle therefore carries the
+  whole input, 150,784 to 163,532 bytes, for every decision, and that is all the difference between 310 KB and 10 KB.
+- *Less.* `state` covers the governing scope, the latches and the bits of Passes 1–2. It says nothing of Pass 3, so
+  nothing of Settled or Grounded; nothing of commits after the tip; and its witness policy is its own, so the reader
+  still pins keys.
+
+A seal that vouches for exactly the closed-world part would be on the claim itself with the frame's digest: one seal per
+decision and tip in place of one per tip, by a witness that has computed the lens there anyway. Renewal keeps that
+cheap: the word is needed again only when an object touches the frame. This is not built, and neither is an index of
+reverse edges, which would turn the vouch into a proof and has no consumer yet.
+
+**Not established here.** No verifier reads the draft message; the bytes are what such a message would weigh.
+`frame.py` is tested against the lens, not proved; the Lean theorems take the standing of the frame's cells as a
+hypothesis that `active_frame` and `stale_frame` discharge, and are not composed with the fold into one statement. The
+reader bound is proved for the v1 fold (the kill itself for both); a reader with an index of reverse edges is outside
+its model.
+
 ## What it does not establish
 
 - **The negative part.** `HELD` rests on the store at the tip being the admitted chain. `check.py` runs no gate.
@@ -354,7 +470,9 @@ kernel, no vars1.py, no witnesses' word) and an explanation (which cells and whi
 
 `ASSURANCE.md` carries what this spike establishes as five claims: `assurance.witness-held` and
 `assurance.witness-one-reading` (tested), `assurance.witness-lean` (proved; roadmap G7),
-`assurance.witness-complete` and `assurance.witness-kernel` (proved).
+`assurance.witness-complete` and `assurance.witness-kernel` (proved); and what a reader must read as five more:
+`assurance.reader-frame`, `assurance.reader-scope`, `assurance.reader-bound`, `assurance.reader-state` (proved) and
+`assurance.reader-touches` (tested).
 
 - **The decode in Lean.** `vars1witness` reads what `check.py` decoded. Reading the git tree, hashing (Book I's
   `SigmaEval/Sha256.lean`) and parsing cells in Lean would leave Ed25519 as the only part of the decode outside it.
