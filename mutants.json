@@ -3118,5 +3118,29 @@
   "kills": [
    "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
   ]
+ },
+ "m-pins-own": {
+  "file": "tools/minds_chain.py",
+  "find": "        want = pins.get(label, pinned)",
+  "replace": "        want = pinned",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-pins-table": {
+  "file": "tools/minds_chain.py",
+  "find": "        table = PIN_TABLE.search(text)",
+  "replace": "        table = None",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-pins-order": {
+  "file": "tools/minds_chain.py",
+  "find": "PIN_FILES = (\"verify/minds_verify.py\", \"vars1.py\")",
+  "replace": "PIN_FILES = (\"vars1.py\", \"verify/minds_verify.py\")",
+  "kills": [
+   "test_58_release_checks_rebuild_every_rules_module"
+  ]
  }
 }
