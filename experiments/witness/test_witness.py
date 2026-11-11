@@ -7,7 +7,7 @@
 A mutant must fail its named test on an assertion (an error is not a kill), and the named tests must pass unmutated
 first. Chains are built through the real gate (vars1.py); the checker under test is check.py, or the file named by
 WITNESS_SOURCE (a mutant); the frame under test (tests 17-19) is frame.py, or the file named by FRAME_SOURCE; the
-committed reverse index (tests 21-23) is revindex.py, or the file named by REVINDEX_SOURCE.
+committed reverse index (tests 21-24) is revindex.py, or the file named by REVINDEX_SOURCE.
 """
 import collections
 import contextlib
@@ -1253,6 +1253,54 @@ class T(unittest.TestCase):
         true_leaf = honest.leaf(d.id)
         listed = {"leaf": true_leaf, "kind": "payload", "omits": T.cells[bytes.fromhex(true_leaf["payload"][0])].encode().hex()}
         self.assertFalse(RX.judge(T, honest.root, len(honest.keys), listed), "an object the leaf lists refutes nothing")
+
+    def test_24_a_fraud_proof_carries_its_own_evidence(self):
+        """`portable` puts into `refute`'s proof the git objects from the tip's commit down to the object it names (and
+        to the edge list that object's field names), and `judge_portable` decides it from the signed root and the tip's
+        commit id alone, with no store. A git tree lists every entry, so the same path proves an id absent. A proof
+        with one byte changed, under another tip, or against the honest root is refused, and an honest leaf has none."""
+        c, d, vs = stale_invalid_chain()
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        honest = RX.Index(T)
+        nowhere = hashlib.sha256(b"no such cell").digest()
+        lies = (("attests", lambda e: [x for x in e if x != vs["ana"].id], d.id),
+                ("seals", lambda e: e[1:], vs["ana"].id),
+                ("attests", lambda e: sorted(e + [d.id]), d.id),        # d does not attest itself
+                ("payload", lambda e: sorted(e + [nowhere]), d.id))     # no such cell at the tip
+        absent = 0
+        for kind, lie, target in lies:
+            entries = {k: {kk: list(v) for kk, v in e.items()} for k, e in honest.entries.items()}
+            entries[target][kind] = lie(entries[target][kind])
+            if kind == "attests" and vs["ana"].id not in entries[target][kind]:
+                entries[target]["payload"] = [x for x in entries[target]["payload"] if x != vs["ana"].id]
+            liar = RX.Index(T, entries)
+            fraud = RX.portable(T, RX.refute(T, liar.leaf(target)))
+            self.assertTrue(RX.judge_portable(V, c.tip, liar.root, len(liar.keys), fraud), kind)
+            if kind == "attests" and fraud["omits"]:
+                self.assertEqual(len(fraud["proofs"]), 2, "the verdict and the edge list its attests field names")
+                self.assertFalse(RX.judge_portable(V, c.tip, liar.root, len(liar.keys), fraud | {"proofs": fraud["proofs"][:1]}),
+                                 "an edge kind needs the edge list shown")
+            absent += any(RX.verify_object(c.tip, x) is None for x in fraud["proofs"])
+            self.assertFalse(RX.judge_portable(V, c.tip, honest.root, len(honest.keys), fraud), "another root")
+            other = json.loads(json.dumps(fraud))
+            parent = c.repo.commit_chain(c.tip)[-2]
+            self.assertFalse(RX.judge_portable(V, parent, liar.root, len(liar.keys), other), "another tip")
+            for part in ("trees", "object", "commit"):
+                bent = json.loads(json.dumps(fraud))
+                x = bent["proofs"][0]
+                if part not in x:
+                    continue
+                v = x[part][-1] if part == "trees" else x[part]
+                v = v[:-2] + ("00" if v[-2:] != "00" else "01")
+                if part == "trees":
+                    x["trees"][-1] = v
+                else:
+                    x[part] = v
+                self.assertFalse(RX.judge_portable(V, c.tip, liar.root, len(liar.keys), bent), (kind, part))
+        self.assertEqual(absent, 1, "the id no cell has is shown absent by the tree that would list it")
+        true_leaf = honest.leaf(d.id)
+        accused = RX.portable(T, {"leaf": true_leaf, "kind": "attests", "lists": true_leaf["attests"][0]})
+        self.assertFalse(RX.judge_portable(V, c.tip, honest.root, len(honest.keys), accused), "it does attest d")
 
 
 def status(lens, d: bytes, grounded: bool = True):

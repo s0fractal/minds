@@ -508,12 +508,22 @@ Over these tips:
     an honest leaf.
 - **The negative facts have an address.** Their weight no longer grows with the store. Whoever signs a root does not
   have to stand behind a separate word for each decision.
+- **A refutation needs no store** (`portable`, `judge_portable`, test 24).
+  - The proof carries the object it names, with the git objects that show it at the tip: the tip's commit, the trees
+    `/`, `cas`, `cas/<kind>` and `cas/<kind>/<id[:2]>`, and the blob, each hashing to the name its parent gives it.
+  - When the object is an edge, the proof also carries the edge list its field names.
+  - A git tree lists every entry, so the same path proves an id absent.
+  - A judge holding the signed root and the tip's commit id decides the proof alone.
+  - Test 24 refutes four lies this way: an omitted verdict, an omitted seal, a falsely listed attester, and a listed id
+    no cell has. A proof with one byte changed, under the parent tip, against the honest root, or without its edge list
+    is refused.
+  - Against the live tip, a refutation of one hidden verdict weighs 16,075 bytes of git objects (33,597 as JSON),
+    and no store is read.
+  - Git's object ids are SHA-1 here, checked with `hashlib`, without the collision detection git itself uses.
 
 **Not done.**
 - No format of spec §4.4 changes, and nobody signs a root on `refs/vars/heads/minds`.
-- `judge` reads the object from the store at the tip, and a proof that the object is in that tip's tree (its git path)
-  is not built.
-- Nothing proves the module. `reader_frame` is tested against `frame.py` and burned by eleven mutants. The Lean model of
+- Nothing proves the module. `reader_frame` is tested against `frame.py`, and fifteen mutants burn the module. The Lean model of
   a reader with an index (`proofs/Vars1/Reader.lean`'s bound does not cover one) is not written.
 
 ## What it does not establish
