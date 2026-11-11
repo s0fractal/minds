@@ -1,0 +1,57 @@
+[
+ {
+  "bundle_max": 28725,
+  "bundle_median": 24901,
+  "cells": 36,
+  "closed_median": 3625,
+  "decisions": 6,
+  "leaves": 36,
+  "message_max": 13236,
+  "message_median": 10764,
+  "tip": "46a5fe0634db0fdd2033fcd81bee233b7680fb04"
+ },
+ {
+  "bundle_max": 41849,
+  "bundle_median": 39492,
+  "cells": 56,
+  "closed_median": 5467,
+  "decisions": 11,
+  "leaves": 56,
+  "message_max": 13254,
+  "message_median": 13169,
+  "tip": "a2e2b8e7890b40bad968bca1aea6401437820099"
+ },
+ {
+  "bundle_max": 72493,
+  "bundle_median": 63684,
+  "cells": 112,
+  "closed_median": 5735,
+  "decisions": 20,
+  "leaves": 112,
+  "message_max": 13456,
+  "message_median": 13455,
+  "tip": "53da44acbd1ac5f54859a98abb7c2dcad6b115cd"
+ },
+ {
+  "bundle_max": 206007,
+  "bundle_median": 178740,
+  "cells": 400,
+  "closed_median": 6141,
+  "decisions": 31,
+  "leaves": 400,
+  "message_max": 72566,
+  "message_median": 13861,
+  "tip": "6b6a639a2957d58c39efdec478e7be10dc2fbef3"
+ },
+ {
+  "bundle_max": 338629,
+  "bundle_median": 311855,
+  "cells": 651,
+  "closed_median": 6342,
+  "decisions": 34,
+  "leaves": 651,
+  "message_max": 102068,
+  "message_median": 16463,
+  "tip": "7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d"
+ }
+]

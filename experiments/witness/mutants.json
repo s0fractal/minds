@@ -400,5 +400,71 @@
   "find": "    read = down({d} | judges | named)\n",
   "replace": "    read = down({d}) | judges | named\n",
   "kills": "test_17_a_status_is_unchanged_while_nothing_touches_its_frame"
+ },
+ "m-rev-path": {
+  "file": "revindex.py",
+  "find": "    return sn == 0 and r == root",
+  "replace": "    return True",
+  "kills": "test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer"
+ },
+ "m-rev-leaf-missing": {
+  "file": "revindex.py",
+  "find": "            raise Incomplete(f\"no leaf for {v.hex()[:12]}\")",
+  "replace": "            return {k: [] for k in KINDS}",
+  "kills": "test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer"
+ },
+ "m-rev-cell-missing": {
+  "file": "revindex.py",
+  "find": "            raise Incomplete(f\"no cell {v.hex()[:12]}\")",
+  "replace": "            return cells[next(iter(cells))]",
+  "kills": "test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer"
+ },
+ "m-rev-seal-missing": {
+  "file": "revindex.py",
+  "find": "    if not on_watch <= seals:",
+  "replace": "    if False:",
+  "kills": "test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer"
+ },
+ "m-rev-into-kinds": {
+  "file": "revindex.py",
+  "find": "    into = lambda x: {y for k in EVICT for y in leaf(x)[k]}  # noqa: E731",
+  "replace": "    into = lambda x: {y for k in EVICT[:1] for y in leaf(x)[k]}  # noqa: E731",
+  "kills": "test_21_a_frame_reads_from_its_leaves_alone"
+ },
+ "m-rev-named": {
+  "file": "revindex.py",
+  "find": "        return direct | {b for n in named for b in leaf(n)[\"named\"]}, {n for n in named if n in cells}",
+  "replace": "        return direct, {n for n in named if n in cells}",
+  "kills": "test_21_a_frame_reads_from_its_leaves_alone"
+ },
+ "m-rev-reverse-seals": {
+  "file": "revindex.py",
+  "find": "        at(s.h_target)[\"seals\"].append(sid)",
+  "replace": "        pass",
+  "kills": "test_21_a_frame_reads_from_its_leaves_alone"
+ },
+ "m-rev-reverse-payload": {
+  "file": "revindex.py",
+  "find": "            at(c.h_payload)[\"payload\"].append(cid)",
+  "replace": "            pass",
+  "kills": "test_21_a_frame_reads_from_its_leaves_alone"
+ },
+ "m-rev-judge-listed": {
+  "file": "revindex.py",
+  "find": "        return oid not in entry[k] and _points(T, oid, k, key)",
+  "replace": "        return _points(T, oid, k, key)",
+  "kills": "test_23_a_lying_root_is_refuted_by_one_object"
+ },
+ "m-rev-judge-points": {
+  "file": "revindex.py",
+  "find": "    return x in entry[k] and not _points(T, x, k, key)",
+  "replace": "    return x in entry[k]",
+  "kills": "test_23_a_lying_root_is_refuted_by_one_object"
+ },
+ "m-rev-judge-path": {
+  "file": "revindex.py",
+  "find": "    if not verify_path(root, size, lf[\"index\"], leaf_hash(key, entry), [bytes.fromhex(p) for p in lf[\"path\"]]):\n        return False\n    if \"omits\" in fraud:",
+  "replace": "    if \"omits\" in fraud:",
+  "kills": "test_23_a_lying_root_is_refuted_by_one_object"
  }
 }

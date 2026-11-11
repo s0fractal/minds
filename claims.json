@@ -2476,6 +2476,30 @@
    ]
   },
   {
+   "id": "assurance.revindex",
+   "source": "ASSURANCE.md",
+   "quote": "`revindex.py` reads a decision's frame from the root of the tip's reverse index, the leaves the frame reads with their paths, and the frame's own cells, and gets the frame `frame.py` reads from the whole store",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_21_a_frame_reads_from_its_leaves_alone",
+    "witness:test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer",
+    "witness:test_23_a_lying_root_is_refuted_by_one_object"
+   ],
+   "mutants": [
+    "m-rev-path",
+    "m-rev-leaf-missing",
+    "m-rev-cell-missing",
+    "m-rev-seal-missing",
+    "m-rev-into-kinds",
+    "m-rev-named",
+    "m-rev-reverse-seals",
+    "m-rev-reverse-payload",
+    "m-rev-judge-listed",
+    "m-rev-judge-points",
+    "m-rev-judge-path"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",
