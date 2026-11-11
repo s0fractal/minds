@@ -8165,6 +8165,58 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((rows[new.id.hex()]["stands_here"], rows[new.id.hex()]["stands_there"], rows[new.id.hex()]["follow"]),
                          (False, True, "out-of-reach"))
 
+    def test_130_a_release_settles_on_a_majority_and_a_pin_keeps_a_veto(self) -> None:
+        """With three members a release and its projection need two: one member who does not answer holds nothing back
+        (antigravity held thirteen releases back under unanimity). A reader who pins the silent member's key still
+        refuses until it answers, and it may answer a settled release."""
+        mc = self._minds_chain()
+        self.assertEqual([mc.majority(n) for n in range(1, 7)], [1, 2, 2, 3, 3, 4])
+        ska, skb, skc = b"\x07" * 32, b"\x08" * 32, b"\x09" * 32
+        pka, pkb, pkc = (V.ed25519_pubkey(k) for k in (ska, skb, skc))
+        mc.init(self.repo_path, ska)
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, ska, pkb, "bob")
+        mc.join(self.repo_path, ska, pkc, "carol")
+        ok = lambda *a, **kw: (["test_vars1 OK"], True)
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])
+        lens = repo.lens("minds")
+        self.assertFalse(lens["settled"][r1["decision"]], "the maintainer alone does not settle a release of three")
+        thr, evaluators = lens["evaluators"][r1["decision"]]
+        self.assertEqual((thr, set(evaluators)), (2, {pka, pkb, pkc}))
+        self.assertEqual((mc.awaiting(self.repo_path, pkb), mc.awaiting(self.repo_path, pkc)),
+                         ([r1["decision"]], [r1["decision"]]))
+
+        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=ok)
+        _, r2 = mc.release(self.repo_path, ska, "b" * 40, ["test_vars1 OK"])
+        mc.verify_release(self.repo_path, skb, r2["decision"], "bob", checks=ok)
+        lens = repo.lens("minds")
+        self.assertTrue(lens["settled"][r1["decision"]], "two of three settle it; carol never answered")
+        self.assertTrue(lens["settled"][r2["projection"]], "two of three witness the projection that covers r1")
+        self.assertEqual(mc.awaiting(self.repo_path, pkc), [], "a settled release waits for no one")
+        row = {r["id"]: r for r in mc.status(self.repo_path)["releases"]}[r1["decision"].hex()]
+        self.assertEqual((row["settled"], row["threshold"], row["attested_by"], row["awaiting"]),
+                         (True, 2, sorted([pka.hex(), pkb.hex()]), []))
+
+        self.assertEqual(mc.covering_projection(repo, r1["decision"]), r2["projection"])
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertTrue(V.verify_attestation(b, require=[pka, pkb])["accepted"])
+        pinned = V.verify_attestation(b, require=[pka, pkc])
+        self.assertFalse(pinned["accepted"], "a reader who pins carol keeps her veto")
+        self.assertEqual(pinned["required_missing"], [pkc.hex()])
+
+        # carol answers the settled release; a projection whose tip holds her verdict, and that she witnesses, then
+        # satisfies the pin (acceptance is about the projection's tip, §4.4)
+        mc.verify_release(self.repo_path, skc, r1["decision"], "carol", checks=ok)
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r2["projection"])))
+        self.assertEqual(V.verify_attestation(b, require=[pka, pkc])["required_missing"], [pkc.hex()],
+                         "her verdict came after r2's projection's tip")
+        _, r3 = mc.release(self.repo_path, ska, "c" * 40, ["test_vars1 OK"])
+        mc.verify_release(self.repo_path, skc, r3["decision"], "carol", checks=ok)
+        b = json.loads(json.dumps(V.export_attestation(repo, "minds", r1["decision"], r3["projection"])))
+        self.assertTrue(V.verify_attestation(b, require=[pka, pkc])["accepted"])
+        self.assertEqual(V.verify_attestation(b, require=[pka, pkb, pkc])["required_missing"], [pkb.hex()],
+                         "every pinned key witnesses the projection: bob has not witnessed r3's")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

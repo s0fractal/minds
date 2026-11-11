@@ -474,8 +474,8 @@
  },
  "m-f40-release-projection": {
   "file": "tools/minds_chain.py",
-  "find": "slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, everyone),",
-  "replace": "slots=(_put(atoms, V.atom_utf8(tip)), V.H_LENS_KERNEL, h_in, h_state, everyone),",
+  "find": "slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, quorum),",
+  "replace": "slots=(_put(atoms, V.atom_utf8(tip)), V.H_LENS_KERNEL, h_in, h_state, quorum),",
   "kills": [
    "test_53_v1_releases_survive_a_rules_change"
   ]
@@ -3045,6 +3045,22 @@
   "replace": "            pass\n",
   "kills": [
    "test_129_lag_reads_what_two_scopes_disagree_on"
+  ]
+ },
+ "m-release-unanimous": {
+  "file": "tools/minds_chain.py",
+  "find": "    quorum = _policy(atoms, majority(len(keys)), keys)",
+  "replace": "    quorum = _policy(atoms, len(keys), keys)",
+  "kills": [
+   "test_130_a_release_settles_on_a_majority_and_a_pin_keeps_a_veto"
+  ]
+ },
+ "m-release-majority-low": {
+  "file": "tools/minds_chain.py",
+  "find": "    return n // 2 + 1",
+  "replace": "    return max(1, n // 2)",
+  "kills": [
+   "test_130_a_release_settles_on_a_majority_and_a_pin_keeps_a_veto"
   ]
  }
 }

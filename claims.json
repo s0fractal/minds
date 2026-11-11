@@ -1952,6 +1952,21 @@
    ]
   },
   {
+   "id": "assurance.release-majority",
+   "source": "ASSURANCE.md",
+   "quote": "A release recorded since 2026-11-11, and the projection recorded with it, need a majority of the roster (`n // 2 + 1` of `n`)",
+   "status": "tested",
+   "witnesses": [
+    "test:test_130_a_release_settles_on_a_majority_and_a_pin_keeps_a_veto",
+    "lean:majority_overlap",
+    "lean:majority_least"
+   ],
+   "mutants": [
+    "m-release-unanimous",
+    "m-release-majority-low"
+   ]
+  },
+  {
    "id": "assurance.status",
    "source": "ASSURANCE.md",
    "quote": "`status` tells merged from Settled",

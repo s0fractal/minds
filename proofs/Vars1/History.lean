@@ -169,6 +169,25 @@ theorem quorum_overlap {A B Pol : List K} (ha : A.Nodup) (hb : B.Nodup) (hA : �
   rw [List.length_append] at this
   omega
 
+/-- **Majority.** Two lists of distinct keys of one policy of `n`, each of at least `n / 2 + 1` keys, share a key: by
+`quorum_overlap` they share at least `2 (n / 2 + 1) - n ≥ 1`. This is the threshold `tools/minds_chain.py` gives a
+release's evaluator policy and its projection's witness policy (`majority`), so two conflicting Settled results under
+it name a key that sealed both. -/
+theorem majority_overlap {A B Pol : List K} (ha : A.Nodup) (hb : B.Nodup) (hA : ∀ k ∈ A, k ∈ Pol)
+    (hB : ∀ k ∈ B, k ∈ Pol) (hp : Pol.Nodup) (hqa : Pol.length / 2 + 1 ≤ A.length)
+    (hqb : Pol.length / 2 + 1 ≤ B.length) : ∃ k, k ∈ A ∧ k ∈ B := by
+  have h := quorum_overlap ha hb hA hB hp
+  have hpos : 0 < (A.filter (· ∈ B)).length := by omega
+  cases hf : A.filter (· ∈ B) with
+  | nil => rw [hf] at hpos; simp at hpos
+  | cons k t =>
+    have hk : k ∈ A.filter (· ∈ B) := by rw [hf]; simp
+    exact ⟨k, (List.mem_filter.mp hk).1, by simpa using (List.mem_filter.mp hk).2⟩
+
+/-- The majority is the least such threshold: `n < 2 (n / 2 + 1)`, while at `n / 2` the bound of `quorum_overlap`,
+`2 (n / 2) - n`, is `0`. -/
+theorem majority_least (n : Nat) : n < 2 * (n / 2 + 1) ∧ 2 * (n / 2) - n = 0 := by omega
+
 end Overlap
 
 end Vars1
