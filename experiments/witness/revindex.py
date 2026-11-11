@@ -360,3 +360,127 @@ if __name__ == "__main__":
     _tips = [_chain[i] for i in sorted({len(_chain) // 8, len(_chain) // 4, len(_chain) // 2, 3 * len(_chain) // 4,
                                          len(_chain) - 1})]
     print(json.dumps(measure(vars1, _repo, _scope, _tips, _prove.prove, _frame), indent=1, sort_keys=True))
+
+
+# ---------------------------------------------------------------- fraud proofs that carry their own evidence
+#
+# `judge` reads the one object a fraud proof names from the store. A portable proof carries that object with its path
+# through git's own Merkle DAG: the tip's commit, the trees `/`, `cas`, `cas/<kind>`, `cas/<kind>/<id[:2]>`, and the
+# blob, each hashing to the name its parent gives it (git object ids, SHA-1 in this repository). A git tree lists all
+# its entries, so the same path also proves an absence: the last tree on it lacks the name. A judge then needs the
+# signed root and the tip's commit id, and no store at all (`judge_portable`). Git's SHA-1 is checked here with
+# hashlib's, without the collision detection git itself uses.
+
+WHERE = {"cell": "cells", "seal": "seals", "atom": "atoms"}
+HVEC_KINDS = ("attests",) + EVICT
+
+
+def _git_id(kind: str, raw: bytes) -> bytes:
+    return hashlib.sha1(f"{kind} {len(raw)}\0".encode() + raw).digest()
+
+
+def _tree_entry(raw: bytes, name: str) -> Optional[bytes]:
+    """The object id a git tree gives `name`, or None when its listing has no such entry."""
+    i, want = 0, name.encode()
+    while i < len(raw):
+        sp, nul = raw.index(b" ", i), raw.index(b"\0", i)
+        if raw[sp + 1:nul] == want:
+            return raw[nul + 1:nul + 21]
+        i = nul + 21
+    return None
+
+
+def object_proof(T, where: str, oid: bytes) -> Dict[str, object]:
+    """From the store at the tip, the git objects that show `cas/<where>/<id>` there, or show it absent."""
+    import subprocess
+    git = lambda *a: subprocess.run(["git", "-C", str(T.repo.repo_dir), *a], capture_output=True,  # noqa: E731
+                                    check=True).stdout
+    h = oid.hex()
+    commit = git("cat-file", "commit", T.tip)
+    out: Dict[str, object] = {"where": where, "id": h, "commit": commit.hex(), "trees": []}
+    cur = bytes.fromhex(commit.split(b"\n", 1)[0].split(b" ")[1].decode())
+    for name in ("cas", WHERE[where], h[:2], h[2:]):
+        raw = git("cat-file", "tree", cur.hex())
+        out["trees"].append(raw.hex())
+        nxt = _tree_entry(raw, name)
+        if nxt is None:
+            return out
+        cur = nxt
+    out["object"] = git("cat-file", "blob", cur.hex()).hex()
+    return out
+
+
+def verify_object(tip: str, proof: Dict[str, object]) -> Optional[bytes]:
+    """The object a proof shows at the tip, or None when it shows the object absent; ValueError when its git objects
+    do not chain from the tip's commit id to the object, or the object is not the one named."""
+    commit = bytes.fromhex(proof["commit"])
+    if _git_id("commit", commit).hex() != tip or not commit.startswith(b"tree "):
+        raise ValueError("the commit is not the tip")
+    h, trees = proof["id"], [bytes.fromhex(t) for t in proof["trees"]]
+    cur = bytes.fromhex(commit[5:45].decode())
+    names = ("cas", WHERE[proof["where"]], h[:2], h[2:])
+    for i, name in enumerate(names):
+        if i >= len(trees) or _git_id("tree", trees[i]) != cur:
+            raise ValueError(f"tree {i} does not chain")
+        nxt = _tree_entry(trees[i], name)
+        if nxt is None:
+            if i != len(trees) - 1 or "object" in proof:
+                raise ValueError("an absence must end the path")
+            return None
+        cur = nxt
+    if len(trees) != len(names) or "object" not in proof:
+        raise ValueError("the path ends without its object")
+    obj = bytes.fromhex(proof["object"])
+    if _git_id("blob", obj) != cur or _sha(obj).hex() != h:
+        raise ValueError("the object is not the one named")
+    return obj
+
+
+def portable(T, fraud: Dict[str, object]) -> Dict[str, object]:
+    """`refute`'s proof with the evidence inside: the object it names, present or absent, and the edge list that
+    object's field names when the kind is an edge."""
+    k = fraud["kind"]
+    oid = _sha(bytes.fromhex(fraud["omits"])) if "omits" in fraud else bytes.fromhex(fraud["lists"])
+    where = "seal" if k == "seals" else "cell"
+    proofs = [object_proof(T, where, oid)]
+    c = T.cells.get(oid)
+    if k in HVEC_KINDS and c is not None and getattr(c, "h_" + k) != T.V.H_EMPTY:
+        proofs.append(object_proof(T, "atom", getattr(c, "h_" + k)))
+    return {"leaf": fraud["leaf"], "kind": k, "id": oid.hex(), "omits": "omits" in fraud, "proofs": proofs}
+
+
+def judge_portable(V, tip: str, root: bytes, size: int, fraud: Dict[str, object]) -> bool:
+    """`judge` with no store: the leaf must lead to the root, and the objects the proof carries, each checked down
+    from the tip's commit id, must contradict that leaf."""
+    lf, k, oid = fraud["leaf"], fraud["kind"], bytes.fromhex(fraud["id"])
+    key = bytes.fromhex(lf["key"])
+    entry = {kk: [bytes.fromhex(x) for x in lf[kk]] for kk in KINDS}
+    if not verify_path(root, size, lf["index"], leaf_hash(key, entry), [bytes.fromhex(p) for p in lf["path"]]):
+        return False
+    try:
+        shown = {(p["where"], p["id"]): verify_object(tip, p) for p in fraud["proofs"]}
+    except (ValueError, KeyError, IndexError):
+        return False
+    where = "seal" if k == "seals" else "cell"
+    if (where, oid.hex()) not in shown:
+        return False
+    obj = shown[(where, oid.hex())]
+    if obj is None:  # absent at the tip: it points at nothing
+        points = False
+    elif where == "seal":
+        points = V.Seal.decode(obj).h_target == key
+    else:
+        c = V.Cell.decode(obj)
+        if k == "payload":
+            points = c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == key
+        elif k == "named":
+            points = c.h_schema == V.H_SCHEMA["verdict"] and c.slots[0] == key
+        else:
+            h = getattr(c, "h_" + k)
+            if h == V.H_EMPTY:
+                points = False
+            elif shown.get(("atom", h.hex())) is None:
+                return False  # the edge list is not shown, so nothing is shown
+            else:
+                points = key in V.parse_hvec(shown[("atom", h.hex())], require_sorted=True)
+    return (oid not in entry[k] and points) if fraud["omits"] else (oid in entry[k] and not points)

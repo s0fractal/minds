@@ -466,5 +466,29 @@
   "find": "    if not verify_path(root, size, lf[\"index\"], leaf_hash(key, entry), [bytes.fromhex(p) for p in lf[\"path\"]]):\n        return False\n    if \"omits\" in fraud:",
   "replace": "    if \"omits\" in fraud:",
   "kills": "test_23_a_lying_root_is_refuted_by_one_object"
+ },
+ "m-rev-git-commit": {
+  "file": "revindex.py",
+  "find": "    if _git_id(\"commit\", commit).hex() != tip or not commit.startswith(b\"tree \"):",
+  "replace": "    if not commit.startswith(b\"tree \"):",
+  "kills": "test_24_a_fraud_proof_carries_its_own_evidence"
+ },
+ "m-rev-git-tree": {
+  "file": "revindex.py",
+  "find": "        if i >= len(trees) or _git_id(\"tree\", trees[i]) != cur:",
+  "replace": "        if i >= len(trees):",
+  "kills": "test_24_a_fraud_proof_carries_its_own_evidence"
+ },
+ "m-rev-portable-atom": {
+  "file": "revindex.py",
+  "find": "                return False  # the edge list is not shown, so nothing is shown",
+  "replace": "                points = True",
+  "kills": "test_24_a_fraud_proof_carries_its_own_evidence"
+ },
+ "m-rev-portable-absent": {
+  "file": "revindex.py",
+  "find": "    if obj is None:  # absent at the tip: it points at nothing\n        points = False",
+  "replace": "    if obj is None:  # absent at the tip: it points at nothing\n        points = True",
+  "kills": "test_24_a_fraud_proof_carries_its_own_evidence"
  }
 }

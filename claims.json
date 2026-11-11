@@ -2483,7 +2483,8 @@
    "witnesses": [
     "witness:test_21_a_frame_reads_from_its_leaves_alone",
     "witness:test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer",
-    "witness:test_23_a_lying_root_is_refuted_by_one_object"
+    "witness:test_23_a_lying_root_is_refuted_by_one_object",
+    "witness:test_24_a_fraud_proof_carries_its_own_evidence"
    ],
    "mutants": [
     "m-rev-path",
@@ -2496,7 +2497,11 @@
     "m-rev-reverse-payload",
     "m-rev-judge-listed",
     "m-rev-judge-points",
-    "m-rev-judge-path"
+    "m-rev-judge-path",
+    "m-rev-git-commit",
+    "m-rev-git-tree",
+    "m-rev-portable-atom",
+    "m-rev-portable-absent"
    ]
   },
   {

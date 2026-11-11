@@ -657,9 +657,9 @@
       "`experiments/witness/test_witness.py` 17–19; `experiments/witness/frame.py` `frame`, `touches`"
      ],
      [
-      "`revindex.py` reads a decision's frame from the root of the tip's reverse index, the leaves the frame reads with their paths, and the frame's own cells, and gets the frame `frame.py` reads from the whole store; a leaf or cell it lacks is `Incomplete`, and a leaf that hides or invents one fact is refuted by that one object. The root itself is the signer's claim, not proved",
-      "Tested on every decision of the live chain at the named tip (94 frames), four chains with eviction edges and a verdict naming a checkpoint; eleven mutants",
-      "`experiments/witness/test_witness.py` 21–23; `experiments/witness/revindex.py`"
+      "`revindex.py` reads a decision's frame from the root of the tip's reverse index, the leaves the frame reads with their paths, and the frame's own cells, and gets the frame `frame.py` reads from the whole store; a leaf or cell it lacks is `Incomplete`, and a leaf that hides or invents one fact is refuted by that one object, carried with its git path from the tip's commit, so the judge reads no store. The root itself is the signer's claim, not proved",
+      "Tested on every decision of the live chain at the named tip (94 frames), four chains with eviction edges and a verdict naming a checkpoint, and four refuted lies; fifteen mutants",
+      "`experiments/witness/test_witness.py` 21–24; `experiments/witness/revindex.py`"
      ]
     ]
    }
