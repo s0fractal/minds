@@ -1158,6 +1158,12 @@ class T(unittest.TestCase):
         for c, d, _ in (author_chain(False), author_chain(True), retired_invalid_chain(), stale_invalid_chain()):
             self.assertEqual(self._rev_frames(FR.Tip(V, c.repo, SCOPE, c.tip), [d.id]), 2)
         self.assertEqual(self._rev_frames(*named_store()), 2)
+        c = Chain(scratch())  # a verdict on d that attests another decision e: it judges d through its payload alone
+        g, k, d, vs = c.basic()
+        e = c.decision("decision/e", [k])
+        c.commit((e, "ana"))
+        c.commit((c.verdict(d, "decision/d/attests-e", [k], attests=e, verifier="ana"), "ana"))
+        self.assertEqual(self._rev_frames(FR.Tip(V, c.repo, SCOPE, c.tip), [d.id]), 2)
         repo = V.GitVarsRepo(ROOT)
         if repo.ref_commit("minds") is None:
             if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
