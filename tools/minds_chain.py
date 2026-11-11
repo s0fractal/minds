@@ -4,9 +4,10 @@
 Each release of `main` is a `decision` cell stating what was released (commit, rules kernel) and which checks
 passed, attested by the maintainer's verdict, together with a projection of the chain for clients without the
 repository. The maintainer key lives in `.git/vars/maintainer.key` (never committed or pushed); the scope's roster
-is that key until `join` adds others. With more than one key, every release needs a verdict and a projection seal
-from every key on the roster: another member runs `verify-release`, which reruns the checks on the released commit
-in a fresh checkout and records that member's verdict.
+is that key until `join` adds others. With more than one key, every release needs verdicts and projection seals
+from a majority of the roster (`majority`): another member runs `verify-release`, which reruns the checks on the
+released commit in a fresh checkout and records that member's verdict. A reader who wants every member's veto pins
+every key when it verifies.
 
 Run it with the interpreter that has requirements.txt installed (`.venv/bin/python tools/minds_chain.py ...`):
 the checks run the test suites with that same interpreter, or, for a release whose commit pins other requirements,
@@ -103,6 +104,15 @@ def _put(atoms: Dict[bytes, bytes], raw: bytes) -> bytes:
 
 def _policy(atoms: Dict[bytes, bytes], thr: int, keys: List[bytes]) -> bytes:
     return _put(atoms, V.atom_pol1(thr, _put(atoms, V.atom_hvec(sorted(set(keys))))))
+
+
+def majority(n: int) -> int:
+    """The threshold of a release's evaluator policy and of its projection's witness policy, for a roster of `n` keys:
+    the least `q` with `n < 2q`. Two sets of `q` distinct keys of one roster share at least `2q - n` of them
+    (`quorum_overlap`, proofs/Vars1/History.lean), so at this `q` any two conflicting Settled results name a key that
+    sealed both, and at `q - 1` that bound is 0 (`majority_overlap`, `majority_least`). Unanimity would let one absent
+    member hold every release back; a reader who wants it pins every key (§4.4)."""
+    return n // 2 + 1
 
 
 def _maintainer_policy(atoms: Dict[bytes, bytes], sk: bytes) -> bytes:
@@ -448,8 +458,9 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
             siblings: Optional[Dict[str, str]] = None, profile: Optional[str] = None) -> Tuple[str, Dict[str, bytes]]:
     """Record a release of `main_sha`: a decision stating it and the checks, the maintainer's ATTESTED verdict on it,
     and a projection of the chain as it stood before this commit. The decision's evaluator policy and the
-    projection's witness policy are every key on the roster: the release is settled when each member has attested
-    it, and the projection when each has witnessed it."""
+    projection's witness policy are a `majority` of the roster: the release is settled when a majority of members has
+    attested it, and the projection when a majority has witnessed it. Once settled, it waits for no one; a member who
+    has not answered may still `verify-release` it, for readers who pin its key."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     if tip is None:
@@ -457,7 +468,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     s = governing_scope(repo)
     atoms: Dict[bytes, bytes] = {}
     keys = roster(repo)
-    everyone = _policy(atoms, len(keys), keys)
+    quorum = _policy(atoms, majority(len(keys)), keys)
     pins = "".join(f" {k}@{siblings[k]}" for k in SIBLINGS) if siblings else ""
     if profile is not None and not re.fullmatch(r"[0-9a-f]{64}", profile):
         raise V.VarsError("a release profile is a SHA-256 in lowercase hex")
@@ -476,7 +487,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
         h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/release/{tag}")),
         h_payload=_put(atoms, V.atom_utf8(statement)),
         h_relies=_put(atoms, V.atom_hvec([g.id for g in grounds])),
-        slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, everyone),
+        slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, quorum),
     )
     verdict = V.Cell(
         h_schema=V.H_SCHEMA["verdict"],
@@ -491,7 +502,7 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
         h_schema=V.H_SCHEMA["projection"],
         h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/projection/{tip[:12]}")),
         h_payload=V.H_EMPTY,
-        slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, everyone),
+        slots=(_put(atoms, V.atom_utf8(tip)), tip_rules, h_in, h_state, quorum),
     )
     cells = [*grounds, decision, verdict, projection]
     c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, s) for x in cells], parent_commit=tip)

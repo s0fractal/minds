@@ -61,8 +61,12 @@ falls back to the admission policy, until a second member attests them. After it
 per seal the quorum needs. To give each a veto, pin every key when you verify:
 `vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 
-`join PUBKEY NAME` adds a member; from then on every release needs a verdict and a projection seal from every
-member. A member runs `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the
+`join PUBKEY NAME` adds a member; from then on every release needs verdicts and projection seals from a majority of
+members (`n // 2 + 1` of `n`: the least threshold at which two conflicting Settled results must share a key that sealed
+both, proofs/Vars1/History.lean `majority_overlap`). Until 2026-11-11 it needed every member, and one member who
+stopped answering (antigravity, after its verdict on the release of `main@8f0195b`, 2026-10-29) held thirteen
+releases and a projection back; the cells recorded then keep that policy. A settled release waits for no one. A member who has not answered may still
+verify it, and a reader who wants a member's veto pins that member's key. A member runs `tools/minds_chain.py verify-release <decision> --key FILE --name NAME`: it reruns the
 checks at the commit the release names, in a fresh checkout that reads the chain as it stood when the release was
 recorded (so a member who joined since changes nothing they check), recomputes the release profile there,
 records ATTESTED or INVALID under its own key, and witnesses the projections that name
