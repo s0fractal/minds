@@ -1986,6 +1986,24 @@
    ]
   },
   {
+   "id": "assurance.why",
+   "source": "ASSURANCE.md",
+   "quote": "`why` says in words why a cell has its status, from the lens's own tables",
+   "status": "tested",
+   "witnesses": [
+    "test:test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+   ],
+   "mutants": [
+    "m-why-waiting",
+    "m-why-names",
+    "m-why-stale-follow",
+    "m-why-grounded-follow",
+    "m-why-kill-src",
+    "m-why-settled-word",
+    "m-why-proj-sealed"
+   ]
+  },
+  {
    "id": "assurance.profile-regular",
    "source": "ASSURANCE.md",
    "quote": "A commit with a symlink or a submodule has no profile",

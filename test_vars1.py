@@ -8217,6 +8217,68 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(V.verify_attestation(b, require=[pka, pkb, pkc])["required_missing"], [pkb.hex()],
                          "every pinned key witnesses the projection: bob has not witnessed r3's")
 
+    def test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold(self) -> None:
+        """`minds_chain.py why`: a release that waits names the member it waits for, and once that member answers,
+        whose keys count, by the verifier ids their verdicts give; a release whose check is invalidated is not live,
+        and the path goes down to the check and names the edge into it; a decision that is Settled but rests on a
+        Provisional release is not Grounded, and the path goes down to that release and whom it waits for."""
+        mc = self._minds_chain()
+        ska, skb = b"\x07" * 32, b"\x08" * 32
+        pka, pkb = V.ed25519_pubkey(ska), V.ed25519_pubkey(skb)
+        mc.init(self.repo_path, ska)
+        repo = V.GitVarsRepo(self.repo_path)
+        mc.join(self.repo_path, ska, pkb, "bob")
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])
+        name = lambda cid: V.parse_utf8(repo.lens("minds")["atoms"][repo.lens("minds")["cells"][cid].h_slot_name])  # noqa: E731
+        doc = mc.explain(self.repo_path, name(r1["decision"]))
+        self.assertEqual(len(doc["path"]), 1)
+        row = doc["path"][0]
+        self.assertEqual((row["status"]["settled"], row["keys"]["threshold"], row["keys"]["counted"], row["keys"]["waiting"]),
+                         (False, 2, [f"minds-maintainer {pka.hex()[:8]}"], [f"? {pkb.hex()[:8]}"]))
+        self.assertIn(f"waiting for: ? {pkb.hex()[:8]}", mc.explain_text(doc))
+        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
+        row = mc.explain(self.repo_path, r1["decision"].hex()[:12])["path"][0]
+        self.assertEqual((row["status"]["settled"], row["status"]["grounded"], row["keys"]["counted"], row["keys"]["waiting"]),
+                         (True, True, sorted([f"bob {pkb.hex()[:8]}", f"minds-maintainer {pka.hex()[:8]}"]), []))
+
+        # r2 waits for bob; D (1 of 1, the maintainer's) relies on r2: Settled, not Grounded
+        _, r2 = mc.release(self.repo_path, ska, "b" * 40, ["test_vars1 OK"])
+        atoms: dict[bytes, bytes] = {}
+        s = mc.governing_scope(repo)
+        d = V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/decision/on-r2")),
+                   h_payload=self._put_atom(atoms, V.atom_utf8("rests on r2")), h_relies=self._hv(atoms, [r2["decision"]]),
+                   slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, self._pol(atoms, 1, [pka])))
+        w = V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=self._put_atom(atoms, V.atom_utf8("minds/decision/on-r2/ok")),
+                   h_payload=d.id, h_attests=self._hv(atoms, [d.id]),
+                   slots=(V.H_EMPTY, V.H_ATTESTED, self._put_atom(atoms, V.atom_utf8("minds-maintainer"))))
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", atoms, [d, w], [V.Seal.sign(ska, x.id, s) for x in (d, w)], parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        path = mc.explain(self.repo_path, "minds/decision/on-r2")["path"]
+        self.assertEqual([(p["name"], p["status"]["settled"], p["status"]["grounded"]) for p in path],
+                         [("minds/decision/on-r2", True, False), (name(r2["decision"]), False, False)])
+        self.assertIn(f"not Grounded: it relies on {name(r2['decision'])}, which is not Grounded", path[0]["because"])
+        self.assertEqual(path[1]["keys"]["waiting"], [f"bob {pkb.hex()[:8]}"], "bob is named by his verdict on r1 now")
+        proj = mc.explain(self.repo_path, r2["projection"].hex())["path"][0]
+        self.assertEqual((proj["schema"], proj["status"]["settled"], proj["keys"]["counted"], proj["keys"]["waiting"]),
+                         ("projection", False, [f"minds-maintainer {pka.hex()[:8]}"], [f"bob {pkb.hex()[:8]}"]))
+
+        # a cell that invalidates r1's first check: r1 is Stale, and the path ends at the check and the edge into it
+        check = repo.lens("minds")["cells"][r1["decision"]]
+        first = V.parse_hvec(repo.lens("minds")["atoms"][check.h_relies], require_sorted=True)[0]
+        atoms = {}
+        kill = self._axiom(atoms, "minds/notice/check-failed", "the check failed", invalidates=[first])
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", atoms, [kill], [V.Seal.sign(ska, kill.id, s)], parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+        path = mc.explain(self.repo_path, name(r1["decision"]))["path"]
+        self.assertEqual([(p["name"], p["status"]["active"], p["status"]["stale"]) for p in path],
+                         [(name(r1["decision"]), True, True), (name(first), False, False)])
+        self.assertEqual(path[0]["because"], [f"stale: it relies on {name(first)}, which is not live"])
+        self.assertEqual(path[1]["because"], ["invalidated: an edge into it from minds/notice/check-failed (effective)"])
+        with self.assertRaisesRegex(V.VarsError, "0 cells answer"):
+            mc.explain(self.repo_path, "minds/no-such-cell")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

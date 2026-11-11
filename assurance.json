@@ -373,6 +373,11 @@
       "`test_vars1.py` 77, 79; `tools/minds_chain.py status`"
      ],
      [
+      "`why` says in words why a cell has its status, from the lens's own tables: whose keys count and whom it waits for, each key named by the verifier id its verdicts give; the sources of a kill edge into it; and, where it is not live or not Grounded, each step down `relies` or to a witness to the first cell that does not hold",
+      "Tested, with mutants: a release waiting for a member, then answered; a decision Settled on a Provisional release; a release whose check is invalidated; a projection waiting for a seal",
+      "`test_vars1.py` 131; `tools/minds_chain.py` `explain`, `key_names`"
+     ],
+     [
       "A commit with a symlink or a submodule has no profile (their bytes are not in the commit)",
       "Tested, with mutants",
       "`test_vars1.py` 76"
