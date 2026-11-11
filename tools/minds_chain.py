@@ -43,6 +43,9 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # --restore: the signer's own replacement checks and verdicts too
     tools/minds_chain.py power CELL           # read only: which coalitions of roster keys can change the status of
                                               # CELL by commits of their own (`GitVarsRepo.power`)
+    tools/minds_chain.py why CELL [--json]   # read only: CELL's status (a name, or 8+ hex of its id) and why, in words: whose
+                                              # keys count and whom it waits for, what kills it, and, when it is not
+                                              # Grounded, the path down `relies` to the first cell that does not hold
     tools/minds_chain.py lag REPO SCOPE       # read only: which cells of SCOPE in REPO that this chain holds stand on one
                                               # side and not the other, why, and what this scope can do (`vars1.lag`)
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
@@ -508,6 +511,121 @@ def release(repo_dir: Path, sk: bytes, main_sha: str, checks: List[str],
     c = repo.build_candidate_commit(SCOPE, atoms, cells, [V.Seal.sign(sk, x.id, s) for x in cells], parent_commit=tip)
     admit_sealing(repo_dir, repo, V.ed25519_pubkey(sk), tip, c, [tip])
     return c, {"decision": decision.id, "verdict": verdict.id, "projection": projection.id}
+
+
+WHY_BITS = ("accepted", "effective", "invalidated", "retired", "superseded", "active", "stale", "settled", "grounded")
+EVALUATED = ("contract", "decision", "question")
+
+
+def key_names(cells: Dict[bytes, V.Cell], atoms: Dict[bytes, bytes], seals) -> Dict[bytes, str]:
+    """Each key's name: the verifier id it gives most often on the verdicts it seals (the NAME of `verify-release`)."""
+    seen: Dict[bytes, Dict[str, int]] = {}
+    for x in seals.values():
+        c = cells.get(x.h_target)
+        if c is not None and c.h_schema == V.H_SCHEMA["verdict"] and c.slots[2] != V.H_EMPTY:
+            n = V.parse_utf8(atoms[c.slots[2]])
+            seen.setdefault(x.actor_pubkey, {}).setdefault(n, 0)
+            seen[x.actor_pubkey][n] += 1
+    return {k: max(sorted(v), key=v.get) for k, v in seen.items()}
+
+
+def explain(repo_dir: Path, ref: str) -> Dict[str, object]:
+    """Read only: the status of the cell named `ref` (its slot name, or 8 or more hex digits of its id) at the chain's
+    tip, and why, from the lens's own tables: the kill edges into it, the keys that count and those it waits for, and,
+    when it is not live or not Grounded, each step down to the first cell that does not hold. A kill edge's sources
+    are listed with their Effective bit; which of them latched is the lens's, and is not said."""
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    if tip is None:
+        raise V.VarsError("no chain: run `init` first")
+    lens = repo.lens(SCOPE)
+    cells, atoms = lens["cells"], lens["atoms"]
+    _, _, seals = repo.read_cas_tree(tip)
+    names = key_names(cells, atoms, seals)
+    schema = {h: n for n, h in V.H_SCHEMA.items()}
+    slot = lambda x: V.parse_utf8(atoms[cells[x].h_slot_name])  # noqa: E731
+    hv = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(atoms[h], require_sorted=True)  # noqa: E731
+    who = lambda ks: [f"{names.get(k, '?')} {k.hex()[:8]}" for k in sorted(ks)]  # noqa: E731
+    found = [x for x in cells if slot(x) == ref] or (
+        [x for x in cells if x.hex().startswith(ref.lower())] if re.fullmatch(r"[0-9a-fA-F]{8,64}", ref) else [])
+    if len(found) != 1:
+        raise V.VarsError(f"{len(found)} cells answer to {ref!r}: name one by its slot name or a longer id prefix")
+    bit = lambda b, x: bool(lens[b].get(x))  # noqa: E731
+    live = lambda x: bit("active", x) and not bit("stale", x)  # noqa: E731
+
+    def step(x: bytes) -> Tuple[Dict[str, object], Optional[bytes]]:
+        c = cells[x]
+        kind = schema.get(c.h_schema, "custom")
+        row: Dict[str, object] = {"cell": x.hex(), "name": slot(x), "schema": kind,
+                                  "status": {b: bit(b, x) for b in WHY_BITS}, "because": []}
+        say = row["because"].append
+        if not bit("active", x):
+            for b, field in (("invalidated", "h_invalidates"), ("retired", "h_retires"), ("superseded", "h_supersedes")):
+                if bit(b, x):
+                    src = [f"{slot(y)} ({'effective' if bit('effective', y) else 'not effective'})"
+                           for y in sorted(cells) if x in hv(getattr(cells[y], field))]
+                    say(f"{b}: an edge into it from {', '.join(src) or 'no cell of this store'}")
+            if not bit("accepted", x):
+                say("not accepted")
+            return row, None
+        if bit("stale", x):
+            bad = [r for r in hv(c.h_relies) if not live(r)]
+            if bad:
+                say(f"stale: it relies on {slot(bad[0])}, which is not live")
+                return row, bad[0]
+            say("stale")
+            return row, None
+        if kind in EVALUATED and x in lens["evaluators"]:
+            thr, evs = lens["evaluators"][x]
+            counted, invalid = lens["endorsers"][x], lens["invalidators"][x]
+            row["keys"] = {"threshold": thr, "of": len(evs), "counted": who(counted), "invalid": who(invalid),
+                           "waiting": who(set(evs) - set(counted) - set(invalid))}
+            say(f"{'Settled' if bit('settled', x) else 'Provisional'}: {len(counted)} of threshold {thr} "
+                f"({len(evs)} keys) counted: {', '.join(who(counted)) or 'none'}")
+            if row["keys"]["waiting"]:  # a Settled cell waits for no one; the keys that did not answer are still named
+                say(f"{'not answered' if bit('settled', x) else 'waiting for'}: {', '.join(row['keys']['waiting'])}")
+            if invalid:
+                say(f"INVALID from: {', '.join(who(invalid))}")
+        if kind == "projection":
+            thr, hk = V.parse_pol1(atoms[c.slots[4]])
+            keys = set(hv(hk))
+            sealed = {s.actor_pubkey for s in seals.values() if s.h_target == x} & keys
+            row["keys"] = {"threshold": thr, "of": len(keys), "counted": who(sealed), "invalid": [],
+                           "waiting": who(keys - sealed)}
+            say(f"{'witnessed' if bit('settled', x) else 'not witnessed'}: {len(sealed)} of threshold {thr} "
+                f"({len(keys)} keys) sealed: {', '.join(who(sealed)) or 'none'}")
+            if keys - sealed:
+                say(f"{'not sealed' if bit('settled', x) else 'waiting for'}: {', '.join(who(keys - sealed))}")
+        if bit("settled", x) and not bit("grounded", x):
+            down = [r for r in hv(c.h_relies) if not bit("grounded", r)]
+            if down:
+                say(f"not Grounded: it relies on {slot(down[0])}, which is not Grounded")
+                return row, down[0]
+            wit = [w for w in sorted(set(lens["counted_witnesses"].get(x, {}).values())) if not bit("grounded", w)]
+            if wit:
+                say(f"not Grounded: too few keys count through Grounded witnesses; {slot(wit[0])} is not Grounded")
+                return row, wit[0]
+            say("not Grounded")
+        return row, None
+
+    path, x, seen = [], found[0], set()
+    while x is not None and x not in seen:
+        seen.add(x)
+        row, x = step(x)
+        path.append(row)
+    return {"tip": tip, "path": path}
+
+
+def explain_text(doc: Dict[str, object]) -> str:
+    """`explain` (`why` on the command line) as lines a person reads: one block per cell of the path, its status and its reasons."""
+    out = []
+    for i, row in enumerate(doc["path"]):
+        st = row["status"]
+        state = ("live" if st["active"] and not st["stale"] else "not live") + \
+            (", Settled" if st["settled"] else "") + (", Grounded" if st["grounded"] else ", not Grounded")
+        out.append(f"{'  ' * i}{row['name']} ({row['schema']}): {state}")
+        out += [f"{'  ' * i}  {b}" for b in row["because"]]
+    return "\n".join(out)
 
 
 def show(repo_dir: Path) -> List[Dict[str, object]]:
@@ -1153,6 +1271,10 @@ def _main(argv: List[str]) -> int:
     if cmd == "power" and len(argv) == 2:
         repo = V.GitVarsRepo(repo_dir)
         print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
+        return 0
+    if cmd == "why" and len(argv) in (2, 3) and argv[2:] in ([], ["--json"]):
+        doc = explain(repo_dir, argv[1])
+        print(json.dumps(doc, indent=2) if argv[2:] else explain_text(doc))
         return 0
     if cmd == "lag" and len(argv) == 3:
         print(json.dumps(V.lag(V.GitVarsRepo(repo_dir), SCOPE, V.GitVarsRepo(Path(argv[1])), argv[2]), indent=2))

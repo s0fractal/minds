@@ -3062,5 +3062,61 @@
   "kills": [
    "test_130_a_release_settles_on_a_majority_and_a_pin_keeps_a_veto"
   ]
+ },
+ "m-why-waiting": {
+  "file": "tools/minds_chain.py",
+  "find": "\"waiting\": who(set(evs) - set(counted) - set(invalid))}",
+  "replace": "\"waiting\": who(set(evs) - set(invalid))}",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-names": {
+  "file": "tools/minds_chain.py",
+  "find": "    return {k: max(sorted(v), key=v.get) for k, v in seen.items()}",
+  "replace": "    return {}",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-stale-follow": {
+  "file": "tools/minds_chain.py",
+  "find": "                return row, bad[0]",
+  "replace": "                return row, None",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-grounded-follow": {
+  "file": "tools/minds_chain.py",
+  "find": "                return row, down[0]",
+  "replace": "                return row, None",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-kill-src": {
+  "file": "tools/minds_chain.py",
+  "find": "for y in sorted(cells) if x in hv(getattr(cells[y], field))]",
+  "replace": "for y in sorted(cells) if False]",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-settled-word": {
+  "file": "tools/minds_chain.py",
+  "find": "{'not answered' if bit('settled', x) else 'waiting for'}: {', '.join(row['keys']['waiting'])}",
+  "replace": "{'not answered'}: {', '.join(row['keys']['waiting'])}",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-proj-sealed": {
+  "file": "tools/minds_chain.py",
+  "find": "            sealed = {s.actor_pubkey for s in seals.values() if s.h_target == x} & keys",
+  "replace": "            sealed = set(keys)",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
  }
 }
