@@ -444,14 +444,77 @@ draft that no verifier reads; spec §4.4 is unchanged):
 
 A seal that vouches for exactly the closed-world part would be on the claim itself with the frame's digest: one seal per
 decision and tip in place of one per tip, by a witness that has computed the lens there anyway. Renewal keeps that
-cheap: the word is needed again only when an object touches the frame. This is not built, and neither is an index of
-reverse edges, which would turn the vouch into a proof and has no consumer yet.
+cheap: the word is needed again only when an object touches the frame. This is not built. An index of reverse edges
+is (`revindex.py`, below); it gives the closed world an address, not a proof.
 
 **Not established here.** No verifier reads the draft message; the bytes are what such a message would weigh.
 `frame.py` is tested against the lens, not proved; the Lean theorems take the standing of the frame's cells as a
 hypothesis that `active_frame` and `stale_frame` discharge, and are not composed with the fold into one statement. The
 reader bound is proved for the v1 fold (the kill itself for both); a reader with an index of reverse edges is outside
 its model.
+
+## An address for negative facts (`revindex.py`)
+
+The lower bound has a hypothesis: the reader holds no commitment to what points at a cell. `revindex.py` builds one. At a
+tip every cell, and every id a cell or seal points at, gets a leaf: the sorted ids of the cells that attest it, of the
+verdicts on it, of the verdicts that name it as their checkpoint, of the cells with an invalidates, retires or
+supersedes edge into it, and of the seals on it. The leaves, sorted by id, are hashed into one Merkle tree (RFC 9162:
+`0x00` before a leaf, `0x01` before a node). At the tip of 2026-11-07 that is 651 leaves under root `5baad8aa…503e`.
+
+A message for `d` then carries, in place of the vouch, the root and the leaves its frame reads (what judges each
+evaluated cell, what names each checkpoint, what points an eviction edge into each cell of `guard`, the seals on each
+watched cell), each with its path, the cells of `guard`, and every seal on a watched cell. `reader_frame` reads the
+frame from that alone: it checks every path, takes every "what points at this" from a leaf, and answers `Incomplete`
+when a leaf, cell or seal the reading needs is missing. It never reads a gap as "nothing".
+
+**Test 21** holds it equal to `frame.py`'s `frame`, which reads the whole store, on:
+- every decision of the live chain at the named tip, for Settled and Grounded: 94 frames;
+- four chains with retires and invalidates edges;
+- a store with a verdict that names a checkpoint (no chain here has one, so it is built without the gate).
+
+**Test 22:** a leaf whose path does not reach the root is refused, and a missing part is `Incomplete`.
+
+**What it weighs.** The message is the draft message of the section above with this part as its closed world, and with
+the covering projection's cell and seals standing in for the signatures on a root carried the same way. It is set
+against the attestation bundle a client receives today. Bytes are compact JSON with objects in hex; medians and maxima
+are over the Settled decisions with a covering projection (test 21 pins the table, `revindex-minds-7c6899b.json`):
+
+| Tip | Cells | Decisions | Closed part | Message | Bundle | Bundle ÷ message | Message max | Bundle max |
+|---|---|---|---|---|---|---|---|---|
+| 11 of 83 | 36 | 6 | 3,625 | 10,764 | 24,901 | 2.3× | 13,236 | 28,725 |
+| 21 of 83 | 56 | 11 | 5,467 | 13,169 | 39,492 | 3.0× | 13,254 | 41,849 |
+| 42 of 83 | 112 | 20 | 5,735 | 13,455 | 63,684 | 4.7× | 13,456 | 72,493 |
+| 63 of 83 | 400 | 31 | 6,141 | 13,861 | 178,740 | 12.9× | 72,566 | 206,007 |
+| 83 of 83 | 651 | 34 | 6,342 | 16,463 | 311,855 | 18.9× | 102,068 | 338,629 |
+
+Over these tips:
+- **The bundle grows with the store:** ×12.5 for ×18 cells. It carries the kernel's whole input, so its closed world is
+  checkable.
+- **The message grows with the frame and the log of the store:** ×1.5. Each path is about ⌈log₂ N⌉ hashes.
+- **The largest messages** are the decisions whose `guard` holds 39 cells.
+
+**What changes, and what does not.**
+- **The root is still a claim.** That every leaf is the store's and that none is missing is the word of whoever signs
+  the root, as the vouch was a word. Test 23 builds a root over a leaf that hides a verdict on `d`: its paths check,
+  and the reader reads a frame without that verdict. Committing does not prove.
+- **One root serves every decision and every reader at the tip.** That is one signature where the vouch needed one per
+  decision, and two readers who hold one root read one answer.
+- **A lie costs one object to refute.**
+  - `refute` finds, against the store, the cell or seal a leaf leaves out, or an id it lists that does not point at its
+    key.
+  - `judge` accepts that proof by checking the leaf's path to the root and reading that one object.
+  - A proof against one root does not transfer to another.
+  - Test 23 refutes an omitted verdict, an omitted seal and a falsely listed attester, and refuses an accusation against
+    an honest leaf.
+- **The negative facts have an address.** Their weight no longer grows with the store. Whoever signs a root does not
+  have to stand behind a separate word for each decision.
+
+**Not done.**
+- No format of spec §4.4 changes, and nobody signs a root on `refs/vars/heads/minds`.
+- `judge` reads the object from the store at the tip, and a proof that the object is in that tip's tree (its git path)
+  is not built.
+- Nothing proves the module. `reader_frame` is tested against `frame.py` and burned by eleven mutants. The Lean model of
+  a reader with an index (`proofs/Vars1/Reader.lean`'s bound does not cover one) is not written.
 
 ## What it does not establish
 

@@ -6,7 +6,8 @@
 
 A mutant must fail its named test on an assertion (an error is not a kill), and the named tests must pass unmutated
 first. Chains are built through the real gate (vars1.py); the checker under test is check.py, or the file named by
-WITNESS_SOURCE (a mutant); the frame under test (tests 17-19) is frame.py, or the file named by FRAME_SOURCE.
+WITNESS_SOURCE (a mutant); the frame under test (tests 17-19) is frame.py, or the file named by FRAME_SOURCE; the
+committed reverse index (tests 21-23) is revindex.py, or the file named by REVINDEX_SOURCE.
 """
 import collections
 import contextlib
@@ -43,13 +44,14 @@ def _load(name: str, path: Path):
 SOURCE = Path(os.environ.get("WITNESS_SOURCE", HERE / "check.py"))
 CK = _load("witness_check", SOURCE)
 FR = _load("witness_frame", Path(os.environ.get("FRAME_SOURCE", HERE / "frame.py")))
+RX = _load("witness_revindex", Path(os.environ.get("REVINDEX_SOURCE", HERE / "revindex.py")))
 LIVE_TIP = "7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d"  # refs/vars/heads/minds on 2026-11-07: test 19's named tip
 LEAN = ROOT / "proofs" / ".lake" / "build" / "bin" / "vars1witness"
 WORK = Path.home() / "Projects" / ".worktrees" / "witness-work"
 WORK.mkdir(parents=True, exist_ok=True)
 MEMBERS = ("ana", "bo", "cy")
 SCOPE = "proj"
-MUTATED = {"check.py": "WITNESS_SOURCE", "frame.py": "FRAME_SOURCE"}  # the files mutants.json mutates, and how a test takes a copy
+MUTATED = {"check.py": "WITNESS_SOURCE", "frame.py": "FRAME_SOURCE", "revindex.py": "REVINDEX_SOURCE"}  # the files mutants.json mutates, and how a test takes a copy
 _CACHE = {}
 
 
@@ -324,6 +326,39 @@ def stale_invalid_chain():
     c.commit((c.axiom("notice/h", invalidates=[h]), "ana"))
     c.commit((c.verdict(d, "decision/d/invalid-by-cy", [k], code=V.H_VERDICT_INVALID, verifier="cy"), "cy"))
     return c, d, vs
+
+
+class FakeTip:
+    """What frame.py and revindex.py read of a tip, over cells no gate admitted: for a shape no chain here has."""
+
+    def __init__(self, cells, atoms) -> None:
+        self.V, self.cells, self.atoms, self.seals = V, {c.id: c for c in cells}, atoms, {}
+        self.tip, self.waiting, self.governing = "0" * 40, None, cells[0].id
+
+    def hv(self, h: bytes):
+        return [] if h == V.H_EMPTY else V.parse_hvec(self.atoms[h], require_sorted=True)
+
+    def is_local(self, cid: bytes) -> bool:
+        return True
+
+
+def named_store():
+    """A decision d; a checkpoint n; ana's verdict on d names n; bo's verdict names n and is on another cell, so it
+    judges d only through n (frame.py: a verdict on a checkpoint one of d's verdicts names). No chain here holds a
+    verdict naming a checkpoint, so these cells are built without the gate, for the frame's reading alone."""
+    atoms = {}
+    put = lambda raw: atoms.setdefault(hashlib.sha256(raw).digest(), raw) and hashlib.sha256(raw).digest()  # noqa: E731
+    name = lambda s: put(V.atom_utf8(f"{SCOPE}/{s}"))  # noqa: E731
+    pol = put(V.atom_pol1(1, put(V.atom_hvec([b"\x01" * 32]))))
+    d = V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=name("decision/d"), h_payload=put(V.atom_utf8("d")),
+               slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol))
+    other = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=name("other"), h_payload=put(V.atom_utf8("o")))
+    n = V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=name("checkpoint/n"), h_payload=put(V.atom_utf8("n")))
+    by = lambda who, on: V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=name(f"verdict/{who}"),  # noqa: E731
+                                h_payload=on.id, h_attests=put(V.atom_hvec([on.id])),
+                                slots=(n.id, V.H_ATTESTED, put(V.atom_utf8(who))))
+    ana, bo = by("ana", d), by("bo", other)
+    return FakeTip([d, other, n, ana, bo], atoms), [d.id]
 
 
 class T(unittest.TestCase):
@@ -1098,6 +1133,120 @@ class T(unittest.TestCase):
         self.assertEqual(bundle, V.export_attestation(c.repo, SCOPE, d.id))
         self.assertIn(bundle["cell"], msg["proof"]["cells"])
         self.assertTrue(set(msg["proof"]["seals"]) <= set(bundle["seals"]))
+
+    def _rev_frames(self, T, decisions):
+        """Every frame of `decisions` (Settled's and Grounded's) read from its closed-world part alone, against
+        frame.py's frame and the seals on its watched cells read from the store."""
+        ix = RX.Index(T)
+        fields = ("read", "guard", "judges", "named", "sources", "evaluated", "watch", "fallback")
+        n = 0
+        for d in decisions:
+            for grounded in (False, True):
+                fr = FR.frame(T, d, grounded)
+                rf = RX.reader_frame(V, RX.closed_part(T, ix, fr), d, grounded)
+                self.assertEqual({k: rf[k] for k in fields}, {k: fr[k] for k in fields}, (d.hex()[:12], grounded))
+                watched = set(fr["watch"])
+                self.assertEqual(rf["seals"], sorted(sid for sid, x in T.seals.items() if x.h_target in watched))
+                n += 1
+        return n
+
+    def test_21_a_frame_reads_from_its_leaves_alone(self):
+        """revindex.py: from the root of the tip's reverse index, the leaves of a frame with their paths, and the
+        frame's own cells, a reader reads the frame frame.py reads from the whole store, and the seals on every watched
+        cell: on chains with a retires edge into a decision and into a verdict, an invalidates edge under a Stale
+        verdict, and on every decision of the live chain at the named tip, for Settled and for Grounded."""
+        for c, d, _ in (author_chain(False), author_chain(True), retired_invalid_chain(), stale_invalid_chain()):
+            self.assertEqual(self._rev_frames(FR.Tip(V, c.repo, SCOPE, c.tip), [d.id]), 2)
+        self.assertEqual(self._rev_frames(*named_store()), 2)
+        repo = V.GitVarsRepo(ROOT)
+        if repo.ref_commit("minds") is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        T = FR.Tip(V, repo, "minds", LIVE_TIP)
+        decisions = sorted(x for x, c in T.cells.items() if c.h_schema == V.H_SCHEMA["decision"])
+        self.assertEqual(self._rev_frames(T, decisions), 94)
+        ix = RX.Index(T)
+        self.assertEqual((ix.root.hex(), len(ix.keys)),
+                         ("5baad8aa1855158c9eb4d0f497173bc2480f8017b8b44de046c5fb8230eb503e", 651), "the named tip's root")
+        # The table of README.md, byte for byte: at five tips the bundle grows with the store, the message does not
+        chain = repo.commit_chain(LIVE_TIP)
+        tips = [chain[i] for i in sorted({len(chain) // 8, len(chain) // 4, len(chain) // 2, 3 * len(chain) // 4,
+                                          len(chain) - 1})]
+        pinned = json.loads((HERE / "revindex-minds-7c6899b.json").read_text())
+        self.assertEqual(RX.measure(V, repo, "minds", tips, PR.prove, FR), pinned)
+        first, last = pinned[0], pinned[-1]
+        self.assertEqual((first["cells"], last["cells"]), (36, 651))
+        self.assertGreater(last["bundle_median"], 12 * first["bundle_median"])
+        self.assertLess(last["message_median"], 2 * first["message_median"])
+        self.assertGreater(last["bundle_median"], 18 * last["message_median"])
+
+    def test_22_a_leaf_off_the_root_or_a_missing_part_is_no_answer(self):
+        """A leaf that does not lead to the root is refused, and a part without a leaf, a cell of `guard`, or a seal
+        on a watched cell the reading needs is Incomplete: the reader never fills a gap with "nothing"."""
+        c, d, vs = stale_invalid_chain()
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        fr = FR.frame(T, d.id)
+        part = RX.closed_part(T, RX.Index(T), fr)
+        self.assertEqual(RX.reader_frame(V, part, d.id)["guard"], fr["guard"])
+        forged = json.loads(json.dumps(part))
+        lf = next(x for x in forged["leaves"] if x["key"] == d.id.hex())
+        lf["payload"] = lf["payload"][1:]  # hide a verdict on d
+        with self.assertRaisesRegex(ValueError, "does not lead to the root"):
+            RX.reader_frame(V, forged, d.id)
+        for drop in ("leaves", "cells", "seals"):
+            short = json.loads(json.dumps(part))
+            if drop == "leaves":
+                short["leaves"] = [x for x in short["leaves"] if x["key"] != d.id.hex()]
+            elif drop == "cells":
+                short["cells"] = [x for x in short["cells"]
+                                  if hashlib.sha256(bytes.fromhex(x)).digest() != vs["ana"].id]
+            else:
+                short["seals"] = short["seals"][1:]
+            with self.assertRaises(RX.Incomplete, msg=drop):
+                RX.reader_frame(V, short, d.id)
+
+    def test_23_a_lying_root_is_refuted_by_one_object(self):
+        """The root is the signer's claim, so a root over a leaf that hides a verdict on d gives a reader a smaller
+        frame, and its paths check. What the signer cannot do is lie cheaply: `refute` finds, against the store, the
+        one object the leaf leaves out or the id it lists falsely, and `judge` accepts that proof by reading that object
+        alone. An honest leaf has no refutation, and a refutation does not transfer to the honest root."""
+        c, d, vs = stale_invalid_chain()
+        T = FR.Tip(V, c.repo, SCOPE, c.tip)
+        honest = RX.Index(T)
+        fr = FR.frame(T, d.id)
+        for kind, lie in (("attests", "omit"), ("seals", "omit"), ("attests", "list")):
+            entries = {k: {kk: list(v) for kk, v in e.items()} for k, e in honest.entries.items()}
+            target = d.id if kind != "seals" else vs["ana"].id
+            if lie == "omit":
+                hidden = entries[target][kind][0]
+                for kk in (("attests", "payload") if kind == "attests" else (kind,)):  # a verdict attests d and is on d
+                    entries[target][kk] = [x for x in entries[target][kk] if x != hidden]
+            else:
+                hidden = d.id  # d does not attest itself
+                entries[target][kind] = sorted(entries[target][kind] + [hidden])
+            liar = RX.Index(T, entries)
+            self.assertNotEqual(liar.root, honest.root)
+            lf = liar.leaf(target)
+            if (kind, lie) == ("attests", "omit"):
+                rf = RX.reader_frame(V, RX.closed_part(T, liar, fr), d.id)
+                self.assertEqual(set(fr["judges"]) - set(rf["judges"]), {hidden},
+                                 "the lying root's paths check, and its frame lacks the hidden verdict")
+            fraud = RX.refute(T, lf)
+            self.assertEqual((fraud["kind"], "omits" in fraud), (kind, lie == "omit"))
+            self.assertTrue(RX.judge(T, liar.root, len(liar.keys), fraud), (kind, lie))
+            self.assertFalse(RX.judge(T, honest.root, len(honest.keys), fraud), "the proof names the lying root's leaf")
+            if lie == "omit":
+                self.assertEqual(hashlib.sha256(bytes.fromhex(fraud["omits"])).digest(), hidden)
+            else:
+                self.assertEqual(bytes.fromhex(fraud["lists"]), hidden)
+        self.assertIsNone(RX.refute(T, honest.leaf(d.id)))
+        true_attester = honest.leaf(d.id)["attests"][0]
+        accused = {"leaf": honest.leaf(d.id), "kind": "attests", "lists": true_attester}
+        self.assertFalse(RX.judge(T, honest.root, len(honest.keys), accused), "an id that does attest d is no lie")
+        true_leaf = honest.leaf(d.id)
+        listed = {"leaf": true_leaf, "kind": "payload", "omits": T.cells[bytes.fromhex(true_leaf["payload"][0])].encode().hex()}
+        self.assertFalse(RX.judge(T, honest.root, len(honest.keys), listed), "an object the leaf lists refutes nothing")
 
 
 def status(lens, d: bytes, grounded: bool = True):
