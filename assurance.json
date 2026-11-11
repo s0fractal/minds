@@ -358,6 +358,11 @@
       "`test_vars1.py` 101; `tools/minds_chain.py` `interpreter_for`, `checks_at`, `run_checks`"
      ],
      [
+      "A release's rules modules are rebuilt against the identities its own commit pins (verify/minds_verify.py's KNOWN_RULES_TABLE from 2026-10-28 on, vars1.py's pin lines before), not this verifier's, and the rules the release names must be among those rebuilt: while v2 was being built its pin moved with kernel2/ (7e1368bc, 0276c165, 1ca798b5), so a release of a commit carrying a draft is checked against that draft",
+      "Tested, with mutants (antigravity's finding, 2026-11-12)",
+      "`test_vars1.py` 58; `tools/minds_chain.py` `commit_pins`, `kernel_checks`"
+     ],
+     [
       "The GitHub Actions witness's key never was on the maintainer's machine",
       "By construction, not tested here: `witness-key.yml` makes it on a runner and refuses unless the environment `witness` deploys from `main` alone. It rests on GitHub's environment protection and on the owner's GitHub account, whose holder controls what `main`'s workflows do with it",
       "`.github/workflows/witness-key.yml`, `witness.yml`"

@@ -3464,8 +3464,9 @@ class TestVars1Conformance(unittest.TestCase):
                 self._gate_refuses("rules than those of its tip's epoch", "core", c, c0)
 
     def test_58_release_checks_rebuild_every_rules_module(self) -> None:
-        """Monday F41: a release rebuilds every rules module its commit carries; each must hash to its identity,
-        and the rules the release names must be among them (an older commit without kernel2/ checks kernel/)."""
+        """Monday F41: a release rebuilds every rules module its commit carries; each must hash to the identity its
+        commit pins, and the rules the release names must be among them (an older commit without kernel2/ checks
+        kernel/; one whose kernel2/ was a draft of v2 checks it against its own pin)."""
         mc = self._minds_chain()
         root = Path(self.tmp.name) / "wt"
         built = {"kernel": V.KERNEL_ATOM, "kernel2": V.KERNEL2_ATOM, "commit-bound": V.KERNEL1B_ATOM}
@@ -3498,6 +3499,23 @@ class TestVars1Conformance(unittest.TestCase):
                           ("the released rules are rebuilt here", True)])
         built["commit-bound"] = V.KERNEL_ATOM
         self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V1B, fake_cargo)[-2][1])
+
+        # an older commit pins its own kernel2 (v2 was built in steps: 7e1368bc at 63ceffd, 0276c165 at dddd3ae), and a
+        # release is checked against its own commit's pin, not this verifier's (antigravity's finding, 2026-11-12)
+        built["commit-bound"] = V.KERNEL1B_ATOM
+        built["kernel2"] = draft = V.KERNEL2_ATOM + b"draft"
+        (root / "vars1.py").write_text(f'H_LENS_KERNEL_V2 = bytes.fromhex("{V.sha256(draft).hex()}")\n')
+        self.assertEqual(mc.commit_pins(root), {"H_LENS_KERNEL_V2": V.sha256(draft)})
+        rows = mc.kernel_checks(root, V.H_LENS_KERNEL, fake_cargo)
+        self.assertEqual(rows[1], ("kernel2 rebuild hashes to H_LENS_KERNEL_V2", True))
+        self.assertEqual(rows[-1], ("the released rules are rebuilt here", True), "its released rules, v1, rebuild")
+        self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL_V2, fake_cargo)[-1][1], "a release naming today's v2 does not")
+        # from 2026-10-28 on the table of verify/minds_verify.py pins them, and it comes first
+        (root / "verify").mkdir()
+        (root / "verify" / "minds_verify.py").write_text(
+            f'KNOWN_RULES_TABLE = """\n{V.H_LENS_KERNEL_V2.hex()} v2 H_LENS_KERNEL_V2\n"""\n')
+        self.assertEqual(mc.commit_pins(root), {"H_LENS_KERNEL_V2": V.H_LENS_KERNEL_V2})
+        self.assertFalse(mc.kernel_checks(root, V.H_LENS_KERNEL, fake_cargo)[1][1], "the draft is not its commit's pin")
 
     def test_59_a_counterexample_is_named_by_its_full_commit_id(self) -> None:
         """Review AMEND P1 on 2b82da8: the counterexample field must hold a full commit id, never a ref, an

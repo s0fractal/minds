@@ -119,6 +119,20 @@
    ]
   },
   {
+   "id": "assurance.release-own-pins",
+   "source": "ASSURANCE.md",
+   "quote": "A release's rules modules are rebuilt against the identities its own commit pins",
+   "status": "tested",
+   "witnesses": [
+    "test:test_58_release_checks_rebuild_every_rules_module"
+   ],
+   "mutants": [
+    "m-pins-own",
+    "m-pins-table",
+    "m-pins-order"
+   ]
+  },
+  {
    "id": "rules.v2-bound",
    "quote": "the commit bound of v1b (−7), the rotation delay of §4.1 latch 4a",
    "status": "differential",

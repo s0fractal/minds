@@ -767,6 +767,32 @@ KERNELS = (("kernel", "kernel", (), "vars_lens.wasm", V.H_LENS_KERNEL, "H_LENS_K
             "H_LENS_KERNEL_V1B"))
 
 
+# Where a commit pins its rules identities: verify/minds_verify.py's KNOWN_RULES_TABLE (one row per line: id, encoding,
+# name) from 2026-10-28 (7720290) on, and before that lines `H_LENS_KERNEL… = bytes.fromhex("…")` in vars1.py.
+PIN_FILES = ("verify/minds_verify.py", "vars1.py")
+PIN_TABLE = re.compile(r'^KNOWN_RULES_TABLE = """\n((?:[0-9a-f]{64} v[12] H_LENS_KERNEL\w*\n)+)"""\n', re.M)
+PIN_LINE = re.compile(r'^(H_LENS_KERNEL(?:_V2|_V1B)?) = bytes\.fromhex\("([0-9a-f]{64})"\)$', re.M)
+
+
+def commit_pins(root: Path) -> Dict[str, bytes]:
+    """The rules identities a checkout's own sources pin, by constant name, from the first file of PIN_FILES that
+    pins each (its table, else its pin lines). An older commit pins its own kernel: while v2 was being built, kernel2/
+    and its pin moved together (7e1368bc at 63ceffd, 0276c165 at dddd3ae, 1ca798b5 from be482c9 on), and a release is
+    checked against its own commit's pins."""
+    out: Dict[str, bytes] = {}
+    for name in PIN_FILES:
+        f = root / name
+        if not f.is_file():
+            continue
+        text = f.read_text(encoding="utf-8")
+        table = PIN_TABLE.search(text)
+        rows = ([(r.split(" ")[2], r.split(" ")[0]) for r in table.group(1).splitlines()] if table
+                else [(m.group(1), m.group(2)) for m in PIN_LINE.finditer(text)])
+        for label, h in rows:
+            out.setdefault(label, bytes.fromhex(h))
+    return out
+
+
 def _run(cmd: List[str], cwd: Path, env: Optional[Dict[str, str]] = None) -> bool:
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                           env=None if env is None else {**os.environ, **env}).returncode == 0
@@ -779,18 +805,22 @@ REQUIRE = {"MINDS_REQUIRE_CHAIN": "1", "MINDS_REQUIRE_LEAN": "1"}
 
 def kernel_checks(root: Path, rules: bytes, run=_run) -> List[Tuple[str, bool]]:
     """Rebuild every rules module `root` carries (kernel/, kernel2/ and kernel/lens1b.wasm where present); each must
-    hash to its pinned identity, and the rules the release names must be one of those rebuilt here."""
+    hash to the identity `root`'s own sources pin (`commit_pins`; this verifier's pin where they pin none), and the
+    rules the release names must be one of those rebuilt here. That last check is the one about the release: a module
+    that rebuilds to its commit's pin and is not the released rules settles nothing."""
     results: List[Tuple[str, bool]] = []
     rebuilt = set()
+    pins = commit_pins(root)
     for marker, d, extra, wasm_name, pinned, label in KERNELS:
         if not (root / marker).exists():
             continue
+        want = pins.get(label, pinned)
         built = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", *extra], root / d)
         wasm = root / d / "target" / "wasm32-unknown-unknown" / "release" / wasm_name
-        ok = built and wasm.exists() and V.sha256(wasm.read_bytes()) == pinned
+        ok = built and wasm.exists() and V.sha256(wasm.read_bytes()) == want
         results.append((f"{marker} rebuild hashes to {label}" if extra else f"{d} rebuild hashes to {label}", ok))
         if ok:
-            rebuilt.add(pinned)
+            rebuilt.add(want)
     results.append(("the released rules are rebuilt here", rules in rebuilt))
     return results
 
