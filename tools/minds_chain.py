@@ -47,6 +47,13 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # released commit) and why, in words: whose keys count and whom it waits
                                               # for, what kills it, and, when it is not Grounded, the path down
                                               # `relies` to the first cell that does not hold
+    tools/minds_chain.py next [--actor KEY] [--json]
+                                              # read only: which single act of one roster key (an ACCEPT or INVALID
+                                              # verdict, a seal on a projection or a verdict) would change a status,
+                                              # the most cells first, what waits for an answer, and the margin of the
+                                              # Settled decisions; KEY is a verifier id or 8+ hex of a key
+    tools/minds_chain.py next --check [--every]
+                                              # hold `next` to the gate, act by act (`--every`: every seal of every key)
     tools/minds_chain.py lag REPO SCOPE       # read only: which cells of SCOPE in REPO that this chain holds stand on one
                                               # side and not the other, why, and what this scope can do (`vars1.lag`)
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
@@ -637,6 +644,309 @@ def explain_text(doc: Dict[str, object]) -> str:
         out.append(f"{'  ' * i}{row['name']} ({row['schema']}): {state}")
         out += [f"{'  ' * i}  {b}" for b in row["because"]]
     return "\n".join(out)
+
+
+NEXT_KINDS = ("attest", "withdraw", "witness", "cosign", "seal", "other")
+NEXT_BITS = ("accepted", "invalidated", "effective", "retired", "superseded", "active", "stale", "settled", "grounded")
+HYPOTHESIS = V.sha256(b"minds.next.hypothesis")  # the id `next` gives the one new cell of an act, in memory
+
+
+class NextTip:
+    """What `next` reads at the tip: the lens and the seals, the roster, the admission policy, and which edges have
+    latched. Every act is read against these, in memory, or through the gate (`act_hypothesis`)."""
+
+    def __init__(self, repo_dir: Path) -> None:
+        self.repo_dir = repo_dir
+        self.repo = V.GitVarsRepo(repo_dir)
+        self.tip = self.repo.ref_commit(SCOPE)
+        if self.tip is None:
+            raise V.VarsError("no chain: run `init` first")
+        self.lens = L = self.repo.lens(SCOPE)
+        self.cells, self.atoms = L["cells"], L["atoms"]
+        _, _, seals = self.repo.read_cas_tree(self.tip)
+        self.names = key_names(self.cells, self.atoms, seals)
+        self.scope = L["scope"]
+        self.adm = self.pol(self.cells[self.scope].slots[0])
+        self.keys = sorted(self.adm[1])
+        self.latched = self.repo._evaluate_commit_chain(SCOPE, self.repo.commit_chain(self.tip))["latched_edge_auth"]
+
+    def pol(self, h: bytes) -> Tuple[int, set]:
+        thr, hv = V.parse_pol1(self.atoms[h])
+        return thr, set(V.parse_hvec(self.atoms[hv], require_sorted=True))
+
+    def hv(self, h: bytes) -> List[bytes]:
+        return [] if h == V.H_EMPTY else V.parse_hvec(self.atoms[h], require_sorted=True)
+
+    def name(self, x: bytes) -> str:
+        return V.parse_utf8(self.atoms[self.cells[x].h_slot_name])
+
+    def who(self, k: bytes) -> str:
+        return f"{self.names.get(k, '?')} {k.hex()[:8]}"
+
+    def live(self, x: bytes) -> bool:
+        return bool(self.lens["active"].get(x)) and not self.lens["stale"].get(x)
+
+    def wend(self, x: bytes) -> set:
+        """The keys behind a local cell: every seal on it counts, late co-signatures too."""
+        return self.lens["cumulative_endorsers"].get(x, set())
+
+    def judged(self, d: bytes) -> bool:
+        """A contract or decision without a computation: one an ACCEPT or an INVALID verdict alone can judge."""
+        c = self.cells[d]
+        return c.h_schema in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]) and c.slots[1] == V.H_EMPTY
+
+    def gate_only(self, x: bytes) -> bool:
+        """A seal on `x` can move Pass 1 (an edge of `x` not yet latched, a scope or a schema not yet authorized), which
+        `next` does not read in memory: such an act is read through the gate."""
+        c = self.cells[x]
+        edges = [(x, v, kind) for kind, h in (("invalidates", c.h_invalidates), ("retires", c.h_retires),
+                                               ("supersedes", c.h_supersedes)) for v in self.hv(h)]
+        return (any(e not in self.latched for e in edges)
+                or (c.h_schema in (V.H_META_SCHEMA, V.H_SCHEMA["scope"]) and not self.lens["settled"].get(x)))
+
+    def menu(self, every: bool = False) -> List[Dict[str, object]]:
+        """The acts `next` reads: each one seal of one roster key. On a new verdict it files: `attest`, an ACCEPT under
+        a verifier id of its own, on a contract or decision whose policy names it and that does not count it yet;
+        `withdraw`, an INVALID under a verifier id it counts through. On a local cell already on the chain: `witness` a
+        projection whose witness policy names it, `cosign` a verdict or an answer that counts for a cell whose policy
+        names it, or an INVALID verdict on one, and `seal` a cell `gate_only` names. With `every`, also each other
+        seal it has not made, on any cell of the chain, local or not (`other`), and an ACCEPT by a key no policy names:
+        `next` reads those as changing nothing, which `check` holds to the gate."""
+        L, cells = self.lens, self.cells
+        acts: List[Dict[str, object]] = []
+        local = lambda x: self.name(x).startswith(f"{SCOPE}/")  # noqa: E731
+        for d in sorted((d for d in L["evaluators"] if local(d) and self.judged(d)), key=self.name):
+            pks, counted = L["evaluators"][d][1], L["endorsers"][d]
+            for k in self.keys:
+                if every or (k in pks and k not in counted):
+                    acts.append({"act": "attest", "key": k, "cell": d})
+                for vid in sorted({cells[w].slots[2] for w, ks in L["counted_witnesses"][d].items() if k in ks}):
+                    acts.append({"act": "withdraw", "key": k, "cell": d, "vid": vid})
+        for x in sorted((x for x in cells if every or local(x)), key=self.name):
+            for k in self.keys:
+                if k in self.wend(x):
+                    continue
+                kind = self.seal_kind(x, k)
+                if kind != "other" or every:
+                    acts.append({"act": kind, "key": k, "cell": x})
+        return acts
+
+    def seal_kind(self, x: bytes, k: bytes) -> str:
+        L, c = self.lens, self.cells[x]
+        if self.gate_only(x):
+            return "seal"
+        if c.h_schema == V.H_SCHEMA["projection"]:
+            return "witness" if k in self.pol(c.slots[4])[1] else "other"
+        if any(x in ws and k in L["evaluators"][d][1] for d, ws in L["counted_witnesses"].items()):
+            return "cosign"
+        if (c.h_schema == V.H_SCHEMA["verdict"] and c.slots[1] == V.H_VERDICT_INVALID and self.live(x)
+                and any(self.withdraws(x, d, w) and k in ws[w] for d, ws in L["counted_witnesses"].items() for w in ws)):
+            return "cosign"
+        return "other"
+
+    def withdraws(self, b: bytes, d: bytes, w: bytes) -> bool:
+        """Does an INVALID verdict `b` (live) withdraw its keys' endorsements of `d` through the witness `w`? Under the
+        same verifier id, on `d` itself or on the checkpoint or cycle witness `w` names (§4.2 Pass 3, `Withdrawn`)."""
+        cb, cw = self.cells[b], self.cells[w]
+        return (self.cells[d].h_schema in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"])
+                and cb.slots[2] == cw.slots[2]
+                and (cb.h_payload == d or (cw.slots[0] != V.H_EMPTY and cb.slots[0] == cw.slots[0])))
+
+    def withdrawn(self, d: bytes, w: bytes, k: bytes) -> bool:
+        return any(cb.h_schema == V.H_SCHEMA["verdict"] and cb.slots[1] == V.H_VERDICT_INVALID and self.live(b)
+                   and k in self.wend(b) and self.withdraws(b, d, w) for b, cb in self.cells.items())
+
+    def predict(self, act: Dict[str, object]) -> Dict[str, object]:
+        """What the act leaves, read in memory: Pass 3's tables changed by that one seal, Settled of the cells whose
+        tables changed, and Grounded recomputed by the lens's own fixed point (`vars1.grounded_lfp`). A new local cell
+        needs one seal by a key of the admission policy, at any threshold (§3 check 3). `refused`, or the status changes of the
+        chain's cells (`proofs/Vars1/Pivot.lean`: an endorsement only adds Grounded cells, a withdrawal only takes)."""
+        L, cells = self.lens, self.cells
+        kind, k, x = act["act"], act["key"], act["cell"]
+        if kind == "seal":
+            raise ValueError("a seal `gate_only` names is read through the gate")
+        settled, cw, order = dict(L["settled"]), dict(L["counted_witnesses"]), list(L["kernel_order"])
+        relies = lambda c: [] if c == HYPOTHESIS else self.hv(cells[c].h_relies)  # noqa: E731
+        touched: set = set()
+        if kind in ("attest", "withdraw"):
+            if k not in self.adm[1]:
+                return {"refused": True}
+            order.append(HYPOTHESIS)
+            settled[HYPOTHESIS] = True  # a verdict that stands is Settled; it relies on nothing, so it is Grounded
+            if kind == "attest" and k in L["evaluators"][x][1]:
+                cw[x] = {**cw[x], HYPOTHESIS: {k}}
+                touched.add(x)
+            if kind == "withdraw":  # its INVALID verdict names no witness: it reaches `x` by its payload alone
+                cw[x] = {w: (ks - {k} if cells[w].slots[2] == act["vid"] else ks) for w, ks in cw[x].items()}
+                touched.add(x)
+        elif kind == "witness":
+            thr, pks = self.pol(cells[x].slots[4])
+            settled[x] = self.live(x) and len((self.wend(x) | {k}) & pks) >= thr
+        elif kind == "cosign":
+            for d, ws in L["counted_witnesses"].items():
+                pks = L["evaluators"][d][1]
+                if x in ws and k in pks and (cells[d].h_schema == V.H_SCHEMA["question"] or not self.withdrawn(d, x, k)):
+                    cw[d] = {**cw[d], x: cw[d][x] | {k}}
+                    touched.add(d)
+                if cells[x].h_schema == V.H_SCHEMA["verdict"] and cells[x].slots[1] == V.H_VERDICT_INVALID:
+                    hit = [w for w in ws if self.withdraws(x, d, w)]
+                    if hit:
+                        cw[d] = {w: (ks - {k} if w in hit else ks) for w, ks in cw[d].items()}
+                        touched.add(d)
+        for d in touched:
+            settled[d] = self.live(d) and len(set().union(*cw[d].values())) >= L["evaluators"][d][0]
+        grounded = V.grounded_lfp(order, settled, relies, cw, L["evaluators"])
+        flips = {x: {b: (bool(L[b].get(x)), bool(new.get(x))) for b, new in (("settled", settled), ("grounded", grounded))
+                     if bool(L[b].get(x)) != bool(new.get(x))} for x in cells}
+        return {"refused": False, "flips": {x: f for x, f in flips.items() if f}}
+
+    def act_hypothesis(self, act: Dict[str, object]) -> Tuple[Dict[bytes, bytes], List[V.Cell], List[V.Seal]]:
+        """The act as the gate reads it: its new verdict, if any, and its one seal, supposed (a zero signature)."""
+        kind, k, x = act["act"], act["key"], act["cell"]
+        atoms: Dict[bytes, bytes] = {}
+        if kind not in ("attest", "withdraw"):
+            return atoms, [], [V.Seal(h_target=x, h_scope_ctx=self.scope, actor_pubkey=k, signature=V.ZERO_SIGNATURE)]
+        if kind == "attest":  # a verifier id of its own, which no INVALID verdict on the chain names
+            used = {c.slots[2] for c in self.cells.values() if c.h_schema == V.H_SCHEMA["verdict"]}
+            n = 0
+            while V.sha256(V.atom_utf8(f"next/{k.hex()[:16]}/{n}")) in used:
+                n += 1
+            vid, outcome = _put(atoms, V.atom_utf8(f"next/{k.hex()[:16]}/{n}")), V.H_ATTESTED
+        else:
+            vid, outcome = act["vid"], V.H_VERDICT_INVALID
+            atoms[vid] = self.atoms[vid]
+        w = V.Cell(h_schema=V.H_SCHEMA["verdict"],
+                   h_slot_name=_put(atoms, V.atom_utf8(f"{SCOPE}/next/{kind}/{x.hex()[:12]}/{k.hex()[:8]}")),
+                   h_payload=x, h_attests=_put(atoms, V.atom_hvec([x])), slots=(V.H_EMPTY, outcome, vid))
+        return atoms, [w], [V.Seal(h_target=w.id, h_scope_ctx=self.scope, actor_pubkey=k, signature=V.ZERO_SIGNATURE)]
+
+    def through_gate(self, act: Dict[str, object]) -> Dict[str, object]:
+        """The act through the gate (`GitVarsRepo.what_if`, its seal supposed): `refused`, or every status change of
+        the chain's cells, all bits."""
+        atoms, new, seals = self.act_hypothesis(act)
+        try:
+            rep = self.repo.what_if(SCOPE, atoms, new, seals, assume=True, statuses=True)
+        except V.VarsError:
+            return {"refused": True}
+        flips = {}
+        for h, row in rep.get("statuses", {}).items():
+            b, a = row["before"], row["after"]
+            flips[bytes.fromhex(h)] = {bit: (b[bit], a[bit]) for bit in b if b[bit] != a[bit]}
+        return {"refused": False, "flips": flips}
+
+
+def next_acts(repo_dir: Path, actor: Optional[str] = None) -> Dict[str, object]:
+    """Read only: which single act of one roster key would change a status now, and which cells wait (`next`). Each
+    act of the menu (`NextTip.menu`) is read in memory (`NextTip.predict`) or, for a seal that can move Pass 1, through
+    the gate; the acts that change something are listed, the most cells first, gains before losses. `actor` (a key's
+    name, or 8 or more hex digits of it) keeps that key's acts only."""
+    t = NextTip(repo_dir)
+    keys = t.keys
+    if actor is not None:
+        keys = [k for k in t.keys if t.names.get(k) == actor
+                or (re.fullmatch(r"[0-9a-f]{8,64}", actor.lower()) and k.hex().startswith(actor.lower()))]
+        if len(keys) != 1:  # a verifier id is free text: two keys can give the same one
+            raise V.VarsError(f"{len(keys)} roster keys answer to {actor!r}"
+                              + (f" ({', '.join(t.who(k) for k in keys)})" if keys else "")
+                              + ": name one by its verifier id or 8 or more hex digits of it")
+    menu = [a for a in t.menu() if a["key"] in keys]
+    rows = []
+    for act in menu:
+        got = t.through_gate(act) if act["act"] == "seal" else t.predict(act)
+        if got["refused"] or not got["flips"]:
+            continue
+        flips = [{"cell": x.hex(), "name": t.name(x), "bit": b, "before": ba[0], "after": ba[1]}
+                 for x, f in sorted(got["flips"].items(), key=lambda kv: t.name(kv[0])) for b, ba in sorted(f.items())]
+        row = {"act": act["act"], "key": act["key"].hex(), "who": t.who(act["key"]), "cell": act["cell"].hex(),
+               "name": t.name(act["cell"]), "radius": len(got["flips"]),
+               "gains": sum(1 for f in flips if f["after"]), "losses": sum(1 for f in flips if not f["after"]),
+               "flips": flips}
+        if "vid" in act:
+            row["verifier"] = V.parse_utf8(t.atoms[act["vid"]])
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["radius"], -r["gains"], NEXT_KINDS.index(r["act"]), r["name"], r["key"]))
+    L = t.lens
+    waiting = []
+    for x in sorted(t.cells, key=t.name):
+        if not t.live(x) or L["settled"].get(x):
+            continue
+        if x in L["evaluators"]:
+            thr, pks = L["evaluators"][x]
+            have = L["endorsers"][x]
+        elif t.cells[x].h_schema == V.H_SCHEMA["projection"]:
+            thr, pks = t.pol(t.cells[x].slots[4])
+            have = t.wend(x) & pks
+        else:
+            continue
+        waiting.append({"cell": x.hex(), "name": t.name(x), "threshold": thr,
+                        "counted": [t.who(k) for k in sorted(have)], "waiting_for": [t.who(k) for k in sorted(pks - have)]})
+    margins = {}
+    for d in L["evaluators"]:
+        if L["settled"].get(d) and t.judged(d):
+            m = len(L["endorsers"][d]) - L["evaluators"][d][0]
+            margins[m] = margins.get(m, 0) + 1
+    return {"tip": t.tip, "keys": [t.who(k) for k in keys], "considered": len(menu), "waiting": waiting,
+            "margins": {str(m): n for m, n in sorted(margins.items())}, "acts": rows}
+
+
+def next_text(doc: Dict[str, object], top: int = 12) -> str:
+    """`next` as lines a person reads: what waits, then each act that changes more than one cell, the most first, then
+    the acts that change one cell each, counted by key and kind, then how much margin the Settled decisions keep."""
+    w = doc["waiting"]
+    out = [f"chain {doc['tip'][:12]}: " + (f"{len(w)} cells wait for an answer" if w else "nothing waits for an answer")]
+    for x in w:
+        out.append(f"  {x['name']}: {len(x['counted'])} of {x['threshold']}, waiting for {', '.join(x['waiting_for'])}")
+    acts = doc["acts"]
+    out.append(f"{len(acts)} of the {doc['considered']} acts of one key ({', '.join(doc['keys'])}) change a status")
+    big = [r for r in acts if r["radius"] > 1]
+    word = lambda f: f"{f['name']} {'gains' if f['after'] else 'loses'} {f['bit']}"  # noqa: E731
+    for r in big[:top]:
+        more = f", and {len(r['flips']) - 4} more" if len(r["flips"]) > 4 else ""
+        via = f" under {r['verifier']}" if "verifier" in r else ""
+        out.append(f"  {r['act']} by {r['who']} on {r['name']}{via}: {r['radius']} cells: "
+                   + ", ".join(word(f) for f in r["flips"][:4]) + more)
+    if len(big) > top:
+        out.append(f"  ... and {len(big) - top} more that change more than one cell")
+    groups: Dict[Tuple[str, str, str], List[str]] = {}
+    for r in acts:
+        if r["radius"] == 1:
+            bits = " and ".join(sorted({f["bit"] for f in r["flips"]}, key=NEXT_BITS.index))
+            way = "gives" if r["gains"] else "takes"
+            groups.setdefault((r["act"], r["who"], f"{way} {bits}"), []).append(r["flips"][0]["name"])
+    for (act, who, what), names in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        shown = ", ".join(names[:3]) + (f", ... ({len(names)})" if len(names) > 3 else "")
+        out.append(f"  {act} by {who}: {len(names)} act(s), each {what} of one cell: {shown}")
+    if doc["margins"]:
+        out.append("Settled contracts and decisions by margin (keys counted beyond the threshold): " +
+                   ", ".join(f"{m}: {n}" for m, n in doc["margins"].items())
+                   + "; at margin 0, one withdrawal by any key it counts unsettles it")
+    return "\n".join(out)
+
+
+def next_check(repo_dir: Path, every: bool = False) -> Dict[str, object]:
+    """Hold `next` to the gate: every act of its menu (with `every`, every seal of every roster key on every local cell
+    it has not sealed, and an ACCEPT by every key on every contract or decision) through `GitVarsRepo.what_if`, its
+    seal supposed, against `next`'s reading. They agree when both refuse, or both admit and change the same bits of the
+    same cells; the gate's bits are all of them, so a Pass 1 or Pass 2 change `next` does not read is a difference."""
+    t = NextTip(repo_dir)
+    menu = t.menu(every)
+    differ, gate_read = [], 0
+    for act in menu:
+        gate = t.through_gate(act)
+        if act["act"] == "seal":
+            gate_read += 1
+            continue
+        mine = t.predict(act)
+        if mine != gate:
+            differ.append({"act": act["act"], "key": act["key"].hex(), "cell": act["cell"].hex(), "name": t.name(act["cell"]),
+                           "next": _flips_json(mine), "gate": _flips_json(gate)})
+    return {"tip": t.tip, "acts": len(menu), "read_by_the_gate": gate_read, "differ": differ}
+
+
+def _flips_json(got: Dict[str, object]) -> object:
+    if got["refused"]:
+        return "refused"
+    return {x.hex(): {b: list(ba) for b, ba in f.items()} for x, f in got["flips"].items()}
 
 
 def show(repo_dir: Path) -> List[Dict[str, object]]:
@@ -1313,6 +1623,22 @@ def _main(argv: List[str]) -> int:
         repo = V.GitVarsRepo(repo_dir)
         print(json.dumps(repo.power(SCOPE, bytes.fromhex(argv[1])), indent=2))
         return 0
+    if cmd == "next":
+        flags, actor, rest = set(), None, list(argv[1:])
+        while rest and (rest[0] in ("--json", "--check", "--every") or (rest[0] == "--actor" and len(rest) > 1
+                                                                          and actor is None)):
+            if rest[0] == "--actor":
+                actor, rest = rest[1], rest[2:]
+            else:
+                flags.add(rest.pop(0))
+        if not rest:
+            if "--check" in flags:
+                doc = next_check(repo_dir, every="--every" in flags)
+                print(json.dumps(doc, indent=2))
+                return 1 if doc["differ"] else 0
+            doc = next_acts(repo_dir, actor)
+            print(json.dumps(doc, indent=2) if "--json" in flags else next_text(doc))
+            return 0
     if cmd == "why" and len(argv) in (2, 3) and argv[2:] in ([], ["--json"]):
         doc = explain(repo_dir, argv[1])
         print(json.dumps(doc, indent=2) if argv[2:] else explain_text(doc))

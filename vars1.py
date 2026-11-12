@@ -18,7 +18,7 @@ from collections import deque
 from itertools import combinations
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
 
 
 # The bundle verifier (§4.4) is its own standalone file: Ed25519, atoms, cells, seals, the standard schemas and the
@@ -970,6 +970,36 @@ def canonical_commit_id(repo_dir: Path | str, name: str) -> bool:
     got = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", "--end-of-options",
                           f"{name}^{{commit}}"], capture_output=True, text=True)
     return got.returncode == 0 and got.stdout.strip() == name
+
+
+def grounded_lfp(order: Sequence[bytes], settled: Dict[bytes, bool], relies: Callable[[bytes], List[bytes]],
+                 counted_witnesses: Dict[bytes, Dict[bytes, Set[bytes]]],
+                 evaluators: Dict[bytes, Tuple[int, Set[bytes]]]) -> Dict[bytes, bool]:
+    """Grounded (§4.2): the least fixed point, computed from below, from Pass 3's tables: a cell is Grounded when it is
+    Settled, everything it relies on is Grounded, and, if Pass 3 evaluates it, the keys counted through its Grounded
+    witnesses meet its threshold. A witness is newer than what it judges and a ground older than what relies on it, so
+    one sweep need not reach it, and a cell a verdict's own ground rests on never grounds itself: support that runs in
+    a circle is Settled and not Grounded. The lens calls it at the tip; `minds_chain.py next` calls it on the tables
+    one act would leave (`proofs/Vars1/Pivot.lean`)."""
+    grounded: Dict[bytes, bool] = {cid: False for cid in order}
+    changed = True
+    while changed:
+        changed = False
+        for cid in order:
+            if grounded[cid] or not settled[cid]:
+                continue
+            if not all(grounded.get(g, False) for g in relies(cid)):
+                continue
+            if cid in counted_witnesses:
+                keys: Set[bytes] = set()
+                for wid, ks in counted_witnesses[cid].items():
+                    if grounded[wid]:
+                        keys |= ks
+                if len(keys) < evaluators[cid][0]:
+                    continue
+            grounded[cid] = True
+            changed = True
+    return grounded
 
 
 # ---------------------------------------------------------------------------
@@ -2591,27 +2621,8 @@ class GitVarsRepo:
             settled[cid] = is_set
             provisional[cid] = not is_set
 
-        # Grounded (§4.2): the least fixed point, computed from below. A witness is newer than what it judges and a
-        # ground older than what relies on it, so one sweep need not reach it, and a cell a verdict's own ground rests
-        # on never grounds itself: support that runs in a circle is Settled and not Grounded
-        grounded: Dict[bytes, bool] = {cid: False for cid in forward_order}
-        changed = True
-        while changed:
-            changed = False
-            for cid in forward_order:
-                if grounded[cid] or not settled[cid]:
-                    continue
-                if not all(grounded.get(g, False) for g in hvec_items(cells[cid].h_relies)):
-                    continue
-                if cid in counted_witnesses:
-                    keys: Set[bytes] = set()
-                    for wid, ks in counted_witnesses[cid].items():
-                        if grounded[wid]:
-                            keys |= ks
-                    if len(keys) < evaluators[cid][0]:
-                        continue
-                grounded[cid] = True
-                changed = True
+        grounded = grounded_lfp(forward_order, settled, lambda cid: hvec_items(cells[cid].h_relies), counted_witnesses,
+                                evaluators)
 
         return {
             "kernel_input": fold["kernel_input"],
@@ -2800,22 +2811,24 @@ class GitVarsRepo:
         }
 
     def what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"],
-                assume: bool = False) -> Dict[str, object]:
+                assume: bool = False, statuses: bool = False) -> Dict[str, object]:
         """See `_what_if`. With `assume`, the hypothesis's seals are supposed, not signed: each names a key and carries
         a zero signature, so a reader holding no key of the roster can ask what would follow if those keys sealed it.
         The gate checks everything else as for an admission (keys of the policy, references, replay); the run uses a
         throwaway instance, so no cache of this one ever holds an assumed seal, and its candidate can never be
-        admitted, since a zero signature fails every real check. The report says `mode: assumed` in its context."""
+        admitted, since a zero signature fails every real check. The report says `mode: assumed` in its context.
+        With `statuses`, the report also carries `statuses`: every cell of the chain whose statuses change, with all of them
+        before and after (`lost` tells Grounded only where Settled does not move); it is outside the digest."""
         if not assume:
-            return self._what_if(scope, atoms, cells, seals, "sealed")
+            return self._what_if(scope, atoms, cells, seals, "sealed", statuses)
         if not seals or any(x.signature != ZERO_SIGNATURE for x in seals):
             raise VarsError("an assumed hypothesis carries only seals with a zero signature")
         sim = GitVarsRepo(self.repo_dir)
         sim._assumed = frozenset(x.id for x in seals)
-        return sim._what_if(scope, atoms, cells, seals, "assumed")
+        return sim._what_if(scope, atoms, cells, seals, "assumed", statuses)
 
-    def _what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"], mode: str
-                 ) -> Dict[str, object]:
+    def _what_if(self, scope: str, atoms: Dict[bytes, bytes], cells: List["Cell"], seals: List["Seal"], mode: str,
+                 statuses: bool = False) -> Dict[str, object]:
         """What would follow if `cells` (a hypothesis: say a cell invalidating a ground, or an INVALID verdict) were
         admitted now. The hypothesis is built as a candidate commit on the tip and checked by the gate exactly as an
         admission would be, but no ref moves: the canonical chain is unchanged. The lens is computed at the tip and at
@@ -2948,9 +2961,13 @@ class GitVarsRepo:
         context = {"mode": mode, "scope": scope, "tip": tip, "rules": [before["rules"].hex(), after["rules"].hex()],
                    "hypothesis": sorted(h.hex() for h in hyp),
                    "seals": sorted([x.h_target.hex(), x.actor_pubkey.hex()] for x in seals)}
-        return {"scope": scope, "tip": tip, "hypothesis": sorted(h.hex() for h in hyp), "candidate": candidate,
-                **body, "digest": digest, "context": context,
-                "transcript": sha256(b"minds.what-if.transcript@1\x00" + canon({"context": context, "digest": digest})).hex()}
+        out = {"scope": scope, "tip": tip, "hypothesis": sorted(h.hex() for h in hyp), "candidate": candidate,
+               **body, "digest": digest, "context": context,
+               "transcript": sha256(b"minds.what-if.transcript@1\x00" + canon({"context": context, "digest": digest})).hex()}
+        if statuses:
+            out["statuses"] = {cid.hex(): {"before": state(before, cid), "after": state(after, cid)} for cid in sorted(before["cells"])
+                           if state(before, cid) != state(after, cid)}
+        return out
 
 
 # ---------------------------------------------------------------------------

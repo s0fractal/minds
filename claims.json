@@ -2023,6 +2023,39 @@
    ]
   },
   {
+   "id": "assurance.next",
+   "source": "ASSURANCE.md",
+   "quote": "`next` names, with no cell asked about, every single act of one roster key that would change a status",
+   "status": "tested",
+   "witnesses": [
+    "test:test_132_next_names_the_single_act_that_changes_the_most",
+    "lean:decisive_endorser_iff",
+    "lean:decisive_withdrawal_iff",
+    "lean:decisive_settled_iff",
+    "lean:decisive_unsettled_iff",
+    "lean:grounded_mono",
+    "lean:decisive_cascade_grounded"
+   ],
+   "mutants": [
+    "m-next-attest-member",
+    "m-next-withdraw-vid",
+    "m-next-witness-thr",
+    "m-next-cosign-withdrawn",
+    "m-next-cosign-invalid",
+    "m-next-gate-only",
+    "m-next-rank",
+    "m-next-settle",
+    "m-next-actor-ambiguous",
+    "m-next-admission",
+    "m-next-hypothesis-grounded",
+    "m-next-check-compare",
+    "m-what-if-statuses",
+    "m-grounded-relies",
+    "m-grounded-witness",
+    "m-grounded-from-above"
+   ]
+  },
+  {
    "id": "assurance.profile-regular",
    "source": "ASSURANCE.md",
    "quote": "A commit with a symlink or a submodule has no profile",
