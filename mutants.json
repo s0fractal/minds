@@ -3286,5 +3286,69 @@
   "kills": [
    "test_132_next_names_the_single_act_that_changes_the_most"
   ]
+ },
+ "m-power-grounded-attack": {
+  "file": "vars1.py",
+  "find": "            stay = {u: base[u] and not (u in frame and attack(co, u)) for u in order}",
+  "replace": "            stay = dict(base)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-withdraw": {
+  "file": "vars1.py",
+  "find": "            counts = {v: ({w: k - ks for w, k in m.items()} if v in frame and cells[v].h_schema in quorate else m)",
+  "replace": "            counts = {v: ({w: k for w, k in m.items()} if v in frame and cells[v].h_schema in quorate else m)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-fresh": {
+  "file": "vars1.py",
+  "find": "                    counts[v] = {**cw[v], fresh: ks & evs[v][1]}",
+  "replace": "                    counts[v] = dict(cw[v])",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-fresh-stands": {
+  "file": "vars1.py",
+  "find": "            return grounded_lfp([fresh, *order], {**base, fresh: bool(ks)}, lambda u: [] if u == fresh else relies(u),",
+  "replace": "            return grounded_lfp([fresh, *order], {**base, fresh: False}, lambda u: [] if u == fresh else relies(u),",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-frame": {
+  "file": "vars1.py",
+  "find": "                todo += relies(x) + list(cw.get(x, {}))",
+  "replace": "                todo += relies(x)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-exact-edges": {
+  "file": "vars1.py",
+  "find": "                          and not any(x in attackers or origin(x) != scope for x in frame)",
+  "replace": "                          and not any(origin(x) != scope for x in frame)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-lose-now": {
+  "file": "vars1.py",
+  "find": "            return bool(lens[\"grounded\"].get(cid)) and not struck(co)",
+  "replace": "            return not struck(co)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
+ },
+ "m-power-grounded-gain-now": {
+  "file": "vars1.py",
+  "find": "            return not lens[\"grounded\"].get(cid) and boosted(co)",
+  "replace": "            return boosted(co)",
+  "kills": [
+   "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
+  ]
  }
 }

@@ -8442,5 +8442,147 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((t.adm[0], bool(attests), {t.predict(a)["refused"] for a in attests}), (2, True, {False}))
         self.assertEqual(mc.next_check(self.repo_path)["differ"], [])
 
+    def test_133_power_over_grounded_is_the_strongest_blow_through_the_gate(self) -> None:
+        """The `grounded` row of `GitVarsRepo.power` (proofs/Vars1/Cut.lean) against the gate. Four small chains, every
+        quorum 2 of a, b, c, the decisions owner-tier so that no one key latches an edge into one. For every coalition,
+        every single move of its own through the real gate (an edge of each kind into each cell, an INVALID verdict
+        under each verifier id, a fresh ATTESTED verdict on each decision), and two moves of everything at once: the
+        strongest blow (every edge and every withdrawal in one commit) and the strongest gain (a fresh verdict on
+        every decision). A coalition takes Grounded away, or gives it, by some move exactly when the row says so, and
+        where the row says it can, the move of everything at once does it. In `illusion` the key a endorses nothing
+        D counts and takes Grounded from it all the same (`illusion_of_quorum`); in `apart` no single move of a does,
+        and the strongest blow does; in `gain` Settled would let a settle D alone, and Grounded needs c, or a and b."""
+        names = ("a", "b", "c")
+        coalitions = [c for n in range(1, 4) for c in combinations(names, n)]
+        worlds = {  # who attests d1 and d2; D's witnesses: (key, the decision it relies on); who filed d1, if not owner
+            "illusion": ("ab", "ac", (("b", "d1"), ("c", "d2")), None),
+            "robust": ("abc", "ac", (("b", "d1"), ("c", "d1")), None),
+            "apart": ("ab", "ac", (("b", "d1"), ("c", "d2"), ("a", None)), None),
+            "gain": ("a", "ac", (("b", "d1"),), None),
+            "evict": ("ab", "", (("b", "d1"), ("a", "d1")), "c"),
+        }
+
+        def build(tag, att1, att2, wits, filer):
+            """A verdict on d1 or d2 is filed by the last key that attests it and sealed later by the others, which
+            can then only withdraw it: retiring a verdict takes one that filed it. With `filer`, d1 is provisional and
+            filed by that key alone, which can retire it."""
+            ch = self._small(tag, adm=2, acc=2)
+            at: dict[bytes, bytes] = {}
+            pol = ch.policy(at, 2, names)
+            ds = {n: ch.decision(n, at, pol, tier=V.H_PROVISIONAL if n == "d1" and filer else V.H_OWNER)
+                  for n in ("d1", "d2", "D")}
+            ch.commit(at, list(ds.values()), [(m, x) for x in ds.values() for m in
+                                              ((filer,) if x is ds["d1"] and filer else ("a", "b"))])
+            at, vs, later = {}, [], []
+            for n, att in (("d1", att1), ("d2", att2)):
+                for m in att:
+                    v = ch.verdict(f"u-{n}-{m}", at, ds[n].id, V.H_ATTESTED, f"{n}-{m}")
+                    vs.append((att[-1], v))
+                    later += [(m, v)] if m != att[-1] else []
+            vs += [(m, ch.verdict(f"w-{m}", at, ds["D"].id, V.H_ATTESTED, f"D-{m}", relies=[ds[on].id] if on else ()))
+                   for m, on in wits]
+            ch.commit(at, [v for _, v in vs], vs)
+            if later:
+                ch.commit({}, [], later)
+            vids = {v.id: f"{n}-{m}" for n, att in (("d1", att1), ("d2", att2)) for m in att
+                    for _, v in vs if v.slots[2] == V.sha256(V.atom_utf8(f"{n}-{m}"))}
+            vids.update({v.id: f"D-{m}" for m, _ in wits for _, v in vs if v.slots[2] == V.sha256(V.atom_utf8(f"D-{m}"))})
+            return ch, ds, [v for _, v in vs], vids
+
+        def notice(ch, kind, target, step):
+            at: dict[bytes, bytes] = {}
+            base = ch.axiom(f"notice-{kind}-{target.id.hex()[:8]}-{step}", at)
+            edge = ch.put(at, V.atom_hvec([target.id]))
+            if kind == "invalidates":
+                return [V.Cell(base.h_schema, base.h_slot_name, base.h_payload, h_invalidates=edge)], at
+            return [V.Cell(base.h_schema, base.h_slot_name, base.h_payload, h_retires=edge,
+                           h_loss=ch.put(at, V.atom_utf8("retired")))], at
+
+        def moves(ch, ds, vs, vids, step):
+            """(single moves, the strongest blow, the strongest gain), each as (cells, atoms)."""
+            singles = []
+            for target in [*ds.values(), *vs]:
+                for kind in ("invalidates", "retires"):
+                    singles.append(notice(ch, kind, target, step))
+            withdrawals = []
+            for v in vs:
+                at = {}
+                vid = vids[v.id]
+                withdrawals.append(([ch.verdict(f"inv-{vid}-{step}", at, v.h_payload, V.H_VERDICT_INVALID, vid)], at))
+            attests = []
+            for n, d in ds.items():
+                at = {}
+                attests.append(([ch.verdict(f"att-{n}-{step}", at, d.id, V.H_ATTESTED, f"fresh-{n}-{step}")], at))
+
+            def joined(parts):
+                cells, at = [], {}
+                for c, a in parts:
+                    cells += c
+                    at.update(a)
+                return cells, at
+
+            return singles + withdrawals + attests, joined(singles + withdrawals), joined(attests)
+
+        seen = {"lose": 0, "gain": 0, "only_at_once": 0}
+        for tag, (att1, att2, wits, filer) in worlds.items():
+            ch, ds, vs, vids = build(tag, att1, att2, wits, filer)
+            D = ds["D"]
+            table = ch.repo.power(ch.scope, D.id)
+            row = table["grounded"]
+            self.assertTrue(row["exact"], tag)
+            rel = {on for _, on in wits if on}
+            self.assertEqual(row["frame"], 1 + len(wits) + len(rel) + sum(len({"d1": att1, "d2": att2}[n]) for n in rel))
+            before = bool(ch.lens()["grounded"][D.id])
+            tip0 = ch.tip
+            for co in coalitions:
+                keyset = sorted(PK[m].hex() for m in co)
+                wins = lambda rows: any(set(r) <= set(keyset) for r in rows)  # noqa: E731
+                singles, blow, gain = moves(ch, ds, vs, vids, 0)
+                reached = {"lose": False, "gain": False}
+                by_single = False
+                for i, (cells, at) in enumerate([*singles, blow, gain]):
+                    seals = [V.Seal.sign(SK[m], c.id, ch.s.id) for c in cells for m in co]
+                    cand = ch.repo.build_candidate_commit(ch.scope, at, cells, seals, parent_commit=tip0)
+                    try:
+                        ch.repo._check_commit(ch.scope, cand, tip0)
+                    except V.VarsError:
+                        self.assertLess(i, len(singles), (tag, co, "a move of everything at once is refused"))
+                        continue
+                    now = bool(ch.repo.lens(ch.scope, at=cand)["grounded"][D.id])
+                    hit = {"lose": before and not now, "gain": (not before) and now}
+                    reached = {k: reached[k] or hit[k] for k in reached}
+                    by_single |= i < len(singles) and (hit["lose"] or hit["gain"])
+                    if i == len(singles):
+                        self.assertEqual(hit["lose"], wins(row["lose"]), (tag, co, "the strongest blow"))
+                    if i == len(singles) + 1:
+                        self.assertEqual(hit["gain"], wins(row["gain"]), (tag, co, "the strongest gain"))
+                for eff in ("lose", "gain"):
+                    self.assertEqual((tag, co, eff, wins(row[eff])), (tag, co, eff, reached[eff]))
+                    seen[eff] += reached[eff]
+                seen["only_at_once"] += (reached["lose"] or reached["gain"]) and not by_single
+            a = [PK["a"].hex()]
+            if tag == "illusion":  # a endorses nothing D counts, so Settled is out of its reach; Grounded is not
+                self.assertTrue(before)
+                self.assertNotIn(a, table["lose_settled"])
+                self.assertIn(a, row["lose"])
+            if tag == "robust":
+                self.assertNotIn(a, row["lose"])
+            if tag == "apart":
+                self.assertIn(a, row["lose"])
+            if tag == "gain":
+                self.assertIn(a, table["gain_settled"])
+                self.assertEqual(sorted(map(sorted, row["gain"])),
+                                 sorted([[PK["c"].hex()], sorted([PK["a"].hex(), PK["b"].hex()])]))
+            if tag == "evict":  # c endorses nothing and files d1, which it retires alone
+                self.assertIn([PK["c"].hex()], row["lose"])
+            if tag == "illusion":  # an edge already into the frame: attacking it could bring a cell back
+                at = {}
+                n = ch.axiom("notice-w", at)
+                n = V.Cell(n.h_schema, n.h_slot_name, n.h_payload, h_invalidates=ch.put(at, V.atom_hvec([vs[-1].id])))
+                ch.commit(at, [n], [("a", n)])
+                self.assertFalse(ch.repo.power(ch.scope, D.id)["grounded"]["exact"])
+        for eff, n in seen.items():
+            self.assertGreater(n, 0, f"the search never reached {eff}")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

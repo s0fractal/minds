@@ -2654,7 +2654,8 @@ class GitVarsRepo:
     def power(self, scope: str, cid: bytes, at: Optional[str] = None) -> Dict[str, object]:
         """Who can change whether this local contract or decision without a computation stands and is Settled at the tip,
         read from the rules: for each effect the minimal coalitions of roster keys that reach it by commits of their own,
-        with no rotation (`proofs/Vars1/Power.lean`). It reads Settled, not Grounded, and refuses any other cell.
+        with no rotation (`proofs/Vars1/Power.lean`). It refuses any other cell. Its first rows read the cell's own
+        quorum; `grounded` reads its whole frame (below).
         A coalition can attack a cell when it can latch an edge into it (§4.1 latch 3, `CanLatch`): by a new cell of its
         own, or by adding its seals to an existing cell whose edge is not yet latched. `lose_live`: it can attack the
         cell or something it relies on, transitively. `lose_settled`: that, or the keys still counted fall below the
@@ -2666,9 +2667,16 @@ class GitVarsRepo:
         roster it would leave. A reader who does not watch the chain is protected by its pin, not by the wait (§4.4).
         `exact` is false when something already points an edge at a cell the status reads (attacking the attacker can bring
         a cell back, and this table does not follow that), when it reads a foreign cell, or when it rests, along `relies`
-        or through a verdict, on a contract, decision, question or custom schema: then Grounded, which `accepted` asks,
-        turns on quorums this table does not list. It is then the set the frame theorems bound, not a set each of whose
-        coalitions was shown to work, nor every coalition that can change what a reader accepts."""
+        or through a verdict, on a contract, decision, question or custom schema: then Settled is not all a reader's
+        acceptance asks. It is then the set the frame theorems bound, not a set each of whose coalitions was shown to
+        work. `grounded` (`proofs/Vars1/Cut.lean`) lists the minimal coalitions that take Grounded from the cell, or give
+        it, over its frame at once: what it relies on, its witnesses and theirs, each with its own quorum. For one
+        coalition the strongest blow is one least fixed point with the cells it can attack gone and its keys withdrawn
+        from every count, and the strongest gain one with its keys counted for every decision of the frame by a fresh
+        verdict; no commit of its own does more, and one commit of everything at once reaches each. Its `exact` is false
+        where an edge already points into the frame, where the frame holds a foreign cell, a question, a computation or a
+        live INVALID verdict (attacking it could give a key back), or where the roster holds a key the admission policy
+        does not."""
         lens = self.lens(scope, at=at)
         cells, atoms = lens["cells"], lens["atoms"]
         if (cid not in cells or parse_utf8(atoms[cells[cid].h_slot_name]).split("/", 1)[0] != scope
@@ -2790,6 +2798,52 @@ class GitVarsRepo:
             thr, keys = lens["evaluators"][cid]
             return len(counted(lambda w: False, lambda b: gone(co, b)) | (co & keys & adm[1])) >= thr
 
+        # Grounded (proofs/Vars1/Cut.lean) reads the cell's whole frame: what it relies on, its witnesses and theirs, each
+        # with a quorum of its own. A coalition's strongest blow is one least fixed point on a smaller world, the cells
+        # it can attack gone and its keys withdrawn from every count (`grounded_keeps_of_no_cut`,
+        # `grounded_cut_attained`); its strongest gain the same with its keys counted for every cell of the frame, by a
+        # fresh verdict that relies on nothing (`grounded_needs_gain`, `grounded_gain_attained`).
+        order, cw, evs = lens["kernel_order"], lens["counted_witnesses"], lens["evaluators"]
+        quorate = (H_SCHEMA["contract"], H_SCHEMA["decision"])
+        base = {u: (bool(lens["active"].get(u) and not lens["stale"].get(u)) if u in evs else bool(lens["settled"].get(u)))
+                for u in order}
+        frame, todo = set(), [cid]
+        while todo:
+            x = todo.pop()
+            if x in cells and x not in frame:
+                frame.add(x)
+                todo += relies(x) + list(cw.get(x, {}))
+        withdrawing = any(y.h_schema == H_SCHEMA["verdict"] and y.slots[1] == H_VERDICT_INVALID and y.h_payload in frame
+                          and lens["active"].get(b) and not lens["stale"].get(b) for b, y in cells.items())
+        exact_grounded = (not withdrawing and acc[1] <= adm[1]
+                          and not any(x in attackers or origin(x) != scope for x in frame)
+                          and all(cells[x].h_schema in quorate and cells[x].slots[1] == H_EMPTY for x in frame if x in evs))
+        fresh = sha256(b"minds.power.fresh-verdict")
+
+        def struck(co: Set[bytes]) -> bool:
+            """Whether the cell is Grounded once the coalition strikes all it can at once."""
+            ks = co & adm[1]
+            stay = {u: base[u] and not (u in frame and attack(co, u)) for u in order}
+            counts = {v: ({w: k - ks for w, k in m.items()} if v in frame and cells[v].h_schema in quorate else m)
+                      for v, m in cw.items()}
+            return grounded_lfp(order, stay, relies, counts, evs)[cid]
+
+        def boosted(co: Set[bytes]) -> bool:
+            """Whether the cell is Grounded once the coalition attests every cell of its frame with all its keys."""
+            ks = co & adm[1]
+            counts = dict(cw)
+            for v in frame:
+                if v in cw and cells[v].h_schema in quorate and cells[v].slots[1] == H_EMPTY:
+                    counts[v] = {**cw[v], fresh: ks & evs[v][1]}
+            return grounded_lfp([fresh, *order], {**base, fresh: bool(ks)}, lambda u: [] if u == fresh else relies(u),
+                                counts, evs)[cid]
+
+        def lose_grounded(co: Set[bytes]) -> bool:
+            return bool(lens["grounded"].get(cid)) and not struck(co)
+
+        def gain_grounded(co: Set[bytes]) -> bool:
+            return not lens["grounded"].get(cid) and boosted(co)
+
         def minimal(effect) -> List[List[str]]:
             found: List[Set[bytes]] = []
             for size in range(1, len(roster) + 1):
@@ -2806,7 +2860,9 @@ class GitVarsRepo:
                        "acceptance": {"threshold": acc[0], "keys": sorted(k.hex() for k in acc[1])}},
             "lose_live": minimal(lose_live), "lose_settled": minimal(lose_settled), "gain_settled": minimal(gain_settled),
             "rotation": {"threshold": adm[0], "keys": sorted(k.hex() for k in adm[1])},
-            "reads": "live and settled, not grounded",
+            "grounded": {"lose": minimal(lose_grounded), "gain": minimal(gain_grounded), "exact": exact_grounded,
+                         "frame": len(frame)},
+            "reads": "live and settled of the cell; grounded of its whole frame",
             "exact": exact,
         }
 
