@@ -2705,6 +2705,8 @@
     "decision:test_01_the_lens_names_four_kinds_of_tension",
     "decision:test_02_absolute_silence",
     "decision:test_03_the_live_chain",
+    "decision:test_04_a_resolution_holds_only_under_its_conditions",
+    "decision:test_05_trajectories_cost_what_is_shown",
     "lean:silence_outside_reads"
    ],
    "mutants": [
@@ -2718,7 +2720,12 @@
     "m-prof-obligation",
     "m-prof-support",
     "m-prof-radius",
-    "m-prof-not-live"
+    "m-prof-not-live",
+    "m-prof-conditions-cut",
+    "m-prof-conditions-policy",
+    "m-prof-conditions-sig",
+    "m-prof-islice",
+    "m-prof-count"
    ]
   },
   {
