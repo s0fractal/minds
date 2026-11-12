@@ -568,5 +568,50 @@
   "find": "            out |= up.ev(c.h_payload)\n",
   "replace": "            pass\n",
   "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-unf-holds-decision": {
+  "find": "    if d not in U:\n        raise refuse(\"UNFOUNDED\", \"the set does not hold the decision\")",
+  "replace": "    if False:\n        raise refuse(\"UNFOUNDED\", \"the set does not hold the decision\")",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-down": {
+  "find": "        if rules.down(v) is True:\n            reasons[v.hex()] = \"down\"",
+  "replace": "        if False:\n            reasons[v.hex()] = \"down\"",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-not-live": {
+  "find": "        if rules.stand(v) is False:\n            reasons[v.hex()] = \"not live\"",
+  "replace": "        if False:\n            reasons[v.hex()] = \"not live\"",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-relies": {
+  "find": "        if any(r in U for r in hvec(atoms, c[\"relies\"])):",
+  "replace": "        if False:",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-outside": {
+  "find": "                if (w in U or x[\"schema\"] != SCHEMA[\"verdict\"]",
+  "replace": "                if (x[\"schema\"] != SCHEMA[\"verdict\"]",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-threshold": {
+  "find": "            if len(upper) < thr:\n                reasons[v.hex()] = \"quorum\"",
+  "replace": "            if len(upper) <= thr:\n                reasons[v.hex()] = \"quorum\"",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-withdrawn": {
+  "find": "                    if not any(cells[b][\"slots\"][2:3] == x[\"slots\"][2:3] and rules.stand(b) is True",
+  "replace": "                    if True or not any(cells[b][\"slots\"][2:3] == x[\"slots\"][2:3] and rules.stand(b) is True",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-witness-down": {
+  "find": "or x[\"slots\"][:1] != [H_EMPTY] or rules.down(w) is True):",
+  "replace": "or x[\"slots\"][:1] != [H_EMPTY]):",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
+ },
+ "m-unf-founded": {
+  "find": "        raise refuse(\"FOUNDED\", f\"{v.hex()} satisfies Grounded's equation given the cells outside the set\")",
+  "replace": "        continue",
+  "kills": "test_27_an_unfounded_set_shows_a_decision_is_not_grounded"
  }
 }
