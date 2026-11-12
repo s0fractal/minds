@@ -89,6 +89,10 @@ and, for some theorems, `Classical.choice`.
 | | `decisive_settled_iff`, `decisive_unsettled_iff` | the same for Settled of a contract or decision, through `settled_iff_keys`, when the act changes the keys that count by that one key and leaves the standing and the policy |
 | | `grounded_mono` | if every live cell stays live, every authorization stays, the policies stay and the witnesses and their counted keys only grow, every Grounded cell stays Grounded; read the other way, an act that only removes only removes |
 | | `decisive_cascade_grounded` | under the same, a cell whose equation holds once `u` and what was Grounded before are given is Grounded once `u` is: one endorsement of a foundation grounds every cell that waited only for it |
+| `Delta.lean` | `rtc_flip` | any number of steps of the inverse relation is any number of steps of the relation, reversed |
+| | `up_settled_iff` | a frame given by its steps (a judge or named checkpoint, then what that relies on, then what enters by an edge or is superseded): walking up the inverse of each step, in the reverse order, reaches `d` from `y` iff `y` is in `d`'s Settled frame |
+| | `up_grounded_iff` | the same for Grounded, whose frame first closes over the evaluated cells it reads |
+| | `unreached_frame_untouched` | so the decisions the walk does not reach from a commit's touch points are exactly those with no touch point in their frame |
 
 ## Executable lens
 
@@ -175,6 +179,10 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
 - `tools/minds_chain.py next` to `Pivot.lean`: its in-memory reading of one act (`NextTip.predict`) is Python. It
   calls the lens's own fixed point for Grounded (`vars1.grounded_lfp`), and test 132 holds every act of its menu, and
   every seal of every key on every cell, to the gate (`GitVarsRepo.what_if`), both ways; on the live chain the same.
+
+- `experiments/witness/delta.py` to `Delta.lean`: the walk is Python, and so is the link from `touches` to the
+  frame's steps. Test 25 holds `dirty` to `touches` on every pair of tips of three random chains and of the shapes
+  they never reach, test 26 on the live chain; that an untouched frame keeps its status is tests 17–19, as above.
 
 - `EvalMachine.step` to the Python `step5` (only the differential bridge in sigma-glyph).
 - `sigma_resume._run` to `run`: the loop is transcribed by hand.

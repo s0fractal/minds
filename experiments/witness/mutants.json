@@ -490,5 +490,83 @@
   "find": "    if obj is None:  # absent at the tip: it points at nothing\n        points = False",
   "replace": "    if obj is None:  # absent at the tip: it points at nothing\n        points = True",
   "kills": "test_24_a_fraud_proof_carries_its_own_evidence"
+ },
+ "m-delta-relies": {
+  "file": "delta.py",
+  "find": "                for y in self.relied_by.get(todo.pop(), ()):",
+  "replace": "                for y in (todo.pop(), ())[1]:",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-attests": {
+  "file": "delta.py",
+  "find": "            direct = set(T.hv(c.h_attests))",
+  "replace": "            direct = set()",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-payload": {
+  "file": "delta.py",
+  "find": "                direct.add(c.h_payload)\n",
+  "replace": "                pass\n",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-named-judge": {
+  "file": "delta.py",
+  "find": "        if n is not None:\n            for w in self.on_named.get(n, ()):\n                out |= self.direct_of.get(w, set())\n        return out",
+  "replace": "        return out",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-named-for": {
+  "file": "delta.py",
+  "find": "        if n not in self.T.cells:\n            return set()",
+  "replace": "        if True:\n            return set()",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-above": {
+  "file": "delta.py",
+  "find": "                for u in self.read_of(todo.pop()):",
+  "replace": "                for u in (todo.pop(), ())[1]:",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-edges": {
+  "file": "delta.py",
+  "find": "                    self.edges_of.setdefault(x, set()).add(t)",
+  "replace": "                    pass",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-superseders": {
+  "file": "delta.py",
+  "find": "                self.superseders.setdefault(y, set()).add(x)",
+  "replace": "                pass",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-sources": {
+  "file": "delta.py",
+  "find": "        for t in self.edges_of.get(x, ()):\n            out |= self.guard(t)",
+  "replace": "        for t in ():\n            out |= self.guard(t)",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-latching": {
+  "file": "delta.py",
+  "find": "        if c is not None and c.h_schema in (V.H_META_SCHEMA, V.H_SCHEMA[\"acceptance\"], V.H_SCHEMA[\"scope\"]):",
+  "replace": "        if False:",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-scope": {
+  "file": "delta.py",
+  "find": "            out |= up.fallback()\n        for field in EVICT:",
+  "replace": "            pass\n        for field in EVICT:",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-seal": {
+  "file": "delta.py",
+  "find": "        out |= up.watch(new_seals[sid].h_target)",
+  "replace": "        pass",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
+ },
+ "m-delta-verdict-ev": {
+  "file": "delta.py",
+  "find": "            out |= up.ev(c.h_payload)\n",
+  "replace": "            pass\n",
+  "kills": "test_25_a_commit_dirties_exactly_the_frames_it_touches"
  }
 }
