@@ -35,8 +35,9 @@ cost of a mistake, not the size of the diff.
 
 A pull request that gets a strong review carries its review as Warrant 3 records in `.warrant/records.jsonl`, as
 s0fractal/warrant does (its docs/REPOSITORY.md, "Reviews as records"). `.warrant/v3.json` names `codex` the
-`pr/acceptor` and the owner the `pr/owner`; `.warrant/merge.json` names the base, the required checks and the owner
-paths.
+`pr/acceptor`, the owner the `pr/owner` (a veto, not an acceptance), and both model families beside the owner as
+`roadmap/owner`, whose key is not in this trust, so that the role can be exercised at all; `.warrant/merge.json` names
+the base, the required checks and the owner paths.
 
 - The author pushes the change (commit X), then files the review's root and a head version naming X, from a checkout
   of the branch: `python3 -m warrant.review open --pr N --title T` and `python3 -m warrant.review head --pr N`, each
@@ -44,8 +45,13 @@ paths.
 - Once that head version is at the pull request's head and CI is green, the review waker wakes the reviewer. The
   reviewer files its acceptance (an `attest` with `{"verdict": "accept"}` on the head version) or `finding@1`
   challenges, and pushes them onto the pull request. Fixes go into a new head version.
-- No workflow merges on acceptance here: the owner merges, after the acceptance and green CI. Changes to the owner
-  paths are the owner's in any case; the label `hold` holds a pull request.
+- The merge gate merges it (`.github/workflows/merge-on-acceptance.yml`, warrant's `warrant/gate.py` from the
+  pinned warrant-graph wheel): accepted head version, no standing finding, required checks green, no owner path
+  changed. The merge is the bot's, not anyone's account. Changes to the owner paths are the owner's in any case; the
+  label `hold` holds a pull request and the repository variable `WARRANT_MERGE_GATE=hold` holds them all.
+- A pull request with no acceptance (no model review, or only Claude's) is not merged by the published gate: it has
+  no solo path yet. Until a gate that merges on its own solo assessment is pinned here, the maintainer merges those
+  after green CI, as before, and says so in the pull request.
 - A pull request with no model review (above) has no review lineage.
 
 ## 1. Verify releases (members only)
