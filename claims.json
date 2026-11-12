@@ -2686,6 +2686,42 @@
    ]
   },
   {
+   "id": "assurance.silence",
+   "source": "ASSURANCE.md",
+   "quote": "A change confined to cells outside every goal's frame leaves each goal's Settled and Grounded as they were, and a cell whose keys a goal's quorum does not need cannot move it while the goal stays live",
+   "status": "proved",
+   "witnesses": [
+    "lean:reads_of_outside",
+    "lean:silence_outside_reads",
+    "lean:silence_by_quorum_slack"
+   ]
+  },
+  {
+   "id": "assurance.profile",
+   "source": "ASSURANCE.md",
+   "quote": "`experiments/decisions/profile.py` names, for a decision profile's goals at a tip, the tensions of four kinds (INCOMPLETENESS, CONTRADICTION, FRAGILITY, UNREALIZED_POSSIBILITY) from each goal's frame alone, and lists silent every candidate reading whose objects touch no goal's frame",
+   "status": "tested",
+   "witnesses": [
+    "decision:test_01_the_lens_names_four_kinds_of_tension",
+    "decision:test_02_absolute_silence",
+    "decision:test_03_the_live_chain",
+    "lean:silence_outside_reads"
+   ],
+   "mutants": [
+    "m-prof-silence",
+    "m-prof-fragility",
+    "m-prof-disagree",
+    "m-prof-unrealized",
+    "m-prof-criterion",
+    "m-prof-precedent",
+    "m-prof-budget",
+    "m-prof-obligation",
+    "m-prof-support",
+    "m-prof-radius",
+    "m-prof-not-live"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",

@@ -116,9 +116,9 @@ def witness_exists(w: str) -> bool:
         return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "test_vars1.py").read_text(), re.M) is not None
     if kind == "witness":  # a test of the witness spike's checker (experiments/witness)
         return re.search(rf"^    def {re.escape(name)}\(", (ROOT / WITNESS / "test_witness.py").read_text(), re.M) is not None
-    if kind == "decision":  # a test of fold-candidates (experiments/decisions)
-        return re.search(rf"^    def {re.escape(name)}\(", (ROOT / "experiments" / "decisions" / "test_decisions.py").read_text(),
-                         re.M) is not None
+    if kind == "decision":  # a test of fold-candidates or of the profile lens (experiments/decisions)
+        return any(re.search(rf"^    def {re.escape(name)}\(", f.read_text(), re.M) is not None
+                   for f in sorted((ROOT / "experiments" / "decisions").glob("test_*.py")))
     if kind == "import":  # a check vars1.py makes as it loads, named by its message
         return name in (ROOT / "vars1.py").read_text()
     if kind == "prop":

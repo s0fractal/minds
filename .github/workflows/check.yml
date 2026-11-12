@@ -99,6 +99,10 @@ jobs:
         env:
           MINDS_REQUIRE_CHAIN: "1" # fetched above: test 02 folds 100 readings on the live chain
         run: python experiments/decisions/test_decisions.py
+      - name: Decision profile (experiments/decisions/README.md)
+        env:
+          MINDS_REQUIRE_CHAIN: "1" # fetched above: test 03 reads every decision of the live chain
+        run: python experiments/decisions/test_profile.py
       - name: Property suite (I0–I12, and I9–I10 on every tip of the live chain)
         env:
           MINDS_REQUIRE_CHAIN: "1"

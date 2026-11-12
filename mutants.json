@@ -3414,5 +3414,93 @@
   "kills": [
    "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
   ]
+ },
+ "m-prof-silence": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            touched = DX.dirty(up, atoms, {c.id: c for c in cells}, {s.id: s for s in seals}) & goalset",
+  "replace": "            touched = DX.dirty(up, atoms, {c.id: c for c in cells}, {s.id: s for s in seals})",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_02_absolute_silence"
+  ]
+ },
+ "m-prof-fragility": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        elif st[\"margin\"] + 1 < mct:",
+  "replace": "        elif st[\"margin\"] < mct:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-disagree": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        if st[\"attested\"] and st[\"invalid\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-unrealized": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            if was is not None and not was[\"settled\"] and was[\"deficit\"] > 1 and st[\"deficit\"] == 1:",
+  "replace": "            if False:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-criterion": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            elif len(ways) == 1:",
+  "replace": "            elif len(ways) >= 1:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-precedent": {
+  "file": "experiments/decisions/profile.py",
+  "find": "    kept = [t for t in tensions if (t.kind, t.target_goal, t.signature) not in done]",
+  "replace": "    kept = list(tensions)",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-budget": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            if st[\"deficit\"] > budget:",
+  "replace": "            if st[\"deficit\"] > budget + 1:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-obligation": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        if not _state(T, g)[\"live\"] and g not in goals:",
+  "replace": "        if False:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-support": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        elif not st[\"grounded\"]:",
+  "replace": "        elif False:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-radius": {
+  "file": "experiments/decisions/profile.py",
+  "find": "    radius = lambda g: sum(1 for o in goals if g in frames[o])  # noqa: E731",
+  "replace": "    radius = lambda g: 1  # noqa: E731",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-not-live": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        if not st[\"live\"]:",
+  "replace": "        if False:",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
  }
 }

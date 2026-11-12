@@ -57,3 +57,45 @@ verdict or a seal in memory (`NextTip.predict`); an edge needs the gate.
   standard library, and no network.
 
 Mutants: eight of `fold.py` in the root `mutants.json` (`m-fold-*`), killed by test 01 through `tools/run_mutants.py`.
+
+# The decision profile lens: which tensions are worth a question (`profile.py`)
+
+A graph that can say what to ask next and what a reading would change holds thousands of open points. A decision
+profile (`minds.decisions.profile@1`) names what matters to its reader: goals (contracts, decisions or questions whose
+Settled and Grounded matter), obligations (evaluated cells that must stay live), a budget of keys (`max_cost_steps`), a
+minimum cut (`preferences.min_cut_threshold`) and the precedents already resolved.
+
+    python3 experiments/decisions/profile.py REPO SCOPE PROFILE.json [--tip COMMIT] [--since COMMIT] [--candidates C.json]
+
+`filter_tensions` reads each goal's frame only (the cells its Grounded reads, `frame.py`) and names four kinds:
+
+| kind | when | evidence and trajectories |
+|---|---|---|
+| INCOMPLETENESS | a live goal short of its quorum; or Settled and not Grounded | the missing keys and every set of them that would close it (one set: a missing fact, will this key attest?; several: a missing criterion, which way?); or the cells it rests on that are not founded (`prove_unfounded`) |
+| CONTRADICTION | a goal or obligation not live; a goal with a live ATTESTED and a live INVALID verdict | the cells of its frame that are not live; the two verdicts |
+| FRAGILITY | a Grounded goal that fewer than `min_cut_threshold` withdrawals unsettle | its counted keys (its own quorum's margin; `GitVarsRepo.power` reads the cut over the whole frame) |
+| UNREALIZED_POSSIBILITY | with `--since`, a goal whose deficit fell from more than one to one | the keys that would close it |
+
+Each tension carries its blast radius (how many goals' frames hold it), a question, and a signature over its kind, goal
+and evidence; `record_resolution` adds a precedent, and a tension whose signature a precedent records is `suppressed`
+until its evidence changes. A goal more keys from Settled than the budget is `over_budget`, not a question.
+
+**Silence.** `proofs/Vars1/Silence.lean`: a change confined to cells outside every goal's frame leaves each goal's
+Settled and Grounded as they were (`silence_outside_reads`), and a cell whose keys a goal's quorum does not need cannot
+move it while the goal stays live (`silence_by_quorum_slack`). So tensions outside the frames are not computed, and a
+candidate reading (`fold.py`'s format) whose objects touch no goal's frame (`delta.dirty`) is listed `silent`; the rest
+are `loud`, with the goals they touch.
+
+Test 01 builds a goal for each kind and one for none, and holds the evidence, trajectories (one for a fact, three for a
+criterion), blast radius (2 for a goal another goal relies on), budget and precedent. Test 02 (`test_absolute_silence`):
+two Grounded goals with a key to spare beside a hundred cells that touch neither (unsettled decisions, verdicts that
+disagree, quorums of one, killed cells): no tension, though a profile of the background names more than thirty; 22
+background readings silent, the two on a goal loud; and the gate finds no silent reading moving a goal. Test 03, on the
+live chain at fd7b2f9: under a minimum cut of one, silence; under two, all 49 decisions FRAGILITY (every one is at margin
+0), in 0.1 s; of 20 readings attesting decisions outside a five-goal profile, those the filter calls silent move no goal
+by the gate. Eleven mutants of `profile.py` in the root `mutants.json` (`m-prof-*`), killed by tests 01 and 02.
+
+What it does not establish: that a reading outside the frames changes nothing rests on `silence_outside_reads` and on
+`delta.dirty`'s link to `touches` (tests, not proof); FRAGILITY reads a goal's own quorum, not the cut over its frame;
+the four kinds are what the lens computes, not what a person will find worth asking; and the obligation reading is
+liveness only.
