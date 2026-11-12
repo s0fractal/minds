@@ -3350,5 +3350,69 @@
   "kills": [
    "test_133_power_over_grounded_is_the_strongest_blow_through_the_gate"
   ]
+ },
+ "m-fold-dirty": {
+  "file": "experiments/decisions/fold.py",
+  "find": "        dirty = DX.dirty(up, atoms, {c.id: c for c in cells}, {s.id: s for s in seals}) & evaluated",
+  "replace": "        dirty = set()",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-class-key": {
+  "file": "experiments/decisions/fold.py",
+  "find": "            key = json.dumps(after(row), sort_keys=True)",
+  "replace": "            key = row[\"id\"]",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-grounded-bit": {
+  "file": "experiments/decisions/fold.py",
+  "find": "for bit in (\"settled\", \"grounded\") if b.get(bit) != a.get(bit)}",
+  "replace": "for bit in (\"settled\",) if b.get(bit) != a.get(bit)}",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-evaluated": {
+  "file": "experiments/decisions/fold.py",
+  "find": "            if cid not in evaluated:\n                continue",
+  "replace": "            if False:\n                continue",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-discriminate": {
+  "file": "experiments/decisions/fold.py",
+  "find": "if a[\"changes\"].get(h) != b[\"changes\"].get(h))",
+  "replace": "if True)",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-refused": {
+  "file": "experiments/decisions/fold.py",
+  "find": "            key = \"refused: \" + row[\"refusal\"]",
+  "replace": "            key = \"{}\"",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-empty": {
+  "file": "experiments/decisions/fold.py",
+  "find": "        if not cells and not seals:  # nothing to add",
+  "replace": "        if False:  # nothing to add",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
+ },
+ "m-fold-keys": {
+  "file": "experiments/decisions/fold.py",
+  "find": "             for t in targets for k in keys]",
+  "replace": "             for t in targets for k in keys[:0]]",
+  "kills": [
+   "experiments.decisions.test_decisions.T.test_01_candidates_fold_into_classes_by_what_they_change"
+  ]
  }
 }

@@ -685,6 +685,11 @@
       "`delta.py` reads which contracts, decisions and questions a later commit can change from below: from the objects it adds, up the inverse of each step a frame takes, by `touches`'s own rules, so it builds no frame for a decision the commit leaves alone. The walk is exact for a frame given by its steps; that an untouched frame keeps its status is `frame.py`'s link to `Reader.lean`, held by tests, not proved",
       "Tested, with mutants, against `touches` on every pair of tips, every evaluated cell and both frames: three random chains, the shapes they never reach (six stores built without the gate), and the live chain at fd7b2f9, where 95 of 98 commits dirty at most one decision and the walk takes a tenth of the time; the walk's exactness proved (`Delta.lean`: no axiom); thirteen mutants",
       "`experiments/witness/test_witness.py` 25–26; `experiments/witness/delta.py`; `proofs/Vars1/Delta.lean`"
+     ],
+     [
+      "`experiments/decisions/fold.py` reads, for a batch of candidate readings of an event, which statuses each would change, which act alike and on which cells two classes part, without moving the ref: through the gate with its seals supposed, after a filter in memory that reads from below which frames each reading touches; a reading that touches none changes nothing",
+      "Tested, with mutants, against the gate: on one chain, nine readings whose changes, classes, refusal and parting cells are checked one by one, and, with the gate, every change found is in the filter's dirty set; on the live chain at fd7b2f9e, 100 readings, each non-empty one dirtying one decision, 82 changing nothing and 18 one decision (15 classes), the filter 7.5 ms for all, the gate 0.37 s a reading",
+      "`experiments/decisions/test_decisions.py` 01–02; `experiments/decisions/fold.py`; `experiments/decisions/README.md`"
      ]
     ]
    }
