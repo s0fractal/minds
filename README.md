@@ -27,7 +27,9 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 - `tools/minds_chain.py lag REPO SCOPE` — read only: what this chain and another scope's disagree on about the cells it imported, and
   what this scope can do about it. A scope's statuses are its own; see spec §4.4, Between two scopes.
 - `tools/minds_chain.py power CELL` — which coalitions of roster keys can change a cell's status by commits of their own,
-  read from the rules (`proofs/Vars1/Power.lean`; a search through the gate holds it, `test_vars1.py` 106).
+  read from the rules (`proofs/Vars1/Power.lean`; a search through the gate holds it, `test_vars1.py` 106). Its
+  `grounded` row reads the cell's whole frame at once: a key can take Grounded from a cell it never signed
+  (`proofs/Vars1/Cut.lean`, `test_vars1.py` 133).
 - `tools/minds_chain.py why CELL` — read only, in words: a cell's status, whose keys count and whom it waits for (named by
   the verifier ids their verdicts give), what kills it, and when it is not live or not Grounded, each step down to the
   first cell that does not hold (`test_vars1.py` 131). `--json` gives the same as data.
