@@ -672,6 +672,11 @@
       "`proofs/Vars1/Reader.lean` `fold_state_suffices`, `fold_state_suffices2`, `dead_cell_silent`, `revived`, `dropped_cell_distinguishes`"
      ],
      [
+      "A cell that a coalition cannot attack, in a set whose latched attackers the set itself kills, stays Effective over every extension of the coalition's own with no rotation, and what it kills stays dead: so for that coalition the revival `dropped_cell_distinguishes` builds cannot happen (no member has a fresh killer), and a cell such a set kills can be dropped from the store with no later tip telling the two apart",
+      "Proved (`immortal_eff` by induction on the rank, `tomb_dead`, `immortal_persists`, `immortal_no_fresh_killer`, `tomb_never_revives`, `tomb_drop_indistinguishable`; `no_new_latch` from `run_latch` under v1; propext and Quot.sound), as statements about readings of the Pass 1 equations; the v2 fold and extensions with a rotation are not covered",
+      "`proofs/Vars1/Tomb.lean`"
+     ],
+     [
       "`frame.py` answers that no object of the commits between two tips touches a cell's frame only where the lens gives the cell the same standing, Settled and, for the frame of Grounded, Grounded at the later tip",
       "Tested, through the gate on each kind of object that changes a status (a notice and its revival, a seal that latches an edge or completes a quorum, a verdict by payload alone, an answer to a question, a retirement, a supersession, a rebinding, a rotation, a rotation that waited, a withdrawal below a decision), on random extensions under v1 and v2, and on every pair of tips of the live chain (60,642 frames untouched at `7c6899b`, none changed), with a mutant for each rule. Not burned: that a rotation to other rules touches every frame, that a frame holding a foreign cell is not covered, and the verdicts on a checkpoint a judge names (no chain here changes rules to a different status, imports a cell or settles a computation)",
       "`experiments/witness/test_witness.py` 17–19; `experiments/witness/frame.py` `frame`, `touches`"

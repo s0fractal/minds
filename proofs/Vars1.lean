@@ -25,3 +25,4 @@ import Vars1.Pivot
 import Vars1.Delta
 import Vars1.Cut
 import Vars1.WitnessGrounded
+import Vars1.Tomb
