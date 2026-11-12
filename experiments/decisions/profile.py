@@ -10,7 +10,7 @@ thousands of open points. A decision profile (`minds.decisions.profile@1`) names
     {"format": "minds.decisions.profile@1",
      "goals": [CELL, ...],          contracts, decisions or questions whose Settled and Grounded matter
      "obligations": [CELL, ...],    evaluated cells that must stay live (not Invalidated, not Stale)
-     "max_cost_steps": 1000,        a goal more keys than this from Settled is out of budget, not a question
+     "max_deficit": 1000,           a goal more than this many keys from Settled is out of budget, not a question
      "preferences": {"min_cut_threshold": 2},   a Grounded goal that fewer keys than this can unsettle is fragile
      "precedents": [{"kind", "target_goal", "signature", "chosen"}, ...]}     tensions already resolved
 
@@ -30,12 +30,16 @@ Everything outside the goals' frames is silence (`proofs/Vars1/Silence.lean`, `s
 outside every frame leaves every goal's Settled and Grounded as it was). So are candidate readings (`fold.py`'s format)
 whose objects touch no goal's frame (`delta.dirty`, held to `touches` by test 25 of `test_witness.py`): they are
 listed `silent`, and the rest `loud` with the goals they touch. A tension whose signature a precedent records is
-`suppressed`; `record_resolution` adds one. It reads vars1.py and the witness spike's `frame.py`, `delta.py` and
-`prove.py`, the standard library, and no network.
+`suppressed`: the signature hashes the tension's kind, goal and evidence together with the conditions it was judged
+under (`conditions`: the goal's policy, its threshold and keys, and for FRAGILITY the profile's minimum cut), so a
+precedent holds only while those are unchanged; `record_resolution` adds one. The trajectories are counted
+(`math.comb`) and only the first eight drawn, so their cost does not grow with the number of ways. It reads vars1.py
+and the witness spike's `frame.py`, `delta.py` and `prove.py`, the standard library, and no network.
 """
 import hashlib
 import itertools
 import json
+import math
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -71,6 +75,7 @@ class Tension:
     question_prompt: str
     signature: str = ""
     detail: Dict[str, object] = field(default_factory=dict)
+    conditions: Dict[str, object] = field(default_factory=dict)
 
 
 def _hex64(x: object) -> bool:
@@ -94,16 +99,16 @@ def read_profile(raw: bytes) -> Dict[str, object]:
 def check_profile(doc: object) -> Dict[str, object]:
     if not isinstance(doc, dict) or doc.get("format") != PROFILE:
         raise Bad(f"not a {PROFILE} document")
-    extra = set(doc) - {"format", "goals", "obligations", "max_cost_steps", "preferences", "precedents"}
+    extra = set(doc) - {"format", "goals", "obligations", "max_deficit", "preferences", "precedents"}
     if extra:
         raise Bad(f"unknown fields: {sorted(extra)}")
     goals, obligations = doc.get("goals"), doc.get("obligations", [])
     for name, xs in (("goals", goals), ("obligations", obligations)):
         if not isinstance(xs, list) or not all(_hex64(x) for x in xs) or len(set(xs)) != len(xs):
             raise Bad(f"`{name}` is not a list of distinct 64-digit cell ids")
-    budget = doc.get("max_cost_steps", 1000)
+    budget = doc.get("max_deficit", 1000)
     if not isinstance(budget, int) or isinstance(budget, bool) or budget < 0:
-        raise Bad("`max_cost_steps` is not a natural number")
+        raise Bad("`max_deficit` is not a natural number")
     prefs = doc.get("preferences", {})
     if not isinstance(prefs, dict) or set(prefs) - {"min_cut_threshold"}:
         raise Bad("`preferences` holds `min_cut_threshold` only")
@@ -115,12 +120,12 @@ def check_profile(doc: object) -> Dict[str, object]:
             isinstance(p, dict) and p.get("kind") in KINDS and _hex64(p.get("target_goal"))
             and _hex64(p.get("signature")) for p in precedents):
         raise Bad("`precedents` is not a list of {kind, target_goal, signature, chosen}")
-    return {"format": PROFILE, "goals": list(goals), "obligations": list(obligations), "max_cost_steps": budget,
+    return {"format": PROFILE, "goals": list(goals), "obligations": list(obligations), "max_deficit": budget,
             "preferences": {"min_cut_threshold": mct}, "precedents": list(precedents)}
 
 
-def _sig(kind: str, goal: str, evidence: List[str]) -> str:
-    return hashlib.sha256(json.dumps([kind, goal, sorted(evidence)]).encode()).hexdigest()
+def _sig(kind: str, goal: str, evidence: List[str], conditions: Dict[str, object]) -> str:
+    return hashlib.sha256(json.dumps([kind, goal, sorted(evidence), conditions], sort_keys=True).encode()).hexdigest()
 
 
 def _state(T, g: bytes) -> Dict[str, object]:
@@ -155,14 +160,18 @@ def filter_tensions(repo: "V.GitVarsRepo", scope: str, profile: Dict[str, object
     frames = {g: set(FR.frame(T, g, grounded=True)["read"]) for g in goals}
     radius = lambda g: sum(1 for o in goals if g in frames[o])  # noqa: E731
     before = FR.Tip(V, repo, scope, since) if since else None
-    mct, budget = profile["preferences"]["min_cut_threshold"], profile["max_cost_steps"]
+    mct, budget = profile["preferences"]["min_cut_threshold"], profile["max_deficit"]
     done = {(p["kind"], p["target_goal"], p["signature"]) for p in profile["precedents"]}
     tensions: List[Tension] = []
     over_budget: List[str] = []
 
     def add(kind: str, g: bytes, evidence: List[str], prompt: str, paths=(), **detail) -> None:
+        thr, keys = T.lens["evaluators"].get(g, (0, set()))
+        cond: Dict[str, object] = {"policy": [thr, sorted(k.hex() for k in keys)]}
+        if kind == "FRAGILITY":
+            cond["min_cut_threshold"] = mct
         t = Tension(kind, g.hex(), sorted(evidence), list(paths), radius(g) if g in frames else 0, prompt,
-                    _sig(kind, g.hex(), evidence), dict(detail))
+                    _sig(kind, g.hex(), evidence, cond), dict(detail), cond)
         tensions.append(t)
 
     for g in obligations:
@@ -187,22 +196,23 @@ def filter_tensions(repo: "V.GitVarsRepo", scope: str, profile: Dict[str, object
             if st["deficit"] > budget:
                 over_budget.append(g.hex())
                 continue
-            ways = list(itertools.combinations(missing, st["deficit"]))
-            trajectories = [{"keys": [k.hex() for k in w]} for w in ways[:TRAJECTORIES]]
+            count = math.comb(len(missing), st["deficit"])
+            shown = list(itertools.islice(itertools.combinations(missing, st["deficit"]), TRAJECTORIES))
+            trajectories = [{"keys": [k.hex() for k in w]} for w in shown]
             was = _state(before, g) if before and g in before.cells else None
             if was is not None and not was["settled"] and was["deficit"] > 1 and st["deficit"] == 1:
                 add("UNREALIZED_POSSIBILITY", g, [k.hex() for k in missing],
                     f"goal {_short(g)} is one key from Settled since {since[:8]} (it was {was['deficit']}): ask "
                     f"{'it' if len(missing) == 1 else f'one of {len(missing)} keys'}?", trajectories,
-                    deficit=st["deficit"], deficit_before=was["deficit"], trajectories=len(ways))
-            elif len(ways) == 1:
+                    deficit=st["deficit"], deficit_before=was["deficit"], trajectories=count)
+            elif count == 1:
                 add("INCOMPLETENESS", g, [k.hex() for k in missing], f"goal {_short(g)} needs {st['deficit']} more key(s), "
-                    f"and only one set can give it: will {', '.join(_short(k) for k in ways[0])} attest it? (a missing "
+                    f"and only one set can give it: will {', '.join(_short(k) for k in shown[0])} attest it? (a missing "
                     "fact)", trajectories, deficit=st["deficit"], trajectories=1)
             else:
                 add("INCOMPLETENESS", g, [k.hex() for k in missing], f"goal {_short(g)} needs {st['deficit']} of "
-                    f"{len(missing)} keys: which of {len(ways)} ways should close it? (a missing criterion)",
-                    trajectories, deficit=st["deficit"], trajectories=len(ways))
+                    f"{len(missing)} keys: which of {count} ways should close it? (a missing criterion)",
+                    trajectories, deficit=st["deficit"], trajectories=count)
         elif not st["grounded"]:
             loose = sorted(set(PR.prove_unfounded(repo, scope, g, T.tip)["unfounded"]) - {g.hex()})
             add("INCOMPLETENESS", g, loose, f"goal {_short(g)} is Settled and not Grounded: {len(loose)} cells it "

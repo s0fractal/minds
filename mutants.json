@@ -3449,8 +3449,8 @@
  },
  "m-prof-criterion": {
   "file": "experiments/decisions/profile.py",
-  "find": "            elif len(ways) == 1:",
-  "replace": "            elif len(ways) >= 1:",
+  "find": "            elif count == 1:",
+  "replace": "            elif count >= 1:",
   "kills": [
    "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
   ]
@@ -3501,6 +3501,46 @@
   "replace": "        if False:",
   "kills": [
    "experiments.decisions.test_profile.T.test_01_the_lens_names_four_kinds_of_tension"
+  ]
+ },
+ "m-prof-conditions-cut": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            cond[\"min_cut_threshold\"] = mct",
+  "replace": "            pass",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_04_a_resolution_holds_only_under_its_conditions"
+  ]
+ },
+ "m-prof-conditions-policy": {
+  "file": "experiments/decisions/profile.py",
+  "find": "        cond: Dict[str, object] = {\"policy\": [thr, sorted(k.hex() for k in keys)]}",
+  "replace": "        cond: Dict[str, object] = {}",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_04_a_resolution_holds_only_under_its_conditions"
+  ]
+ },
+ "m-prof-conditions-sig": {
+  "file": "experiments/decisions/profile.py",
+  "find": "_sig(kind, g.hex(), evidence, cond)",
+  "replace": "_sig(kind, g.hex(), evidence, {})",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_04_a_resolution_holds_only_under_its_conditions"
+  ]
+ },
+ "m-prof-islice": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            shown = list(itertools.islice(itertools.combinations(missing, st[\"deficit\"]), TRAJECTORIES))",
+  "replace": "            shown = list(itertools.combinations(missing, st[\"deficit\"]))[:TRAJECTORIES]",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_05_trajectories_cost_what_is_shown"
+  ]
+ },
+ "m-prof-count": {
+  "file": "experiments/decisions/profile.py",
+  "find": "            count = math.comb(len(missing), st[\"deficit\"])",
+  "replace": "            count = min(math.comb(len(missing), st[\"deficit\"]), TRAJECTORIES)",
+  "kills": [
+   "experiments.decisions.test_profile.T.test_05_trajectories_cost_what_is_shown"
   ]
  }
 }

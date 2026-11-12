@@ -10,12 +10,14 @@ touch them (unsettled decisions, verdicts that disagree, fragile quorums, killed
 lens names no tension, lists every reading on the background silent, and the gate confirms that no silent reading
 moves a goal. Test 03 runs the lens on the live chain.
 """
+import itertools
 import json
 import os
 import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -42,6 +44,29 @@ class Chain(TD.Chain):
         return V.Cell(V.H_SCHEMA["axiom"], self.put(self.atoms, V.atom_utf8(f"{SCOPE}/{name}")),
                       self.put(self.atoms, V.atom_utf8(name)),
                       h_invalidates=self.put(self.atoms, V.atom_hvec([target.id])))
+
+    def fallback(self, name: str) -> V.Cell:
+        """A decision with no policy of its own: it reads the governing scope's admission policy."""
+        return V.Cell(V.H_SCHEMA["decision"], self.put(self.atoms, V.atom_utf8(f"{SCOPE}/{name}")),
+                      self.put(self.atoms, V.atom_utf8(name)), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+
+    def wide(self, name: str, thr: int, keys) -> V.Cell:
+        """A decision whose own policy is `thr` of `keys`."""
+        pol = self.put(self.atoms, V.atom_pol1(thr, self.put(self.atoms, V.atom_hvec(sorted(keys)))))
+        return V.Cell(V.H_SCHEMA["decision"], self.put(self.atoms, V.atom_utf8(f"{SCOPE}/{name}")),
+                      self.put(self.atoms, V.atom_utf8(name)), slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol))
+
+    def rotate(self, thr: int, keys=None) -> None:
+        """Supersede the scope by one whose rosters are `thr` of `keys` (the three members by default), sealed by ana
+        under the governing scope; under v1 it governs from the next commit, whose seals are made under it."""
+        keys = sorted(keys or [self.pk[m] for m in TD.MEMBERS])
+        pol = self.put(self.atoms, V.atom_pol1(thr, self.put(self.atoms, V.atom_hvec(keys))))
+        s1 = V.Cell(V.H_SCHEMA["scope"], self.put(self.atoms, V.atom_utf8(f"{SCOPE}/SCOPE")),
+                    self.put(self.atoms, V.atom_utf8(f"rotation/{thr}/{len(keys)}")),
+                    h_supersedes=self.put(self.atoms, V.atom_hvec([self.scope.id])),
+                    h_loss=self.put(self.atoms, V.atom_utf8("rotation")), slots=(pol, pol, self.scope.slots[2]))
+        self.commit((s1, "ana"))
+        self.scope = s1
 
     def commit(self, *pairs) -> str:
         cells = list({c.id: c for c, _ in pairs}.values())
@@ -112,7 +137,7 @@ class T(unittest.TestCase):
         self.assertEqual(t[(h(gN), "CONTRADICTION")]["detail"], {"reason": "goal not live"})
         self.assertEqual(t[(h(oK), "CONTRADICTION")]["detail"], {"reason": "obligation not live"})
         # a budget of one step: gI2 is two keys away, out of budget, not a question
-        tight = PF.filter_tensions(c.repo, SCOPE, {**prof, "max_cost_steps": 1}, since=since)
+        tight = PF.filter_tensions(c.repo, SCOPE, {**prof, "max_deficit": 1}, since=since)
         self.assertEqual(tight["over_budget"], [h(gI2)])
         self.assertNotIn(h(gI2), by_goal(tight))
         # a precedent silences what it resolved, and nothing else
@@ -127,6 +152,55 @@ class T(unittest.TestCase):
             PF.read_profile(b'{"format": "minds.decisions.profile@1", "goals": [], "goals": []}')
         with self.assertRaises(PF.Bad):
             PF.check_profile({**prof, "preferences": {"min_cut_threshold": 0}})
+
+    def test_04_a_resolution_holds_only_under_its_conditions(self):
+        """A precedent stays in force only while what its tension was judged under is unchanged. gF (its own policy, 1
+        of 3, one verdict) is FRAGILITY under a minimum cut of 2, gD (the scope's policy, 1 of 3, no verdict)
+        INCOMPLETENESS; both are resolved, and the same profile then asks nothing. Under a minimum cut of 3 the lens
+        asks of gF again, with the same evidence, and not of gD; after the scope rotates to 2 of 3, it asks of gD again
+        (the same three keys missing, now two of them needed), and not of gF, whose policy is its own."""
+        c = Chain()
+        gF, gD = c.decision("decision/gF", 1), c.fallback("decision/gD")
+        c.commit((gF, "ana"), (gD, "ana"))
+        c.commit((c.verdict(gF, "decision/gF/by-ana", "ana"), "ana"))
+        h = lambda x: x.id.hex()  # noqa: E731
+        prof = profile([gF, gD], preferences={"min_cut_threshold": 2})
+        out = PF.filter_tensions(c.repo, SCOPE, prof)
+        self.assertEqual(by_goal(out), {h(gF): ["FRAGILITY"], h(gD): ["INCOMPLETENESS"]})
+        resolved = prof
+        for t in out["tensions"]:
+            resolved = PF.record_resolution(resolved, t, "accepted")
+        self.assertEqual(PF.filter_tensions(c.repo, SCOPE, resolved)["tensions"], [])
+        stricter = PF.filter_tensions(c.repo, SCOPE, {**resolved, "preferences": {"min_cut_threshold": 3}})
+        self.assertEqual(by_goal(stricter), {h(gF): ["FRAGILITY"]})
+        self.assertEqual({t["kind"]: t["evidence_gap"] for t in stricter["tensions"]},
+                         {t["kind"]: t["evidence_gap"] for t in out["tensions"] if t["target_goal"] == h(gF)})
+        c.rotate(2)
+        rotated = PF.filter_tensions(c.repo, SCOPE, resolved)
+        self.assertEqual(by_goal(rotated), {h(gD): ["INCOMPLETENESS"]})
+        self.assertEqual(rotated["tensions"][0]["detail"]["deficit"], 2)
+
+    def test_05_trajectories_cost_what_is_shown(self):
+        """A roster rotated to six keys and a decision under its own policy, 3 of the 6, with no verdict: twenty sets of
+        three keys would close it. The lens counts them (`trajectories`: 20) and draws from the generator only the eight it
+        lists, so the cost does not grow with the number of ways."""
+        c = Chain()
+        keys = [c.pk[m] for m in ("ana", "bo", "cy", "dee")] + [V.ed25519_pubkey(bytes([i]) * 32) for i in (7, 8)]
+        c.rotate(1, keys)
+        gW = c.wide("decision/gW", 3, keys)
+        c.commit((gW, "ana"))
+        real, drawn = itertools.combinations, [0]
+
+        def counting(*args):
+            for x in real(*args):
+                drawn[0] += 1
+                yield x
+        with mock.patch.object(PF.itertools, "combinations", counting):
+            out = PF.filter_tensions(c.repo, SCOPE, profile([gW]))
+        t = out["tensions"][0]
+        self.assertEqual((t["kind"], t["detail"]["trajectories"], len(t["competing_trajectories"])),
+                         ("INCOMPLETENESS", 20, PF.TRAJECTORIES))
+        self.assertLessEqual(drawn[0], PF.TRAJECTORIES)
 
     def test_02_absolute_silence(self):
         """Two goals, each Grounded with a key to spare, and a hundred cells that touch neither: decisions no one
