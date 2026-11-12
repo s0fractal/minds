@@ -700,6 +700,16 @@
       "`experiments/decisions/fold.py` reads, for a batch of candidate readings of an event, which statuses each would change, which act alike and on which cells two classes part, without moving the ref: through the gate with its seals supposed, after a filter in memory that reads from below which frames each reading touches; a reading that touches none changes nothing",
       "Tested, with mutants, against the gate: on one chain, nine readings whose changes, classes, refusal and parting cells are checked one by one, and, with the gate, every change found is in the filter's dirty set; on the live chain at fd7b2f9e, 100 readings, each non-empty one dirtying one decision, 82 changing nothing and 18 one decision (15 classes), the filter 7.5 ms for all, the gate 0.37 s a reading",
       "`experiments/decisions/test_decisions.py` 01–02; `experiments/decisions/fold.py`; `experiments/decisions/README.md`"
+     ],
+     [
+      "A change confined to cells outside every goal's frame leaves each goal's Settled and Grounded as they were, and a cell whose keys a goal's quorum does not need cannot move it while the goal stays live: a decision profile has nothing to ask there",
+      "Proved (`Silence.lean`: `reads_of_outside`, `silence_outside_reads`, from `settled_frame` and `grounded_frame`; `silence_by_quorum_slack`). The frame is `GFrame`: the goal, closed under `relies` and the witnesses of `W_max`, with every judge and named checkpoint of an evaluated member; the change is `OutsideOnly`. `silence_by_quorum_slack` uses propext and Quot.sound only; `silence_outside_reads` adds Classical.choice, from `grounded_frame`",
+      "`proofs/Vars1/Silence.lean`; `proofs/Vars1/Reader.lean`"
+     ],
+     [
+      "`experiments/decisions/profile.py` names, for a decision profile's goals at a tip, the tensions of four kinds (INCOMPLETENESS, CONTRADICTION, FRAGILITY, UNREALIZED_POSSIBILITY) from each goal's frame alone, and lists silent every candidate reading whose objects touch no goal's frame",
+      "Tested, with mutants, against the lens and the gate: on one chain through the gate, a goal for each kind and one for none, with the trajectories that tell a missing fact from a missing criterion, the blast radius, the budget and a precedent that silences what it resolved; beside a hundred cells that touch two healthy goals, no tension and every background reading silent, and the gate finds no silent reading moving a goal; on the live chain at fd7b2f9, no tension under a minimum cut of one and all 49 decisions FRAGILITY under two (every one at margin 0). That a reading outside the frames changes nothing rests on `silence_outside_reads` and on `delta.dirty`'s link to `touches`, held by test 25 of `test_witness.py`; eleven mutants",
+      "`experiments/decisions/test_profile.py` 01–03; `experiments/decisions/profile.py`; `proofs/Vars1/Silence.lean`"
      ]
     ]
    }
