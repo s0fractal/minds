@@ -4,6 +4,7 @@
     python3 -I check.py REPO TERM.json [--scope-cell HEX]
     python3 -I check.py --lean REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness
     python3 -I check.py --lean --prove REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness --prove
+    python3 -I check.py --unfounded REPO TERM.json [--scope-cell HEX]   # a certificate that it is not Grounded
 
 A witness (format `minds.witness.held@1`) is a proof term for one decision at one commit: the decision's cone (the
 cells it and its counted verdicts rely on, closed under `relies`) and seals, by distinct keys of its evaluator
@@ -294,6 +295,12 @@ def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
     if not isinstance(ends, list) or not all(isinstance(e, dict) and set(e) == {"verdict", "seal"} for e in ends):
         raise refuse("FORMAT", "endorsements are not a list of {verdict, seal}")
     ends = [(_ids([e["verdict"]], "verdict")[0], _ids([e["seal"]], "seal")[0]) for e in ends]
+    atoms, cells, seals, chain, sc = _fragment(repo, term, pin)
+    return d, cone, ends, atoms, cells, seals, chain, sc
+
+
+def _fragment(repo: str, term: Dict[str, object], pin: Optional[bytes]):
+    """The store at the term's tip, decoded, within the fragment (see `_read`)."""
     store = read_store(repo, term.get("tip"))
     atoms = store["atoms"]
     cells = {cid: cell(raw) for cid, raw in store["cells"].items()}
@@ -334,7 +341,7 @@ def _read(repo: str, term: Dict[str, object], pin: Optional[bytes]):
         if base["slots"][2] != H_LENS_KERNEL and (new["slots"][2] != base["slots"][2] or any(
                 not policy(atoms, base["slots"][i])[1] <= policy(atoms, new["slots"][i])[1] for i in (0, 1))):
             raise uncovered("WAITING", "the newest rotation removes a key or changes the rules under v2: it may wait")
-    return d, cone, ends, atoms, cells, seals, chain, sc
+    return atoms, cells, seals, chain, sc
 
 
 # --- the rules both checkers read the store by ----------------------------------------------------------------------
@@ -577,6 +584,82 @@ def _check(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str
             "endorsers": sorted(k.hex() for k in counted), "cone": len(cone), "store_cells": len(cells)}
 
 
+UNFOUNDED = "minds.witness.unfounded@1"
+
+
+def check_unfounded(repo: str, term: Dict[str, object], pin: Optional[bytes] = None) -> Dict[str, object]:
+    """UNFOUNDED iff the term's cells form an unfounded set holding its decision (proofs/Vars1/WitnessGrounded.lean,
+    `unfounded_of_each`), so the decision is not Grounded at the tip; otherwise REFUSED (a member satisfies Grounded's
+    equation given the cells outside the set) or NOT_COVERED (the fragment does not decide a member)."""
+    try:
+        return {"result": "UNFOUNDED", **_check_unfounded(repo, term, pin)}
+    except Refused as e:
+        return {"result": e.result, "code": e.code, "detail": e.detail}
+
+
+def _check_unfounded(repo: str, term: Dict[str, object], pin: Optional[bytes]) -> Dict[str, object]:
+    """A term `{format, scope, tip, decision, unfounded: [cell ids]}`. For each member `v`, Grounded's equation must
+    fail when only the cells outside the set are given (`GΦ` of the complement): `v` is down (Invalidated, or relying
+    on a cell that is: the Lean checker's `down`), or does not stand by the rules below (retired, superseded, one of
+    its edges unlatched: `stand` answers False, which no Lean rule concludes, so this reason is held by tests, not by
+    `Witness.lean`), or relies on a member, or it is a contract or decision without a computation whose evaluator
+    policy the keys counting through its witnesses outside the set cannot meet. Those keys are read from above: every key of the policy that seals,
+    under a scope that governed and by a key of its roster, an ATTESTED verdict outside the set that judges and attests
+    `v` with an empty witness slot and is not down, unless an INVALID verdict on `v` under that verdict's verifier id,
+    sealed by the key, stands. A key the lens would not count only makes the check harder to pass, never wrong."""
+    if not isinstance(term, dict) or term.get("format") != UNFOUNDED or not isinstance(term.get("scope"), str):
+        raise refuse("FORMAT", f"not a {UNFOUNDED} term")
+    d = _ids([term.get("decision")], "decision")[0]
+    members = _ids(term.get("unfounded"), "unfounded")
+    U = set(members)
+    if d not in U:
+        raise refuse("UNFOUNDED", "the set does not hold the decision")
+    atoms, cells, seals, chain, sc = _fragment(repo, term, pin)
+    absent = next((x for x in members if x not in cells), None)
+    if absent is not None:
+        raise refuse("UNFOUNDED", f"{absent.hex()} is not a cell of the store")
+    rules = Rules(atoms, cells, seals, chain, term["scope"])
+    reasons: Dict[str, str] = {}
+    for v in sorted(U):
+        c = cells[v]
+        if rules.down(v) is True:
+            reasons[v.hex()] = "down"
+            continue
+        if rules.stand(v) is False:
+            reasons[v.hex()] = "not live"
+            continue
+        if any(r in U for r in hvec(atoms, c["relies"])):
+            reasons[v.hex()] = "relies"
+            continue
+        if c["schema"] in (SCHEMA["contract"], SCHEMA["decision"]) and c["slots"][1:2] == [H_EMPTY]:
+            own = c["slots"][3:4]
+            thr, keys = policy(atoms, sc["slots"][0] if not own or own[0] == H_EMPTY else own[0])
+            invalid = [b for b, x in cells.items() if x["schema"] == SCHEMA["verdict"] and x["payload"] == v
+                       and x["slots"][1:2] == [H_VERDICT_INVALID]]
+            upper: Set[bytes] = set()
+            for w, x in cells.items():
+                if (w in U or x["schema"] != SCHEMA["verdict"] or x["slots"][1:2] != [H_ATTESTED] or x["payload"] != v
+                        or v not in hvec(atoms, x["attests"]) or x["slots"][:1] != [H_EMPTY] or rules.down(w) is True):
+                    continue
+                for k in set().union(*(rules.sealers(w, ctx) for ctx in chain)) & keys:
+                    if not any(cells[b]["slots"][2:3] == x["slots"][2:3] and rules.stand(b) is True
+                               and k in set().union(*(rules.sealers(b, ctx) for ctx in chain)) for b in invalid):
+                        upper.add(k)
+            if len(upper) < thr:
+                reasons[v.hex()] = "quorum"
+                continue
+        if c["schema"] in (SCHEMA["contract"], SCHEMA["decision"], SCHEMA["question"], SCHEMA["scope"], H_META_SCHEMA) \
+                and not (c["schema"] in (SCHEMA["contract"], SCHEMA["decision"]) and c["slots"][1:2] == [H_EMPTY]):
+            raise uncovered("MEMBER", f"{v.hex()} is a scope, schema, question or computation's contract: its equation "
+                            "is not read here")
+        if rules.stand(v) is not True:
+            raise uncovered("LIVENESS", f"whether {v.hex()} is live the fragment does not decide, and nothing else "
+                            "shows its equation failing")
+        raise refuse("FOUNDED", f"{v.hex()} satisfies Grounded's equation given the cells outside the set")
+    return {"decision": d.hex(), "tip": term["tip"], "scope_cell": chain[0].hex(), "members": len(U),
+            "reasons": reasons}
+
+
 # --- the Lean checker's input --------------------------------------------------------------------------------------
 
 LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 2, SCHEMA["decision"]: 3,
@@ -748,7 +831,9 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
 
 
 def main(argv: List[str]) -> int:
-    lean = argv[:1] == ["--lean"]
+    unfounded = argv[:1] == ["--unfounded"]
+    argv = argv[1:] if unfounded else argv
+    lean = not unfounded and argv[:1] == ["--lean"]
     argv = argv[1:] if lean else argv
     prove = lean and argv[:1] == ["--prove"]
     argv = argv[1:] if prove else argv
@@ -765,13 +850,18 @@ def main(argv: List[str]) -> int:
                 return 0
             except Refused as e:
                 out = {"result": e.result, "code": e.code, "detail": e.detail}
+        elif unfounded:
+            try:
+                out = check_unfounded(argv[0], read_term(raw), pin)
+            except Refused as e:
+                out = {"result": e.result, "code": e.code, "detail": e.detail}
         else:
             out = check_text(argv[0], raw, pin)
     except Exception as e:  # a crash is not a verdict: Python would exit 1, which reads as REFUSED
         print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
         return 3
     print(json.dumps(out, indent=1))
-    return 0 if out["result"] == "HELD" else 1
+    return 0 if out["result"] in ("HELD", "UNFOUNDED") else 1
 
 
 if __name__ == "__main__":

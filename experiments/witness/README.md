@@ -91,7 +91,8 @@ checker it is a theorem.
 
 **What HELD does not say.** It is about Settled, not Grounded (§4.2). A decision can be HELD while a decision in its cone
 is not Settled: the `stand` rule reads `Active` and not Stale, as the lens's Pass 2 does. To ask whether what it rests on
-is settled too, read `grounded` in the lens, or `grounded_at_tip` of an attestation bundle.
+is settled too, read `grounded` in the lens, or `grounded_at_tip` of an attestation bundle. That a decision is not
+Grounded has a certificate of its own, `check.py --unfounded` (below).
 
 **What is checked from bytes.**
 - Every object hashes to its name.
@@ -568,6 +569,36 @@ Grounded frame is its Settled frame, and the random chains of test 25 are where 
 
 `revindex.py`'s committed index names who attests, whose payload, who names, who points an edge and who seals; not
 who relies on a cell, which the walk also needs, so `Up` is built from the store in one pass.
+
+## A certificate that a decision is not Grounded (`check.py --unfounded`, `WitnessGrounded.lean`)
+
+To show a decision Grounded a derivation builds a support from below. To show it is not, one dead cell is not enough:
+in `circular_support` (`Grounded.lean`) every cell stands and the decision is Settled, and nothing is Grounded, because
+its only support runs in a circle. `WitnessGrounded.lean` proves the dual of Knaster–Tarski for Grounded, with no
+`Classical.choice`: a cell is not Grounded iff some **unfounded set** holds it, a set none of whose members satisfies
+Grounded's equation when only the cells outside the set are given (`not_grounded_iff_unfounded`); checked member by
+member (`unfounded_of_each`).
+
+A certificate (`minds.witness.unfounded@1`) names the decision and the set. `check.py --unfounded` answers
+`UNFOUNDED` when every member has a reason: it is `down`; it does not `stand` (retired, superseded: `stand` answers
+False, which no Lean rule concludes, so this reason rests on tests); it relies on a member; or it is a contract or
+decision without a computation whose policy the keys counting through its verdicts outside the set cannot meet, read
+from above (every policy key that seals an ATTESTED verdict outside the set that judges it and is not down, unless an
+INVALID verdict under that verdict's verifier id, sealed by the key, stands). A member with none is `REFUSED`
+(`FOUNDED`); one whose standing the fragment does not decide is `NOT_COVERED`. `prove.py`'s `prove_unfounded` names the
+cells not Grounded that the decision's equation reaches.
+
+Test 27, on one chain through the gate: the circle (d0 is HELD for Settled, and `[d0, w]` is UNFOUNDED: d0 by quorum,
+w by relies), `settled_not_hereditary`'s case, a decision an edge kills (`down`), one whose only key an INVALID verdict
+withdraws, one whose only verdict rests on a killed ground, one whose only verdict was retired (`not live`); a set
+that leaves out what the equation needs is refused, and so is any set holding a Grounded decision. On the random chains
+of test 18, at every tip, every decision without a computation the lens does not ground gets a certificate that is
+UNFOUNDED (351) or NOT_COVERED (157: 101 whose standing the store does not decide, 56 under a rotation that may wait),
+never REFUSED; no set holding one of the 8 decisions it grounds is UNFOUNDED. Test 28: on the live chain every decision
+is Grounded, and no set holding one is UNFOUNDED. Nine mutants of the check.
+
+Not done (the brief's stop rule): `vars1witness` has no `ground` rule, and the certificate is not in its binary format.
+The Lean side of the certificate is the theorem, its check is `check.py`.
 
 ## What it does not establish
 
