@@ -2646,6 +2646,25 @@
    ]
   },
   {
+   "id": "assurance.ground",
+   "source": "ASSURANCE.md",
+   "quote": "`vars1witness --ground` accepts a decision only if it is Grounded at the tip, and accepts every decision Grounded there whose Grounded reads only cells of the witness checker's fragment",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_29_the_lean_checker_grounds_what_the_lens_grounds",
+    "witness:test_30_the_live_chain_grounds_every_decision_in_lean",
+    "lean:witness_ground_sound",
+    "lean:ground_complete",
+    "lean:groundCheck_iff",
+    "lean:groundSet_bound",
+    "lean:candidates_cover"
+   ],
+   "mutants": [
+    "m-ground-policies",
+    "m-ground-seals"
+   ]
+  },
+  {
    "id": "assurance.fold-candidates",
    "source": "ASSURANCE.md",
    "quote": "`experiments/decisions/fold.py` reads, for a batch of candidate readings of an event, which statuses each would change, which act alike and on which cells two classes part",

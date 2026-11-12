@@ -365,6 +365,63 @@ def named_store():
     return FakeTip([d, other, n, ana, bo], atoms), [d.id]
 
 
+def grounding_world():
+    """Test 27's chain, through the gate: the circle of `circular_support` (d0's only verdict w relies on d0: d0 is
+    Settled and HELD, and not Grounded), the case of `settled_not_hereditary` (e1 Settled, relying on e0 that no one
+    attested), a decision an edge kills (dk), one whose only key an INVALID verdict withdraws (dw), one whose only
+    verdict rests on a killed ground (dd), one whose only verdict is retired (dr), and four whose support is founded:
+    dg, dh relying on dg, dp under its own policy of 2 of 3 (one verdict sealed by two keys), and dq relying on dp.
+    Returns the chain and its cells by name."""
+    c = Chain(scratch())
+    g = c.axiom("ground/g")
+    d0, e0, dk, dw, dd, dg, dr = (c.decision(f"decision/{n}", [], thr=1)
+                                  for n in ("d0", "e0", "dk", "dw", "dd", "dg", "dr"))
+    dp = c.decision("decision/dp", [], thr=2)
+    c.commit((g, "ana"), *((x, "ana") for x in (d0, e0, dk, dw, dd, dg, dr, dp)))
+    e1, dh = c.decision("decision/e1", [e0], thr=1), c.decision("decision/dh", [dg], thr=1)
+    dq = c.decision("decision/dq", [dp], thr=1)
+    vp, vq = c.verdict(dp, "decision/dp/by-ana-cy", verifier="cy"), c.verdict(dq, "decision/dq/by-cy", verifier="cy")
+    c.commit((dq, "ana"), (vp, ("ana", "cy")), (vq, "cy"))
+    vg, vh = c.verdict(dg, "decision/dg/by-cy", verifier="cy"), c.verdict(dh, "decision/dh/by-cy", verifier="cy")
+    vr = c.verdict(dr, "decision/dr/by-bo", verifier="bo")
+    w = c.verdict(d0, "decision/d0/by-bo", [d0], verifier="bo")
+    v1, vk = c.verdict(e1, "decision/e1/by-bo", verifier="bo"), c.verdict(dk, "decision/dk/by-bo", verifier="bo")
+    aw = c.verdict(dw, "decision/dw/by-bo", verifier="bo")
+    vd = c.verdict(dd, "decision/dd/by-bo", [g], verifier="bo")
+    c.commit((e1, "ana"), (dh, "ana"), (w, "bo"), (v1, "bo"), (vk, "bo"), (aw, "bo"), (vd, "bo"), (vg, "cy"),
+             (vh, "cy"), (vr, "bo"))
+    iw = c.verdict(dw, "decision/dw/withdrawn-by-bo", code=V.H_VERDICT_INVALID, verifier="bo")
+    c.commit((iw, "bo"), (c.axiom("notice/dk", invalidates=[dk]), "ana"), (c.axiom("notice/g", invalidates=[g]), "ana"),
+             (c.axiom("notice/vr", retires=[vr]), "bo"))
+    return c, dict(g=g, d0=d0, e0=e0, dk=dk, dw=dw, dd=dd, dg=dg, dr=dr, e1=e1, dh=dh, vg=vg, vh=vh, vr=vr, w=w, v1=v1,
+                   vk=vk, aw=aw, vd=vd, iw=iw, dp=dp, dq=dq, vp=vp, vq=vq)
+
+
+def lean_grounds(path, tip, scope, ds) -> dict:
+    """`vars1witness --ground` on the store at `tip` for each of `ds`, as `check.py --lean --ground` writes it, in one
+    run of the checker: ACCEPT or not, by decision."""
+    lines, kept = [], []
+    for d in ds:
+        t = {"format": CK.FORMAT, "scope": scope, "tip": tip, "decision": d.hex(), "cone": [], "endorsements": []}
+        try:
+            lines.append(CK.lean_line(str(path), t, None, prove=True, ground=True))
+            kept.append(d)
+        except CK.Refused:
+            pass
+    out = subprocess.run([str(LEAN), "--ground"], input="".join(x + "\n" for x in lines), capture_output=True,
+                         text=True, check=True).stdout.split()
+    assert len(out) == len(kept) and set(out) <= {"ACCEPT", "REJECT"}, out
+    return {**{d: False for d in ds}, **{d: o == "ACCEPT" for d, o in zip(kept, out)}}
+
+
+def need_lean(test) -> None:
+    """Skip without the Lean checker, unless MINDS_REQUIRE_LEAN=1."""
+    if not LEAN.exists():
+        if os.environ.get("MINDS_REQUIRE_LEAN") == "1":
+            test.fail("MINDS_REQUIRE_LEAN=1, but proofs/.lake/build/bin/vars1witness is not built")
+        test.skipTest("proofs/.lake/build/bin/vars1witness is not built")
+
+
 def unfounded_holds(test, repo, path: str, scope: str, tips) -> collections.Counter:
     """At each tip, for every contract and decision without a computation: one the lens does not ground gets, from
     `prove_unfounded`, a certificate check.py answers UNFOUNDED or NOT_COVERED, never REFUSED; for one it grounds, the
@@ -1375,23 +1432,9 @@ class T(unittest.TestCase):
         reaches) is UNFOUNDED with each member's reason, and a set that leaves out what the equation needs is not. Then
         on the random chains of test 18: every decision the lens does not ground gets a certificate the checker does not
         refuse, and no set holding a decision the lens grounds is UNFOUNDED."""
-        c = Chain(scratch())
-        g = c.axiom("ground/g")
-        d0, e0, dk, dw, dd, dg, dr = (c.decision(f"decision/{n}", [], thr=1)
-                                      for n in ("d0", "e0", "dk", "dw", "dd", "dg", "dr"))
-        c.commit((g, "ana"), *((x, "ana") for x in (d0, e0, dk, dw, dd, dg, dr)))
-        e1, dh = c.decision("decision/e1", [e0], thr=1), c.decision("decision/dh", [dg], thr=1)
-        vg, vh = c.verdict(dg, "decision/dg/by-cy", verifier="cy"), c.verdict(dh, "decision/dh/by-cy", verifier="cy")
-        vr = c.verdict(dr, "decision/dr/by-bo", verifier="bo")
-        w = c.verdict(d0, "decision/d0/by-bo", [d0], verifier="bo")
-        v1, vk = c.verdict(e1, "decision/e1/by-bo", verifier="bo"), c.verdict(dk, "decision/dk/by-bo", verifier="bo")
-        aw = c.verdict(dw, "decision/dw/by-bo", verifier="bo")
-        vd = c.verdict(dd, "decision/dd/by-bo", [g], verifier="bo")
-        c.commit((e1, "ana"), (dh, "ana"), (w, "bo"), (v1, "bo"), (vk, "bo"), (aw, "bo"), (vd, "bo"), (vg, "cy"),
-                 (vh, "cy"), (vr, "bo"))
-        iw = c.verdict(dw, "decision/dw/withdrawn-by-bo", code=V.H_VERDICT_INVALID, verifier="bo")
-        c.commit((iw, "bo"), (c.axiom("notice/dk", invalidates=[dk]), "ana"), (c.axiom("notice/g", invalidates=[g]), "ana"),
-                 (c.axiom("notice/vr", retires=[vr]), "bo"))
+        c, x = grounding_world()
+        g, d0, e0, dk, dw, dd, dg, dr, e1, dh, vr, w, vd = (
+            x[k] for k in ("g", "d0", "e0", "dk", "dw", "dd", "dg", "dr", "e1", "dh", "vr", "w", "vd"))
         lens = c.repo.lens(SCOPE)
         self.assertEqual([(lens["settled"][x.id], lens["grounded"][x.id]) for x in (d0, e1)], [(True, False)] * 2)
         self.assertEqual(c.check(PR.prove(c.repo, SCOPE, d0.id))["result"], "HELD")
@@ -1438,6 +1481,80 @@ class T(unittest.TestCase):
             self.skipTest("refs/vars/heads/minds is not fetched in this clone")
         seen = unfounded_holds(self, repo, str(ROOT), "minds", [tip])
         self.assertGreater(seen["grounded"], 40, seen)
+
+    def test_29_the_lean_checker_grounds_what_the_lens_grounds(self):
+        """`vars1witness --ground` (proofs/Vars1/WitnessGrounded.lean `groundCheck_iff`): the rule `ground`, and a
+        prover that runs Grounded's equation in rounds over the standing cells the decision's Grounded reads. On test
+        27's chain it accepts exactly the decisions the lens grounds: not d0, whose only verdict relies on it, though d0
+        is Settled and `--prove` accepts it; not e1, which relies on e0 that no one attested; not what an edge kills, a
+        withdrawal empties, or a retirement leaves without a verdict; but dg, dh, which relies on dg, dp under its own
+        policy of 2 of 3, and dq, which relies on dp (its line carries dp's policy only because Grounded reads it). On
+        random chains of test 27 (one per kernel) and on test 14's histories it accepts no decision the lens does not
+        ground (soundness holds on every store; completeness is claimed on the fragment, `GFragment`), and where it
+        misses one the lens grounds, the settle checker misses a contract or decision that one reads too; it accepts
+        some."""
+        need_lean(self)
+        c, x = grounding_world()
+        lens = c.repo.lens(SCOPE)
+        names = ("d0", "e0", "e1", "dk", "dw", "dd", "dr", "dg", "dh", "dp", "dq")
+        got = lean_grounds(c.path, c.tip, SCOPE, [x[k].id for k in names])
+        self.assertEqual({k: got[x[k].id] for k in names}, {k: k in ("dg", "dh", "dp", "dq") for k in names})
+        self.assertEqual({k: got[x[k].id] for k in names}, {k: bool(lens["grounded"][x[k].id]) for k in names})
+        self.assertEqual([bool(lens["settled"][x[k].id]) for k in ("d0", "e1")], [True, True])
+        self.assertTrue(lean_proves(c.path, c.tip, SCOPE, x["d0"].id))
+        seen = collections.Counter()
+
+        def reads(lens, d):
+            """The contracts and decisions `d`'s Grounded may read: down `relies`, and to the live verdicts on each."""
+            hv = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(lens["atoms"][h], require_sorted=True)  # noqa: E731
+            out, todo = set(), [d]
+            while todo:
+                x = todo.pop()
+                if x in out or x not in lens["cells"]:
+                    continue
+                out.add(x)
+                todo += hv(lens["cells"][x].h_relies)
+                todo += [w for w, y in lens["cells"].items() if y.h_payload == x and lens["active"].get(w)]
+            return [x for x in out if lens["cells"][x].h_schema in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"])]
+
+        def sound(repo, path, scope, tips):
+            for tip in tips:
+                lens = repo.lens(scope, at=tip)
+                ds = [d for d, y in lens["cells"].items()
+                      if y.h_schema in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"])]
+                for d, ok in lean_grounds(path, tip, scope, ds).items():
+                    grounded = bool(lens["grounded"].get(d))
+                    self.assertTrue(grounded or not ok, (tip, d.hex()))
+                    seen[("ACCEPT" if ok else "REJECT", grounded)] += 1
+                    if grounded and not ok:
+                        # a miss is outside the fragment: the settle checker misses a cell it reads as well
+                        self.assertTrue(any(lens["settled"].get(e) and not lean_proves(path, tip, scope, e)
+                                            for e in reads(lens, d)), (tip, d.hex()))
+        for seed, rules, thr in ((2, V.H_LENS_KERNEL_V2, 1), (3, V.H_LENS_KERNEL, 2)):
+            c, tips = random_walk(seed, rules, thr, 60)
+            sound(c.repo, c.path, SCOPE, tips[::4] + tips[-1:])
+        for i in (0, 1):
+            _, ch, path, before, after = history_chain(i)
+            sound(ch["repo"], path, HI.SCOPE, [before, after])
+        self.assertGreater(seen[("ACCEPT", True)], 10, seen)
+        self.assertGreater(seen[("REJECT", False)], 10, seen)
+
+    def test_30_the_live_chain_grounds_every_decision_in_lean(self):
+        """`vars1witness --ground` on refs/vars/heads/minds at its tip accepts exactly the decisions the lens grounds
+        (all of them, there). Skipped without the Lean checker or the chain, unless MINDS_REQUIRE_LEAN=1 and
+        MINDS_REQUIRE_CHAIN=1."""
+        need_lean(self)
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        lens = repo.lens("minds", at=tip)
+        ds = [cid for cid, y in lens["cells"].items() if y.h_schema == V.H_SCHEMA["decision"]]
+        got = lean_grounds(ROOT, tip, "minds", ds)
+        self.assertEqual(got, {d: bool(lens["grounded"].get(d)) for d in ds})
+        self.assertGreater(sum(got.values()), 40)
 
     def test_24_a_fraud_proof_carries_its_own_evidence(self):
         """`portable` puts into `refute`'s proof the git objects from the tip's commit down to the object it names (and

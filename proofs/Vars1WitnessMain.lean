@@ -1,10 +1,14 @@
-import Vars1.WitnessComplete
+import Vars1.WitnessGrounded
 
 /-! `vars1witness`: one line in (a store and a derivation, as `experiments/witness/check.py --lean` writes them),
 `ACCEPT` or `REJECT` out (`Vars1.Witness.accepts`), `E` for a line it cannot read. With `--prove` the line's
 derivation is not read: the checker runs on the one `Vars1.Witness.prove` builds from the store alone, to a depth one
 more than the store's cells, which bounds both ranks it recurses over (`check.py --lean --prove` writes such a line,
-with every seal on the decision's verdicts).
+with every seal on the decision's verdicts). With `--ground` the line's derivation is not read either: the checker
+for Grounded runs on the one `Vars1.Witness.proveGround` builds over the standing cells Grounded may read for the
+decision (`groundCands`), in rounds, to the first that adds no cell (`groundRounds`), and answers `ACCEPT` when it
+concludes the decision grounded (`groundCheck`, `groundCheck_iff`; `check.py --lean --ground` writes such a line,
+with every seal on a verdict and every evaluator policy).
 
 Every number is a natural. Cells are `0 … N-1`; an id the store does not hold gets a number `≥ N`. A list is its
 length, then its items.
@@ -16,8 +20,8 @@ length, then its items.
 * `scope`, `pol0`; the scopes that governed (a list of `scope pol0`); the policies (a list of `id thr keys`); the
   seals (a list of `target ctx key`);
 * the lines (a list of `rule concl premises`: rule 0 stand, 1 endorse, 2 settle, 3 latch, 4 unlatch, 5 dead, 6 eff,
-  7 unsup, 8 down; a conclusion is `0 c`, `1 w k`, `2 d`, `3 y x kind`, `4 y x kind` (kind 0 supersedes,
-  1 retires, 2 invalidates), `5 x`, `6 y`, `7 w` or `8 b`; premises are a list of conclusions);
+  7 unsup, 8 down, 9 ground; a conclusion is `0 c`, `1 w k`, `2 d`, `3 y x kind`, `4 y x kind` (kind 0
+  supersedes, 1 retires, 2 invalidates), `5 x`, `6 y`, `7 w`, `8 b` or `9 d`; premises are a list of conclusions);
 * the decision. -/
 
 open Vars1 Vars1.Witness
@@ -106,6 +110,7 @@ def concl : Parser (Concl Nat Nat) := do
   | 6 => pure (.eff (← nat))
   | 7 => pure (.unsup (← nat))
   | 8 => pure (.down (← nat))
+  | 9 => pure (.grounded (← nat))
   | _ => failure
 
 def line : Parser (Line Nat Nat) := do
@@ -119,6 +124,7 @@ def line : Parser (Line Nat Nat) := do
     | 6 => pure Rule.eff
     | 7 => pure Rule.unsup
     | 8 => pure Rule.down
+    | 9 => pure Rule.ground
     | _ => failure
   let c ← concl
   let prem ← listOf concl
@@ -157,23 +163,33 @@ def input : Parser (Store Nat Nat Nat × List (Line Nat Nat) × Nat) := do
       thr := fun p => ((pol p).map (·.2.1)).getD 0 }
   pure (S, lines, d)
 
-def evalLine (prove? : Bool) (s : String) : String :=
+/-- What a line asks: Settled with its own derivation, Settled with `prove`'s, or Grounded with `proveGround`'s. -/
+inductive Mode where
+  | check | prove | ground
+
+def evalLine (mode : Mode) (s : String) : String :=
   let ts := ((s.replace "\n" " ").splitOn " ").filter (· ≠ "") |>.map String.toNat?
   if ts.any Option.isNone then "E" else
   match (input.run (ts.filterMap id)) with
   | some ((S, lines, d), _) =>
-    if accepts S (if prove? then prove S (S.cells.length + 1) d else lines) d then "ACCEPT" else "REJECT"
+    let n := S.cells.length + 1
+    let ok := match mode with
+      | .check => accepts S lines d
+      | .prove => accepts S (prove S n d) d
+      | .ground => groundCheck S n d
+    if ok then "ACCEPT" else "REJECT"
   | none => "E"
 
-partial def loop (prove? : Bool) (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
+partial def loop (mode : Mode) (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
   let l ← stdin.getLine
   if l.isEmpty then return
-  stdout.putStrLn (evalLine prove? l)
+  stdout.putStrLn (evalLine mode l)
   stdout.flush
-  loop prove? stdin stdout
+  loop mode stdin stdout
 
 def main (args : List String) : IO UInt32 := do
   match args with
-  | [] => loop false (← IO.getStdin) (← IO.getStdout); pure 0
-  | ["--prove"] => loop true (← IO.getStdin) (← IO.getStdout); pure 0
-  | _ => IO.eprintln "usage: vars1witness [--prove] < lines"; pure 2
+  | [] => loop .check (← IO.getStdin) (← IO.getStdout); pure 0
+  | ["--prove"] => loop .prove (← IO.getStdin) (← IO.getStdout); pure 0
+  | ["--ground"] => loop .ground (← IO.getStdin) (← IO.getStdout); pure 0
+  | _ => IO.eprintln "usage: vars1witness [--prove | --ground] < lines"; pure 2

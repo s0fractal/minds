@@ -556,7 +556,7 @@ theorem endorsedKeys_of_mem {k : K} {w : C} : ∀ {ps : List (Concl C K)}, Concl
     · cases h; exact List.mem_cons_self
     · exact List.mem_cons_of_mem _ (endorsedKeys_of_mem h)
   | .stands _ :: ps, h | .settled _ :: ps, h | .latch _ _ _ :: ps, h | .unlatched _ _ _ :: ps, h
-  | .dead _ :: ps, h | .eff _ :: ps, h | .unsup _ :: ps, h | .down _ :: ps, h => by
+  | .dead _ :: ps, h | .eff _ :: ps, h | .unsup _ :: ps, h | .down _ :: ps, h | .grounded _ :: ps, h => by
     rcases List.mem_cons.mp h with h | h
     · cases h
     · exact endorsedKeys_of_mem (ps := ps) h
@@ -809,6 +809,86 @@ theorem downB_of (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X) (
 
 end Frag
 
+/-- **A key that counts is a pair the prover names.** On the fragment of a live decision, a key of its evaluator policy
+that counts through a verdict of `W_max` is among the endorsements `pairs` names. -/
+theorem pair_of_counts (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X) (pc : PinComplete S W X)
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt)
+    {rank ht : C → Nat} {n : Nat} (hr : Ranked S rank ht n)
+    {d : C} (hsch : S.schema d = .decision ∨ S.schema d = .contract) (hf : Fragment S W X Inv d) (hl : Live X d)
+    {w : C} {k : K} (hw : w ∈ wmax d) (hkw : k ∈ cnt d w) (hkK : k ∈ S.keys (evalPol S d)) :
+    (w, k) ∈ pairs S n d := by
+  have hd : d ∈ S.cells := live_mem pin hl
+  have stands : ∀ c, Cone W X S.cells d c → c ∈ S.cells → standsB S n n c = true :=
+    fun c hc hmem => stands_of_cone pin hf hr hl n c (hr.bound c hmem).1 hc
+  have hin : InWmax W X S.cells d w := (hwmax d w).mp hw
+  have hcnt' : Counts W X S.cells d w k := (hcnt d w k).mp hkw
+  obtain ⟨hwc, hwl, hatt, hrest⟩ := hin
+  rw [pin.schema d hd] at hrest
+  have hrest' : (W.info w).schema = .verdict ∧ (W.info w).payload = some d ∧
+      (X.verdict w).witness = none ∧ (X.verdict w).attested = true := by
+    have hreq : X.req d = none := (pin.req d hd hsch).mpr hf.req
+    rcases hsch with h | h <;> rw [h] at hrest <;> rw [hreq] at hrest <;>
+      exact ⟨hrest.1, hrest.2.1, hrest.2.2.1, hrest.2.2.2⟩
+  obtain ⟨hvs, hvp, hvw, hva⟩ := hrest'
+  have hconew : Cone W X S.cells d w := Cone.verdict ((hwmax d w).mp hw)
+  have hvs' : S.schema w = .verdict := pin.schema w hwc ▸ hvs
+  have hcountable : countable S n d w = true := by
+    simp only [countable, Bool.and_eq_true, decide_eq_true_eq]
+    refine ⟨⟨⟨⟨⟨hvs', (pin.payload w hwc d hd).mp hvp⟩, pin.attests w hwc ▸ hatt⟩, ?_⟩, ?_⟩,
+      stands w hconew hwc⟩
+    · exact (pin.verdict w hwc hvs').1 ▸ hva
+    · exact (pin.verdict w hwc hvs').2.2.1.mp hvw
+  have hlocal := hf.isLocal w hwc
+  have hend : k ∈ X.cumulative w := by
+    have := hcnt'.1
+    unfold witnessEndorsers at this
+    rw [pin.isLocal w hwc, hlocal, if_pos rfl] at this
+    exact this
+  obtain ⟨cp, hcp, hroster, s, hs, ht', hctx, hkey⟩ := pc.seals w hwc hlocal k hend
+  have hseal : endorseOK S w k [] = true := by
+    simp only [endorseOK, List.isEmpty_nil, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq, List.any_eq_true]
+    exact ⟨⟨hwc, hlocal⟩, cp, hcp, hroster, s, hs, ⟨ht', hctx⟩, hkey⟩
+  -- an INVALID verdict the checker finds `withdraws` is live, and then the model withdraws `k` too, or the prover
+  -- proves it not live
+  have hnot : ¬ Withdrawn W X S.cells d w k := by
+    have := hcnt'.2
+    rw [pin.schema d hd] at this
+    rcases hsch with h | h <;> rw [h] at this <;> exact this
+  have hnw : (S.cells.all fun b => !withdraws S d w k b || downB S n n b) = true := by
+    simp only [List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true']
+    intro b hb
+    cases hwd : withdraws S d w k b with
+    | false => exact Or.inl rfl
+    | true =>
+      refine Or.inr ?_
+      simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at hwd
+      obtain ⟨⟨⟨⟨hbs, hbp⟩, hbi⟩, hbver⟩, hloc⟩ := hwd
+      rcases hf.invalid b hb hbs hbp hbi with hblive | hdown
+      · exfalso
+        have hbl := hf.isLocal b hb
+        have hsb : sealedBy S b k = true := by
+          rcases hloc with h | h
+          · rw [hbl] at h; exact Bool.noConfusion h
+          · exact h
+        simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hsb
+        obtain ⟨cp', hcp', hroster', s', hs', ⟨ht'', hctx'⟩, hks'⟩ := hsb
+        have hcum : k ∈ X.cumulative b := by
+          have := pin.cumulative s' hs' cp' hcp' hctx' (ht'' ▸ hbl) (hks' ▸ hroster')
+          rw [ht'', hks'] at this
+          exact this
+        apply hnot
+        refine ⟨b, hb, hblive, (pin.schema b hb).trans hbs, Or.inl ((pin.payload b hb d hd).mpr hbp), ?_, ?_, ?_⟩
+        · rw [(pin.verdict b hb hbs).2.1]
+          exact hbi
+        · rw [(pin.verdict b hb hbs).2.2.2, (pin.verdict w hwc hvs').2.2.2]
+          exact hbver
+        · unfold witnessEndorsers
+          rw [pin.isLocal b hb, hbl, if_pos rfl]
+          exact hcum
+      · exact downB_of pin hf hr n b (hr.bound b hb).1 hdown
+  refine List.mem_flatMap.mpr ⟨w, List.mem_filter.mpr ⟨hwc, hcountable⟩, ?_⟩
+  exact List.mem_map.mpr ⟨k, List.mem_filter.mpr ⟨hkK, by simp only [Bool.and_eq_true]; exact ⟨hseal, hnw⟩⟩, rfl⟩
+
 /-- **Completeness of the witness checker on its fragment.** If the model of §4.2 holds a decision `Settled` at the
 tip, the checker accepts the derivation `prove` builds from the store, for every reading `W`, `X` of the scope's
 admitted chain that the decode `S` agrees with and is complete for (`Pin`, `PinComplete`), every faithful
@@ -861,75 +941,7 @@ theorem witness_complete (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret 
   have hnamed : ∀ k ∈ ks, ∃ w, (w, k) ∈ pairs S n d := by
     intro k hk
     obtain ⟨w, hw, hkw⟩ := List.mem_flatMap.mp (hkE k hk)
-    have hin : InWmax W X S.cells d w := (hwmax d w).mp hw
-    have hcnt' : Counts W X S.cells d w k := (hcnt d w k).mp hkw
-    obtain ⟨hwc, hwl, hatt, hrest⟩ := hin
-    rw [pin.schema d hd] at hrest
-    have hrest' : (W.info w).schema = .verdict ∧ (W.info w).payload = some d ∧
-        (X.verdict w).witness = none ∧ (X.verdict w).attested = true := by
-      have hreq : X.req d = none := (pin.req d hd hsch).mpr hf.req
-      rcases hsch with h | h <;> rw [h] at hrest <;> rw [hreq] at hrest <;>
-        exact ⟨hrest.1, hrest.2.1, hrest.2.2.1, hrest.2.2.2⟩
-    obtain ⟨hvs, hvp, hvw, hva⟩ := hrest'
-    have hconew : Cone W X S.cells d w := Cone.verdict ((hwmax d w).mp hw)
-    have hvs' : S.schema w = .verdict := pin.schema w hwc ▸ hvs
-    have hcountable : countable S n d w = true := by
-      simp only [countable, Bool.and_eq_true, decide_eq_true_eq]
-      refine ⟨⟨⟨⟨⟨hvs', (pin.payload w hwc d hd).mp hvp⟩, pin.attests w hwc ▸ hatt⟩, ?_⟩, ?_⟩,
-        stands w hconew hwc⟩
-      · exact (pin.verdict w hwc hvs').1 ▸ hva
-      · exact (pin.verdict w hwc hvs').2.2.1.mp hvw
-    have hlocal := hf.isLocal w hwc
-    have hend : k ∈ X.cumulative w := by
-      have := hcnt'.1
-      unfold witnessEndorsers at this
-      rw [pin.isLocal w hwc, hlocal, if_pos rfl] at this
-      exact this
-    obtain ⟨cp, hcp, hroster, s, hs, ht', hctx, hkey⟩ := pc.seals w hwc hlocal k hend
-    have hseal : endorseOK S w k [] = true := by
-      simp only [endorseOK, List.isEmpty_nil, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq, List.any_eq_true]
-      exact ⟨⟨hwc, hlocal⟩, cp, hcp, hroster, s, hs, ⟨ht', hctx⟩, hkey⟩
-    -- an INVALID verdict the checker finds `withdraws` is live, and then the model withdraws `k` too, or the prover
-    -- proves it not live
-    have hnot : ¬ Withdrawn W X S.cells d w k := by
-      have := hcnt'.2
-      rw [pin.schema d hd] at this
-      rcases hsch with h | h <;> rw [h] at this <;> exact this
-    have hnw : (S.cells.all fun b => !withdraws S d w k b || downB S n n b) = true := by
-      simp only [List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true']
-      intro b hb
-      cases hwd : withdraws S d w k b with
-      | false => exact Or.inl rfl
-      | true =>
-        refine Or.inr ?_
-        simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at hwd
-        obtain ⟨⟨⟨⟨hbs, hbp⟩, hbi⟩, hbver⟩, hloc⟩ := hwd
-        rcases hf.invalid b hb hbs hbp hbi with hblive | hdown
-        · exfalso
-          have hbl := hf.isLocal b hb
-          have hsb : sealedBy S b k = true := by
-            rcases hloc with h | h
-            · rw [hbl] at h; exact Bool.noConfusion h
-            · exact h
-          simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hsb
-          obtain ⟨cp', hcp', hroster', s', hs', ⟨ht'', hctx'⟩, hks'⟩ := hsb
-          have hcum : k ∈ X.cumulative b := by
-            have := pin.cumulative s' hs' cp' hcp' hctx' (ht'' ▸ hbl) (hks' ▸ hroster')
-            rw [ht'', hks'] at this
-            exact this
-          apply hnot
-          refine ⟨b, hb, hblive, (pin.schema b hb).trans hbs, Or.inl ((pin.payload b hb d hd).mpr hbp), ?_, ?_, ?_⟩
-          · rw [(pin.verdict b hb hbs).2.1]
-            exact hbi
-          · rw [(pin.verdict b hb hbs).2.2.2, (pin.verdict w hwc hvs').2.2.2]
-            exact hbver
-          · unfold witnessEndorsers
-            rw [pin.isLocal b hb, hbl, if_pos rfl]
-            exact hcum
-        · exact downB_of pin hf hr n b (hr.bound b hb).1 hdown
-    refine ⟨w, List.mem_flatMap.mpr ⟨w, List.mem_filter.mpr ⟨hwc, hcountable⟩, ?_⟩⟩
-    exact List.mem_map.mpr ⟨k, List.mem_filter.mpr ⟨hkK k hk, by simp only [Bool.and_eq_true]; exact ⟨hseal, hnw⟩⟩,
-      rfl⟩
+    exact ⟨w, pair_of_counts pin pc hwmax hcnt hr hsch hf hs.1 hw hkw (hkK k hk)⟩
   have hsettle : lineOK S o4 ⟨.settle, .settled d, settlePrem S n d⟩ = true := by
     refine lineOK_of S ?_ ?_
     · intro p hp

@@ -4,6 +4,7 @@
     python3 -I check.py REPO TERM.json [--scope-cell HEX]
     python3 -I check.py --lean REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness
     python3 -I check.py --lean --prove REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness --prove
+    python3 -I check.py --lean --ground REPO TERM.json [--scope-cell HEX] | proofs/.lake/build/bin/vars1witness --ground
     python3 -I check.py --unfounded REPO TERM.json [--scope-cell HEX]   # a certificate that it is not Grounded
 
 A witness (format `minds.witness.held@1`) is a proof term for one decision at one commit: the decision's cone (the
@@ -667,7 +668,8 @@ LEAN_SCHEMA = {SCHEMA["scope"]: 0, SCHEMA["acceptance"]: 1, SCHEMA["contract"]: 
                SCHEMA["cycle_witness"]: 8, SCHEMA["computation"]: 9, SCHEMA["axiom"]: 10}  # anything else: 11
 
 
-def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None, prove: bool = False) -> str:
+def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = None, prove: bool = False,
+              ground: bool = False) -> str:
     """The store at the term's tip and the term as a derivation, in the line `vars1witness` reads
     (proofs/Vars1WitnessMain.lean). The decode is this file's: what `_read` refuses is refused here, and only seals that
     verify are written: every one on an INVALID verdict (the Lean checker reads from them which keys an INVALID verdict
@@ -682,7 +684,10 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
 
     With `prove`, the term's cone and endorsements are not read: the line carries every seal that verifies on a
     verdict whose payload is the decision, and no derivation, for `vars1witness --prove` to build one from the store
-    alone (proofs/Vars1/WitnessComplete.lean `prove`)."""
+    alone (proofs/Vars1/WitnessComplete.lean `prove`). With `ground` as well, the line carries every seal that
+    verifies on any verdict and the evaluator policy of every contract and decision, for `vars1witness --ground` to
+    decide whether the decision is Grounded (proofs/Vars1/WitnessGrounded.lean `proveGround`, `accepts_iff_grounded`):
+    Grounded reads the quorums of everything the decision rests on, and of their verdicts."""
     d, cone, ends, atoms, cells, seals, chain, sc = _read(repo, term, scope_cell)
     rules = Rules(atoms, cells, seals, chain, term["scope"])
     order = sorted(cells)
@@ -722,6 +727,8 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
         slots, kind = cells[cid]["slots"], LEAN_SCHEMA.get(cells[cid]["schema"], 11)
         return slots[3] if kind in (2, 3) and len(slots) > 3 else slots[1] if kind == 4 and len(slots) > 1 else H_EMPTY
     used += [own(t) for t in sorted(targets) if own(t) != H_EMPTY]
+    if ground:
+        used += [own(x) for x in order if LEAN_SCHEMA.get(cells[x]["schema"]) in (2, 3) and own(x) != H_EMPTY]
     out += [len(set(used))]
     for h in dict.fromkeys(used):
         thr, ks = policy(atoms, h)
@@ -729,7 +736,7 @@ def lean_line(repo: str, term: Dict[str, object], scope_cell: Optional[bytes] = 
     good = []
     named = [s for _, s in ends] if not prove else [sid for sid, x in seals.items() if x["target"] in cells
                                                     and cells[x["target"]]["schema"] == SCHEMA["verdict"]
-                                                    and cells[x["target"]]["payload"] == d]
+                                                    and (ground or cells[x["target"]]["payload"] == d)]
     named += [sid for sid, x in seals.items() if x["target"] in cells
               and cells[x["target"]]["schema"] == SCHEMA["verdict"]
               and cells[x["target"]]["slots"][1:2] == [H_VERDICT_INVALID]]
@@ -837,6 +844,8 @@ def main(argv: List[str]) -> int:
     argv = argv[1:] if lean else argv
     prove = lean and argv[:1] == ["--prove"]
     argv = argv[1:] if prove else argv
+    ground = lean and not prove and argv[:1] == ["--ground"]
+    argv = argv[1:] if ground else argv
     if len(argv) not in (2, 4) or (len(argv) == 4 and (argv[2] != "--scope-cell"
                                                        or not re.fullmatch(r"[0-9a-f]{64}", argv[3]))):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
@@ -846,7 +855,7 @@ def main(argv: List[str]) -> int:
             raw, pin = f.read(), bytes.fromhex(argv[3]) if len(argv) == 4 else None
         if lean:
             try:
-                print(lean_line(argv[0], read_term(raw), pin, prove))
+                print(lean_line(argv[0], read_term(raw), pin, prove or ground, ground))
                 return 0
             except Refused as e:
                 out = {"result": e.result, "code": e.code, "detail": e.detail}
