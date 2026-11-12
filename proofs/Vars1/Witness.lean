@@ -1,6 +1,7 @@
 import Vars1.Pass1
 import Vars1.Pass2
 import Vars1.Pass3
+import Vars1.Grounded
 
 /-!
 # A witness checker for `Settled`, and its soundness (roadmap G7)
@@ -90,7 +91,7 @@ structure Store (C K P : Type) where
   thr : P → Nat
 
 inductive Rule where
-  | stand | endorse | settle | latch | unlatch | dead | eff | unsup | down
+  | stand | endorse | settle | latch | unlatch | dead | eff | unsup | down | ground
   deriving DecidableEq, Repr
 
 inductive Concl (C K : Type) where
@@ -103,6 +104,7 @@ inductive Concl (C K : Type) where
   | eff (y : C)
   | unsup (w : C)
   | down (b : C)
+  | grounded (d : C)
   deriving DecidableEq, Repr
 
 /-- The rule that draws each kind of conclusion. -/
@@ -116,6 +118,7 @@ def Concl.rule {C K : Type} : Concl C K → Rule
   | .eff _ => .eff
   | .unsup _ => .unsup
   | .down _ => .down
+  | .grounded _ => .ground
 
 structure Line (C K : Type) where
   rule : Rule
@@ -251,6 +254,25 @@ def settleOK (d : C) (prem : List (Concl C K)) : Bool :=
       | _ => true) &&
     decide (S.thr (evalPol S d) ≤ (dedup (endorsedKeys prem)).length)
 
+/-- The quorum part of a `ground` line: `settle`'s, with every endorsing verdict Grounded by a premise. -/
+def groundQuorum (d : C) (prem : List (Concl C K)) : Bool :=
+  decide (S.req d = none) && decide (evalPol S d ∈ S.pols) &&
+    prem.all (fun p => match p with
+      | .endorsed w k => countsFor S d prem w k && decide (Concl.grounded w ∈ prem)
+      | _ => true) &&
+    decide (S.thr (evalPol S d) ≤ (dedup (endorsedKeys prem)).length)
+
+/-- `ground d`: `d` stands, every cell it relies on is Grounded by a premise, and, if it is a contract or decision, the
+quorum `settle` reads is met by verdicts that are Grounded by premises. A scope, a schema or a question is outside the
+rule: the store does not show what authorizes the first two or which schema answers the third. -/
+def groundOK (d : C) (prem : List (Concl C K)) : Bool :=
+  decide (d ∈ S.cells) && decide (Concl.stands d ∈ prem) &&
+    ((S.relies d).all fun r => decide (Concl.grounded r ∈ prem)) &&
+    match S.schema d with
+    | .scope | .metaSchema | .question => false
+    | .contract | .decision => groundQuorum S d prem
+    | _ => true
+
 /-- A line's rule is its conclusion's, and the rule's checks hold. -/
 def ruleOK (l : Line C K) : Bool :=
   decide (l.rule = l.concl.rule) &&
@@ -264,6 +286,7 @@ def ruleOK (l : Line C K) : Bool :=
     | .eff y => effOK S y l.prem
     | .unsup w => unsupOK S w l.prem
     | .down b => downOK S b l.prem
+    | .grounded d => groundOK S d l.prem
 
 def lineOK (done : List (Concl C K)) (l : Line C K) : Bool :=
   l.prem.all (· ∈ done) && ruleOK S l
@@ -277,6 +300,12 @@ def run (done : List (Concl C K)) : List (Line C K) → Option (List (Concl C K)
 def accepts (lines : List (Line C K)) (d : C) : Bool :=
   match run S [] lines with
   | some done => decide (Concl.settled d ∈ done)
+  | none => false
+
+/-- The checker for Grounded: every line checks, and one concludes that `d` is grounded. -/
+def acceptsGround (lines : List (Line C K)) (d : C) : Bool :=
+  match run S [] lines with
+  | some done => decide (Concl.grounded d ∈ done)
   | none => false
 
 /-! ## What a conclusion means in the model -/
@@ -356,6 +385,7 @@ def Holds : Concl C K → Prop
   | .eff y => Eff y
   | .unsup w => ¬ Superseded W AE Eff Acc w
   | .down b => ¬ Live X b
+  | .grounded d => Grounded W X wmax cnt d
 
 /-! ## Lemmas on the checker's lists -/
 
@@ -389,7 +419,7 @@ theorem mem_endorsedKeys {k : K} : ∀ {ps : List (Concl C K)}, k ∈ endorsedKe
     · obtain ⟨w', hw'⟩ := mem_endorsedKeys h
       exact ⟨w', List.mem_cons_of_mem _ hw'⟩
   | .stands _ :: ps | .settled _ :: ps | .latch _ _ _ :: ps | .unlatched _ _ _ :: ps | .dead _ :: ps
-  | .eff _ :: ps | .unsup _ :: ps | .down _ :: ps => by
+  | .eff _ :: ps | .unsup _ :: ps | .down _ :: ps | .grounded _ :: ps => by
     intro h
     obtain ⟨w', hw'⟩ := mem_endorsedKeys (ps := ps) h
     exact ⟨w', List.mem_cons_of_mem _ hw'⟩
@@ -644,6 +674,65 @@ theorem endorse_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc
   rw [ht, hkey] at this
   exact this
 
+/-- An endorsement premise that `countsFor` admits names a verdict of `W_max(d)` and a key of `d`'s evaluator policy
+that counts through it. -/
+theorem counts_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {d : C} {prem : List (Concl C K)}
+    (hd : d ∈ S.cells) (hsch : S.schema d = .decision ∨ S.schema d = .contract) (hreq : S.req d = none)
+    (hprem : ∀ p ∈ prem, Holds S W X wmax cnt AE Inv Eff Acc p) {w : C} {k : K}
+    (hmem : Concl.endorsed w k ∈ prem) (hc : countsFor S d prem w k = true) :
+    w ∈ wmax d ∧ k ∈ cnt d w ∧ k ∈ S.keys (Witness.evalPol S d) := by
+  simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true,
+    Bool.not_eq_true'] at hc
+  obtain ⟨⟨⟨⟨⟨⟨⟨hsw, hvw⟩, hpw⟩, haw⟩, hatt⟩, hwit⟩, hkey⟩, hnot⟩ := hc
+  obtain ⟨hw, hlw⟩ := (hprem _ hsw : Holds S W X wmax cnt AE Inv Eff Acc (.stands w))
+  have hin : InWmax W X S.cells d w := by
+    refine ⟨hw, hlw, pin.attests w hw ▸ haw, ?_⟩
+    have hrest : (W.info w).schema = .verdict ∧ (W.info w).payload = some d ∧
+        (match X.req d with
+         | none => (X.verdict w).witness = none ∧ (X.verdict w).attested = true
+         | some _ => (X.verdict w).replayed = true ∧
+             ∃ c, (X.verdict w).witness = some c ∧ Live X c ∧ X.replayOK c d) := by
+      refine ⟨pin.schema w hw ▸ hvw, (pin.payload w hw d hd).mpr hpw, ?_⟩
+      rw [(pin.req d hd hsch).mpr hreq]
+      exact ⟨(pin.verdict w hw hvw).2.2.1.mpr hwit, (pin.verdict w hw hvw).1 ▸ hatt⟩
+    rw [pin.schema d hd]
+    rcases hsch with h | h <;> rw [h] <;> exact hrest
+  -- an INVALID verdict on `d` under `w`'s verifier id that `k` endorses is one the checker found `withdraws`, and
+  -- a premise proves it not live; and `w` names no witness: nothing withdraws `k`
+  have hnw : ¬ Withdrawn W X S.cells d w k := by
+    rintro ⟨b, hb, hbl, hbv, hbp, hbi, hbver, hbk⟩
+    rcases hbp with hbp | ⟨hwn, -⟩
+    · have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
+      have hbi' : (S.verdict b).invalid = true := by
+        rw [← (pin.verdict b hb hbs).2.1]
+        exact hbi
+      have hwd : withdraws S d w k b = true := by
+        simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true']
+        refine ⟨⟨⟨⟨hbs, (pin.payload b hb d hd).mp hbp⟩, hbi'⟩, ?_⟩, ?_⟩
+        · rw [← (pin.verdict b hb hbs).2.2.2, ← (pin.verdict w hw hvw).2.2.2]
+          exact hbver
+        · cases hlb : S.isLocal b with
+          | false => exact Or.inl rfl
+          | true =>
+            refine Or.inr ?_
+            have hk : k ∈ X.cumulative b := by
+              unfold witnessEndorsers at hbk
+              rw [pin.isLocal b hb, hlb, if_pos rfl] at hbk
+              exact hbk
+            obtain ⟨cp, hcp, hroster, s, hs, ht, hctx, hks⟩ := pin.invalidSeals b hb hbs hbi' hlb k hk
+            simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+            exact ⟨cp, hcp, hroster, s, hs, ⟨ht, hctx⟩, hks⟩
+      rcases hnot b hb with h | h
+      · rw [hwd] at h; exact Bool.noConfusion h
+      · exact (hprem _ h : Holds S W X wmax cnt AE Inv Eff Acc (.down b)) hbl
+    · exact hwn ((pin.verdict w hw hvw).2.2.1.mpr hwit)
+  have hcounts : Counts W X S.cells d w k := by
+    refine ⟨hprem _ hmem, ?_⟩
+    rw [pin.schema d hd]
+    rcases hsch with h | h <;> rw [h] <;> exact hnw
+  exact ⟨(hwmax d w).mpr hin, (hcnt d w k).mpr hcounts, hkey⟩
+
 /-- A `settle` line whose premises hold concludes `Settled`. -/
 theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
     (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {d : C} {prem : List (Concl C K)}
@@ -660,57 +749,8 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
   have hcount : ∀ w k, Concl.endorsed w k ∈ prem → k ∈ (wmax d).flatMap (cnt d) ∧
       k ∈ S.keys (Witness.evalPol S d) := by
     intro w k hmem
-    have hc := hall _ hmem
-    simp only [countsFor, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true,
-      Bool.not_eq_true'] at hc
-    obtain ⟨⟨⟨⟨⟨⟨⟨hsw, hvw⟩, hpw⟩, haw⟩, hatt⟩, hwit⟩, hkey⟩, hnot⟩ := hc
-    obtain ⟨hw, hlw⟩ := (hprem _ hsw : Holds S W X wmax cnt AE Inv Eff Acc (.stands w))
-    have hin : InWmax W X S.cells d w := by
-      refine ⟨hw, hlw, pin.attests w hw ▸ haw, ?_⟩
-      have hrest : (W.info w).schema = .verdict ∧ (W.info w).payload = some d ∧
-          (match X.req d with
-           | none => (X.verdict w).witness = none ∧ (X.verdict w).attested = true
-           | some _ => (X.verdict w).replayed = true ∧
-               ∃ c, (X.verdict w).witness = some c ∧ Live X c ∧ X.replayOK c d) := by
-        refine ⟨pin.schema w hw ▸ hvw, (pin.payload w hw d hd).mpr hpw, ?_⟩
-        rw [(pin.req d hd hsch).mpr hreq]
-        exact ⟨(pin.verdict w hw hvw).2.2.1.mpr hwit, (pin.verdict w hw hvw).1 ▸ hatt⟩
-      rw [pin.schema d hd]
-      rcases hsch with h | h <;> rw [h] <;> exact hrest
-    -- an INVALID verdict on `d` under `w`'s verifier id that `k` endorses is one the checker found `withdraws`, and
-    -- a premise proves it not live; and `w` names no witness: nothing withdraws `k`
-    have hnw : ¬ Withdrawn W X S.cells d w k := by
-      rintro ⟨b, hb, hbl, hbv, hbp, hbi, hbver, hbk⟩
-      rcases hbp with hbp | ⟨hwn, -⟩
-      · have hbs : S.schema b = .verdict := pin.schema b hb ▸ hbv
-        have hbi' : (S.verdict b).invalid = true := by
-          rw [← (pin.verdict b hb hbs).2.1]
-          exact hbi
-        have hwd : withdraws S d w k b = true := by
-          simp only [withdraws, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true']
-          refine ⟨⟨⟨⟨hbs, (pin.payload b hb d hd).mp hbp⟩, hbi'⟩, ?_⟩, ?_⟩
-          · rw [← (pin.verdict b hb hbs).2.2.2, ← (pin.verdict w hw hvw).2.2.2]
-            exact hbver
-          · cases hlb : S.isLocal b with
-            | false => exact Or.inl rfl
-            | true =>
-              refine Or.inr ?_
-              have hk : k ∈ X.cumulative b := by
-                unfold witnessEndorsers at hbk
-                rw [pin.isLocal b hb, hlb, if_pos rfl] at hbk
-                exact hbk
-              obtain ⟨cp, hcp, hroster, s, hs, ht, hctx, hks⟩ := pin.invalidSeals b hb hbs hbi' hlb k hk
-              simp only [sealedBy, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq]
-              exact ⟨cp, hcp, hroster, s, hs, ⟨ht, hctx⟩, hks⟩
-        rcases hnot b hb with h | h
-        · rw [hwd] at h; exact Bool.noConfusion h
-        · exact (hprem _ h : Holds S W X wmax cnt AE Inv Eff Acc (.down b)) hbl
-      · exact hwn ((pin.verdict w hw hvw).2.2.1.mpr hwit)
-    have hcounts : Counts W X S.cells d w k := by
-      refine ⟨hprem _ hmem, ?_⟩
-      rw [pin.schema d hd]
-      rcases hsch with h | h <;> rw [h] <;> exact hnw
-    exact ⟨List.mem_flatMap.mpr ⟨w, (hwmax d w).mpr hin, (hcnt d w k).mpr hcounts⟩, hkey⟩
+    obtain ⟨hw, hk, hkey⟩ := counts_sound pin hwmax hcnt hd hsch hreq hprem hmem (hall _ hmem)
+    exact ⟨List.mem_flatMap.mpr ⟨w, hw, hk⟩, hkey⟩
   have hq : W.quorum ((wmax d).flatMap (cnt d)) (Vars1.evalPol W X d) = true := by
     rw [hep]
     refine pin.quorum _ hpol _ (dedup (endorsedKeys prem)) ?_ (nodup_dedup _) ?_ hthr
@@ -724,6 +764,50 @@ theorem settle_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc 
   refine ⟨hlive, ?_⟩
   rw [pin.schema d hd]
   rcases hsch with h | h <;> rw [h] <;> exact hq
+
+/-- A `ground` line whose premises hold concludes `Grounded`: it meets Grounded's equation over the cells the
+premises prove Grounded, so it meets it over `Grounded` (`grounded_fixed`). -/
+theorem ground_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {d : C} {prem : List (Concl C K)}
+    (hok : groundOK S d prem = true) (hprem : ∀ p ∈ prem, Holds S W X wmax cnt AE Inv Eff Acc p) :
+    Holds S W X wmax cnt AE Inv Eff Acc (.grounded d) := by
+  unfold groundOK at hok
+  simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hok
+  obtain ⟨⟨⟨hd, hsd⟩, hrel⟩, hsch⟩ := hok
+  show Grounded W X wmax cnt d
+  rw [← grounded_fixed]
+  refine ⟨(hprem _ hsd).2, fun r hr => hprem _ (hrel r ((pin.relies d hd) ▸ hr)), ?_⟩
+  rw [pin.schema d hd]
+  -- the quorum, for a contract or a decision
+  have quorum : (S.schema d = .decision ∨ S.schema d = .contract) → groundQuorum S d prem = true →
+      ∃ E : List K, W.quorum E (Vars1.evalPol W X d) = true ∧
+        ∀ k ∈ E, ∃ w ∈ wmax d, Grounded W X wmax cnt w ∧ k ∈ cnt d w := by
+    intro hs hq
+    simp only [groundQuorum, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hq
+    obtain ⟨⟨⟨hreq, hpol⟩, hall⟩, hthr⟩ := hq
+    have hep : Vars1.evalPol W X d = Witness.evalPol S d := by
+      unfold Vars1.evalPol Witness.evalPol
+      rw [pin.schema d hd, pin.customPol d hd, pin.scope, pin.pol0]
+      rcases hs with h | h <;> rw [h]
+    have each : ∀ k ∈ dedup (endorsedKeys prem), ∃ w, w ∈ wmax d ∧ k ∈ cnt d w ∧
+        k ∈ S.keys (Witness.evalPol S d) ∧ Grounded W X wmax cnt w := by
+      intro k hk
+      obtain ⟨w, hmem⟩ := mem_endorsedKeys (mem_dedup.mp hk)
+      have hc := hall _ hmem
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      obtain ⟨hw, hkc, hkey⟩ := counts_sound pin hwmax hcnt hd hs hreq hprem hmem hc.1
+      exact ⟨w, hw, hkc, hkey, hprem _ hc.2⟩
+    refine ⟨dedup (endorsedKeys prem), ?_, fun k hk => ?_⟩
+    · rw [hep]
+      refine pin.quorum _ hpol _ _ (fun k hk => hk) (nodup_dedup _) (fun k hk => ?_) hthr
+      obtain ⟨w, -, -, hkey, -⟩ := each k hk
+      exact hkey
+    · obtain ⟨w, hw, hkc, -, hg⟩ := each k hk
+      exact ⟨w, hw, hg, hkc⟩
+  cases hs : S.schema d <;> simp only [hs] at hsch ⊢
+  case decision => exact quorum (Or.inl hs) hsch
+  case contract => exact quorum (Or.inr hs) hsch
+  all_goals first | exact Bool.noConfusion hsch | trivial
 
 /-- A line whose rule checks and whose premises hold concludes what holds. -/
 theorem line_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
@@ -743,6 +827,7 @@ theorem line_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
   | eff y => exact eff_sound pin h hprem
   | unsup w => exact unsup_sound pin h hprem
   | down b => exact down_sound pin h hprem
+  | grounded d => exact ground_sound pin hwmax hcnt h hprem
 
 /-- Every conclusion of a checked prefix holds. -/
 theorem run_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
@@ -776,6 +861,18 @@ theorem witness_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc
   · rename_i out hrun
     exact (run_sound (AE := AE) (Inv := Inv) (Eff := Eff) (Acc := Acc) pin hwmax hcnt lines [] out hrun (by simp)
       _ (by simpa using h) : Holds S W X wmax cnt AE Inv Eff Acc (.settled d))
+  · exact absurd h (by decide)
+
+/-- **Soundness of the checker for Grounded.** If `acceptsGround` holds for a derivation, the cell is `Grounded` in the
+model of §4.2 at the tip, under the hypotheses of `witness_sound`. -/
+theorem witness_ground_sound (pin : Pin S W AE Present isIntrinsic Auth Inv Eff Ret Acc X)
+    (hwmax : WmaxFaithful W X S.cells wmax) (hcnt : CntFaithful W X S.cells cnt) {lines : List (Line C K)} {d : C}
+    (h : acceptsGround S lines d = true) : Grounded W X wmax cnt d := by
+  unfold acceptsGround at h
+  split at h
+  · rename_i out hrun
+    exact (run_sound (AE := AE) (Inv := Inv) (Eff := Eff) (Acc := Acc) pin hwmax hcnt lines [] out hrun (by simp)
+      _ (by simpa using h) : Holds S W X wmax cnt AE Inv Eff Acc (.grounded d))
   · exact absurd h (by decide)
 
 end Sound

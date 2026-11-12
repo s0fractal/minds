@@ -75,6 +75,10 @@ and, for some theorems, `Classical.choice`.
 | `WitnessGrounded.lean` | `unfounded_sound`, `unfounded_complete`, `not_grounded_iff_unfounded` | a cell is not Grounded iff some unfounded set holds it: a set none of whose members satisfies Grounded's equation when only the cells outside it are given; the cells that are not Grounded form one. No `Classical.choice`: over finite lists double negation passes through `∀` (`dn_forall_mem`, `grounded_dn`) |
 | | `unfounded_of_each` | a finite certificate is checked member by member |
 | | `circular_certificate` | on `circular_support`'s world, where both cells stand and `d0` is Settled, `[d0, w]` is an unfounded set |
+| `Witness.lean` | `witness_ground_sound` | the rule `ground` (a standing cell, what it relies on grounded, and for a contract or decision a quorum of endorsements on grounded verdicts, as `settle` reads it): the checker `acceptsGround` a derivation ⟹ the model holds the cell Grounded, given `Pin` |
+| `WitnessGrounded.lean` | `groundSet_bound`, `stable_all` | the prover's rounds (Grounded's equation from below, over candidate cells, as lists) only add cells; once one adds none, none does; round `N`, for `N` the candidates, holds every cell any round holds |
+| | `candidates_cover` | the candidates `vars1witness --ground` takes (down `relies` and to the cells whose payload a reached cell is, closed, or every cell; those that stand) hold every live cell the decision's Grounded reads |
+| | `ground_complete`, `groundCheck_iff` | on its fragment (`GFragment`: every live cell Grounded reads is in `witness_complete`'s fragment and is not a scope, a schema or a question), the checker accepts the prover's derivation exactly when the model holds the decision Grounded, given `Pin` and `PinComplete`; `groundCheck` is what `vars1witness --ground` runs |
 | `Reader.lean` | `settled_frame` | between two tips that agree on what `Settled(d)` reads (`Reads`, on a set `Pr`), a contract, decision or question `d` is Settled at both or at neither. `Reads` asks: `d` is in `Pr`; every cell that judges `d` (`Judges`: it attests `d`, or is an INVALID verdict on `d` or on the checkpoint a cell attesting `d` names) is in both stores or in neither, is in `Pr`, and has the same endorsers; every checkpoint such a cell names is in `Pr`; every cell of `Pr` is live at both tips or at neither; the cells' verdict fields, `required_comp`, expected schema and replay result are the same; and `d` names an evaluator policy of its own or the two governing scopes have one admission policy. Also `QuorumExt` and faithful presentations at both tips |
 | | `inWmax_frame`, `withdrawn_frame`, `counts_frame` | under `Reads`, `W_max(d)`, each withdrawal through a cell attesting `d`, and the keys that count are the same at both tips |
 | | `grounded_frame` | on a set `Pr` closed under `relies` and under the witnesses of what it holds, whose cells are live and Authorized at both tips or at neither, and each contract, decision or question of which `Reads` relates, `Grounded` is the same at both tips |
@@ -190,7 +194,12 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
 - `check.py --unfounded` to `WitnessGrounded.lean`: the check is `unfounded_of_each` read over the store in Python.
   Its reasons are `down` (the Lean checker's rule), relies on a member, a quorum missed by every key that seals a
   verdict outside the set that is not down, and `stand` answering False, which no Lean rule concludes; tests 27–28
-  hold it to the lens (no Grounded decision is ever UNFOUNDED). `vars1witness` has no `ground` rule yet.
+  hold it to the lens (no Grounded decision is ever UNFOUNDED).
+
+- `vars1witness --ground` to `WitnessGrounded.lean`: `groundCheck_iff` is about the store the line decodes; that
+  `check.py --lean --ground` writes the admitted chain's store (every seal that verifies on a verdict, every evaluator
+  policy) is the decode's, held by tests 29–30 as for `--prove`. Outside `GFragment` a REJECT where the lens grounds is
+  no contradiction; test 29 asserts that every such miss is one the settle checker shares.
 
 - `experiments/witness/frame.py` to `Reader.lean`: the program that computes a frame and says whether later commits touch
   it is Python. Tests 17–19 of `experiments/witness/test_witness.py` hold "nothing touches it" to the lens's statuses
