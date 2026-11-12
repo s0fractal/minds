@@ -2014,7 +2014,12 @@
     "m-why-grounded-follow",
     "m-why-kill-src",
     "m-why-settled-word",
-    "m-why-proj-sealed"
+    "m-why-proj-sealed",
+    "m-why-commit-prefix",
+    "m-why-commit-floor",
+    "m-why-commit-case",
+    "m-why-ambiguous",
+    "m-cli-traceback"
    ]
   },
   {

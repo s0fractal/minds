@@ -43,9 +43,10 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # --restore: the signer's own replacement checks and verdicts too
     tools/minds_chain.py power CELL           # read only: which coalitions of roster keys can change the status of
                                               # CELL by commits of their own (`GitVarsRepo.power`)
-    tools/minds_chain.py why CELL [--json]   # read only: CELL's status (a name, or 8+ hex of its id) and why, in words: whose
-                                              # keys count and whom it waits for, what kills it, and, when it is not
-                                              # Grounded, the path down `relies` to the first cell that does not hold
+    tools/minds_chain.py why CELL [--json]   # read only: CELL's status (a name, 8+ hex of its id, or 7+ hex of a
+                                              # released commit) and why, in words: whose keys count and whom it waits
+                                              # for, what kills it, and, when it is not Grounded, the path down
+                                              # `relies` to the first cell that does not hold
     tools/minds_chain.py lag REPO SCOPE       # read only: which cells of SCOPE in REPO that this chain holds stand on one
                                               # side and not the other, why, and what this scope can do (`vars1.lag`)
     tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
@@ -530,10 +531,11 @@ def key_names(cells: Dict[bytes, V.Cell], atoms: Dict[bytes, bytes], seals) -> D
 
 
 def explain(repo_dir: Path, ref: str) -> Dict[str, object]:
-    """Read only: the status of the cell named `ref` (its slot name, or 8 or more hex digits of its id) at the chain's
-    tip, and why, from the lens's own tables: the kill edges into it, the keys that count and those it waits for, and,
-    when it is not live or not Grounded, each step down to the first cell that does not hold. A kill edge's sources
-    are listed with their Effective bit; which of them latched is the lens's, and is not said."""
+    """Read only: the status of the cell named `ref` (its slot name, 8 or more hex digits of its id, or 7 or more of a
+    commit whose release it is) at the chain's tip, and why, from the lens's own tables: the kill edges into it, the
+    keys that count and those it waits for, and, when it is not live or not Grounded, each step down to the first cell
+    that does not hold. A kill edge's sources are listed with their Effective bit; which of them latched is the
+    lens's, and is not said."""
     repo = V.GitVarsRepo(repo_dir)
     tip = repo.ref_commit(SCOPE)
     if tip is None:
@@ -546,10 +548,19 @@ def explain(repo_dir: Path, ref: str) -> Dict[str, object]:
     slot = lambda x: V.parse_utf8(atoms[cells[x].h_slot_name])  # noqa: E731
     hv = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(atoms[h], require_sorted=True)  # noqa: E731
     who = lambda ks: [f"{names.get(k, '?')} {k.hex()[:8]}" for k in sorted(ks)]  # noqa: E731
-    found = [x for x in cells if slot(x) == ref] or (
-        [x for x in cells if x.hex().startswith(ref.lower())] if re.fullmatch(r"[0-9a-fA-F]{8,64}", ref) else [])
+    found = [x for x in cells if slot(x) == ref]
+    h = ref.lower()
+    if not found and re.fullmatch(r"[0-9a-f]{7,64}", h):
+        # 8 or more hex digits of a cell's id, or 7 or more of a released commit: the release whose statement names it
+        released = lambda x: (cells[x].h_schema == V.H_SCHEMA["decision"]  # noqa: E731
+                              and slot(x).startswith(f"{SCOPE}/release/")
+                              and parse_release_profile(V.parse_utf8(atoms[cells[x].h_payload]))[0].startswith(h))
+        found = [x for x in cells if (len(h) >= 8 and x.hex().startswith(h)) or released(x)]
     if len(found) != 1:
-        raise V.VarsError(f"{len(found)} cells answer to {ref!r}: name one by its slot name or a longer id prefix")
+        some = ", ".join(sorted(slot(x) for x in found)[:6]) + (", ..." if len(found) > 6 else "")
+        raise V.VarsError(f"{len(found)} cells answer to {ref!r}" + (f" ({some})" if found else "")
+                          + ": name one by its slot name (`show` lists the releases and projections), 8 or more hex"
+                          " digits of its id, or 7 or more of a released commit")
     bit = lambda b, x: bool(lens[b].get(x))  # noqa: E731
     live = lambda x: bit("active", x) and not bit("stale", x)  # noqa: E731
 
@@ -1331,4 +1342,8 @@ def _main(argv: List[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(_main(sys.argv[1:]))
+    try:
+        sys.exit(_main(sys.argv[1:]))
+    except V.VarsError as e:  # a refusal, said in one line; the exit code stays the 1 of an uncaught exception
+        print(f"minds_chain: {e}", file=sys.stderr)
+        sys.exit(1)

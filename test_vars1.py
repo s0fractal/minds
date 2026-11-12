@@ -8297,6 +8297,31 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "0 cells answer"):
             mc.explain(self.repo_path, "minds/no-such-cell")
 
+        # a release by its commit: 7 or more hex digits of the commit its statement names, in either case. Each lookup
+        # is compared, the refusal's words included, so a lookup that fails is a failed assertion and not a crash
+        def answer(ref: str) -> str:
+            try:
+                return mc.explain(self.repo_path, ref)["path"][0]["cell"]
+            except V.VarsError as e:
+                return str(e).split(": name one")[0]
+        self.assertEqual({ref: answer(ref) for ref in ("aaaaaaa", "A" * 12, "a" * 40)},
+                         dict.fromkeys(("aaaaaaa", "A" * 12, "a" * 40), r1["decision"].hex()))
+        # another commit; too short; longer than a commit and no id's prefix
+        self.assertEqual([answer(ref) for ref in ("aaaaaab", "aaaaaa", "a" * 41)],
+                         [f"0 cells answer to {ref!r}" for ref in ("aaaaaab", "aaaaaa", "a" * 41)])
+        # two releases whose commits share the prefix: both are named and neither is chosen
+        mc.release(self.repo_path, ska, "c" * 7 + "0" * 33, ["test_vars1 OK"])
+        _, r4 = mc.release(self.repo_path, ska, "c" * 7 + "1" * 33, ["test_vars1 OK"])
+        self.assertEqual((answer("ccccccc"), answer("ccccccc1")),
+                         ("2 cells answer to 'ccccccc' (minds/release/ccccccc00000, minds/release/ccccccc11111)",
+                          r4["decision"].hex()))
+        # the command line says a refusal in one line, with the exit code of an uncaught exception
+        out = subprocess.run([sys.executable, str(ROOT_DIR / "tools" / "minds_chain.py"), "profile", "zz"],
+                             capture_output=True, text=True)
+        self.assertEqual((out.returncode, out.stdout, out.stderr.splitlines()[:1]),
+                         (1, "", [f"minds_chain: 'zz' is not a full commit id of {ROOT_DIR}"]), out.stderr)
+        self.assertEqual(len(out.stderr.splitlines()), 1, out.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

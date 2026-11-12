@@ -3119,6 +3119,46 @@
    "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
   ]
  },
+ "m-why-commit-prefix": {
+  "file": "tools/minds_chain.py",
+  "find": "parse_release_profile(V.parse_utf8(atoms[cells[x].h_payload]))[0].startswith(h))",
+  "replace": "parse_release_profile(V.parse_utf8(atoms[cells[x].h_payload]))[0] == h)",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-commit-floor": {
+  "file": "tools/minds_chain.py",
+  "find": "re.fullmatch(r\"[0-9a-f]{7,64}\", h)",
+  "replace": "re.fullmatch(r\"[0-9a-f]{8,64}\", h)",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-commit-case": {
+  "file": "tools/minds_chain.py",
+  "find": "    h = ref.lower()\n",
+  "replace": "    h = ref\n",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-why-ambiguous": {
+  "file": "tools/minds_chain.py",
+  "find": "    if len(found) != 1:\n        some = ",
+  "replace": "    found = found[:1]\n    if len(found) != 1:\n        some = ",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
+ "m-cli-traceback": {
+  "file": "tools/minds_chain.py",
+  "find": "    except V.VarsError as e:  # a refusal",
+  "replace": "    except KeyError as e:  # a refusal",
+  "kills": [
+   "test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold"
+  ]
+ },
  "m-pins-own": {
   "file": "tools/minds_chain.py",
   "find": "        want = pins.get(label, pinned)",
