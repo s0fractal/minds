@@ -365,6 +365,33 @@ def named_store():
     return FakeTip([d, other, n, ana, bo], atoms), [d.id]
 
 
+def unfounded_holds(test, repo, path: str, scope: str, tips) -> collections.Counter:
+    """At each tip, for every contract and decision without a computation: one the lens does not ground gets, from
+    `prove_unfounded`, a certificate check.py answers UNFOUNDED or NOT_COVERED, never REFUSED; for one it grounds, the
+    set of every cell not Grounded with it added is never UNFOUNDED."""
+    seen = collections.Counter()
+    for tip in tips:
+        lens = repo.lens(scope, at=tip)
+        cells = repo.read_cas_tree(tip)[1]
+        loose = sorted(x.hex() for x in cells if not lens["grounded"].get(x))
+        for d, x in sorted(cells.items()):
+            if x.h_schema not in (V.H_SCHEMA["contract"], V.H_SCHEMA["decision"]) or x.slots[1] != V.H_EMPTY:
+                continue
+            if lens["grounded"].get(d):
+                term = {"format": CK.UNFOUNDED, "scope": scope, "tip": tip, "decision": d.hex(),
+                        "unfounded": sorted({*loose, d.hex()})}
+                r = CK.check_unfounded(path, term)
+                test.assertNotEqual(r["result"], "UNFOUNDED", (tip, d.hex(), "a Grounded decision"))
+                seen["grounded"] += 1
+            else:
+                r = CK.check_unfounded(path, PR.prove_unfounded(repo, scope, d, tip))
+                test.assertIn(r["result"], ("UNFOUNDED", "NOT_COVERED"), (tip, d.hex(), r))
+                seen[r["result"]] += 1
+                if r["result"] == "NOT_COVERED":
+                    seen["not_covered:" + r["code"]] += 1
+    return seen
+
+
 def shapes_stores():
     """The shapes the random walks of test 25 do not reach, as stores no gate admitted (`FakeTip`), each later store
     adding one object that touches a frame through one shape alone: a seal on a verdict that judges `d` by its payload
@@ -1337,6 +1364,79 @@ class T(unittest.TestCase):
         if os.environ.get("DELTA_STATS"):
             print("test 26", dict(live), json.dumps(stats))
         self.assertGreater(live["clean"], 10000, live)
+
+    def test_27_an_unfounded_set_shows_a_decision_is_not_grounded(self):
+        """`check.py --unfounded` (proofs/Vars1/WitnessGrounded.lean, `unfounded_of_each`): a set holding the decision,
+        each member of which fails Grounded's equation when only the cells outside the set are given. On one chain
+        through the gate: the circle of `circular_support` (d0's only verdict relies on d0: d0 is Settled and HELD, and
+        not Grounded), the case of `settled_not_hereditary` (e1 Settled, relying on e0 that no one attested), a
+        decision an edge kills, one whose only key an INVALID verdict withdraws, and one whose only verdict rests on a
+        killed ground. The prover's certificate (`prove_unfounded`, the cells not Grounded that the decision's equation
+        reaches) is UNFOUNDED with each member's reason, and a set that leaves out what the equation needs is not. Then
+        on the random chains of test 18: every decision the lens does not ground gets a certificate the checker does not
+        refuse, and no set holding a decision the lens grounds is UNFOUNDED."""
+        c = Chain(scratch())
+        g = c.axiom("ground/g")
+        d0, e0, dk, dw, dd, dg, dr = (c.decision(f"decision/{n}", [], thr=1)
+                                      for n in ("d0", "e0", "dk", "dw", "dd", "dg", "dr"))
+        c.commit((g, "ana"), *((x, "ana") for x in (d0, e0, dk, dw, dd, dg, dr)))
+        e1, dh = c.decision("decision/e1", [e0], thr=1), c.decision("decision/dh", [dg], thr=1)
+        vg, vh = c.verdict(dg, "decision/dg/by-cy", verifier="cy"), c.verdict(dh, "decision/dh/by-cy", verifier="cy")
+        vr = c.verdict(dr, "decision/dr/by-bo", verifier="bo")
+        w = c.verdict(d0, "decision/d0/by-bo", [d0], verifier="bo")
+        v1, vk = c.verdict(e1, "decision/e1/by-bo", verifier="bo"), c.verdict(dk, "decision/dk/by-bo", verifier="bo")
+        aw = c.verdict(dw, "decision/dw/by-bo", verifier="bo")
+        vd = c.verdict(dd, "decision/dd/by-bo", [g], verifier="bo")
+        c.commit((e1, "ana"), (dh, "ana"), (w, "bo"), (v1, "bo"), (vk, "bo"), (aw, "bo"), (vd, "bo"), (vg, "cy"),
+                 (vh, "cy"), (vr, "bo"))
+        iw = c.verdict(dw, "decision/dw/withdrawn-by-bo", code=V.H_VERDICT_INVALID, verifier="bo")
+        c.commit((iw, "bo"), (c.axiom("notice/dk", invalidates=[dk]), "ana"), (c.axiom("notice/g", invalidates=[g]), "ana"),
+                 (c.axiom("notice/vr", retires=[vr]), "bo"))
+        lens = c.repo.lens(SCOPE)
+        self.assertEqual([(lens["settled"][x.id], lens["grounded"][x.id]) for x in (d0, e1)], [(True, False)] * 2)
+        self.assertEqual(c.check(PR.prove(c.repo, SCOPE, d0.id))["result"], "HELD")
+        path = str(c.path)
+        hx = lambda *xs: {x.id.hex() for x in xs}  # noqa: E731
+        expect = {d0: {d0.id.hex(): "quorum", w.id.hex(): "relies"}, e1: {e1.id.hex(): "relies", e0.id.hex(): "quorum"},
+                  dk: {dk.id.hex(): "down"}, dw: {dw.id.hex(): "quorum"},
+                  dd: {dd.id.hex(): "quorum", vd.id.hex(): "down", g.id.hex(): "down"},
+                  dr: {dr.id.hex(): "quorum", vr.id.hex(): "not live"}}
+        for d, reasons in expect.items():
+            cert = PR.prove_unfounded(c.repo, SCOPE, d.id)
+            self.assertEqual(set(cert["unfounded"]), set(reasons), d.id.hex()[:8])
+            r = CK.check_unfounded(path, cert)
+            self.assertEqual((r["result"], r.get("reasons")), ("UNFOUNDED", reasons), d.id.hex()[:8])
+        cert = PR.prove_unfounded(c.repo, SCOPE, d0.id)
+        # without the verdict, d0's quorum is met outside the set; without d0, the set says nothing of it
+        self.assertEqual(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(d0))})["code"], "FOUNDED")
+        self.assertEqual(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(w))})["code"], "UNFOUNDED")
+        # dd alone: its only verdict is down, so outside the set it counts no key
+        r = CK.check_unfounded(path, {**cert, "decision": dd.id.hex(), "unfounded": sorted(hx(dd))})
+        self.assertEqual((r["result"], r.get("reasons")), ("UNFOUNDED", {dd.id.hex(): "quorum"}))
+        # a Grounded decision in a set of everything else not Grounded: its equation holds outside the set
+        loose = {x.hex() for x in c.repo.read_cas_tree(c.tip)[1] if not lens["grounded"].get(x)}
+        self.assertEqual([lens["grounded"][x.id] for x in (dg, dh)], [True, True])
+        for x in (dg, dh):
+            term = {**cert, "decision": x.id.hex(), "unfounded": sorted(loose | hx(x))}
+            self.assertEqual(CK.check_unfounded(path, term)["code"], "FOUNDED", x.id.hex()[:8])
+        seen = collections.Counter()
+        for seed, rules, thr in ((1, V.H_LENS_KERNEL, 1), (2, V.H_LENS_KERNEL_V2, 1), (3, V.H_LENS_KERNEL, 2)):
+            c, tips = random_walk(seed, rules, thr, 60)
+            seen += unfounded_holds(self, c.repo, str(c.path), SCOPE, tips)
+        self.assertGreater(seen["UNFOUNDED"], 10, seen)
+        self.assertGreater(seen["grounded"], 5, seen)
+
+    def test_28_the_live_chain_has_no_unfounded_decision(self):
+        """Test 27's differential on refs/vars/heads/minds at its tip: every decision is Grounded there, so the checker
+        answers no set holding one UNFOUNDED. Skipped when the chain is not fetched, unless MINDS_REQUIRE_CHAIN=1."""
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        seen = unfounded_holds(self, repo, str(ROOT), "minds", [tip])
+        self.assertGreater(seen["grounded"], 40, seen)
 
     def test_24_a_fraud_proof_carries_its_own_evidence(self):
         """`portable` puts into `refute`'s proof the git objects from the tip's commit down to the object it names (and
