@@ -89,6 +89,10 @@ and, for some theorems, `Classical.choice`.
 | | `decisive_settled_iff`, `decisive_unsettled_iff` | the same for Settled of a contract or decision, through `settled_iff_keys`, when the act changes the keys that count by that one key and leaves the standing and the policy |
 | | `grounded_mono` | if every live cell stays live, every authorization stays, the policies stay and the witnesses and their counted keys only grow, every Grounded cell stays Grounded; read the other way, an act that only removes only removes |
 | | `decisive_cascade_grounded` | under the same, a cell whose equation holds once `u` and what was Grounded before are given is Grounded once `u` is: one endorsement of a foundation grounds every cell that waited only for it |
+| `Cut.lean` | `grounded_keeps_of_no_cut` | the cut world of a coalition (the cells it cannot attack, its keys withdrawn from every count) is Grounded's own fixed point on a smaller world; if the cells it cannot attack stay live, its witnesses stay witnesses and every key not its own still counts, whatever it does leaves Grounded every cell the cut world grounds |
+| | `grounded_cut_attained` | and a commit after which a live cell is a live cell that stays, a witness one that stays, and a counted key one that counted and is not the coalition's leaves Grounded no more than the cut world: the strongest blow is one least fixed point |
+| | `grounded_needs_gain`, `grounded_gain_attained` | the same for what a coalition can ground: with its keys counted for every cell (`GroundedGain`) a bound on every commit of its own, and reached by a commit that attests every cell with a fresh verdict that relies on nothing |
+| | `illusion_of_quorum` | every quorum 2 of 3; the key `a` endorses nothing `D` counts and `D` stays Settled in `a`'s cut world, yet the cut world does not ground `D`: one key takes Grounded from a cell it never signed |
 
 ## Executable lens
 
@@ -165,6 +169,11 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   they are hypotheses. A rotation the coalition makes is outside it: the gate refuses one without its quorum (E-20), and
   the model makes no refusal. `GitVarsRepo.power` reads the same rules in Python; a search through the gate holds it
   (`test_vars1.py` 106), one commit deep, where nothing yet attacks what the status reads.
+
+- `GitVarsRepo.power`'s `grounded` row to `Cut.lean`: which cells a coalition can attack is `Power.lean`'s, and that a
+  commit of the coalition meets `grounded_keeps_of_no_cut`'s premises (its keys counted, others' kept, witnesses kept)
+  is the gate's, held by the search of `test_vars1.py` 133 on five chains, one commit deep, with every move of one
+  commit and the two moves of everything at once.
 
 - `experiments/witness/frame.py` to `Reader.lean`: the program that computes a frame and says whether later commits touch
   it is Python. Tests 17–19 of `experiments/witness/test_witness.py` hold "nothing touches it" to the lens's statuses

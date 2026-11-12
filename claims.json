@@ -2608,7 +2608,7 @@
   {
    "id": "assurance.power-table",
    "source": "ASSURANCE.md",
-   "quote": "`GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local contract or decision without a computation, and refuses any other cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts. It reads Settled and not Grounded: `exact` is false where something already points an edge at what the status reads, or where the status rests on another quorum",
+   "quote": "`GitVarsRepo.power` (`minds_chain.py power CELL`) lists, for a local contract or decision without a computation, and refuses any other cell, the minimal coalitions of roster keys that lose it its liveness, lose it Settled or gain it Settled by commits of their own, with no rotation, and the admission quorum, which after the wait leaves the keys it removes no move, and does not reach a cell whose evaluator policy names keys it does not hold except through what that cell rests on and its verdicts. These rows read the cell's own quorum, not Grounded, which is the `grounded` row's: `exact` is false where something already points an edge at what the status reads, or where the status rests on another quorum",
    "status": "tested",
    "witnesses": [
     "test:test_106_the_power_table_is_what_a_search_through_the_gate_finds",
@@ -2624,6 +2624,30 @@
     "m-power-exact-attackers",
     "m-power-exact-quorums",
     "m-power-backers"
+   ]
+  },
+  {
+   "id": "assurance.power-grounded",
+   "source": "ASSURANCE.md",
+   "quote": "The `grounded` row of `GitVarsRepo.power` lists the minimal coalitions that take Grounded from the cell, or give it, by commits of their own, over its whole frame at once",
+   "status": "tested",
+   "witnesses": [
+    "test:test_133_power_over_grounded_is_the_strongest_blow_through_the_gate",
+    "lean:grounded_keeps_of_no_cut",
+    "lean:grounded_cut_attained",
+    "lean:grounded_needs_gain",
+    "lean:grounded_gain_attained",
+    "lean:illusion_of_quorum"
+   ],
+   "mutants": [
+    "m-power-grounded-attack",
+    "m-power-grounded-withdraw",
+    "m-power-grounded-fresh",
+    "m-power-grounded-fresh-stands",
+    "m-power-grounded-frame",
+    "m-power-grounded-exact-edges",
+    "m-power-grounded-lose-now",
+    "m-power-grounded-gain-now"
    ]
   },
   {
