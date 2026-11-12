@@ -526,6 +526,43 @@ Over these tips:
 - Nothing proves the module. `reader_frame` is tested against `frame.py`, and fifteen mutants burn the module. The Lean model of
   a reader with an index (`proofs/Vars1/Reader.lean`'s bound does not cover one) is not written.
 
+## A frame read from below (`delta.py`, `proofs/Vars1/Delta.lean`)
+
+`frame.py` answers from a decision: what its status reads, and whether later commits touch that. With many decisions
+and a small commit, that is a frame per decision. `delta.py` asks the other way: from the objects a later tip adds,
+which contracts, decisions and questions have a frame they touch? `Up` holds, for one tip, the inverse of each step
+`frame` takes downward (who relies on a cell, which cells a judge judges, for which cells a checkpoint is named, which
+cells an edge enters, which cells supersede a cell), and `dirty` walks up from each new object's touch points by
+`touches`'s own rules (EDGE, JUDGE, SEAL, SCOPE, WAITING, RULES, NOT_COVERED).
+
+`Delta.lean` proves the walk exact for a frame given by its steps: from a touch point, the inverse of each step in the
+reverse order reaches `d` iff the touch point is in `d`'s frame, for Settled (`up_settled_iff`) and for Grounded, whose
+frame first closes over the evaluated cells it reads (`up_grounded_iff`); so the decisions the walk does not reach are
+exactly those with no touch point in their frame (`unreached_frame_untouched`). No axiom. That an untouched frame meets
+`Reads`, so its status is kept, is `frame.py`'s link to `Reader.lean`, held by tests 17–19, not proved.
+
+Test 25 holds `dirty` to `touches` on the random chains of test 18 (v1 and v2, an admission threshold of 1 and of 2),
+test 26 on `refs/vars/heads/minds`: for every pair of tips, every evaluated cell and both frames, a cell is dirty
+exactly when `touches` reports its frame touched.
+
+On the live chain at fd7b2f9 (100 commits, 49 decisions at the tip), for each of the 98 commits made after the first
+decision, for Settled and for Grounded alike:
+
+| decisions a commit dirties | 0 | 1 | 3 | 38 |
+|---|---|---|---|---|
+| commits | 48 | 47 | 2 | 1 |
+
+95 of 98 commits dirty at most one decision. The one that dirties every decision of its tip (38) is the rotation to
+the v2 rules: other rules read the history again, so a rules change touches every frame. The two that dirty three are
+rotations of the scope, read by the three decisions that name no evaluator policy (the scope caveat). Over the 99
+commits, the walk takes 0.09 s against 0.96 s for a frame per decision and `touches` (5,444 frames), eleven times
+less; at 49 decisions both are under a second, and the walk's cost does not grow with the number of decisions a
+commit leaves alone. The stop rule (no saving for Grounded) did not fire; on this chain no decision rests on another, so a decision's
+Grounded frame is its Settled frame, and the random chains of test 25 are where the two differ.
+
+`revindex.py`'s committed index names who attests, whose payload, who names, who points an edge and who seals; not
+who relies on a cell, which the walk also needs, so `Up` is built from the store in one pass.
+
 ## What it does not establish
 
 - **The negative part.** `HELD` rests on the store at the tip being the admitted chain. `check.py` runs no gate.
