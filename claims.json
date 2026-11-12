@@ -2646,6 +2646,27 @@
    ]
   },
   {
+   "id": "assurance.fold-candidates",
+   "source": "ASSURANCE.md",
+   "quote": "`experiments/decisions/fold.py` reads, for a batch of candidate readings of an event, which statuses each would change, which act alike and on which cells two classes part",
+   "status": "tested",
+   "witnesses": [
+    "decision:test_01_candidates_fold_into_classes_by_what_they_change",
+    "decision:test_02_the_live_chain_folds_a_hundred_readings",
+    "witness:test_25_a_commit_dirties_exactly_the_frames_it_touches"
+   ],
+   "mutants": [
+    "m-fold-dirty",
+    "m-fold-class-key",
+    "m-fold-grounded-bit",
+    "m-fold-evaluated",
+    "m-fold-discriminate",
+    "m-fold-refused",
+    "m-fold-empty",
+    "m-fold-keys"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",

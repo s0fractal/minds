@@ -695,6 +695,11 @@
       "`check.py --unfounded` answers `UNFOUNDED` for a set holding a decision only if the decision is not Grounded at the tip: every member of the set fails Grounded's equation when only the cells outside it are given (it is down, does not stand, relies on a member, or misses its quorum by every key that could count outside the set), so the set is unfounded and, by the dual of Knaster–Tarski, holds no Grounded cell. A cell that is not Grounded always lies in such a set; where the store does not decide a member's standing the answer is NOT_COVERED",
       "Tested, with mutants, against the lens: on one chain through the gate with the circle of `circular_support`, the case of `settled_not_hereditary`, a killed decision, a withdrawn key, a fallen verdict and a retired one, each certificate UNFOUNDED with its reasons; on the random chains of test 18, 351 certificates UNFOUNDED, 157 NOT_COVERED, none REFUSED, and no set holding a Grounded decision UNFOUNDED; on the live chain, all 49 decisions Grounded and no such set UNFOUNDED. The duality is proved (`WitnessGrounded.lean`: propext only); the `not live` reason is not, and `vars1witness` has no `ground` rule",
       "`experiments/witness/test_witness.py` 27–28; `experiments/witness/check.py` `check_unfounded`; `proofs/Vars1/WitnessGrounded.lean`"
+     ],
+     [
+      "`experiments/decisions/fold.py` reads, for a batch of candidate readings of an event, which statuses each would change, which act alike and on which cells two classes part, without moving the ref: through the gate with its seals supposed, after a filter in memory that reads from below which frames each reading touches; a reading that touches none changes nothing",
+      "Tested, with mutants, against the gate: on one chain, nine readings whose changes, classes, refusal and parting cells are checked one by one, and, with the gate, every change found is in the filter's dirty set; on the live chain at fd7b2f9e, 100 readings, each non-empty one dirtying one decision, 82 changing nothing and 18 one decision (15 classes), the filter 7.5 ms for all, the gate 0.37 s a reading",
+      "`experiments/decisions/test_decisions.py` 01–02; `experiments/decisions/fold.py`; `experiments/decisions/README.md`"
      ]
     ]
    }

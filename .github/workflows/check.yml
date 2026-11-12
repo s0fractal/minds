@@ -95,6 +95,10 @@ jobs:
           MINDS_REQUIRE_LEAN: "1" # built above: every check also runs vars1witness and must agree
           MINDS_REQUIRE_CHAIN: "1" # fetched above: test 13 holds every decision the lens settles on the live chain
         run: python experiments/witness/test_witness.py
+      - name: Fold-candidates (experiments/decisions/README.md)
+        env:
+          MINDS_REQUIRE_CHAIN: "1" # fetched above: test 02 folds 100 readings on the live chain
+        run: python experiments/decisions/test_decisions.py
       - name: Property suite (I0–I12, and I9–I10 on every tip of the live chain)
         env:
           MINDS_REQUIRE_CHAIN: "1"

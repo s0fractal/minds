@@ -168,7 +168,8 @@ intent agreed with the owner, built first from the parts above; nothing in it is
 
 Experimental. CI (`.github/workflows/check.yml`) runs every release check on a fresh Ubuntu runner: the kernel
 rebuild, which hashes to the same `H_LENS_KERNEL` there as on macOS, the Lean proofs and executables, the conformance
-suite, the property suite and the witness checkers (`experiments/witness`, on the live chain). The proofs' hypotheses
+suite, the property suite, the witness checkers (`experiments/witness`, on the live chain) and fold-candidates
+(`experiments/decisions`: what each of several readings of an event would change, grouped by what it does). The proofs' hypotheses
 and unlinked parts are listed in `proofs/README.md`; the Rust/wasm code itself is not proved, only differentially
 tested against the Lean side (lens Passes 1–2 against an executable lens proved equal to the model, the fold against
 the model's own fold, compiled). Other AI agents have reviewed it adversarially, and their reproduced findings are
