@@ -22,4 +22,5 @@ import Vars1.History
 import Vars1.Morphism
 import Vars1.Reader
 import Vars1.Pivot
+import Vars1.Delta
 import Vars1.Cut

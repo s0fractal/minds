@@ -7,7 +7,8 @@
 A mutant must fail its named test on an assertion (an error is not a kill), and the named tests must pass unmutated
 first. Chains are built through the real gate (vars1.py); the checker under test is check.py, or the file named by
 WITNESS_SOURCE (a mutant); the frame under test (tests 17-19) is frame.py, or the file named by FRAME_SOURCE; the
-committed reverse index (tests 21-24) is revindex.py, or the file named by REVINDEX_SOURCE.
+committed reverse index (tests 21-24) is revindex.py, or the file named by REVINDEX_SOURCE; the walk from below
+(test 25) is delta.py, or the file named by DELTA_SOURCE.
 """
 import collections
 import contextlib
@@ -22,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -45,13 +47,15 @@ SOURCE = Path(os.environ.get("WITNESS_SOURCE", HERE / "check.py"))
 CK = _load("witness_check", SOURCE)
 FR = _load("witness_frame", Path(os.environ.get("FRAME_SOURCE", HERE / "frame.py")))
 RX = _load("witness_revindex", Path(os.environ.get("REVINDEX_SOURCE", HERE / "revindex.py")))
+DX = _load("witness_delta", Path(os.environ.get("DELTA_SOURCE", HERE / "delta.py")))
 LIVE_TIP = "7c6899b7cf8d1bc5bf68c4f53446251b3e90a69d"  # refs/vars/heads/minds on 2026-11-07: test 19's named tip
 LEAN = ROOT / "proofs" / ".lake" / "build" / "bin" / "vars1witness"
 WORK = Path.home() / "Projects" / ".worktrees" / "witness-work"
 WORK.mkdir(parents=True, exist_ok=True)
 MEMBERS = ("ana", "bo", "cy")
 SCOPE = "proj"
-MUTATED = {"check.py": "WITNESS_SOURCE", "frame.py": "FRAME_SOURCE", "revindex.py": "REVINDEX_SOURCE"}  # the files mutants.json mutates, and how a test takes a copy
+MUTATED = {"check.py": "WITNESS_SOURCE", "frame.py": "FRAME_SOURCE", "revindex.py": "REVINDEX_SOURCE",
+           "delta.py": "DELTA_SOURCE"}  # the files mutants.json mutates, and how a test takes a copy
 _CACHE = {}
 
 
@@ -359,6 +363,53 @@ def named_store():
                                 slots=(n.id, V.H_ATTESTED, put(V.atom_utf8(who))))
     ana, bo = by("ana", d), by("bo", other)
     return FakeTip([d, other, n, ana, bo], atoms), [d.id]
+
+
+def shapes_stores():
+    """The shapes the random walks of test 25 do not reach, as stores no gate admitted (`FakeTip`), each later store
+    adding one object that touches a frame through one shape alone: a seal on a verdict that judges `d` by its payload
+    only; a verdict on another cell that names the checkpoint `d`'s verdict names; a seal on a verdict that judges `d`
+    only through that checkpoint; an edge into a cell that a cell `d2` relies on supersedes; a seal on a custom-schema
+    cell `d3` relies on; a new verdict on `d` by payload only. Returns the tips and the objects each adds."""
+    atoms = {}
+    put = lambda raw: atoms.setdefault(hashlib.sha256(raw).digest(), raw) and hashlib.sha256(raw).digest()  # noqa: E731
+    name = lambda s: put(V.atom_utf8(f"{SCOPE}/{s}"))  # noqa: E731
+    pol = put(V.atom_pol1(1, put(V.atom_hvec([b"\x01" * 32]))))
+    hv = lambda ids: put(V.atom_hvec(sorted(ids)))  # noqa: E731
+
+    def dec(n, relies=()):
+        return V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=name(f"decision/{n}"), h_payload=put(V.atom_utf8(n)),
+                      slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol), **({"h_relies": hv(relies)} if relies else {}))
+
+    def ax(n, **kw):
+        return V.Cell(h_schema=V.H_SCHEMA["axiom"], h_slot_name=name(n), h_payload=put(V.atom_utf8(n)), **kw)
+
+    def verdict(who, on, attests=True, names=V.H_EMPTY):
+        return V.Cell(h_schema=V.H_SCHEMA["verdict"], h_slot_name=name(f"verdict/{who}"), h_payload=on.id,
+                      **({"h_attests": hv([on.id])} if attests else {}),
+                      slots=(names, V.H_ATTESTED, put(V.atom_utf8(who))))
+
+    other, n, y = ax("other"), ax("checkpoint/n"), ax("ground/y")
+    x = ax("ground/x", h_supersedes=hv([y.id]), h_loss=put(V.atom_utf8("replaced")))
+    m = V.Cell(h_schema=V.H_META_SCHEMA, h_slot_name=name("schema/m"), h_payload=put(V.atom_utf8("m")))
+    d, d2, d3, e = dec("d"), dec("d2", [x.id]), dec("d3", [m.id]), dec("e")
+    v1, w, p = verdict("ana", d, names=n.id), verdict("bo", other, names=n.id), verdict("cy", d, attests=False)
+    cells = [d, d2, d3, e, other, n, y, x, m, v1, w, p]
+    sk = hashlib.sha256(b"shapes").digest()
+    later = [V.Seal.sign(sk, p.id, d.id), verdict("dee", e, names=n.id), V.Seal.sign(sk, w.id, d.id),
+             ax("notice/y", h_invalidates=hv([y.id])), V.Seal.sign(sk, m.id, d.id), verdict("eve", d, attests=False)]
+    Ts, per, seals = [FakeTip(list(cells), dict(atoms))], [None], {}
+    for obj in later:
+        if isinstance(obj, V.Cell):
+            cells.append(obj)
+            per.append((dict(atoms), {obj.id: obj}, {}))
+        else:
+            seals[obj.id] = obj
+            per.append((dict(atoms), {}, {obj.id: obj}))
+        t = FakeTip(list(cells), dict(atoms))
+        t.seals = dict(seals)
+        Ts.append(t)
+    return Ts, per
 
 
 class T(unittest.TestCase):
@@ -1254,6 +1305,39 @@ class T(unittest.TestCase):
         listed = {"leaf": true_leaf, "kind": "payload", "omits": T.cells[bytes.fromhex(true_leaf["payload"][0])].encode().hex()}
         self.assertFalse(RX.judge(T, honest.root, len(honest.keys), listed), "an object the leaf lists refutes nothing")
 
+    def test_25_a_commit_dirties_exactly_the_frames_it_touches(self):
+        """`delta.dirty` reads, from the objects later commits add, which evaluated cells' frames they touch, walking up
+        from what they touch instead of building a frame per cell. On the random chains of test 18 (v1 and v2, an
+        admission threshold of 1 and of 2) and on the live chain, over every pair of tips, every evaluated cell and
+        both frames, a cell is dirty exactly when `touches` reports its frame touched, so a cell outside it keeps its
+        status (test 17). The walks never reach some shapes (a verdict by payload only, a named checkpoint, a cell a
+        frame holds by supersession, a custom-schema cell): `shapes_stores` holds those, built without the gate. The
+        live chain is test 26."""
+        shapes = dirty_pairs(self, *shapes_stores())
+        self.assertGreater(shapes["dirty"], 20, shapes)
+        seen = collections.Counter()
+        for seed, rules, thr in ((1, V.H_LENS_KERNEL, 1), (2, V.H_LENS_KERNEL_V2, 1), (3, V.H_LENS_KERNEL, 2)):
+            c, tips = random_walk(seed, rules, thr, 60)
+            seen += dirty_holds(self, c.repo, SCOPE, tips)
+        self.assertGreater(seen["dirty"], 1000, seen)
+        self.assertGreater(seen["clean"], 1000, seen)
+
+    def test_26_the_live_chain_dirties_what_touches_says(self):
+        """Test 25 on refs/vars/heads/minds: every pair of tips, every decision, both frames. With DELTA_STATS=1 it
+        prints how many decisions each commit dirties. Skipped when the chain is not fetched, unless
+        MINDS_REQUIRE_CHAIN=1."""
+        repo = V.GitVarsRepo(ROOT)
+        tip = repo.ref_commit("minds")
+        if tip is None:
+            if os.environ.get("MINDS_REQUIRE_CHAIN") == "1":
+                self.fail("refs/vars/heads/minds is not fetched, and MINDS_REQUIRE_CHAIN=1 requires it")
+            self.skipTest("refs/vars/heads/minds is not fetched in this clone")
+        stats: list = []
+        live = dirty_holds(self, repo, "minds", repo.commit_chain(tip), schemas=("decision",), stats=stats)
+        if os.environ.get("DELTA_STATS"):
+            print("test 26", dict(live), json.dumps(stats))
+        self.assertGreater(live["clean"], 10000, live)
+
     def test_24_a_fraud_proof_carries_its_own_evidence(self):
         """`portable` puts into `refute`'s proof the git objects from the tip's commit down to the object it names (and
         to the edge list that object's field names), and `judge_portable` decides it from the signed root and the tip's
@@ -1340,6 +1424,44 @@ def frame_holds(test, repo, scope: str, tips, schemas=("contract", "decision", "
     return seen
 
 
+def dirty_holds(test, repo, scope: str, tips, schemas=("contract", "decision", "question"), stats=None) -> collections.Counter:
+    """Over every tip of `tips`, every later tip, every evaluated cell and both frames: `delta.dirty`, read from the
+    commits between, holds the cell exactly when `touches` reports its frame touched. Both grow with the later tip
+    (an object that touches a frame touches it at every later tip, and `dirty` is a union over objects), so each is
+    carried forward commit by commit. `stats`, if given, collects per commit how many cells of `schemas` it dirties."""
+    Ts = [FR.Tip(V, repo, scope, t) for t in tips]
+    per = [FR.delta(Ts[j - 1], tips[j]) if j else None for j in range(len(tips))]
+    return dirty_pairs(test, Ts, per, schemas, stats)
+
+
+def dirty_pairs(test, Ts, per, schemas=("contract", "decision", "question"), stats=None) -> collections.Counter:
+    """`dirty_holds` over tips given as `Tip`s (or `FakeTip`s) and, for each but the first, the objects it adds."""
+    wanted = {V.H_SCHEMA[s] for s in schemas}
+    seen = collections.Counter()
+    for i, T in enumerate(Ts):
+        subjects = sorted(x for x, c in T.cells.items() if c.h_schema in wanted)
+        if not subjects:
+            continue
+        for gr in (False, True):
+            up = DX.Up(T, grounded=gr)
+            atoms, memo, touched, dirt = {}, {}, set(), set()
+            frames = {d: FR.frame(T, d, gr) for d in subjects}
+            for j in range(i + 1, len(Ts)):
+                atoms.update(per[j][0])
+                for d, fr in frames.items():
+                    if d not in touched and FR.touches(T, fr, atoms, per[j][1], per[j][2], memo) is not None:
+                        touched.add(d)
+                step = DX.dirty(up, atoms, per[j][1], per[j][2]) & set(subjects)
+                if stats is not None and j == i + 1:
+                    stats.append((i, gr, len(step)))
+                dirt |= step
+                test.assertEqual(sorted(x.hex()[:8] for x in dirt), sorted(x.hex()[:8] for x in touched),
+                                 f"tips {i} to {j}, {'Grounded' if gr else 'Settled'}: dirty is not what touches says")
+                seen["dirty"] += len(dirt)
+                seen["clean"] += len(subjects) - len(dirt)
+    return seen
+
+
 def random_walk(seed: int, rules: bytes, thr: int, steps: int):
     """A chain and its tips: a base, then `steps` random commits, each admitted by the gate or left out."""
     rnd = random.Random(seed)
@@ -1414,7 +1536,8 @@ def roster_keys(c) -> set:
 def mutants(only=()) -> int:
     """Run every named test unmutated (refuse a red baseline), then each mutant of mutants.json against a copy of
     its file (check.py, or the `file` it names: frame.py), with no bytecode cache: its test must fail on an
-    assertion. Returns the number that survived."""
+    assertion. A mutant whose test runs past five times its baseline (and at least two minutes) hangs: that is no
+    kill either. Returns the number that survived."""
     ms = json.loads((HERE / "mutants.json").read_text())
     if only:
         missing = sorted(set(only) - set(ms))
@@ -1423,12 +1546,18 @@ def mutants(only=()) -> int:
             return len(missing)
         ms = {mid: m for mid, m in ms.items() if mid in only}
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    run = lambda test, extra: subprocess.run([sys.executable, str(Path(__file__)), f"T.{test}"],  # noqa: E731
-                                             capture_output=True, text=True, env={**env, **extra}, cwd=ROOT)
+    limit: dict = {}
+
+    def run(test, extra):
+        return subprocess.run([sys.executable, str(Path(__file__)), f"T.{test}"], capture_output=True, text=True,
+                              env={**env, **extra}, cwd=ROOT, timeout=limit.get(test))
+
     for test in sorted({m["kills"] for m in ms.values()}):
+        t0 = time.monotonic()
         if run(test, {}).returncode:
             print(f"BASELINE_RED {test}")
             return len(ms)
+        limit[test] = max(120.0, 5 * (time.monotonic() - t0))
     survived = 0
     sources = {name: (HERE / name).read_text() for name in MUTATED}
     for mid, m in ms.items():
@@ -1442,6 +1571,10 @@ def mutants(only=()) -> int:
         try:
             copy.write_text(src.replace(m["find"], m["replace"]))
             r = run(m["kills"], {MUTATED[name]: str(copy)})
+        except subprocess.TimeoutExpired:
+            print(f"SURVIVED {mid}: {m['kills']} hangs past {limit[m['kills']]:.0f} s")
+            survived += 1
+            continue
         finally:
             copy.unlink(missing_ok=True)
         out = r.stdout + r.stderr

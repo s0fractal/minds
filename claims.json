@@ -2575,6 +2575,35 @@
    ]
   },
   {
+   "id": "assurance.delta",
+   "source": "ASSURANCE.md",
+   "quote": "`delta.py` reads which contracts, decisions and questions a later commit can change from below",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_25_a_commit_dirties_exactly_the_frames_it_touches",
+    "witness:test_26_the_live_chain_dirties_what_touches_says",
+    "lean:rtc_flip",
+    "lean:up_settled_iff",
+    "lean:up_grounded_iff",
+    "lean:unreached_frame_untouched"
+   ],
+   "mutants": [
+    "m-delta-relies",
+    "m-delta-attests",
+    "m-delta-payload",
+    "m-delta-named-judge",
+    "m-delta-named-for",
+    "m-delta-above",
+    "m-delta-edges",
+    "m-delta-superseders",
+    "m-delta-sources",
+    "m-delta-latching",
+    "m-delta-scope",
+    "m-delta-seal",
+    "m-delta-verdict-ev"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",

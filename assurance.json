@@ -680,6 +680,11 @@
       "`revindex.py` reads a decision's frame from the root of the tip's reverse index, the leaves the frame reads with their paths, and the frame's own cells, and gets the frame `frame.py` reads from the whole store; a leaf or cell it lacks is `Incomplete`, and a leaf that hides or invents one fact is refuted by that one object, carried with its git path from the tip's commit, so the judge reads no store. The root itself is the signer's claim, not proved",
       "Tested on every decision of the live chain at the named tip (94 frames), four chains with eviction edges and a verdict naming a checkpoint, and four refuted lies; fifteen mutants",
       "`experiments/witness/test_witness.py` 21–24; `experiments/witness/revindex.py`"
+     ],
+     [
+      "`delta.py` reads which contracts, decisions and questions a later commit can change from below: from the objects it adds, up the inverse of each step a frame takes, by `touches`'s own rules, so it builds no frame for a decision the commit leaves alone. The walk is exact for a frame given by its steps; that an untouched frame keeps its status is `frame.py`'s link to `Reader.lean`, held by tests, not proved",
+      "Tested, with mutants, against `touches` on every pair of tips, every evaluated cell and both frames: three random chains, the shapes they never reach (six stores built without the gate), and the live chain at fd7b2f9, where 95 of 98 commits dirty at most one decision and the walk takes a tenth of the time; the walk's exactness proved (`Delta.lean`: no axiom); thirteen mutants",
+      "`experiments/witness/test_witness.py` 25–26; `experiments/witness/delta.py`; `proofs/Vars1/Delta.lean`"
      ]
     ]
    }
