@@ -92,7 +92,8 @@ checker it is a theorem.
 **What HELD does not say.** It is about Settled, not Grounded (§4.2). A decision can be HELD while a decision in its cone
 is not Settled: the `stand` rule reads `Active` and not Stale, as the lens's Pass 2 does. To ask whether what it rests on
 is settled too, read `grounded` in the lens, or `grounded_at_tip` of an attestation bundle. That a decision is not
-Grounded has a certificate of its own, `check.py --unfounded` (below).
+Grounded has a certificate of its own, `check.py --unfounded`, and whether it is Grounded `vars1witness --ground`
+decides (both below).
 
 **What is checked from bytes.**
 - Every object hashes to its name.
@@ -597,8 +598,44 @@ UNFOUNDED (351) or NOT_COVERED (157: 101 whose standing the store does not decid
 never REFUSED; no set holding one of the 8 decisions it grounds is UNFOUNDED. Test 28: on the live chain every decision
 is Grounded, and no set holding one is UNFOUNDED. Nine mutants of the check.
 
-Not done (the brief's stop rule): `vars1witness` has no `ground` rule, and the certificate is not in its binary format.
-The Lean side of the certificate is the theorem, its check is `check.py`.
+The certificate is not in `vars1witness`'s binary format (the brief's stop rule): its Lean side is the theorem, its
+check is `check.py`. The positive side is in the binary (next section).
+
+## A derivation that a decision is Grounded (`vars1witness --ground`)
+
+The Lean checker has a rule `ground d` (`Witness.lean`, `groundOK`): `d` stands, every cell it relies on is grounded
+by an earlier line, and, if it is a contract or decision without a computation, the endorsements among its premises
+meet its policy as `settle` reads them, each on a verdict that is grounded by an earlier line. A scope, a schema or a
+question is outside the rule: the store does not show what authorizes the first two or which schema answers the third.
+`witness_ground_sound`: if `acceptsGround` holds, the cell is Grounded in the model, given `Pin`.
+
+The prover (`WitnessGrounded.lean`) runs Grounded's equation in rounds from below, as `grounded_iter` does on `Fin N`,
+with the checker's own reading of each cell: round `R + 1` holds the candidates whose relies are in round `R` and
+whose quorum, if they are evaluated, is met by the endorsements `pairs` names through verdicts in round `R`. Each
+round's new cells get their `stand`, `down`, `endorse` and `ground` lines. The rounds are lists, not a recursion on
+cells: a verdict may rely on the decision it judges, and a recursion would unfold that circle once per round (the
+first version did, and took 15 s on a decision of the live chain). The candidates are the cells reached from the
+decision down `relies` and to the cells whose payload a reached cell is, closed (or every cell, if the closure's
+steps run out), that stand by `standsB`; what `pairs` names for each is tabled once.
+
+`groundCheck_iff`: `vars1witness --ground` answers `ACCEPT` exactly when the model holds the decision Grounded, given
+`Pin` and `PinComplete`, on a fragment (`GFragment`): every live cell the decision's Grounded reads (down `relies`
+and to the verdicts of `W_max`, from live cells) is in the settle checker's fragment and is not a scope, a schema or a
+question. Rounds only add cells, and round `N`, for `N` the candidates, holds every cell any round holds
+(`groundSet_bound`); the binary stops at the first round that adds nothing. Axioms: `propext` and `Quot.sound`.
+
+`check.py --lean --ground` writes the store with every seal that verifies on any verdict and the evaluator policy of
+every contract and decision, since Grounded reads the quorums of everything the decision rests on.
+
+Test 29: on test 27's chain `--ground` accepts exactly the decisions the lens grounds: not d0 (the circle; d0 is
+Settled and `--prove` accepts it), not e1 (`settled_not_hereditary`), not a killed, withdrawn or retired one; but dg,
+dh relying on dg, dp under its own policy of 2 of 3, and dq relying on dp. On two random chains (one per kernel, every
+fourth tip) and test 14's histories it accepts no decision the lens does not ground (105 rejected), accepts 65 it
+does, and misses one: an edge into its ground whose latch the store does not decide, which the settle checker misses
+too (the test asserts that every miss is one the settle checker shares). Test 30: on the live chain at fd7b2f9 it
+accepts all 49 decisions, each in 0.03–0.52 s (the line takes 0.37 s to write in Python). Two mutants of the line
+(`m-ground-policies`: without the policies of the decisions it rests on; `m-ground-seals`: with only the decision's
+own verdicts' seals).
 
 ## What it does not establish
 
