@@ -84,6 +84,11 @@ and, for some theorems, `Classical.choice`.
 | | `revived` | a present cell is Effective once every Effective cell that invalidates it by a latched edge has a fresh killer (`FreshKiller`: present, Accepted, its edge latched, named by no present cell's invalidates edge) |
 | | `dead_cell_silent` | drop a cell that is not Effective from the store: with the same latches and the same `Accepted`, on a store whose invalidates edges climb a rank, `Effective` of every other cell is unchanged |
 | | `dropped_cell_distinguishes` | `x` invalidates `v` by a latched edge and is `v`'s only attacker; where every Effective cell invalidating `x` has a fresh killer, the store that holds `x` has `v` not Effective and the store that dropped `x` has `v` Effective |
+| `Pivot.lean` | `countIn_cons`, `countIn_filter_ne` | a threshold policy counts its distinct members among the keys: one more key adds one exactly when it is a member not yet among them, one fewer takes one exactly when it was |
+| | `decisive_endorser_iff`, `decisive_withdrawal_iff` | one endorsement turns an unmet threshold quorum into a met one iff the key is a member, not yet counted, and the count is one short; one withdrawal unmeets it iff the key was counted and the count equals the threshold |
+| | `decisive_settled_iff`, `decisive_unsettled_iff` | the same for Settled of a contract or decision, through `settled_iff_keys`, when the act changes the keys that count by that one key and leaves the standing and the policy |
+| | `grounded_mono` | if every live cell stays live, every authorization stays, the policies stay and the witnesses and their counted keys only grow, every Grounded cell stays Grounded; read the other way, an act that only removes only removes |
+| | `decisive_cascade_grounded` | under the same, a cell whose equation holds once `u` and what was Grounded before are given is Grounded once `u` is: one endorsement of a foundation grounds every cell that waited only for it |
 
 ## Executable lens
 
@@ -166,6 +171,10 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   through the gate and on every pair of tips of the live chain; no Lean executable computes a frame. `Reader`, the
   strategy of `reader_reads_commit`, reads commits by position and is no model of a program with an index of reverse
   edges: a reader given a commitment to who names a cell is outside it, which is the point.
+
+- `tools/minds_chain.py next` to `Pivot.lean`: its in-memory reading of one act (`NextTip.predict`) is Python. It
+  calls the lens's own fixed point for Grounded (`vars1.grounded_lfp`), and test 132 holds every act of its menu, and
+  every seal of every key on every cell, to the gate (`GitVarsRepo.what_if`), both ways; on the live chain the same.
 
 - `EvalMachine.step` to the Python `step5` (only the differential bridge in sigma-glyph).
 - `sigma_resume._run` to `run`: the loop is transcribed by hand.

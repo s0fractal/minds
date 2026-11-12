@@ -383,6 +383,11 @@
       "`test_vars1.py` 131; `tools/minds_chain.py` `explain`, `key_names`"
      ],
      [
+      "`next` names, with no cell asked about, every single act of one roster key that would change a status: an ACCEPT or an INVALID verdict, a seal on a projection, on a verdict or on an answer, a seal that latches an edge; with the cells each changes, the most first, what waits for an answer, and the margin of each Settled decision. One endorsement settles a threshold quorum exactly when its key is a member not yet counted and the count is one short; one withdrawal unsettles it exactly when the key was counted and the count equals the threshold; Grounded only grows with what counts",
+      "Tested, with mutants, against the gate act by act, the rules it rests on proved (`Pivot.lean`: propext and Quot.sound): on a fixture, every seal of every key on every cell, every ACCEPT and every withdrawal, both ways, and again at an admission threshold of 2; a reading made wrong on purpose is caught. On the live chain at fd7b2f9e, every seal of every key on every cell, every ACCEPT and every withdrawal: 1974 acts, 0 differences. The in-memory reading is Python, not Lean",
+      "`test_vars1.py` 132; `proofs/Vars1/Pivot.lean`; `tools/minds_chain.py` `NextTip`, `next_acts`, `next_check`; `vars1.py` `grounded_lfp`, `what_if(statuses=True)`"
+     ],
+     [
       "A commit with a symlink or a submodule has no profile (their bytes are not in the commit)",
       "Tested, with mutants",
       "`test_vars1.py` 76"

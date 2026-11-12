@@ -31,6 +31,10 @@ A hash-native graph of claims, computations and verdicts, stored in git, evaluat
 - `tools/minds_chain.py why CELL` — read only, in words: a cell's status, whose keys count and whom it waits for (named by
   the verifier ids their verdicts give), what kills it, and when it is not live or not Grounded, each step down to the
   first cell that does not hold (`test_vars1.py` 131). `--json` gives the same as data.
+- `tools/minds_chain.py next [--actor KEY]` — read only, with no cell named: every single act of one roster key (an
+  ACCEPT or an INVALID verdict, a seal on a projection, a verdict or an answer, a seal that latches an edge) that would
+  change a status, the most cells first; what waits for an answer; and how much margin each Settled decision keeps
+  (`proofs/Vars1/Pivot.lean`). `next --check [--every]` holds it to the gate act by act (`test_vars1.py` 132).
 
 ## Self-governance
 

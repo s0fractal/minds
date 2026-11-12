@@ -8323,5 +8323,124 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(len(out.stderr.splitlines()), 1, out.stderr)
 
 
+    def test_132_next_names_the_single_act_that_changes_the_most(self) -> None:
+        """`minds_chain.py next`: three keys; d1, d2, d3 each have their quorum (alice, bob) but rest on d0, which has
+        alice's alone. An ACCEPT on d0 by bob or by carol, or the seal of either on alice's verdict, settles d0 and
+        grounds all four: `next` lists those four acts first, radius 4. A withdrawal takes one cell, and none where the
+        key still counts under another verifier id; a seal on an INVALID verdict that names bob's verifier id takes
+        bob's endorsement of d1 (a verifier id is free text, and the seal is bob's); carol's seal on alice's verdict on
+        f counts for nothing, her own INVALID under that id having withdrawn her; an ACCEPT by a key e's policy does not
+        name counts for nothing; bob's seal on the release's projection settles it; a seal that latches an edge into d3
+        is read through the gate. Every seal of every key on every cell, and an ACCEPT by every key on every decision,
+        agrees with the gate (`next --check --every`), both ways; at an admission threshold of 2 one key still admits
+        its new verdict (§3 check 3), for `next` as for the gate."""
+        mc = self._minds_chain()
+        ska, skb, skc = b"\x07" * 32, b"\x08" * 32, b"\x09" * 32
+        pka, pkb, pkc = (V.ed25519_pubkey(k) for k in (ska, skb, skc))
+        mc.init(self.repo_path, ska)
+        mc.join(self.repo_path, ska, pkb, "bob")
+        mc.join(self.repo_path, ska, pkc, "carol")
+        _, r1 = mc.release(self.repo_path, ska, "a" * 40, ["test_vars1 OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        s = mc.governing_scope(repo)
+        atoms: dict[bytes, bytes] = {}
+        pol2 = self._pol(atoms, 2, [pka, pkb, pkc])
+        put = lambda t: self._put_atom(atoms, V.atom_utf8(t))  # noqa: E731
+
+        def decision(name: str, relies: list, pol: bytes = pol2) -> V.Cell:
+            return V.Cell(h_schema=V.H_SCHEMA["decision"], h_slot_name=put(f"minds/decision/{name}"), h_payload=put(name),
+                          h_relies=self._hv(atoms, sorted(relies)) if relies else V.H_EMPTY,
+                          slots=(V.H_PROVISIONAL, V.H_EMPTY, V.H_EMPTY, pol))
+
+        def verdict(d: V.Cell, vid: str, ok: bool = True) -> V.Cell:
+            return V.Cell(h_schema=V.H_SCHEMA["verdict"],
+                          h_slot_name=put(f"{V.parse_utf8(atoms[d.h_slot_name])}/{vid}/{'ok' if ok else 'invalid'}"),
+                          h_payload=d.id, h_attests=self._hv(atoms, [d.id]),
+                          slots=(V.H_EMPTY, V.H_ATTESTED if ok else V.H_VERDICT_INVALID, put(vid)))
+        d0 = decision("d0", [])
+        ds = [decision(f"d{i}", [d0.id]) for i in (1, 2, 3)]
+        e = decision("e", [], self._pol(atoms, 2, [pka, pkb]))  # carol is not on e's policy
+        f = decision("f", [])
+        va0, vaf = verdict(d0, "alice"), verdict(f, "alice")
+        vs = [(verdict(d, "alice"), ska) for d in ds] + [(verdict(d, "bob"), skb) for d in ds]
+        again = verdict(ds[0], "alice-again")  # alice counts for d1 under two verifier ids
+        cross = verdict(ds[0], "bob", ok=False)  # carol's INVALID on d1, naming bob's verifier id: it withdraws only carol
+        own = verdict(f, "alice", ok=False)  # carol's INVALID on f under alice's id: it withdraws carol there
+        z = self._axiom(atoms, "minds/notice/d3-wrong", "d3 is wrong", invalidates=[ds[2].id])  # alice's: 1 of d3's 2
+        new = [(d0, ska), *[(d, ska) for d in ds], (e, ska), (f, ska), (va0, ska), (verdict(e, "alice"), ska),
+               (vaf, ska), *vs, (again, ska), (cross, skc), (own, skc), (z, ska)]
+        tip = repo.ref_commit("minds")
+        c = repo.build_candidate_commit("minds", atoms, [x for x, _ in new], [V.Seal.sign(k, x.id, s) for x, k in new],
+                                        parent_commit=tip)
+        repo.admit_and_advance("minds", c, expected_old=tip)
+
+        doc = mc.next_acts(self.repo_path)
+        hx = lambda x: x.id.hex() if isinstance(x, V.Cell) else x.hex()  # noqa: E731
+        rows = {(r["act"], r["key"], r["cell"]): r for r in doc["acts"]}
+        flips = lambda act, key, cell: [(f["cell"], f["bit"], f["after"])  # noqa: E731
+                                        for f in rows.get((act, key.hex(), hx(cell)), {}).get("flips", [])]
+        four = {(hx(d0), "settled"), (hx(d0), "grounded"), *((hx(d), "grounded") for d in ds)}
+        top = [(r["act"], r["key"], r["cell"], r["radius"], r["gains"], r["losses"],
+                frozenset((f["cell"], f["bit"]) for f in r["flips"])) for r in doc["acts"][:4]]
+        self.assertEqual(sorted(top), sorted((act, k.hex(), hx(x), 4, 5, 0, frozenset(four))
+                                             for act, x in (("attest", d0), ("cosign", va0)) for k in (pkb, pkc)),
+                         "the acts that ground d0 and all above it, first")
+        self.assertEqual([r["radius"] for r in doc["acts"][4:] if r["radius"] >= 4], [])
+        # a withdrawal takes one cell: d2 counts alice and bob, two of two; on d1 alice counts under two ids
+        self.assertEqual((flips("withdraw", pka, ds[1]), rows.get(("withdraw", pka.hex(), hx(ds[1])), {}).get("verifier")),
+                         ([(hx(ds[1]), "settled", False)], "alice"))
+        self.assertEqual(flips("withdraw", pka, ds[0]), [], "alice still counts for d1 under alice-again")
+        # bob's seal on carol's INVALID verdict under bob's verifier id withdraws bob from d1
+        self.assertEqual(flips("cosign", pkb, cross), [(hx(ds[0]), "settled", False)])
+        # carol's seal on alice's verdict on f: withdrawn by her own INVALID under that id, it settles nothing
+        self.assertEqual(flips("cosign", pkc, vaf), [])
+        self.assertEqual(flips("cosign", pkb, vaf), [(hx(f), "grounded", True), (hx(f), "settled", True)])
+        # bob's seal on the release's projection, and his ACCEPT on the release: each settles and grounds one cell
+        self.assertEqual(len(flips("witness", pkb, r1["projection"])), 2)
+        self.assertEqual(len(flips("attest", pkb, r1["decision"])), 2)
+        # bob's seal on z latches its edge into d3 (2 of d3's policy): read through the gate, d3 stops standing
+        self.assertIn((hx(ds[2]), "active", False), flips("seal", pkb, z))
+        # one actor's acts only, by its name or its key; a name two keys give is refused with both: carol's verdicts
+        # name bob's and alice's verifier ids once each, and the tie names her alice
+        self.assertEqual({r["key"] for r in mc.next_acts(self.repo_path, "bob")["acts"]}, {pkb.hex()})
+        self.assertEqual({r["key"] for r in mc.next_acts(self.repo_path, pkc.hex()[:8])["acts"]}, {pkc.hex()})
+        with self.assertRaises(V.VarsError) as refused:
+            mc.next_acts(self.repo_path, "alice")
+        self.assertEqual((str(refused.exception).startswith("2 roster keys answer to 'alice' ("),
+                          pka.hex()[:8] in str(refused.exception), pkc.hex()[:8] in str(refused.exception)),
+                         (True, True, True), str(refused.exception))
+        lens = repo.lens("minds")
+        name = lambda x: V.parse_utf8(lens["atoms"][lens["cells"][x].h_slot_name])  # noqa: E731
+        self.assertEqual([w["name"] for w in doc["waiting"]],
+                         sorted(["minds/decision/d0", "minds/decision/e", "minds/decision/f", name(r1["decision"]),
+                                 name(r1["projection"])]))
+        self.assertIn("5 cells wait for an answer", mc.next_text(doc))
+        # both ways: every seal of every key on every cell, every ACCEPT and every withdrawal, against the gate
+        check = mc.next_check(self.repo_path, every=True)
+        self.assertEqual(check["differ"], [])
+        L = repo.lens("minds")
+        judged = [d for d in L["evaluators"] if L["cells"][d].h_schema == V.H_SCHEMA["decision"]]
+        every = (sum(1 for x in L["cells"] for k in (pka, pkb, pkc) if k not in L["cumulative_endorsers"].get(x, set()))
+                 + 3 * len(judged)
+                 + sum(len({L["cells"][w].slots[2] for w, ks in L["counted_witnesses"][d].items() if k in ks})
+                       for d in judged for k in (pka, pkb, pkc)))
+        self.assertEqual(check["acts"], every, "every seal of every key on every cell, an ACCEPT and each withdrawal")
+        self.assertGreater(check["read_by_the_gate"], 0)
+        # the check sees a reading that is wrong: one that says no act changes anything differs on the decisive ones
+        real = mc.NextTip.predict
+        mc.NextTip.predict = lambda self, act: {"refused": False, "flips": {}}
+        try:
+            blind = mc.next_check(self.repo_path)
+        finally:
+            mc.NextTip.predict = real
+        self.assertEqual({(x["act"], x["key"], x["cell"]) for x in blind["differ"]} >= {
+            ("attest", pkb.hex(), hx(d0)), ("cosign", pkc.hex(), hx(va0))}, True)
+        # at admission 2 of 3 one key still admits a cell; the threshold is a latch's, not an admission's
+        mc.set_threshold(self.repo_path, [ska, skb], 2)
+        t = mc.NextTip(self.repo_path)
+        attests = [a for a in t.menu() if a["act"] in ("attest", "withdraw")]
+        self.assertEqual((t.adm[0], bool(attests), {t.predict(a)["refused"] for a in attests}), (2, True, {False}))
+        self.assertEqual(mc.next_check(self.repo_path)["differ"], [])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

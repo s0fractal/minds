@@ -21,3 +21,4 @@ import Vars1.Power
 import Vars1.History
 import Vars1.Morphism
 import Vars1.Reader
+import Vars1.Pivot

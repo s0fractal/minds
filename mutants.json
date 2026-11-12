@@ -1490,8 +1490,8 @@
  },
  "m-assume-mode": {
   "file": "vars1.py",
-  "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\")",
-  "replace": "        return sim._what_if(scope, atoms, cells, seals, \"sealed\")",
+  "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\", statuses)",
+  "replace": "        return sim._what_if(scope, atoms, cells, seals, \"sealed\", statuses)",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
@@ -2476,7 +2476,7 @@
  },
  "m-grounded-relies": {
   "file": "vars1.py",
-  "find": "                if not all(grounded.get(g, False) for g in hvec_items(cells[cid].h_relies)):\n                    continue\n",
+  "find": "            if not all(grounded.get(g, False) for g in relies(cid)):\n                continue\n",
   "replace": "",
   "kills": [
    "test_104_grounded_carries_settled_across_relies",
@@ -2485,8 +2485,8 @@
  },
  "m-grounded-witness": {
   "file": "vars1.py",
-  "find": "                        if grounded[wid]:\n                            keys |= ks",
-  "replace": "                        if True:\n                            keys |= ks",
+  "find": "                    if grounded[wid]:\n                        keys |= ks",
+  "replace": "                    if True:\n                        keys |= ks",
   "kills": [
    "test_104_grounded_carries_settled_across_relies",
    "test_105_any_monotone_circuit_compiles_to_a_chain"
@@ -2494,8 +2494,8 @@
  },
  "m-grounded-from-above": {
   "file": "vars1.py",
-  "find": "        grounded: Dict[bytes, bool] = {cid: False for cid in forward_order}\n        changed = True\n",
-  "replace": "        grounded: Dict[bytes, bool] = {cid: bool(settled[cid]) for cid in forward_order}\n        changed = False\n",
+  "find": "    grounded: Dict[bytes, bool] = {cid: False for cid in order}\n    changed = True\n",
+  "replace": "    grounded: Dict[bytes, bool] = {cid: bool(settled[cid]) for cid in order}\n    changed = False\n",
   "kills": [
    "test_104_grounded_carries_settled_across_relies"
   ]
@@ -3181,6 +3181,110 @@
   "replace": "PIN_FILES = (\"vars1.py\", \"verify/minds_verify.py\")",
   "kills": [
    "test_58_release_checks_rebuild_every_rules_module"
+  ]
+ },
+ "m-next-attest-member": {
+  "file": "tools/minds_chain.py",
+  "find": "if kind == \"attest\" and k in L[\"evaluators\"][x][1]:",
+  "replace": "if kind == \"attest\":",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-withdraw-vid": {
+  "file": "tools/minds_chain.py",
+  "find": "(ks - {k} if cells[w].slots[2] == act[\"vid\"] else ks)",
+  "replace": "(ks - {k})",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-witness-thr": {
+  "file": "tools/minds_chain.py",
+  "find": "settled[x] = self.live(x) and len((self.wend(x) | {k}) & pks) >= thr",
+  "replace": "settled[x] = self.live(x) and len((self.wend(x) | {k}) & pks) > thr",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-cosign-withdrawn": {
+  "file": "tools/minds_chain.py",
+  "find": "or not self.withdrawn(d, x, k)):",
+  "replace": "or True):",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-cosign-invalid": {
+  "file": "tools/minds_chain.py",
+  "find": "hit = [w for w in ws if self.withdraws(x, d, w)]",
+  "replace": "hit = []",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-gate-only": {
+  "file": "tools/minds_chain.py",
+  "find": "return (any(e not in self.latched for e in edges)",
+  "replace": "return (False",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-rank": {
+  "file": "tools/minds_chain.py",
+  "find": "rows.sort(key=lambda r: (-r[\"radius\"],",
+  "replace": "rows.sort(key=lambda r: (r[\"radius\"],",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-settle": {
+  "file": "tools/minds_chain.py",
+  "find": "        for d in touched:\n            settled[d] =",
+  "replace": "        for d in ():\n            settled[d] =",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-actor-ambiguous": {
+  "file": "tools/minds_chain.py",
+  "find": "        if len(keys) != 1:  # a verifier id is free text",
+  "replace": "        if not keys:  # a verifier id is free text",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-admission": {
+  "file": "tools/minds_chain.py",
+  "find": "            if k not in self.adm[1]:\n                return {\"refused\": True}",
+  "replace": "            if self.adm[0] > 1:\n                return {\"refused\": True}",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-hypothesis-grounded": {
+  "file": "tools/minds_chain.py",
+  "find": "settled[HYPOTHESIS] = True",
+  "replace": "settled[HYPOTHESIS] = False",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-next-check-compare": {
+  "file": "tools/minds_chain.py",
+  "find": "        if mine != gate:",
+  "replace": "        if False:",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
+  ]
+ },
+ "m-what-if-statuses": {
+  "file": "vars1.py",
+  "find": "        if statuses:\n            out[\"statuses\"] = {",
+  "replace": "        if False:\n            out[\"statuses\"] = {",
+  "kills": [
+   "test_132_next_names_the_single_act_that_changes_the_most"
   ]
  }
 }
