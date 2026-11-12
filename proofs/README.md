@@ -181,6 +181,7 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   commit of the coalition meets `grounded_keeps_of_no_cut`'s premises (its keys counted, others' kept, witnesses kept)
   is the gate's, held by the search of `test_vars1.py` 133 on five chains, one commit deep, with every move of one
   commit and the two moves of everything at once.
+
 - `check.py --unfounded` to `WitnessGrounded.lean`: the check is `unfounded_of_each` read over the store in Python.
   Its reasons are `down` (the Lean checker's rule), relies on a member, a quorum missed by every key that seals a
   verdict outside the set that is not down, and `stand` answering False, which no Lean rule concludes; tests 27–28
