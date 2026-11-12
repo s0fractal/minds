@@ -1408,8 +1408,9 @@ class T(unittest.TestCase):
             self.assertEqual((r["result"], r.get("reasons")), ("UNFOUNDED", reasons), d.id.hex()[:8])
         cert = PR.prove_unfounded(c.repo, SCOPE, d0.id)
         # without the verdict, d0's quorum is met outside the set; without d0, the set says nothing of it
-        self.assertEqual(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(d0))})["code"], "FOUNDED")
-        self.assertEqual(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(w))})["code"], "UNFOUNDED")
+        verdict = lambda r: (r["result"], r.get("code"))  # noqa: E731
+        self.assertEqual(verdict(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(d0))})), ("REFUSED", "FOUNDED"))
+        self.assertEqual(verdict(CK.check_unfounded(path, {**cert, "unfounded": sorted(hx(w))})), ("REFUSED", "UNFOUNDED"))
         # dd alone: its only verdict is down, so outside the set it counts no key
         r = CK.check_unfounded(path, {**cert, "decision": dd.id.hex(), "unfounded": sorted(hx(dd))})
         self.assertEqual((r["result"], r.get("reasons")), ("UNFOUNDED", {dd.id.hex(): "quorum"}))
@@ -1418,7 +1419,7 @@ class T(unittest.TestCase):
         self.assertEqual([lens["grounded"][x.id] for x in (dg, dh)], [True, True])
         for x in (dg, dh):
             term = {**cert, "decision": x.id.hex(), "unfounded": sorted(loose | hx(x))}
-            self.assertEqual(CK.check_unfounded(path, term)["code"], "FOUNDED", x.id.hex()[:8])
+            self.assertEqual(verdict(CK.check_unfounded(path, term)), ("REFUSED", "FOUNDED"), x.id.hex()[:8])
         seen = collections.Counter()
         for seed, rules, thr in ((1, V.H_LENS_KERNEL, 1), (2, V.H_LENS_KERNEL_V2, 1), (3, V.H_LENS_KERNEL, 2)):
             c, tips = random_walk(seed, rules, thr, 60)
