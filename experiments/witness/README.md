@@ -543,7 +543,13 @@ exactly those with no touch point in their frame (`unreached_frame_untouched`). 
 
 Test 25 holds `dirty` to `touches` on the random chains of test 18 (v1 and v2, an admission threshold of 1 and of 2),
 test 26 on `refs/vars/heads/minds`: for every pair of tips, every evaluated cell and both frames, a cell is dirty
-exactly when `touches` reports its frame touched.
+exactly when `touches` reports its frame touched. Thirteen mutants of `delta.py`, one per inverse step and per rule,
+must fail test 25. On the random walks alone six survived: no walk files a verdict on a payload it does not attest,
+a verdict naming a checkpoint, an edge into a cell a frame holds only because a cell it reads supersedes it, or a seal
+on a custom-schema cell a decision relies on. `shapes_stores` builds those shapes as stores no gate admitted, one
+object per later store, and test 25 reads them first: each of the six now fails at the store built for it. A mutant
+that removed a loop's `pop` with its body hung test 25 rather than failing it; the runner now stops a test at five
+times its baseline and counts the hang as a survivor.
 
 On the live chain at fd7b2f9 (100 commits, 49 decisions at the tip), for each of the 98 commits made after the first
 decision, for Settled and for Grounded alike:
