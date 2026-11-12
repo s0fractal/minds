@@ -95,8 +95,10 @@ criterion), blast radius (2 for a goal another goal relies on), budget and prece
 two Grounded goals with a key to spare beside a hundred cells that touch neither (unsettled decisions, verdicts that
 disagree, quorums of one, killed cells): no tension, though a profile of the background names more than thirty; 22
 background readings silent, the two on a goal loud; and the gate finds no silent reading moving a goal. Test 03, on the
-live chain at fd7b2f9: under a minimum cut of one, silence; under two, all 49 decisions FRAGILITY (every one is at margin
-0), in 0.1 s; of 20 readings attesting decisions outside a five-goal profile, those the filter calls silent move no goal
+live chain, holds the profile to the lens: under a minimum cut of one it names exactly the decisions not Settled and
+Grounded, each an INCOMPLETENESS, and under two adds a FRAGILITY for exactly the Grounded ones at margin 0 (at fd7b2f9,
+silence, then all 49; at 761e04c0, a release recorded and not yet witnessed, one INCOMPLETENESS, which the earlier
+assertion of silence turned into a red CI run), in 0.1 s; of 20 readings attesting decisions outside a five-goal profile, those the filter calls silent move no goal
 by the gate. Test 04: a resolution holds only under its conditions (a FRAGILITY resolved under a minimum cut of 2 is
 asked again under 3, with the same evidence; an INCOMPLETENESS resolved under the scope's 1 of 3 is asked again after
 the scope rotates to 2 of 3, the same three keys missing; neither re-asks the other). Test 05: a policy of 3 of 6 keys
