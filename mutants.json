@@ -1490,8 +1490,8 @@
  },
  "m-assume-mode": {
   "file": "vars1.py",
-  "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\")",
-  "replace": "        return sim._what_if(scope, atoms, cells, seals, \"sealed\")",
+  "find": "        return sim._what_if(scope, atoms, cells, seals, \"assumed\", statuses)",
+  "replace": "        return sim._what_if(scope, atoms, cells, seals, \"sealed\", statuses)",
   "kills": [
    "test_81_what_if_reports_what_a_failed_ground_takes_with_it"
   ]
