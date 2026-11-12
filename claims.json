@@ -2620,6 +2620,32 @@
    ]
   },
   {
+   "id": "assurance.unfounded",
+   "source": "ASSURANCE.md",
+   "quote": "`check.py --unfounded` answers `UNFOUNDED` for a set holding a decision only if the decision is not Grounded at the tip",
+   "status": "tested",
+   "witnesses": [
+    "witness:test_27_an_unfounded_set_shows_a_decision_is_not_grounded",
+    "witness:test_28_the_live_chain_has_no_unfounded_decision",
+    "lean:unfounded_sound",
+    "lean:unfounded_complete",
+    "lean:not_grounded_iff_unfounded",
+    "lean:unfounded_of_each",
+    "lean:circular_certificate"
+   ],
+   "mutants": [
+    "m-unf-holds-decision",
+    "m-unf-down",
+    "m-unf-not-live",
+    "m-unf-relies",
+    "m-unf-outside",
+    "m-unf-threshold",
+    "m-unf-withdrawn",
+    "m-unf-witness-down",
+    "m-unf-founded"
+   ]
+  },
+  {
    "id": "assurance.power-edge",
    "source": "ASSURANCE.md",
    "quote": "A coalition that holds no rotation and only its own new seals latches an edge into a present cell only with a quorum of its policy among the source's old endorsers and itself, or, for a supersedes or retires edge on a local cell its author may evict, with one of its initial endorsers among them",

@@ -72,6 +72,9 @@ and, for some theorems, `Classical.choice`.
 | `WitnessComplete.lean` | `kernel_iff` | on a store of local cells whose invalidates edges it decides, the prover's `effB` and `deadB` are the model's `Effective` and `Invalidated` above the rank |
 | | `witness_complete` | on its fragment (no computation, only local cells, every edge the derivation reads decided by the store, every INVALID verdict on the decision live or not live through an Invalidated cell), the checker accepts the derivation `prove` builds from the store alone whenever the model holds the decision `Settled`, given that the decode is complete as well as faithful (`PinComplete`) and `relies`, invalidates and supersedes have ranks |
 | | `accepts_iff_settled` | with `witness_sound`: there the checker accepts the prover's derivation exactly when the model holds the decision `Settled` |
+| `WitnessGrounded.lean` | `unfounded_sound`, `unfounded_complete`, `not_grounded_iff_unfounded` | a cell is not Grounded iff some unfounded set holds it: a set none of whose members satisfies Grounded's equation when only the cells outside it are given; the cells that are not Grounded form one. No `Classical.choice`: over finite lists double negation passes through `∀` (`dn_forall_mem`, `grounded_dn`) |
+| | `unfounded_of_each` | a finite certificate is checked member by member |
+| | `circular_certificate` | on `circular_support`'s world, where both cells stand and `d0` is Settled, `[d0, w]` is an unfounded set |
 | `Reader.lean` | `settled_frame` | between two tips that agree on what `Settled(d)` reads (`Reads`, on a set `Pr`), a contract, decision or question `d` is Settled at both or at neither. `Reads` asks: `d` is in `Pr`; every cell that judges `d` (`Judges`: it attests `d`, or is an INVALID verdict on `d` or on the checkpoint a cell attesting `d` names) is in both stores or in neither, is in `Pr`, and has the same endorsers; every checkpoint such a cell names is in `Pr`; every cell of `Pr` is live at both tips or at neither; the cells' verdict fields, `required_comp`, expected schema and replay result are the same; and `d` names an evaluator policy of its own or the two governing scopes have one admission policy. Also `QuorumExt` and faithful presentations at both tips |
 | | `inWmax_frame`, `withdrawn_frame`, `counts_frame` | under `Reads`, `W_max(d)`, each withdrawal through a cell attesting `d`, and the keys that count are the same at both tips |
 | | `grounded_frame` | on a set `Pr` closed under `relies` and under the witnesses of what it holds, whose cells are live and Authorized at both tips or at neither, and each contract, decision or question of which `Reads` relates, `Grounded` is the same at both tips |
@@ -183,6 +186,11 @@ about, not trusted. A mutant of the model that changes a verdict but not soundne
   commit of the coalition meets `grounded_keeps_of_no_cut`'s premises (its keys counted, others' kept, witnesses kept)
   is the gate's, held by the search of `test_vars1.py` 133 on five chains, one commit deep, with every move of one
   commit and the two moves of everything at once.
+
+- `check.py --unfounded` to `WitnessGrounded.lean`: the check is `unfounded_of_each` read over the store in Python.
+  Its reasons are `down` (the Lean checker's rule), relies on a member, a quorum missed by every key that seals a
+  verdict outside the set that is not down, and `stand` answering False, which no Lean rule concludes; tests 27–28
+  hold it to the lens (no Grounded decision is ever UNFOUNDED). `vars1witness` has no `ground` rule yet.
 
 - `experiments/witness/frame.py` to `Reader.lean`: the program that computes a frame and says whether later commits touch
   it is Python. Tests 17–19 of `experiments/witness/test_witness.py` hold "nothing touches it" to the lens's statuses

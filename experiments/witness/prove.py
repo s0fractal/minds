@@ -71,3 +71,32 @@ def prove(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str]
         raise NotHeld(f"the lens holds {decision.hex()} Settled, but no {thr} sealed policy keys were found")
     return {"format": FORMAT, "scope": scope, "tip": tip, "decision": decision.hex(),
             "cone": sorted(x.hex() for x in closure([decision, *chosen])), "endorsements": ends}
+
+
+UNFOUNDED = "minds.witness.unfounded@1"
+
+
+def prove_unfounded(repo: "V.GitVarsRepo", scope: str, decision: bytes, tip: Optional[str] = None) -> Dict[str, object]:
+    """A certificate (format `minds.witness.unfounded@1`) that a decision is not Grounded at a tip: the cells that are
+    not Grounded among those its Grounded reads, from the decision down `relies` and to the verdicts that judge an
+    evaluated cell (`unfounded_complete`: the cells that are not Grounded form an unfounded set; this keeps the part
+    the decision's equation reaches). check.py verifies it with none of this."""
+    tip = tip or repo.ref_commit(scope)
+    lens = repo.lens(scope, at=tip)
+    if lens["grounded"].get(decision):
+        raise NotHeld(f"{decision.hex()} is Grounded at {tip}")
+    atoms, cells, _ = repo.read_cas_tree(tip)
+    hv = lambda h: [] if h == V.H_EMPTY else V.parse_hvec(atoms[h], require_sorted=True)  # noqa: E731
+    judges: Dict[bytes, List[bytes]] = {}
+    for w, c in cells.items():
+        if c.h_schema == V.H_SCHEMA["verdict"]:
+            judges.setdefault(c.h_payload, []).append(w)
+    out, todo = set(), [decision]
+    while todo:
+        x = todo.pop()
+        if x in out or x not in cells or lens["grounded"].get(x):
+            continue
+        out.add(x)
+        todo += hv(cells[x].h_relies) + judges.get(x, [])
+    return {"format": UNFOUNDED, "scope": scope, "tip": tip, "decision": decision.hex(),
+            "unfounded": sorted(x.hex() for x in out)}
