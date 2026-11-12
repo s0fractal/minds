@@ -2521,6 +2521,22 @@
    "mutants": []
   },
   {
+   "id": "assurance.tomb",
+   "source": "ASSURANCE.md",
+   "quote": "A cell that a coalition cannot attack, in a set whose latched attackers the set itself kills, stays Effective over every extension of the coalition's own with no rotation, and what it kills stays dead",
+   "status": "proved",
+   "witnesses": [
+    "lean:unattacked_immortal",
+    "lean:immortal_eff",
+    "lean:tomb_dead",
+    "lean:immortal_persists",
+    "lean:immortal_no_fresh_killer",
+    "lean:tomb_never_revives",
+    "lean:tomb_drop_indistinguishable",
+    "lean:no_new_latch"
+   ]
+  },
+  {
    "id": "assurance.reader-touches",
    "source": "ASSURANCE.md",
    "quote": "`frame.py` answers that no object of the commits between two tips touches a cell's frame only where the lens gives the cell the same standing",
