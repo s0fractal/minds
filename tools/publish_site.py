@@ -62,10 +62,12 @@ def publish(out: Path) -> dict:
     _, pid, ptip = max(projections)
     proj = V.export_projection(repo, SCOPE, pid)
     ki = V.parse_kernel_input(bytes.fromhex(proj["input"]), V.verify_projection(proj)["explain"]["rules"]["encoding"])
-    decisions = [c["id"] for c in ki["cells"] if c["schema"] == V.H_SCHEMA["decision"]
-                 and V.parse_utf8(atoms[cells[c["id"]].h_slot_name]).startswith(f"{SCOPE}/release/")]
+    # newest first, by the commit each was born at: the input's cell order is not the order of birth
+    decisions = sorted(((c["birth"], c["id"]) for c in ki["cells"] if c["schema"] == V.H_SCHEMA["decision"]
+                        and V.parse_utf8(atoms[cells[c["id"]].h_slot_name]).startswith(f"{SCOPE}/release/")),
+                       reverse=True)
     chosen = None
-    for did in reversed(decisions):  # newest first: the input holds cells in the order they were born
+    for _, did in decisions:
         att = json.loads(json.dumps(V.export_attestation(repo, SCOPE, did, pid)))
         r = V.verify_attestation(att)
         if r["accepted"]:
