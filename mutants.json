@@ -3702,5 +3702,397 @@
   "kills": [
    "test_134_the_browser_verifier_answers_as_this_file_does"
   ]
+ },
+ "m-wc-depth": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        if depth > MAX_DEPTH {\n            return Err(());\n        }\n        if matches!",
+  "replace": "        if depth > MAX_DEPTH + 1 {\n            return Err(());\n        }\n        if matches!",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-bracket-count": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "> MAX_DEPTH as usize * 4",
+  "replace": "> MAX_DEPTH as usize * 8",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-member-once": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "!= core::cmp::Ordering::Less",
+  "replace": "== core::cmp::Ordering::Greater",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-member-utf16": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "last.encode_utf16().cmp(k.encode_utf16())",
+  "replace": "last.as_str().cmp(k.as_str())",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-minus-zero": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "return if neg || matches!(self.b.get(self.i), Some(b'0'..=b'9'))",
+  "replace": "return if matches!(self.b.get(self.i), Some(b'0'..=b'9'))",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-max-int": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "            if n > MAX_INT {",
+  "replace": "            if n > MAX_INT + 1 {",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-short-escape": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "if v >= 0x20 || matches!(v, 0x08 | 0x09 | 0x0a | 0x0c | 0x0d) {",
+  "replace": "if v >= 0x20 {",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-solidus": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "                        b'\\\\' => '\\\\',\n",
+  "replace": "                        b'\\\\' => '\\\\',\n                        b'/' => '/',\n",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-utf8": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "s.push_str(core::str::from_utf8(&self.b[start..self.i]).map_err(|_| ())?);",
+  "replace": "s.push_str(core::str::from_utf8(&self.b[start..self.i]).unwrap_or(\"\"));",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-trailing": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "    if r.i != input.len() {",
+  "replace": "    if false {",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-py-eq-bool": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "(J::Bool(x), J::Int(y)) | (J::Int(y), J::Bool(x)) => *x as i64 == *y,",
+  "replace": "(J::Bool(_), J::Int(_)) | (J::Int(_), J::Bool(_)) => false,",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-py-eq-dict": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "(J::Obj(x), J::Obj(y)) => x.len() == y.len() && x.iter()",
+  "replace": "(J::Obj(x), J::Obj(y)) => x.iter()",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-sorted": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "(J::Str(a), J::Str(b)) if a < b",
+  "replace": "(J::Str(a), J::Str(b)) if a <= b",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-hex64-case": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "s.len() == 64 && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))",
+  "replace": "s.len() == 64 && s.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-cc": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "matches!(c as u32, 0..=0x1f | 0x7f..=0x9f)",
+  "replace": "matches!(c as u32, 0..=0x1f | 0x7f)",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-edge-space": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "| 0x205f | 0x3000)",
+  "replace": "| 0x205f)",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-nfc": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "|| !unicode_normalization::is_nfc(s) ",
+  "replace": "",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-actor-length": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "if n == 0 || n > 200 ",
+  "replace": "if n == 0 || n > 201 ",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-quorum": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "Some(J::Int(q)) if *q >= 0)",
+  "replace": "Some(J::Int(q)) if *q >= -1)",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-optional-once": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        Some(u) => u,\n        None => t,",
+  "replace": "        Some(u) => u.trim_end_matches('?'),\n        None => t,",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-int-not-bool": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "\"int\" => matches!(v, J::Int(_)),",
+  "replace": "\"int\" => matches!(v, J::Int(_) | J::Bool(_)),",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-obj-any": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "\"obj\" => true,",
+  "replace": "\"obj\" => !matches!(v, J::Null),",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-pinned-member": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "members.contains(&k.as_str()) || k == \"pinned\"",
+  "replace": "members.contains(&k.as_str())",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-migration": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": " && n != \"migration@1\"",
+  "replace": "",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-name-chars": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "(1..=100).contains(&n.chars().count())",
+  "replace": "(1..=100).contains(&n.len())",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-state-str": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "Some(J::Str(t)) if t == \"str\")",
+  "replace": "Some(J::Str(t)) if t == \"str\" || t == \"str?\")",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-closed-in-states": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "|x| text(x).is_some_and(&in_states)",
+  "replace": "|x| text(x).is_some()",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-successor-state": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "m.iter().all(|(st, rs)| in_states(st) && is_list",
+  "replace": "m.iter().all(|(_, rs)| is_list",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-pinned-obj": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "Some(J::Str(t)) if t == \"obj\" || t == \"obj?\")",
+  "replace": "Some(J::Str(t)) if t == \"obj\")",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-quote-ascii": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "            ' '..='~' => out.push(c),",
+  "replace": "            ' '..='\\u{7f}' => out.push(c),",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-quote-sort": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "ks.sort_by(|a, b| a.0.cmp(&b.0));",
+  "replace": "ks.sort_by(|a, b| a.0.encode_utf16().cmp(b.0.encode_utf16()));",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-members-sort": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        extra.sort();\n",
+  "replace": "",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-target": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "if (kind == \"attest\" || kind == \"challenge\") && !f.iter()",
+  "replace": "if kind == \"attest\" && !f.iter()",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-refs": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        if !named.iter().all(|x| refs.contains(x)) {",
+  "replace": "        if false {",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-not-entity": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "    if kind != \"entity\" {\n        return (\"valid-not-entity\", None);",
+  "replace": "    if kind == \"challenge\" {\n        return (\"valid-not-entity\", None);",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-weaker-roles": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "|| (nq > 0 && !strs(g, \"roles\")",
+  "replace": "|| (nq >= 0 && !strs(g, \"roles\")",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-weaker-requires": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        || !strs(need, \"requires\").iter().all(|r| strs(g, \"requires\").contains(r))",
+  "replace": "        || false",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-weaker-quorum": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "    gq < nq\n",
+  "replace": "    gq + 1 < nq\n",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-asked-schema": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        && schema_ok(s)\n",
+  "replace": "",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-asked-name": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "        && py_eq(get(o, \"schema\").unwrap(), get(obj(s).unwrap(), \"name\").unwrap())",
+  "replace": "        && true",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-output-control": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "            '\\u{0}'..='\\u{1f}' => {",
+  "replace": "            '\\u{2}'..='\\u{1f}' => {",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-state-quote": {
+  "file": "experiments/warrant-checker/src/lib.rs",
+  "find": "quote(state.unwrap_or(&J::Null))",
+  "replace": "quote(&J::Null)",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-check-compare": {
+  "file": "experiments/warrant-checker/vectors.py",
+  "find": "            if got != expected(v):",
+  "replace": "            if False:",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-expected-refusal": {
+  "file": "experiments/warrant-checker/vectors.py",
+  "find": "f\"E{v['refusal']}\"",
+  "replace": "f\"E{-v['refusal']}\"",
+  "kills": [
+   "test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+  ]
+ },
+ "m-wc-rerun-module": {
+  "file": "experiments/warrant-checker/run.py",
+  "find": "    for what, data in ((\"module\", module), (\"input\", raw)):",
+  "replace": "    for what, data in ((\"input\", raw),):",
+  "kills": [
+   "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
+ },
+ "m-wc-rerun-input": {
+  "file": "experiments/warrant-checker/run.py",
+  "find": "    for what, data in ((\"module\", module), (\"input\", raw)):",
+  "replace": "    for what, data in ((\"module\", module),):",
+  "kills": [
+   "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
+ },
+ "m-wc-encode-refusal": {
+  "file": "experiments/warrant-checker/run.py",
+  "find": "b\"E\" + struct.pack(\"<i\", int(result[1:]))",
+  "replace": "b\"E\" + struct.pack(\">i\", int(result[1:]))",
+  "kills": [
+   "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
+ },
+ "m-wc-encode-kinds": {
+  "file": "experiments/warrant-checker/run.py",
+  "find": "KINDS = {\"X\": \"exhausted\", \"T\": \"fault\"}",
+  "replace": "KINDS = {\"X\": \"fault\", \"T\": \"exhausted\"}",
+  "kills": [
+   "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
+ },
+ "m-wc-rerun-bytes": {
+  "file": "experiments/warrant-checker/run.py",
+  "find": "    if again != stated:",
+  "replace": "    if False:",
+  "kills": [
+   "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
  }
 }

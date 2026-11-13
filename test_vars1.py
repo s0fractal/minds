@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
 import io
 import json
 import os
@@ -8656,6 +8657,121 @@ class TestVars1Conformance(unittest.TestCase):
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
             self.assertNotIn(sink, page)
         self.assertIn('from "./minds_verify.mjs"', page)
+
+    def _warrant_checker(self):
+        import importlib.util
+        folder = ROOT_DIR / "experiments" / "warrant-checker"
+        spec = importlib.util.spec_from_file_location("warrant_checker_run", folder / "run.py")
+        run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(run)
+        return folder, run.VEC, run
+
+    def test_135_a_warrant_checker_runs_as_a_metered_rules_module(self) -> None:
+        """Experiment 6a (experiments/warrant-checker/README.md): warrant's check of a record's body against its schema
+        (engine._schema_problem and _body_problem at the pinned commit), written again as a no_std wasm module and run
+        under meter.py, answers every recorded vector as warrant's own Python does, byte for byte: the code of the return
+        statement the engine took, the reason's text, or the refusal. The vectors hold every schema and every body the
+        engine checks in warrant's store at the pin, this repository's store, those records changed one way at a time,
+        edges (Python's == in a guard's match, code point order against UTF-16 order, the Unicode edges of an actor id)
+        and bytes jcs.loads refuses. A short or one-sided set is no agreement. With MINDS_WARRANT_CHECKER_WASM, a mutant
+        built by tools/run_mutants.py is the module asked."""
+        from collections import Counter
+        folder, VEC, _ = self._warrant_checker()
+        module = Path(os.environ.get("MINDS_WARRANT_CHECKER_WASM") or VEC.MODULE)
+        doc = VEC.load()
+        self.assertEqual((doc["format"], doc["warrant"]["commit"], doc["unicode"]), (VEC.FORMAT, VEC.PIN, "17.0.0"))
+        diffs, steps = VEC.check(module, doc)
+        first = [{**doc["vectors"][i], "expected": want, "got": got} for i, want, got in diffs[:3]]
+        self.assertEqual(len(diffs), 0, json.dumps(first, ensure_ascii=False)[:3000])
+        self.assertEqual(len(steps), len(doc["vectors"]))
+
+        # the comparison bites: the module with one byte of every output's first bytes changed differs on every output
+        changed = bytearray(VEC.MODULE.read_bytes())
+        self.assertEqual(changed.count(b'{"code":"'), 1)
+        changed[changed.index(b'{"code":"') + 2] ^= 1
+        control = Path(tempfile.mkdtemp()) / "changed.wasm"
+        self.addCleanup(shutil.rmtree, control.parent, True)
+        control.write_bytes(bytes(changed))
+        self.assertEqual(len(VEC.check(control, doc)[0]), sum("out" in v for v in doc["vectors"]))
+
+        # what the vectors ask: every return statement, every refusal, from every source
+        codes = Counter(json.loads(v["out"])["code"] if "out" in v else v["refusal"] for v in doc["vectors"])
+        for c in ("counted", "not-counted", *VEC.BODY_CODES, VEC.NOT_CANONICAL, VEC.NOT_AN_INPUT, VEC.NOT_ASKED):
+            self.assertGreater(codes[c], 0, f"no vector reaches {c}")
+        sources = Counter(v["source"] for v in doc["vectors"])
+        self.assertEqual(set(sources), {"live", "live-minds", "mutation", "edge", "jcs"})
+        self.assertEqual(sources["live"], doc["warrant"]["checked"] - doc["warrant"]["unpaired"])
+        self.assertGreater(sources["live"], 1800)
+
+    def test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it(self) -> None:
+        """A run of the warrant checker is a statement (experiments/warrant-checker/run.py) naming the module and the
+        input by SHA-256, the budget, the steps and the result's digest. Rerun, it gives the same bytes. A module
+        changed in one byte is another module: the statement does not count for it. A budget one step short gives
+        `exhausted`, never a verdict, and the run's own steps give the output. A trap is a fault, told apart from the
+        refusal the checker gives the same input. The committed modules are the pinned ones."""
+        folder, VEC, run = self._warrant_checker()
+        module, variant = VEC.MODULE.read_bytes(), (folder / "checker-fault-variant.wasm").read_bytes()
+        self.assertEqual(hashlib.sha256(module).hexdigest(), VEC.MODULE_SHA256)
+        self.assertEqual(hashlib.sha256(variant).hexdigest(), VEC.FAULT_VARIANT_SHA256)
+        live = next(v for v in VEC.load()["vectors"] if v["source"] == "live" and v["in"].startswith('{"record"'))
+        raw = VEC.raw_of(live)
+
+        stated = run.statement(module, raw)
+        doc = json.loads(stated)
+        self.assertEqual((doc["module"], doc["input"], doc["budget"], doc["result"]["kind"]),
+                         (VEC.MODULE_SHA256, hashlib.sha256(raw).hexdigest(), VEC.BUDGET, "output"))
+        self.assertEqual(doc["result"]["sha256"], hashlib.sha256(b"O" + live["out"].encode()).hexdigest())
+        self.assertEqual(run.rerun(stated, module, raw)[0], 0)
+        self.assertEqual(run.statement(module, raw), stated)
+        forged = json.dumps(dict(doc, steps=doc["steps"] + 1), sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        self.assertEqual(run.rerun(forged, module, raw)[0], 1)
+        # the result's encoding is the one a decision's digests hash (vars1.RulesResult.encode)
+        for result, rr in (("E-2", V.RulesResult("refusal", code=-2)), ("X", V.RulesResult("exhausted")),
+                           ("T", V.RulesResult("fault")), ("6869", V.RulesResult("output", output=b"hi"))):
+            self.assertEqual(run.encode(result), (rr.kind, rr.encode()))
+        self.assertEqual(json.loads(run.statement(module, b"[]"))["result"]["sha256"],
+                         hashlib.sha256(V.RulesResult("refusal", code=-2).encode()).hexdigest())
+
+        changed = bytearray(module)
+        changed[changed.index(b"verdict") + 6] ^= 1
+        code, why = run.rerun(stated, bytes(changed), raw)
+        self.assertEqual(code, 2, why)
+        self.assertIn("not counted: the module hashes to", why)
+        self.assertNotEqual(json.loads(run.statement(bytes(changed), raw))["result"], doc["result"])
+        self.assertEqual(run.rerun(stated, module, raw + b" ")[0], 2)
+
+        steps = doc["steps"]
+        short = json.loads(run.statement(module, raw, steps - 1))
+        exact = json.loads(run.statement(module, raw, steps))
+        self.assertEqual((short["result"]["kind"], short["steps"]), ("exhausted", steps - 1))
+        self.assertEqual(short["result"]["sha256"], hashlib.sha256(b"X").hexdigest())
+        self.assertEqual((exact["result"], exact["steps"]), (doc["result"], steps))
+        self.assertEqual(json.loads(run.statement(module, raw, 0))["result"]["kind"], "exhausted")
+
+        refused = json.loads(run.statement(module, b"!" + raw))
+        trapped = json.loads(run.statement(variant, b"!" + raw))
+        self.assertEqual(refused["result"], {"kind": "refusal",
+                                             "sha256": hashlib.sha256(b"E" + struct.pack("<i", -1)).hexdigest()})
+        self.assertEqual(trapped["result"], {"kind": "fault", "sha256": hashlib.sha256(b"T").hexdigest()})
+        self.assertEqual(json.loads(run.statement(variant, raw))["result"], doc["result"])
+
+    def test_137_the_warrant_checker_builds_to_its_pin(self) -> None:
+        """experiments/warrant-checker/ built with its pinned toolchain (Rust 1.100.0) gives the committed module byte
+        for byte, and with `fault-variant` the committed variant: the hash a statement names is the source's."""
+        folder, VEC, _ = self._warrant_checker()
+        cargo = shutil.which("cargo")
+        if cargo is None:
+            if os.environ.get("CI") == "true":
+                self.fail("cargo is not installed on this runner; CI must rebuild the module it pins")
+            self.skipTest("cargo is not installed")
+        for features, pinned in (((), VEC.MODULE_SHA256), (("--features", "fault-variant"), VEC.FAULT_VARIANT_SHA256)):
+            target = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, target, True)
+            b = subprocess.run([cargo, "build", "--release", "--target", "wasm32-unknown-unknown", *features],
+                               cwd=folder, capture_output=True, text=True, env=dict(os.environ, CARGO_TARGET_DIR=str(target)))
+            self.assertEqual(b.returncode, 0, b.stderr[-2000:])
+            built = (target / "wasm32-unknown-unknown" / "release" / "warrant_checker.wasm").read_bytes()
+            self.assertEqual(hashlib.sha256(built).hexdigest(), pinned, features)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,0 +1,64 @@
+{
+ "registered": "5c72459664b0ab3d02914f73f8fe3c87045c4b9443e842d4aca5260e6f8b07da",
+ "module": {
+  "sha256": "0e5a9f361875f7e00b689bc5b91462b2b11fc7f88d57a5e85dfe43318775f198",
+  "bytes": 154713,
+  "metered_bytes": 160038
+ },
+ "vectors": 3615,
+ "steps": {
+  "median": 5567,
+  "max": 43043,
+  "live_median": 6028.0,
+  "live_max": 43043,
+  "total": 18381797
+ },
+ "wall_ns": {
+  "metered": 170058250,
+  "unmetered": 162927583,
+  "python": 411105834,
+  "passes": {
+   "metered": [
+    181085458,
+    170058250,
+    171374458,
+    168667500,
+    169947709
+   ],
+   "unmetered": [
+    167170708,
+    159115042,
+    162359625,
+    162927583,
+    164015333
+   ],
+   "python": [
+    411105834,
+    413470959,
+    410177084,
+    409304125,
+    420603458
+   ]
+  }
+ },
+ "per_vector_us": {
+  "metered": 47.04239280774551,
+  "unmetered": 45.069870816044265,
+  "python": 113.722222406639
+ },
+ "ratio": {
+  "metered_over_python": 0.41366051253848174,
+  "unmetered_over_python": 0.3963154242175021,
+  "metered_over_unmetered": 1.0437658674406285
+ },
+ "stop_rule": {
+  "speed_condition": false
+ },
+ "host": {
+  "machine": "arm64",
+  "system": "Darwin 27.2.0",
+  "cpu": "Apple M4 Pro",
+  "node": "v26.13.0",
+  "python": "3.15.2"
+ }
+}

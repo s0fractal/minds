@@ -3077,6 +3077,78 @@
     "m-js-cell-births",
     "m-js-replay-bound"
    ]
+  },
+  {
+   "id": "assurance.warrant-checker",
+   "source": "ASSURANCE.md",
+   "quote": "The warrant checker as a rules module, `experiments/warrant-checker/checker.wasm`, answers every recorded vector as warrant's own `engine._schema_problem` and `engine._body_problem` at f7e3637b do under Python 3.15, byte for byte: the return statement the engine took, the reason's text, or the refusal",
+   "status": "tested",
+   "witnesses": [
+    "test:test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+   ],
+   "mutants": [
+    "m-wc-depth",
+    "m-wc-bracket-count",
+    "m-wc-member-once",
+    "m-wc-member-utf16",
+    "m-wc-minus-zero",
+    "m-wc-max-int",
+    "m-wc-short-escape",
+    "m-wc-solidus",
+    "m-wc-utf8",
+    "m-wc-trailing",
+    "m-wc-py-eq-bool",
+    "m-wc-py-eq-dict",
+    "m-wc-sorted",
+    "m-wc-hex64-case",
+    "m-wc-cc",
+    "m-wc-edge-space",
+    "m-wc-nfc",
+    "m-wc-actor-length",
+    "m-wc-quorum",
+    "m-wc-optional-once",
+    "m-wc-int-not-bool",
+    "m-wc-obj-any",
+    "m-wc-pinned-member",
+    "m-wc-migration",
+    "m-wc-name-chars",
+    "m-wc-state-str",
+    "m-wc-closed-in-states",
+    "m-wc-successor-state",
+    "m-wc-pinned-obj",
+    "m-wc-quote-ascii",
+    "m-wc-quote-sort",
+    "m-wc-members-sort",
+    "m-wc-target",
+    "m-wc-refs",
+    "m-wc-not-entity",
+    "m-wc-weaker-roles",
+    "m-wc-weaker-requires",
+    "m-wc-weaker-quorum",
+    "m-wc-asked-schema",
+    "m-wc-asked-name",
+    "m-wc-output-control",
+    "m-wc-state-quote",
+    "m-wc-check-compare",
+    "m-wc-expected-refusal"
+   ]
+  },
+  {
+   "id": "assurance.warrant-checker-run",
+   "source": "ASSURANCE.md",
+   "quote": "A metered run of it is a statement naming the module and the input by SHA-256, the budget, the steps and the result's digest: rerun, it gives the same bytes; a module changed in one byte does not count; a budget one step short gives `exhausted`, never a verdict; a trap is a fault, told apart from a refusal; the committed modules are what `src/` builds",
+   "status": "tested",
+   "witnesses": [
+    "test:test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it",
+    "test:test_137_the_warrant_checker_builds_to_its_pin"
+   ],
+   "mutants": [
+    "m-wc-rerun-module",
+    "m-wc-rerun-input",
+    "m-wc-encode-refusal",
+    "m-wc-encode-kinds",
+    "m-wc-rerun-bytes"
+   ]
   }
  ],
  "informative": [
