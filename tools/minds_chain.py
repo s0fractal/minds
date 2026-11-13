@@ -32,8 +32,9 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # refs/vars/veto/minds/<cell>); it judges form and time, not merit
     tools/minds_chain.py cosign-ref --key FILE  # the ref this key keeps its signed cosign ledger in (for the push)
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
-                                              # as a member: rerun the checks at the release's commit, record a
-                                              # verdict, and witness the projections that name your key
+                                              # as a member: rerun the checks the release claims at its commit, record
+                                              # a verdict, and witness the projections that name your key; exit 3 and
+                                              # nothing recorded when they cannot be rerun as they ran (UNREPRODUCIBLE)
     tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
     tools/minds_chain.py witness --key FILE --name NAME
                                               # as a member: verify-release every release awaiting your key
@@ -1243,6 +1244,46 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
     return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 
+def claimed_checks(statement: str) -> List[str]:
+    """The checks a release statement says passed, in its order: what a member who verifies it reruns and answers for."""
+    m = re.search(r"; checks: (.*?)(?:; profile@[0-9a-f]{64})?\Z", statement)
+    items = m.group(1).split("; ") if m and m.group(1) else []
+    if not items:
+        raise V.VarsError("a release statement that names no checks")
+    for x in items:
+        if not x.endswith(" OK"):
+            raise V.VarsError(f"a release statement whose check {x!r} did not pass")
+    return [x[:-len(" OK")] for x in items]
+
+
+class Unreproducible(V.VarsError):
+    """A release whose checks cannot be rerun as it ran them: a member records nothing, neither ATTESTED nor INVALID. Its
+    message names what is missing."""
+
+
+def unpinned_reads(repo_dir: Path, sha: str, pins: Optional[Dict[str, str]]) -> List[str]:
+    """What the checks of a release of `sha` read that nothing pins: each sibling checkout (SIBLINGS) a file of the commit
+    reads by its path (`../sigma-glyph/`, `"sigma-glyph"`), when the commit carries no requirements.txt and the statement
+    names no sibling commits. Releases of 2026-10-19 before a512f8b are such: they read `../sigma-glyph` as it happened to
+    be. Empty when nothing is unpinned, so a check that fails there is a failure (INVALID); empty as well for a commit
+    this repository does not hold, where nothing shows a read. A requirements.txt is taken as pinning what the commit
+    reads: true of every commit since a512f8b, which removed the sibling checkouts (later matches are test fixtures),
+    but a proxy: a future commit with one that still read `../primitives` would not be caught here."""
+    if pins is not None:
+        return []
+    git = ["git", "-C", str(repo_dir)]
+    if subprocess.run([*git, "cat-file", "-e", f"{sha}:requirements.txt"], capture_output=True).returncode == 0:
+        return []
+    reads = []
+    for sib in SIBLINGS:
+        g = subprocess.run([*git, "grep", "-n", "-E", rf'(\.\./|"){sib}(/|")', sha, "--", "*.py", "*.toml", "*.lean"],
+                           capture_output=True, text=True)
+        if g.returncode == 0 and g.stdout:
+            _, path, line, _ = g.stdout.splitlines()[0].split(":", 3)
+            reads.append(f"{sib} (read by {path}:{line})")
+    return reads
+
+
 def recorded_at(repo: V.GitVarsRepo, cid: bytes) -> str:
     """The commit of the chain that admitted cell `cid`: the chain as it stood when that cell was recorded."""
     chain = repo.commit_chain(repo.ref_commit(SCOPE))
@@ -1389,8 +1430,16 @@ def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, co
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
-    (ATTESTED if every check passed, else INVALID), and witness every projection that names this member's key and
-    whose digests this host recomputes. Returns the new commit, the outcome and the check lines.
+    (ATTESTED if every check the statement claims passed again, else INVALID), and witness every projection that names
+    this member's key and whose digests this host recomputes. Returns the new commit, the outcome and the claimed checks'
+    lines. A check the statement does not claim is not part of the answer (a commit from before it has none to pass).
+
+    A release whose checks cannot be rerun as they ran is answered by neither: `Unreproducible` is raised and nothing is
+    recorded. That is a release whose checks read a sibling checkout nothing pins (`unpinned_reads`), decided before any
+    check runs; one that claims a check this verifier does not run at its commit; or one whose commit fails a check
+    this verifier runs there and the statement does not claim (an omission must not earn a seal). A claimed check that
+    runs and fails, or a profile that is not the commit's, is INVALID, never unreproducible; an unclaimed check that
+    passes is no part of the answer.
 
     `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
     contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
@@ -1404,10 +1453,20 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     d = cells.get(decision_id)
     if d is None or d.h_schema != V.H_SCHEMA["decision"]:
         raise V.VarsError("not a decision of this chain")
-    sha, rules, profile, pins = parse_release_profile(V.parse_utf8(atoms[d.h_payload]))
+    statement = V.parse_utf8(atoms[d.h_payload])
+    sha, rules, profile, pins = parse_release_profile(statement)
+    claimed = claimed_checks(statement)
+    unpinned = unpinned_reads(repo_dir, sha, pins)
+    if unpinned:
+        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which neither "
+                             "its statement nor a requirements.txt of the commit pins")
     then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
-    lines, ok = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
-                 else checks(repo_dir, sha, rules, chain=then))
+    # the lines carry the outcome (checks_at's flag is every line's and every pre-check line's), so the flag is not read
+    ran, _ = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
+              else checks(repo_dir, sha, rules, chain=then))
+    got = {line.rsplit(" ", 1)[0]: line.rsplit(" ", 1)[-1] == "OK" for line in ran}
+    lines = [f"{n} {'OK' if got[n] else 'FAILED'}" for n in claimed if n in got]
+    ok = all(got[n] for n in claimed if n in got)
     if profile is not None:  # the files the release names are the files at its commit, recomputed here
         try:
             same = profile_at(repo_dir, sha)["id"] == profile
@@ -1415,6 +1474,16 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
             same = False
         lines = lines + [f"release profile {profile[:12]} is the commit's {'OK' if same else 'FAILED'}"]
         ok = ok and same
+    if ok:  # a claim that failed is INVALID whatever else holds; short of that, what cannot be settled is no verdict
+        missing = [n for n in claimed if n not in got]
+        if missing:
+            raise Unreproducible(f"not reproducible: the statement claims {missing}, which this verifier does not run "
+                                 f"at main@{sha[:12]}")
+        unclaimed = [n for n, passed in got.items() if not passed]
+        if unclaimed:
+            raise Unreproducible(f"not reproducible: this verifier runs {unclaimed} at main@{sha[:12]}, which fail there, "
+                                 "and the statement does not claim them: leaving a check out cannot be told from a "
+                                 "commit that did not have it, so it earns no verdict")
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     base = f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/{'attested' if ok else 'invalid'}"
@@ -1474,7 +1543,11 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
         if d in answered:
             out.append({"decision": d.hex(), "verdict": "ANSWERED_BEFORE", "commit": None})
             continue
-        commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        try:
+            commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        except Unreproducible as e:  # recorded by no one: the release keeps waiting for this key, and says why
+            out.append({"decision": d.hex(), "verdict": "UNREPRODUCIBLE", "commit": None, "why": str(e)})
+            continue
         out.append({"decision": d.hex(), "verdict": "ATTESTED" if ok else "INVALID", "commit": commit})
     return out
 
@@ -1781,14 +1854,19 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "verify-release" and len(argv) == 6 and argv[2] == "--key" and argv[4] == "--name":
         sk = bytes.fromhex(Path(argv[3]).read_text().strip())
-        commit, ok, lines = verify_release(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
+        try:
+            commit, ok, lines = verify_release(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
+        except Unreproducible as e:
+            print(json.dumps({"commit": None, "verdict": "UNREPRODUCIBLE", "why": str(e)}))
+            return 3
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
     if cmd == "witness" and len(argv) == 5 and argv[1] == "--key" and argv[3] == "--name":
         done = witness(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip()), argv[4])
         print(json.dumps(done, indent=2))
-        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0  # ANSWERED_BEFORE is the member's to answer
+        # ANSWERED_BEFORE is the member's to answer; UNREPRODUCIBLE is no failure of the release, and waits as it is
+        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0
     if cmd == "shadow" and len(argv) in (2, 4) and argv[2:3] in ([], ["--out"]):
         doc = json.dumps(shadow(repo_dir, bytes.fromhex(argv[1])), indent=2)
         if len(argv) == 4:
