@@ -4094,5 +4094,109 @@
   "kills": [
    "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
   ]
+ },
+ "m-unrep-pins": {
+  "file": "tools/minds_chain.py",
+  "find": "    if pins is not None:\n        return []\n    git = [\"git\", \"-C\", str(repo_dir)]",
+  "replace": "    if False:\n        return []\n    git = [\"git\", \"-C\", str(repo_dir)]",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-unrep-requirements": {
+  "file": "tools/minds_chain.py",
+  "find": "    if subprocess.run([*git, \"cat-file\", \"-e\", f\"{sha}:requirements.txt\"], capture_output=True).returncode == 0:\n        return []",
+  "replace": "    if False:\n        return []",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-unrep-reads": {
+  "file": "tools/minds_chain.py",
+  "find": "        if g.returncode == 0 and g.stdout:",
+  "replace": "        if False:",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-unrep-quoted": {
+  "file": "tools/minds_chain.py",
+  "find": "rf'(\\.\\./|\"){sib}(/|\")'",
+  "replace": "rf'(\\.\\./){sib}(/)'",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-unrep-raise": {
+  "file": "tools/minds_chain.py",
+  "find": "    if unpinned:\n        raise Unreproducible",
+  "replace": "    if False:\n        raise Unreproducible",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-missing": {
+  "file": "tools/minds_chain.py",
+  "find": "    if missing:\n        raise Unreproducible",
+  "replace": "    if False:\n        raise Unreproducible",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-ok": {
+  "file": "tools/minds_chain.py",
+  "find": "    ok = all(got.get(n) for n in claimed)",
+  "replace": "    ok = all(got.values())",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-lines": {
+  "file": "tools/minds_chain.py",
+  "find": "    lines = [f\"{n} {'OK' if got.get(n) else 'FAILED'}\" for n in claimed]",
+  "replace": "    lines = list(ran)",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-none": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not items:\n        raise V.VarsError(\"a release statement that names no checks\")",
+  "replace": "    if False:\n        raise V.VarsError(\"a release statement that names no checks\")",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-not-ok": {
+  "file": "tools/minds_chain.py",
+  "find": "        if not x.endswith(\" OK\"):",
+  "replace": "        if False:",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-claimed-profile": {
+  "file": "tools/minds_chain.py",
+  "find": "    m = re.search(r\"; checks: (.*?)(?:; profile@[0-9a-f]{64})?\\Z\", statement)",
+  "replace": "    m = re.search(r\"; checks: (.*?)\\Z\", statement)",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-witness-unrep": {
+  "file": "tools/minds_chain.py",
+  "find": "        except Unreproducible as e:  # recorded by no one",
+  "replace": "        except KeyError as e:  # recorded by no one",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-cli-unrep": {
+  "file": "tools/minds_chain.py",
+  "find": "            print(json.dumps({\"commit\": None, \"verdict\": \"UNREPRODUCIBLE\", \"why\": str(e)}))\n            return 3",
+  "replace": "            print(json.dumps({\"commit\": None, \"verdict\": \"UNREPRODUCIBLE\", \"why\": str(e)}))\n            return 0",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
  }
 }

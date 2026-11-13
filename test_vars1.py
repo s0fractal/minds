@@ -2024,7 +2024,7 @@ class TestVars1Conformance(unittest.TestCase):
         # Bob rejoins and witnesses a later projection without having attested r2: still missing for the pin
         mc.join(self.repo_path, ska, pkb, "bob")
         _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["test_vars1 OK"])
-        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
+        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["test_vars1 OK"], True))
         b4 = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r4["projection"])))
         self.assertIn(pkb.hex(), V.verify_projection(b4["projection"])["witnesses"])
         self.assertEqual(V.verify_attestation(b4, require=[pka, pkb])["required_missing"], [pkb.hex()])
@@ -2130,7 +2130,7 @@ class TestVars1Conformance(unittest.TestCase):
         _, r = mc.release(self.repo_path, sk, m1, ["x OK"], {"sigma-glyph": s_same, "primitives": p1})
         got = []
         mc.verify_release(self.repo_path, skb, r["decision"], "bob",
-                          checks=lambda *a, **kw: (got.append((a[1:], kw)), (["ok"], True))[1])
+                          checks=lambda *a, **kw: (got.append((a[1:], kw)), (["x OK"], True))[1])
         then = V.GitVarsRepo(self.repo_path).commit_chain(V.GitVarsRepo(self.repo_path).ref_commit("minds"))[-2]
         self.assertEqual(got, [((m1, V.H_LENS_KERNEL), {"siblings": {"sigma-glyph": s_same, "primitives": p1},
                                                         "chain": then})])
@@ -4606,7 +4606,7 @@ class TestVars1Conformance(unittest.TestCase):
         waiting = mc.status(self.repo_path)["unwitnessed_projections"]
         self.assertEqual({w["id"] for w in waiting}, {r2["projection"].hex(), r3["projection"].hex()})
         self.assertTrue(all(w["unwitnessed_by"] == [pk2] for w in waiting))
-        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a, **kw: (["x FAILED"], False))
+        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a, **kw: (["test_vars1 FAILED"], False))
         before = subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"], capture_output=True).stdout
         st = mc.status(self.repo_path)
         self.assertEqual(subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"],
@@ -4650,7 +4650,7 @@ class TestVars1Conformance(unittest.TestCase):
             return next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == did.hex())
 
         def answer(did: bytes, ok: bool) -> V.Cell:
-            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a, **kw: (["x OK"], ok))
+            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a, **kw: (["x OK" if ok else "x FAILED"], ok))
             atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
             return next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == did
                         and V.parse_utf8(atoms[c.slots[2]]) == "second")
@@ -4954,7 +4954,7 @@ class TestVars1Conformance(unittest.TestCase):
         mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
         _, r = mc.release(self.repo_path, sk, "a" * 40, ["lake build OK", "test_vars1 OK"])
         mc.verify_release(self.repo_path, sk2, r["decision"], "second",
-                          checks=lambda *a, **kw: (["kernel rebuild hashes to H_LENS_KERNEL OK", "test_vars1 OK"], True))
+                          checks=lambda *a, **kw: (["lake build OK", "test_vars1 OK"], True))
         repo = V.GitVarsRepo(self.repo_path)
         lens = repo.lens("minds")
         atoms, cells = lens["atoms"], lens["cells"]
@@ -4972,7 +4972,7 @@ class TestVars1Conformance(unittest.TestCase):
                          sorted([mine, named[f"{tag}/second/attested/check/01"]]))
         tip = repo.ref_commit("minds")
 
-        out = mc.what_if(self.repo_path, sk, [mine])  # the maintainer supposes the member's kernel rebuild was wrong
+        out = mc.what_if(self.repo_path, sk, [mine])  # the maintainer supposes the member's lake build was wrong
         lost = {x["name"]: x for x in out["lost"]}
         self.assertEqual(lost[f"{tag}/second/attested"]["after"].get("stale"), True)
         self.assertEqual((lost[tag]["before"], lost[tag]["after"]), ({"settled": True}, {"settled": False}),
@@ -6145,7 +6145,7 @@ class TestVars1Conformance(unittest.TestCase):
         sk, skw = b"\x07" * 32, b"\x0a" * 32
         pk, pkw = V.ed25519_pubkey(sk), V.ed25519_pubkey(skw)
         mc.init(work, sk)
-        _, r0 = mc.release(work, sk, sha, ["test_vars1 OK"])
+        _, r0 = mc.release(work, sk, sha, ["spy OK"])
         mc.join(work, sk, pkw, "github-actions")
         live = V.GitVarsRepo(work).ref_commit(mc.SCOPE)
         seen = []
@@ -8255,7 +8255,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((row["status"]["settled"], row["keys"]["threshold"], row["keys"]["counted"], row["keys"]["waiting"]),
                          (False, 2, [f"minds-maintainer {pka.hex()[:8]}"], [f"? {pkb.hex()[:8]}"]))
         self.assertIn(f"waiting for: ? {pkb.hex()[:8]}", mc.explain_text(doc))
-        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
+        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=lambda *a, **kw: (["test_vars1 OK"], True))
         row = mc.explain(self.repo_path, r1["decision"].hex()[:12])["path"][0]
         self.assertEqual((row["status"]["settled"], row["status"]["grounded"], row["keys"]["counted"], row["keys"]["waiting"]),
                          (True, True, sorted([f"bob {pkb.hex()[:8]}", f"minds-maintainer {pka.hex()[:8]}"]), []))
@@ -8772,6 +8772,103 @@ class TestVars1Conformance(unittest.TestCase):
             self.assertEqual(b.returncode, 0, b.stderr[-2000:])
             built = (target / "wasm32-unknown-unknown" / "release" / "warrant_checker.wasm").read_bytes()
             self.assertEqual(hashlib.sha256(built).hexdigest(), pinned, features)
+
+    def test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict(self) -> None:
+        """verify-release answers what a release claims, rerun at its commit. Releases of 2026-10-19 before a512f8b read
+        ../sigma-glyph as it happened to be, pinned by neither their statement nor a requirements.txt, so a member cannot
+        rerun their checks: it records neither ATTESTED nor INVALID (UNREPRODUCIBLE, decided before any check runs). A
+        claimed check this verifier does not run is the same. A claimed check that runs and fails is INVALID, pinned or
+        not, and a check the release never claimed is no part of the answer."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        mc.join(self.repo_path, SK["m"], PK["b"], "b")
+        repo = V.GitVarsRepo(self.repo_path)
+
+        def git(*args: str, stdin: str = "", env=None) -> str:
+            return subprocess.run(["git", "-C", str(self.repo_path), *args], input=stdin, capture_output=True, text=True,
+                                  check=True, env=env).stdout.strip()
+
+        def commit(salt: str, files: dict) -> str:
+            """A commit holding `files` (path: text), on no branch."""
+            index = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, index, True)
+            env = dict(os.environ, GIT_INDEX_FILE=str(index / "index"))
+            for path, text in {**files, "salt": salt}.items():
+                oid = git("hash-object", "-w", "--stdin", stdin=text)
+                git("update-index", "--add", "--cacheinfo", f"100644,{oid},{path}", env=env)
+            return git("commit-tree", git("write-tree", env=env), "-m", salt)
+
+        old = {"proofs/lakefile.toml": 'srcDir = "../../sigma-glyph/proofs"\n',
+               "test_vars1.py": 'import sys\nvectors = PROJECTS_DIR / "primitives" / "vectors"\n'}
+        ran: list = []
+
+        def answer(sha: str, claimed: list, lines: list, **release) -> tuple:
+            """A member's answer to a release of `sha` claiming `claimed`, its checks giving `lines`: the verdict and the
+            lines it rests on, why it cannot be rerun, or why the statement is refused. Never a crash, so a mutant fails
+            here on the assertion."""
+            _, r = mc.release(self.repo_path, SK["m"], sha, claimed, **release)
+            tip = repo.ref_commit("minds")
+
+            def checks(repo_dir, sha_, rules, siblings=None, chain=None):
+                ran.append(sha_)
+                return list(lines), all(x.endswith(" OK") for x in lines)
+            try:
+                _, ok, got = mc.verify_release(self.repo_path, SK["b"], r["decision"], "bob", checks=checks)
+            except mc.Unreproducible as e:
+                self.assertEqual(repo.ref_commit("minds"), tip)
+                return "UNREPRODUCIBLE", str(e)
+            except V.VarsError as e:
+                return "REFUSED", str(e)
+            return ("ATTESTED" if ok else "INVALID"), got
+
+        # read from a sibling nothing pins: neither verdict, and no check is run
+        unpinned = commit("1", old)
+        verdict, why = answer(unpinned, ["x OK"], ["x OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("sigma-glyph (read by proofs/lakefile.toml:1), primitives (read by test_vars1.py:2)", why)
+        self.assertEqual(ran, [])
+        # pinned by the commit's requirements.txt or by the statement: a failing check is a failure
+        self.assertEqual(answer(commit("2", {**old, "requirements.txt": "sigma-glyph==1.0.1\n"}), ["x OK"], ["x FAILED"]),
+                         ("INVALID", ["x FAILED"]))
+        pins = {"sigma-glyph": "1" * 40, "primitives": "2" * 40}
+        self.assertEqual(answer(commit("3", old), ["x OK"], ["x FAILED"], siblings=pins), ("INVALID", ["x FAILED"]))
+        # a commit that reads no sibling needs no pin
+        self.assertEqual(answer(commit("4", {"test_vars1.py": "import sys\n"}), ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
+
+        # only what the statement claims: a check it never claimed is no part of the answer
+        fresh = lambda salt: commit(salt, {"requirements.txt": "sigma-glyph==1.0.1\n"})  # noqa: E731
+        self.assertEqual(answer(fresh("5"), ["x OK", "y OK"], ["x OK", "z FAILED", "y OK"]), ("ATTESTED", ["x OK", "y OK"]))
+        self.assertEqual(answer(fresh("6"), ["x OK", "y OK"], ["x OK", "y FAILED"]), ("INVALID", ["x OK", "y FAILED"]))
+        verdict, why = answer(fresh("7"), ["x OK", "y OK"], ["x OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("claims ['y'], which this verifier does not run", why)
+        # the profile stays out of the checks and is checked as before
+        self.assertEqual(answer(fresh("8"), ["x OK"], ["x OK"], profile="0" * 64),
+                         ("INVALID", ["x OK", "release profile 000000000000 is the commit's FAILED"]))
+
+        # the witness reports it and records nothing; the command says so with its own exit code
+        tip = repo.ref_commit("minds")
+        try:
+            done = mc.witness(self.repo_path, SK["b"], "bob", checks=lambda *a, **kw: (["x OK"], True))
+        except V.VarsError as e:
+            self.fail(f"an unreproducible release is a row of the witness's report, not a stop: {e}")
+        self.assertEqual({(x["verdict"], x["commit"]) for x in done}, {("UNREPRODUCIBLE", None)})
+        self.assertEqual(len(done), 2)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+        key = self.repo_path / "b.seed"
+        key.write_text(SK["b"].hex())
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path), contextlib.redirect_stdout(io.StringIO()) as out:
+            code = mc._main(["verify-release", next(x["decision"] for x in done if "sigma-glyph" in x["why"]), "--key",
+                             str(key), "--name", "bob"])
+        self.assertEqual((code, json.loads(out.getvalue())["verdict"]), (3, "UNREPRODUCIBLE"))
+
+        # a statement that claims no checks, or one that did not pass, is no release to verify
+        head = f"minds release main@{'a' * 40} rules@{'b' * 64};"
+        for statement in (head, head + " checks:", head + f" checks: ; profile@{'0' * 64}"):
+            with self.assertRaisesRegex(V.VarsError, "names no checks"):
+                mc.claimed_checks(statement)
+        self.assertEqual(mc.claimed_checks(head + f" checks: x OK; y OK; profile@{'0' * 64}"), ["x", "y"])
+        self.assertIn("did not pass", answer(fresh("10"), ["x FAILED"], ["x FAILED"])[1])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
