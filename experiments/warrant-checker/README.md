@@ -20,12 +20,25 @@ Nothing here is active. This experiment does not change:
 ## Pre-registered
 
 Record `5c724596` (goal@1 `E6A`, open, no guard) is in `.warrant/records.jsonl`. It was filed in this branch's first
-commit, fc3cc5cc, and pushed before anything was built or run. It fixes:
+commit, fc3cc5cc (09:22Z), and pushed before any part of the checker was written, built or run, before any vector
+was exported and before anything was timed. It fixes:
 - what is measured;
 - the three checks;
 - the plan's stop rule for 6b.
 
 Each measure ran once, as defined there.
+
+What existed before the registration, from the session's transcript:
+- reading: the plan, warrant's engine.py, records.py, shapes.py and jcs.py, and minds' meter.py, the arena
+  experiment and the rules modules' host;
+- two probes:
+  - counting warrant's store at the pin by kind and schema (3070 records, 6 schemas) and printing the 6 schema
+    bodies;
+  - asking Python 3.15 and 3.13 whether U+16D67 U+16D67 is NFC (False under Unicode 17, True under 15.1), and which
+    Unicode version the cached `unicode-normalization` 0.1.25 carries (17.0.0).
+
+So the interpreter finding below was known before the registration. It is why the edge vectors hold that pair. The
+registration fixes the measures and the stop rule, not that finding.
 
 ## What it is
 
@@ -144,7 +157,7 @@ judged again on 2026-11-20, as registered, but it can no longer fire the rule.
 
 ## Found: warrant's own answer depends on the interpreter
 
-Not pre-registered; descriptive.
+Not pre-registered; descriptive. It was probed before the registration (above) and then measured over the vectors.
 
 The same export under Python 3.13.15 (Unicode 15.1.0) differs from Python 3.15.2 (Unicode 17.0.0) on 2 of 3615
 vectors. Both are a schema whose role is U+16D67 U+16D67, which Unicode 16 composes into U+16D68:
