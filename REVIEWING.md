@@ -59,6 +59,11 @@ trusts. `.warrant/merge.json` names the base, the required checks, the owner pat
     do. The owner merges these.
   - **What the gate also takes for the owner's:** a module added beside a listed Python file or where the
     interpreter searches for one (here the root and `tools/`), a new top-level directory, and any `.gitattributes`.
+- **While the owner is present, the windows come after the merge, not before.** He counts as present for 14 days after
+  a merge of his on GitHub or a reaction of his to a comment of the gate (`presence` in `.warrant/merge.json`, signs
+  from its `since` on): a watched or constitutional change then merges once its other conditions hold, and for as long
+  as its window would have run, his `hold` label or challenge on the merged pull request has the gate revert it. When
+  he has been away 14 days, the gate opens one issue naming him, and the windows come before the merge again.
 - **The owner's stops, at every tier:** a challenge on the head version (`warrant challenge`, as `pr/owner`); the label
   `hold` on a pull request; the repository variable `WARRANT_MERGE_GATE=hold`, which holds them all.
 - **Every merge goes through the gate**, the solo ones too: no agent merges with `gh pr merge` under the owner's

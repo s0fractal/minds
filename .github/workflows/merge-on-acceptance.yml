@@ -19,7 +19,10 @@ name: merge-on-acceptance
 #     and 24 h, or one family and 72 h;
 #   - `constitutional` (the trust, the profile, the review rules): 72 h with two families, 168 h with one, and the
 #     gate comments once, naming the owner, when the window opens.
-# A challenge by the owner (pr/owner) on the head version stops it, at every tier.
+# A challenge by the owner (pr/owner) on the head version stops it, at every tier. While the owner is present (a merge
+# of his on GitHub or a reaction of his to a comment of the gate within 14 days; .warrant/merge.json `presence`), there
+# is no window before a watched or constitutional merge: the brake acts after it for as long as the window would have,
+# and his `hold` or challenge on the merged pull request has the gate revert it. Away 14 days, he gets one issue.
 #
 # At most one merge per run, with a merge commit, bound to the head assessed (GitHub refuses the merge when the
 # head moved). A merge made with GITHUB_TOKEN starts no push workflow, so the gate then dispatches the required
