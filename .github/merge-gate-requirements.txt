@@ -2,8 +2,8 @@
 # of its wheel as published on PyPI) and its one dependency, signature verification, with the hashes of its wheels
 # for the runner (ubuntu-latest x86_64, CPython 3.11), the same as s0fractal/warrant's own gate installs. Nothing
 # of minds is imported by the gate: it reads this repository as Git data only.
-warrant-graph==3.0.0a6 \
-    --hash=sha256:4b0d4d1476d2b0287433ed80d8aa218c5e1f7c7edf5ce8afa7f769498449bb8a
+warrant-graph==3.0.0a7 \
+    --hash=sha256:8326c4194d1513cc5fd4c778c2e7e147ecdb6a9157c7c27cca08a9246ce97500
 cryptography==50.0.2 \
     --hash=sha256:9dab55f57c74c3cad24c323bacbbd04be4705ba6eb0d92e920b1fc4837ed5079
 cffi==2.1.1 \

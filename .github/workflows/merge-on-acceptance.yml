@@ -11,10 +11,15 @@ name: merge-on-acceptance
 # fetched as Git objects into refs/warrant-gate/pull/<n>, read with git ls-tree / cat-file / diff-tree, never
 # checked out, installed or run.
 #
-# What it merges today: a pull request whose head version (a pr-head@1 lineage in its .warrant/records.jsonl,
-# REVIEWING.md §0) a pr/acceptor of .warrant/v3.json (codex) accepted, with no counted finding standing, the
-# required checks (check, mutants) green at the head, and no owner path changed. A pull request with no review
-# lineage, or one only Claude has reviewed, is not merged by this gate: the published gate has no solo path yet.
+# What it merges: a pull request with a head version (a pr-head@1 lineage in its .warrant/records.jsonl,
+# REVIEWING.md §0), the required checks (check, mutants) green at the head, no finding standing, no owner path
+# changed, and by the tier of the paths it changes (.warrant/merge.json):
+#   - no listed path: accepted by a pr/acceptor of .warrant/v3.json, or solo (its author a pr/acceptor) at once;
+#   - `watched` (what decides the chain's verdicts and what the witness key runs): two model families accepting
+#     and 24 h, or one family and 72 h;
+#   - `constitutional` (the trust, the profile, the review rules): 72 h with two families, 168 h with one, and the
+#     gate comments once, naming the owner, when the window opens.
+# A challenge by the owner (pr/owner) on the head version stops it, at every tier.
 #
 # At most one merge per run, with a merge commit, bound to the head assessed (GitHub refuses the merge when the
 # head moved). A merge made with GITHUB_TOKEN starts no push workflow, so the gate then dispatches the required
@@ -48,7 +53,8 @@ jobs:
     permissions:
       contents: write          # the merge
       pull-requests: write     # the merge
-      checks: read             # the required checks at a pull request's head
+      issues: write            # the one comment when a constitutional window opens (warrant/gate.py notify)
+      checks: read            # the required checks at a pull request's head
       actions: write           # the runs behind those checks; dispatching main CI after a merge
     steps:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

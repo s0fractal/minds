@@ -34,10 +34,10 @@ cost of a mistake, not the size of the diff.
 ### How a model's review is recorded
 
 A pull request that gets a strong review carries its review as Warrant 3 records in `.warrant/records.jsonl`, as
-s0fractal/warrant does (its docs/REPOSITORY.md, "Reviews as records"). `.warrant/v3.json` names `codex` the
-`pr/acceptor`, the owner the `pr/owner` (a veto, not an acceptance), and both model families beside the owner as
-`roadmap/owner`, whose key is not in this trust, so that the role can be exercised at all; `.warrant/merge.json` names
-the base, the required checks and the owner paths.
+s0fractal/warrant does (its docs/REPOSITORY.md, "Reviews as records"). `.warrant/v3.json` names both model
+families (`claude`, `codex`) `pr/acceptor` and `roadmap/owner` beside the owner, and the owner `pr/owner` (a veto, not
+an acceptance) and `challenger` (his challenge counts against any record); his key is the one s0fractal/warrant
+trusts. `.warrant/merge.json` names the base, the required checks, the owner paths and the tiers below.
 
 - The author pushes the change (commit X), then files the review's root and a head version naming X, from a checkout
   of the branch: `python3 -m warrant.review open --pr N --title T` and `python3 -m warrant.review head --pr N`, each
@@ -46,13 +46,24 @@ the base, the required checks and the owner paths.
   reviewer files its acceptance (an `attest` with `{"verdict": "accept"}` on the head version) or `finding@1`
   challenges, and pushes them onto the pull request. Fixes go into a new head version.
 - The merge gate merges it (`.github/workflows/merge-on-acceptance.yml`, warrant's `warrant/gate.py` from the
-  pinned warrant-graph wheel): accepted head version, no standing finding, required checks green, no owner path
-  changed. The merge is the bot's, not anyone's account. Changes to the owner paths are the owner's in any case; the
-  label `hold` holds a pull request and the repository variable `WARRANT_MERGE_GATE=hold` holds them all.
-- A pull request with no acceptance (no model review, or only Claude's) is not merged by the published gate: it has
-  no solo path yet. Until a gate that merges on its own solo assessment is pinned here, the maintainer merges those
-  after green CI, as before, and says so in the pull request.
-- A pull request with no model review (above) has no review lineage.
+  pinned warrant-graph wheel): a head version, no standing finding, required checks green, no owner path changed.
+  The merge is the bot's, not anyone's account. When it may merge depends on the paths the change touches:
+  - **No listed path:** at once, accepted by the other family or solo (its author a `pr/acceptor`).
+  - **`watched`:** the costly surfaces above (`vars1.py`, `kernel/`, `kernel2/`, `verify/`,
+    `tools/minds_chain.py`, `VARS-1-SPEC.md`) and `requirements.txt`, which with them is what the witness key runs.
+    Two families accepting and 24 h after green checks, or one family and 72 h.
+  - **`constitutional`:** `.warrant/v3.json`, `.warrant/v3/` and this file. 72 h with two families, 168 h with one,
+    and the gate comments once, naming the owner, when the window opens.
+  - **Owner paths:** `.github/` and `.warrant/merge.json`, that is, the brake itself and what the gate's token can
+    do. The owner merges these.
+  - **What the gate also takes for the owner's:** a module added beside a listed Python file or where the
+    interpreter searches for one (here the root and `tools/`), a new top-level directory, and any `.gitattributes`.
+- **The owner's stops, at every tier:** a challenge on the head version (`warrant challenge`, as `pr/owner`); the label
+  `hold` on a pull request; the repository variable `WARRANT_MERGE_GATE=hold`, which holds them all.
+- **Every merge goes through the gate**, the solo ones too: no agent merges with `gh pr merge` under the owner's
+  account. The owner's name in the history means the owner acted.
+- **Every pull request carries a review lineage**: its root and head version, filed by the author. Without one the
+  gate does not merge it. A model review is still asked for by §0 above, not by the gate.
 
 ## 1. Verify releases (members only)
 
