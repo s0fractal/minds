@@ -3151,6 +3151,58 @@
    ]
   },
   {
+   "id": "assurance.cosign",
+   "source": "ASSURANCE.md",
+   "quote": "A raise of the admission threshold can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` of the roster as it is, as that command builds it from the governing scope now, to a threshold above the one the scope has and no higher than a majority of the roster, another member sealed it, this key first saw it `COSIGN_WINDOW` (24 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed",
+    "test:test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+   ],
+   "mutants": [
+    "m-propose-admits",
+    "m-cosign-fork",
+    "m-cosign-roster",
+    "m-cosign-veto-ref",
+    "m-cosign-on-chain",
+    "m-cosign-window",
+    "m-cosign-no-window",
+    "m-cosign-gate",
+    "m-cosign-not-self",
+    "m-cosign-members-only",
+    "m-cosign-second-seal",
+    "m-cosign-hex-name",
+    "m-cosign-scope-only",
+    "m-cosign-rebuilt",
+    "m-cli-propose",
+    "m-cli-propose-join",
+    "m-cosign-roster-same",
+    "m-cosign-raise-only",
+    "m-cosign-majority",
+    "m-witness-flow-cosign",
+    "m-witness-flow-ledger"
+   ]
+  },
+  {
+   "id": "assurance.cosign-ledger",
+   "source": "ASSURANCE.md",
+   "quote": "What the witness remembers for this, the first sight of each proposal and each veto it saw, is a ledger signed by its own key at `refs/vars/cosign/minds/<key>`: one that does not verify is refused, a missing one starts every window again, a withdrawn proposal leaves it and waits a whole window when made again, and a veto stays in it",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+   ],
+   "mutants": [
+    "m-cosign-ledger-signature",
+    "m-cosign-ledger-write",
+    "m-cosign-first-sight",
+    "m-cosign-withdrawn",
+    "m-cosign-veto-kept",
+    "m-cosign-veto-sticky",
+    "m-cosign-on-chain-forget",
+    "m-cosign-cosigned-forget"
+   ]
+  },
+  {
    "id": "assurance.verify-unreproducible",
    "source": "ASSURANCE.md",
    "quote": "A member's `verify-release` answers what the release's statement claims, rerun at its commit: a claimed check that runs and fails, or a profile that is not the commit's, is INVALID, pinned or not, and an unclaimed check that passes is no part of the answer. A release whose checks cannot be rerun as they ran is answered by neither verdict and nothing is recorded (UNREPRODUCIBLE: the command exits 3, the witness reports it and stays green): its commit carries no requirements.txt, its statement pins no sibling commits and a file of the commit reads a sibling checkout by path, decided before any check runs; or it claims a check this verifier does not run; or its commit fails a check this verifier runs there and the statement does not claim, so leaving a check out earns no seal",
