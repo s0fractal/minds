@@ -11,7 +11,7 @@ cost of a mistake, not the size of the diff.
 - **Always, for every change: the mechanical checks.** CI (conformance, properties, kernel hash, claims) and the
   mutants job. A killed mutant is a claim no reviewer needs to recheck by hand.
 - **A strong adversarial review, one reviewer per pull request, only where a mistake is costly:** the gate
-  (`vars1.py` admission), the rules kernel (`kernel/`, `kernel2/`), rules changes (VARS-1-SPEC.md §4.3), the bundle
+  (`vars1.py` admission), the rules kernel (`kernel/`, `kernel2/`) and the meter that bounds its steps (`meter.py`), rules changes (VARS-1-SPEC.md §4.3), the bundle
   verifier (`verify/`), the release tool's checks, and any change to a normative block of the spec. Not two
   reviewers on the same head: a second opinion is a deliberate choice, recorded as such.
 - **No model review** for documentation, tests, tooling or refactors that change no behaviour; CI and the mutants
@@ -49,8 +49,9 @@ trusts. `.warrant/merge.json` names the base, the required checks, the owner pat
   pinned warrant-graph wheel): a head version, no standing finding, required checks green, no owner path changed.
   The merge is the bot's, not anyone's account. When it may merge depends on the paths the change touches:
   - **No listed path:** at once, accepted by the other family or solo (its author a `pr/acceptor`).
-  - **`watched`:** the costly surfaces above (`vars1.py`, `kernel/`, `kernel2/`, `verify/`,
-    `tools/minds_chain.py`, `VARS-1-SPEC.md`) and `requirements.txt`, which with them is what the witness key runs.
+  - **`watched`:** the costly surfaces above (`vars1.py`, `kernel/`, `kernel2/`, `meter.py`, `verify/`,
+    `tools/minds_chain.py`, `VARS-1-SPEC.md`) and `requirements.txt`, which with them is what the witness key runs
+    (the import closure of `tools/minds_chain.py` is `vars1.py` and `meter.py`).
     Two families accepting and 24 h after green checks, or one family and 72 h.
   - **`constitutional`:** `.warrant/v3.json`, `.warrant/v3/` and this file. 72 h with two families, 168 h with one,
     and the gate comments once, naming the owner, when the window opens.

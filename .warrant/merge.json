@@ -21,6 +21,7 @@
       "VARS-1-SPEC.md",
       "kernel/",
       "kernel2/",
+      "meter.py",
       "requirements.txt",
       "tools/minds_chain.py",
       "vars1.py",
