@@ -4137,23 +4137,23 @@
  },
  "m-claimed-missing": {
   "file": "tools/minds_chain.py",
-  "find": "    if missing:\n        raise Unreproducible",
-  "replace": "    if False:\n        raise Unreproducible",
+  "find": "        if missing:\n            raise Unreproducible",
+  "replace": "        if False:\n            raise Unreproducible",
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
   ]
  },
  "m-claimed-ok": {
   "file": "tools/minds_chain.py",
-  "find": "    ok = all(got.get(n) for n in claimed)",
-  "replace": "    ok = all(got.values())",
+  "find": "    ok = all(got[n] for n in claimed if n in got)",
+  "replace": "    ok = True",
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
   ]
  },
  "m-claimed-lines": {
   "file": "tools/minds_chain.py",
-  "find": "    lines = [f\"{n} {'OK' if got.get(n) else 'FAILED'}\" for n in claimed]",
+  "find": "    lines = [f\"{n} {'OK' if got[n] else 'FAILED'}\" for n in claimed if n in got]",
   "replace": "    lines = list(ran)",
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
@@ -4195,6 +4195,22 @@
   "file": "tools/minds_chain.py",
   "find": "            print(json.dumps({\"commit\": None, \"verdict\": \"UNREPRODUCIBLE\", \"why\": str(e)}))\n            return 3",
   "replace": "            print(json.dumps({\"commit\": None, \"verdict\": \"UNREPRODUCIBLE\", \"why\": str(e)}))\n            return 0",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-unclaimed-failed": {
+  "file": "tools/minds_chain.py",
+  "find": "        if unclaimed:\n            raise Unreproducible",
+  "replace": "        if False:\n            raise Unreproducible",
+  "kills": [
+   "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+  ]
+ },
+ "m-invalid-first": {
+  "file": "tools/minds_chain.py",
+  "find": "    if ok:  # a claim that failed is INVALID whatever else holds",
+  "replace": "    if True:  # a claim that failed is INVALID whatever else holds",
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
   ]

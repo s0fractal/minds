@@ -1236,7 +1236,9 @@ def unpinned_reads(repo_dir: Path, sha: str, pins: Optional[Dict[str, str]]) -> 
     reads by its path (`../sigma-glyph/`, `"sigma-glyph"`), when the commit carries no requirements.txt and the statement
     names no sibling commits. Releases of 2026-10-19 before a512f8b are such: they read `../sigma-glyph` as it happened to
     be. Empty when nothing is unpinned, so a check that fails there is a failure (INVALID); empty as well for a commit
-    this repository does not hold, where nothing shows a read."""
+    this repository does not hold, where nothing shows a read. A requirements.txt is taken as pinning what the commit
+    reads: true of every commit since a512f8b, which removed the sibling checkouts (later matches are test fixtures),
+    but a proxy: a future commit with one that still read `../primitives` would not be caught here."""
     if pins is not None:
         return []
     git = ["git", "-C", str(repo_dir)]
@@ -1404,8 +1406,10 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
 
     A release whose checks cannot be rerun as they ran is answered by neither: `Unreproducible` is raised and nothing is
     recorded. That is a release whose checks read a sibling checkout nothing pins (`unpinned_reads`), decided before any
-    check runs, or one that claims a check this verifier does not run at its commit. A claimed check that runs and fails
-    is INVALID, never unreproducible.
+    check runs; one that claims a check this verifier does not run at its commit; or one whose commit fails a check
+    this verifier runs there and the statement does not claim (an omission must not earn a seal). A claimed check that
+    runs and fails, or a profile that is not the commit's, is INVALID, never unreproducible; an unclaimed check that
+    passes is no part of the answer.
 
     `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
     contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
@@ -1427,15 +1431,12 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
         raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which neither "
                              "its statement nor a requirements.txt of the commit pins")
     then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
+    # the lines carry the outcome (checks_at's flag is every line's and every pre-check line's), so the flag is not read
     ran, _ = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
               else checks(repo_dir, sha, rules, chain=then))
     got = {line.rsplit(" ", 1)[0]: line.rsplit(" ", 1)[-1] == "OK" for line in ran}
-    missing = [n for n in claimed if n not in got]
-    if missing:
-        raise Unreproducible(f"not reproducible: the statement claims {missing}, which this verifier does not run at "
-                             f"main@{sha[:12]}")
-    lines = [f"{n} {'OK' if got.get(n) else 'FAILED'}" for n in claimed]
-    ok = all(got.get(n) for n in claimed)
+    lines = [f"{n} {'OK' if got[n] else 'FAILED'}" for n in claimed if n in got]
+    ok = all(got[n] for n in claimed if n in got)
     if profile is not None:  # the files the release names are the files at its commit, recomputed here
         try:
             same = profile_at(repo_dir, sha)["id"] == profile
@@ -1443,6 +1444,16 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
             same = False
         lines = lines + [f"release profile {profile[:12]} is the commit's {'OK' if same else 'FAILED'}"]
         ok = ok and same
+    if ok:  # a claim that failed is INVALID whatever else holds; short of that, what cannot be settled is no verdict
+        missing = [n for n in claimed if n not in got]
+        if missing:
+            raise Unreproducible(f"not reproducible: the statement claims {missing}, which this verifier does not run "
+                                 f"at main@{sha[:12]}")
+        unclaimed = [n for n, passed in got.items() if not passed]
+        if unclaimed:
+            raise Unreproducible(f"not reproducible: this verifier runs {unclaimed} at main@{sha[:12]}, which fail there, "
+                                 "and the statement does not claim them: leaving a check out cannot be told from a "
+                                 "commit that did not have it, so it earns no verdict")
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     base = f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/{'attested' if ok else 'invalid'}"

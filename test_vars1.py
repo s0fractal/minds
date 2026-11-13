@@ -8835,10 +8835,16 @@ class TestVars1Conformance(unittest.TestCase):
         # a commit that reads no sibling needs no pin
         self.assertEqual(answer(commit("4", {"test_vars1.py": "import sys\n"}), ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
 
-        # only what the statement claims: a check it never claimed is no part of the answer
+        # what the statement claims is answered: an unclaimed check that passes is no part of it, and one that fails earns
+        # no seal (leaving it out cannot be told from a commit that did not have it); a claim that fails is INVALID first
         fresh = lambda salt: commit(salt, {"requirements.txt": "sigma-glyph==1.0.1\n"})  # noqa: E731
-        self.assertEqual(answer(fresh("5"), ["x OK", "y OK"], ["x OK", "z FAILED", "y OK"]), ("ATTESTED", ["x OK", "y OK"]))
+        self.assertEqual(answer(fresh("5a"), ["x OK", "y OK"], ["x OK", "z OK", "y OK"]), ("ATTESTED", ["x OK", "y OK"]))
+        verdict, why = answer(fresh("5"), ["x OK", "y OK"], ["x OK", "z FAILED", "y OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("runs ['z'] at main@", why)
         self.assertEqual(answer(fresh("6"), ["x OK", "y OK"], ["x OK", "y FAILED"]), ("INVALID", ["x OK", "y FAILED"]))
+        self.assertEqual(answer(fresh("6a"), ["x OK", "y OK"], ["x FAILED"]), ("INVALID", ["x FAILED"]))
+        self.assertEqual(answer(fresh("6b"), ["x OK"], ["x FAILED", "z FAILED"]), ("INVALID", ["x FAILED"]))
         verdict, why = answer(fresh("7"), ["x OK", "y OK"], ["x OK"])
         self.assertEqual(verdict, "UNREPRODUCIBLE")
         self.assertIn("claims ['y'], which this verifier does not run", why)
@@ -8853,7 +8859,7 @@ class TestVars1Conformance(unittest.TestCase):
         except V.VarsError as e:
             self.fail(f"an unreproducible release is a row of the witness's report, not a stop: {e}")
         self.assertEqual({(x["verdict"], x["commit"]) for x in done}, {("UNREPRODUCIBLE", None)})
-        self.assertEqual(len(done), 2)
+        self.assertEqual(len(done), 3)
         self.assertEqual(repo.ref_commit("minds"), tip)
         key = self.repo_path / "b.seed"
         key.write_text(SK["b"].hex())

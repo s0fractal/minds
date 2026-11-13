@@ -3153,7 +3153,7 @@
   {
    "id": "assurance.verify-unreproducible",
    "source": "ASSURANCE.md",
-   "quote": "A member's `verify-release` answers what the release's statement claims, rerun at its commit: a check the statement does not claim is no part of the verdict, and a claimed check that runs and fails is INVALID, pinned or not. A release whose checks cannot be rerun as they ran is answered by neither verdict and nothing is recorded (UNREPRODUCIBLE: the command exits 3, the witness reports it and stays green): its commit carries no requirements.txt, its statement pins no sibling commits and a file of the commit reads a sibling checkout by path, decided before any check runs; or it claims a check this verifier does not run",
+   "quote": "A member's `verify-release` answers what the release's statement claims, rerun at its commit: a claimed check that runs and fails, or a profile that is not the commit's, is INVALID, pinned or not, and an unclaimed check that passes is no part of the answer. A release whose checks cannot be rerun as they ran is answered by neither verdict and nothing is recorded (UNREPRODUCIBLE: the command exits 3, the witness reports it and stays green): its commit carries no requirements.txt, its statement pins no sibling commits and a file of the commit reads a sibling checkout by path, decided before any check runs; or it claims a check this verifier does not run; or its commit fails a check this verifier runs there and the statement does not claim, so leaving a check out earns no seal",
    "status": "tested",
    "witnesses": [
     "test:test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
@@ -3171,7 +3171,9 @@
     "m-claimed-not-ok",
     "m-claimed-profile",
     "m-witness-unrep",
-    "m-cli-unrep"
+    "m-cli-unrep",
+    "m-unclaimed-failed",
+    "m-invalid-first"
    ]
   }
  ],
