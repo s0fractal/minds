@@ -1,0 +1,63 @@
+{
+ "format": "minds.published-bundles@1",
+ "about": "The latest release of s0fractal/minds and the projection that covers it, as published by tools/publish_site.py. The names and the roster are the publisher's word: pin the keys you trust.",
+ "chain": "refs/vars/heads/minds",
+ "chain_tip": "fda825ff7f566b49c60e61d4af8b9081ed25d900",
+ "published": "2026-11-13T06:48:59Z",
+ "projection": {
+  "id": "c004741646328b3a86944e4868a15f6fe49dda0d5ddd2d0d9e3faff9de32cc6f",
+  "tip": "3c599f188023b31a672376f53f61a29727693165",
+  "witnesses": [
+   "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+   "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+  ],
+  "file": "bundles/projection-c004741646328b3a86944e4868a15f6fe49dda0d5ddd2d0d9e3faff9de32cc6f.json",
+  "sha256": "a35fdc27203eab1d4e3c05c664006a46b8eed1245ffd21af881a636f853a9f09"
+ },
+ "attestation": {
+  "decision": "49aedc1b37b83cfeb68008fad47327d5e63faf392cc7f1485b36a435d96fda27",
+  "statement": "minds release main@cec236cee727eab309d834bc5855ebf653058f6f rules@1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e; checks: lake build OK; lake build vars1exec OK; lake build vars1fold OK; lake build vars1cycle OK; lake build Vars1Sigma OK; test_vars1 OK; test_vars1_props OK; lake build vars1witness OK; experiments/witness OK; kernel rebuild hashes to H_LENS_KERNEL OK; kernel2 rebuild hashes to H_LENS_KERNEL_V2 OK; kernel/lens1b.wasm rebuild hashes to H_LENS_KERNEL_V1B OK; the released rules are rebuilt here OK; profile@b0b538daf9e05e129f62d5fd7fe6463dbd4c4c04bb184a8dbbdffc7dba96d8d3",
+  "endorsers": [
+   "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+   "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+  ],
+  "file": "bundles/attestation-49aedc1b37b83cfeb68008fad47327d5e63faf392cc7f1485b36a435d96fda27.json",
+  "sha256": "7ca721616b357210428dd344a93310727f28881d11e21bf6276a6b507baa5223"
+ },
+ "roster": [
+  {
+   "name": "github-actions",
+   "key": "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4"
+  },
+  {
+   "name": "antigravity",
+   "key": "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7"
+  },
+  {
+   "name": "minds-maintainer",
+   "key": "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+  }
+ ],
+ "rules": [
+  {
+   "id": "874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb",
+   "file": "rules/874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb.wasm",
+   "sha256": "874e714dd14e6d7c144a4c377ae649f4124ea3788b17fa1ff86cf1be8a168ecb"
+  },
+  {
+   "id": "2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd",
+   "file": "rules/2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd.wasm",
+   "sha256": "2a2e440a548b73adbb3072c23e21ee8d9d7bd7867fa7bc3e38150c477f1b11cd"
+  },
+  {
+   "id": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e",
+   "file": "rules/1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e.wasm",
+   "sha256": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e"
+  }
+ ],
+ "verifier": {
+  "main": "409c4b50ef341760b96514a417fdb6a0b3db159c",
+  "file": "minds_verify.mjs",
+  "sha256": "8eaea2ef1b4c8a62ce51acb801b056320ab88baa4e37970bd5b6d73ec1602267"
+ }
+}
