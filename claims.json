@@ -3046,6 +3046,187 @@
     "m-lag-scope",
     "m-lag-pins"
    ]
+  },
+  {
+   "id": "assurance.browser-verifier",
+   "source": "ASSURANCE.md",
+   "quote": "The JavaScript verifier `verify/minds_verify.mjs`, which the release check page runs, answers every recorded offline input as `verify/minds_verify.py` does, byte for byte",
+   "status": "tested",
+   "witnesses": [
+    "test:test_134_the_browser_verifier_answers_as_this_file_does"
+   ],
+   "mutants": [
+    "m-js-bom",
+    "m-js-repeated-key",
+    "m-js-nan",
+    "m-js-withdraw",
+    "m-js-required-witness",
+    "m-js-hex-space",
+    "m-js-sort-keys",
+    "m-js-trailing-comma",
+    "m-js-equivocation",
+    "m-js-same-tip",
+    "m-js-after-tip",
+    "m-js-relies",
+    "m-js-kernel-output",
+    "m-js-utf8-e0",
+    "m-js-omits",
+    "m-js-input-birth",
+    "m-js-inspect-word",
+    "m-js-kernel-needed",
+    "m-js-cell-births",
+    "m-js-replay-bound"
+   ]
+  },
+  {
+   "id": "assurance.warrant-checker",
+   "source": "ASSURANCE.md",
+   "quote": "The warrant checker as a rules module, `experiments/warrant-checker/checker.wasm`, answers every recorded vector as warrant's own `engine._schema_problem` and `engine._body_problem` at f7e3637b do under Python 3.15, byte for byte: the return statement the engine took, the reason's text, or the refusal",
+   "status": "tested",
+   "witnesses": [
+    "test:test_135_a_warrant_checker_runs_as_a_metered_rules_module"
+   ],
+   "mutants": [
+    "m-wc-depth",
+    "m-wc-bracket-count",
+    "m-wc-member-once",
+    "m-wc-member-utf16",
+    "m-wc-minus-zero",
+    "m-wc-max-int",
+    "m-wc-short-escape",
+    "m-wc-solidus",
+    "m-wc-utf8",
+    "m-wc-trailing",
+    "m-wc-py-eq-bool",
+    "m-wc-py-eq-dict",
+    "m-wc-sorted",
+    "m-wc-hex64-case",
+    "m-wc-cc",
+    "m-wc-edge-space",
+    "m-wc-nfc",
+    "m-wc-actor-length",
+    "m-wc-quorum",
+    "m-wc-optional-once",
+    "m-wc-int-not-bool",
+    "m-wc-obj-any",
+    "m-wc-pinned-member",
+    "m-wc-migration",
+    "m-wc-name-chars",
+    "m-wc-state-str",
+    "m-wc-closed-in-states",
+    "m-wc-successor-state",
+    "m-wc-pinned-obj",
+    "m-wc-quote-ascii",
+    "m-wc-quote-sort",
+    "m-wc-members-sort",
+    "m-wc-target",
+    "m-wc-refs",
+    "m-wc-not-entity",
+    "m-wc-weaker-roles",
+    "m-wc-weaker-requires",
+    "m-wc-weaker-quorum",
+    "m-wc-asked-schema",
+    "m-wc-asked-name",
+    "m-wc-output-control",
+    "m-wc-state-quote",
+    "m-wc-check-compare",
+    "m-wc-expected-refusal"
+   ]
+  },
+  {
+   "id": "assurance.warrant-checker-run",
+   "source": "ASSURANCE.md",
+   "quote": "A metered run of it is a statement naming the module and the input by SHA-256, the budget, the steps and the result's digest: rerun, it gives the same bytes; a module changed in one byte does not count; a budget one step short gives `exhausted`, never a verdict; a trap is a fault, told apart from a refusal; the committed modules are what `src/` builds",
+   "status": "tested",
+   "witnesses": [
+    "test:test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it",
+    "test:test_137_the_warrant_checker_builds_to_its_pin"
+   ],
+   "mutants": [
+    "m-wc-rerun-module",
+    "m-wc-rerun-input",
+    "m-wc-encode-refusal",
+    "m-wc-encode-kinds",
+    "m-wc-rerun-bytes"
+   ]
+  },
+  {
+   "id": "assurance.cosign",
+   "source": "ASSURANCE.md",
+   "quote": "A raise of the admission threshold can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` of the roster as it is, as that command builds it from the governing scope now, to a threshold above the one the scope has and no higher than a majority of the roster, another member sealed it, this key first saw it `COSIGN_WINDOW` (24 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed",
+    "test:test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+   ],
+   "mutants": [
+    "m-propose-admits",
+    "m-cosign-fork",
+    "m-cosign-roster",
+    "m-cosign-veto-ref",
+    "m-cosign-on-chain",
+    "m-cosign-window",
+    "m-cosign-no-window",
+    "m-cosign-gate",
+    "m-cosign-not-self",
+    "m-cosign-members-only",
+    "m-cosign-second-seal",
+    "m-cosign-hex-name",
+    "m-cosign-scope-only",
+    "m-cosign-rebuilt",
+    "m-cli-propose",
+    "m-cli-propose-join",
+    "m-cosign-roster-same",
+    "m-cosign-raise-only",
+    "m-cosign-majority",
+    "m-witness-flow-cosign",
+    "m-witness-flow-ledger"
+   ]
+  },
+  {
+   "id": "assurance.cosign-ledger",
+   "source": "ASSURANCE.md",
+   "quote": "What the witness remembers for this, the first sight of each proposal and each veto it saw, is a ledger signed by its own key at `refs/vars/cosign/minds/<key>`: one that does not verify is refused, a missing one starts every window again, a withdrawn proposal leaves it and waits a whole window when made again, and a veto stays in it",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+   ],
+   "mutants": [
+    "m-cosign-ledger-signature",
+    "m-cosign-ledger-write",
+    "m-cosign-first-sight",
+    "m-cosign-withdrawn",
+    "m-cosign-veto-kept",
+    "m-cosign-veto-sticky",
+    "m-cosign-on-chain-forget",
+    "m-cosign-cosigned-forget"
+   ]
+  },
+  {
+   "id": "assurance.verify-unreproducible",
+   "source": "ASSURANCE.md",
+   "quote": "A member's `verify-release` answers what the release's statement claims, rerun at its commit: a claimed check that runs and fails, or a profile that is not the commit's, is INVALID, pinned or not, and an unclaimed check that passes is no part of the answer. A release whose checks cannot be rerun as they ran is answered by neither verdict and nothing is recorded (UNREPRODUCIBLE: the command exits 3, the witness reports it and stays green): its commit carries no requirements.txt, its statement pins no sibling commits and a file of the commit reads a sibling checkout by path, decided before any check runs; or it claims a check this verifier does not run; or its commit fails a check this verifier runs there and the statement does not claim, so leaving a check out earns no seal",
+   "status": "tested",
+   "witnesses": [
+    "test:test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
+   ],
+   "mutants": [
+    "m-unrep-pins",
+    "m-unrep-requirements",
+    "m-unrep-reads",
+    "m-unrep-quoted",
+    "m-unrep-raise",
+    "m-claimed-missing",
+    "m-claimed-ok",
+    "m-claimed-lines",
+    "m-claimed-none",
+    "m-claimed-not-ok",
+    "m-claimed-profile",
+    "m-witness-unrep",
+    "m-cli-unrep",
+    "m-unclaimed-failed",
+    "m-invalid-first"
+   ]
   }
  ],
  "informative": [

@@ -1,0 +1,3 @@
+target/
+kani-check/target/
+kani-check/Cargo.lock

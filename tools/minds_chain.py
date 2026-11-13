@@ -23,9 +23,18 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py threshold N [--key FILE]...
                                               # rotate to the same roster and rules under admission and acceptance
                                               # N-of-n, sealed by each FILE or the maintainer key
+    tools/minds_chain.py threshold N [--key FILE]... --propose
+                                              # the same rotation, sealed the same way but not admitted: it is kept at
+                                              # refs/vars/proposals/minds/<its scope cell> for a cosigner (`cosign`)
+    tools/minds_chain.py cosign --key FILE    # as the witness: seal and admit each proposed raise of the threshold, up
+                                              # to a majority of the roster, that this key first saw COSIGN_WINDOW ago,
+                                              # that another member sealed and that nobody vetoed (a ref
+                                              # refs/vars/veto/minds/<cell>); it judges form and time, not merit
+    tools/minds_chain.py cosign-ref --key FILE  # the ref this key keeps its signed cosign ledger in (for the push)
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
-                                              # as a member: rerun the checks at the release's commit, record a
-                                              # verdict, and witness the projections that name your key
+                                              # as a member: rerun the checks the release claims at its commit, record
+                                              # a verdict, and witness the projections that name your key; exit 3 and
+                                              # nothing recorded when they cannot be rerun as they ran (UNREPRODUCIBLE)
     tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
     tools/minds_chain.py witness --key FILE --name NAME
                                               # as a member: verify-release every release awaiting your key
@@ -77,6 +86,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -174,13 +184,11 @@ def thresholds(repo: V.GitVarsRepo) -> Tuple[int, int]:
     return V.parse_pol1(atoms[scope.slots[0]])[0], V.parse_pol1(atoms[scope.slots[1]])[0]
 
 
-def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: int, acceptance: int, say: str) -> str:
-    """A rotation of the governing scope to `keys` under these thresholds, sealed by each of `sks`, keeping its rules. It
-    names no projection, so it adds nothing to a key's memory, but no key that remembers a history seals on a fork of it."""
-    repo = V.GitVarsRepo(repo_dir)
-    tip = repo.ref_commit(SCOPE)
-    for sk in sks:
-        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)
+def _rotation(repo: V.GitVarsRepo, keys: List[bytes], admission: int, acceptance: int,
+              say: str) -> Tuple[Dict[bytes, bytes], V.Cell, bytes]:
+    """The scope cell of a rotation of the governing scope to `keys` under these thresholds, keeping its rules: its atoms,
+    the cell and the scope it supersedes (the context its seals sign). `_rotate` files it; `cosign` rebuilds it from a
+    proposal to see that the proposal is this and nothing else."""
     s = governing_scope(repo)
     atoms: Dict[bytes, bytes] = {}
     adm = _policy(atoms, admission, keys)
@@ -193,9 +201,46 @@ def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: 
         h_loss=_put(atoms, V.atom_utf8(f"rotation: {say}")),
         slots=(adm, acc, governing_rules(repo)),
     )
+    return atoms, scope, s
+
+
+def _rotate(repo_dir: Path, sks: Sequence[bytes], keys: List[bytes], admission: int, acceptance: int, say: str,
+            propose: bool = False) -> str:
+    """A rotation of the governing scope to `keys` under these thresholds, sealed by each of `sks`, keeping its rules. It
+    names no projection, so it adds nothing to a key's memory, but no key that remembers a history seals on a fork of it.
+    With `propose` the commit is not admitted: it is kept at `proposal_ref` of its scope cell for a cosigner."""
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    for sk in sks:
+        refuse_a_fork(repo_dir, V.ed25519_pubkey(sk), tip)
+    atoms, scope, s = _rotation(repo, keys, admission, acceptance, say)
     c = repo.build_candidate_commit(SCOPE, atoms, [scope], [V.Seal.sign(sk, scope.id, s) for sk in sks], parent_commit=tip)
+    if propose:
+        subprocess.run(["git", "-C", str(repo_dir), "update-ref", proposal_ref(scope.id), c], check=True)
+        return c
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c
+
+
+def _join_act(repo: V.GitVarsRepo, pubkey: bytes, name: str) -> Tuple[List[bytes], int, int, str]:
+    """What `join` rotates to: the roster plus `pubkey`, under the thresholds it has."""
+    keys = roster(repo)
+    if pubkey in keys:
+        raise V.VarsError("already a member")
+    if V.weak_public_key(pubkey):
+        raise V.VarsError("weak public key")
+    admission, acceptance = thresholds(repo)
+    return sorted(keys + [pubkey]), admission, acceptance, f"{name} joins"
+
+
+def _threshold_act(repo: V.GitVarsRepo, threshold: int) -> Tuple[List[bytes], int, int, str]:
+    """What `threshold` rotates to: the same roster under admission and acceptance `threshold`."""
+    keys = roster(repo)
+    if not 1 <= threshold <= len(keys):
+        raise V.VarsError(f"a threshold of {threshold} for a roster of {len(keys)}")
+    if thresholds(repo) == (threshold, threshold):
+        raise V.VarsError("the scope has this threshold already")
+    return keys, threshold, threshold, f"admission and acceptance {threshold} of {len(keys)}"
 
 
 def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
@@ -207,30 +252,16 @@ def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name
     alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2). While
     every key is ours this stays at 1 on purpose, since raising it costs three early releases their Settled until a second
     key attests them (`status` says `one_key_is_the_quorum`)."""
-    repo = V.GitVarsRepo(repo_dir)
-    keys = roster(repo)
-    if pubkey in keys:
-        raise V.VarsError("already a member")
-    if V.weak_public_key(pubkey):
-        raise V.VarsError("weak public key")
-    admission, acceptance = thresholds(repo)
-    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), admission, acceptance,
-                   f"{name} joins")
+    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, *_join_act(V.GitVarsRepo(repo_dir), pubkey, name))
 
 
-def set_threshold(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], threshold: int) -> str:
+def set_threshold(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], threshold: int, propose: bool = False) -> str:
     """Rotate the scope to the same roster and rules under this admission and acceptance threshold (spec §4.2). It removes no
     key and changes no rules, so it takes effect at once (§4.1 latches 4a, 4b); it needs the quorum of the policy it leaves.
     One key still admits a cell at any threshold (§3 check 3). An evaluator policy that falls back to the admission policy
     moves with it (§4.2 Pass 3): `what-if` says what that takes from a chain before anyone files this."""
-    repo = V.GitVarsRepo(repo_dir)
-    keys = roster(repo)
-    if not 1 <= threshold <= len(keys):
-        raise V.VarsError(f"a threshold of {threshold} for a roster of {len(keys)}")
-    if thresholds(repo) == (threshold, threshold):
-        raise V.VarsError("the scope has this threshold already")
-    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, threshold, threshold,
-                   f"admission and acceptance {threshold} of {len(keys)}")
+    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, *_threshold_act(V.GitVarsRepo(repo_dir), threshold),
+                   propose=propose)
 
 
 def _rules_read(repo: V.GitVarsRepo, scope: str, commit: str, rules: bytes) -> Tuple[str, object]:
@@ -1213,6 +1244,46 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
     return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
 
 
+def claimed_checks(statement: str) -> List[str]:
+    """The checks a release statement says passed, in its order: what a member who verifies it reruns and answers for."""
+    m = re.search(r"; checks: (.*?)(?:; profile@[0-9a-f]{64})?\Z", statement)
+    items = m.group(1).split("; ") if m and m.group(1) else []
+    if not items:
+        raise V.VarsError("a release statement that names no checks")
+    for x in items:
+        if not x.endswith(" OK"):
+            raise V.VarsError(f"a release statement whose check {x!r} did not pass")
+    return [x[:-len(" OK")] for x in items]
+
+
+class Unreproducible(V.VarsError):
+    """A release whose checks cannot be rerun as it ran them: a member records nothing, neither ATTESTED nor INVALID. Its
+    message names what is missing."""
+
+
+def unpinned_reads(repo_dir: Path, sha: str, pins: Optional[Dict[str, str]]) -> List[str]:
+    """What the checks of a release of `sha` read that nothing pins: each sibling checkout (SIBLINGS) a file of the commit
+    reads by its path (`../sigma-glyph/`, `"sigma-glyph"`), when the commit carries no requirements.txt and the statement
+    names no sibling commits. Releases of 2026-10-19 before a512f8b are such: they read `../sigma-glyph` as it happened to
+    be. Empty when nothing is unpinned, so a check that fails there is a failure (INVALID); empty as well for a commit
+    this repository does not hold, where nothing shows a read. A requirements.txt is taken as pinning what the commit
+    reads: true of every commit since a512f8b, which removed the sibling checkouts (later matches are test fixtures),
+    but a proxy: a future commit with one that still read `../primitives` would not be caught here."""
+    if pins is not None:
+        return []
+    git = ["git", "-C", str(repo_dir)]
+    if subprocess.run([*git, "cat-file", "-e", f"{sha}:requirements.txt"], capture_output=True).returncode == 0:
+        return []
+    reads = []
+    for sib in SIBLINGS:
+        g = subprocess.run([*git, "grep", "-n", "-E", rf'(\.\./|"){sib}(/|")', sha, "--", "*.py", "*.toml", "*.lean"],
+                           capture_output=True, text=True)
+        if g.returncode == 0 and g.stdout:
+            _, path, line, _ = g.stdout.splitlines()[0].split(":", 3)
+            reads.append(f"{sib} (read by {path}:{line})")
+    return reads
+
+
 def recorded_at(repo: V.GitVarsRepo, cid: bytes) -> str:
     """The commit of the chain that admitted cell `cid`: the chain as it stood when that cell was recorded."""
     chain = repo.commit_chain(repo.ref_commit(SCOPE))
@@ -1359,8 +1430,16 @@ def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, co
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
-    (ATTESTED if every check passed, else INVALID), and witness every projection that names this member's key and
-    whose digests this host recomputes. Returns the new commit, the outcome and the check lines.
+    (ATTESTED if every check the statement claims passed again, else INVALID), and witness every projection that names
+    this member's key and whose digests this host recomputes. Returns the new commit, the outcome and the claimed checks'
+    lines. A check the statement does not claim is not part of the answer (a commit from before it has none to pass).
+
+    A release whose checks cannot be rerun as they ran is answered by neither: `Unreproducible` is raised and nothing is
+    recorded. That is a release whose checks read a sibling checkout nothing pins (`unpinned_reads`), decided before any
+    check runs; one that claims a check this verifier does not run at its commit; or one whose commit fails a check
+    this verifier runs there and the statement does not claim (an omission must not earn a seal). A claimed check that
+    runs and fails, or a profile that is not the commit's, is INVALID, never unreproducible; an unclaimed check that
+    passes is no part of the answer.
 
     `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
     contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
@@ -1374,10 +1453,20 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     d = cells.get(decision_id)
     if d is None or d.h_schema != V.H_SCHEMA["decision"]:
         raise V.VarsError("not a decision of this chain")
-    sha, rules, profile, pins = parse_release_profile(V.parse_utf8(atoms[d.h_payload]))
+    statement = V.parse_utf8(atoms[d.h_payload])
+    sha, rules, profile, pins = parse_release_profile(statement)
+    claimed = claimed_checks(statement)
+    unpinned = unpinned_reads(repo_dir, sha, pins)
+    if unpinned:
+        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which neither "
+                             "its statement nor a requirements.txt of the commit pins")
     then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
-    lines, ok = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
-                 else checks(repo_dir, sha, rules, chain=then))
+    # the lines carry the outcome (checks_at's flag is every line's and every pre-check line's), so the flag is not read
+    ran, _ = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
+              else checks(repo_dir, sha, rules, chain=then))
+    got = {line.rsplit(" ", 1)[0]: line.rsplit(" ", 1)[-1] == "OK" for line in ran}
+    lines = [f"{n} {'OK' if got[n] else 'FAILED'}" for n in claimed if n in got]
+    ok = all(got[n] for n in claimed if n in got)
     if profile is not None:  # the files the release names are the files at its commit, recomputed here
         try:
             same = profile_at(repo_dir, sha)["id"] == profile
@@ -1385,6 +1474,16 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
             same = False
         lines = lines + [f"release profile {profile[:12]} is the commit's {'OK' if same else 'FAILED'}"]
         ok = ok and same
+    if ok:  # a claim that failed is INVALID whatever else holds; short of that, what cannot be settled is no verdict
+        missing = [n for n in claimed if n not in got]
+        if missing:
+            raise Unreproducible(f"not reproducible: the statement claims {missing}, which this verifier does not run "
+                                 f"at main@{sha[:12]}")
+        unclaimed = [n for n, passed in got.items() if not passed]
+        if unclaimed:
+            raise Unreproducible(f"not reproducible: this verifier runs {unclaimed} at main@{sha[:12]}, which fail there, "
+                                 "and the statement does not claim them: leaving a check out cannot be told from a "
+                                 "commit that did not have it, so it earns no verdict")
     s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     base = f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/{'attested' if ok else 'invalid'}"
@@ -1444,8 +1543,179 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
         if d in answered:
             out.append({"decision": d.hex(), "verdict": "ANSWERED_BEFORE", "commit": None})
             continue
-        commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        try:
+            commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        except Unreproducible as e:  # recorded by no one: the release keeps waiting for this key, and says why
+            out.append({"decision": d.hex(), "verdict": "UNREPRODUCIBLE", "commit": None, "why": str(e)})
+            continue
         out.append({"decision": d.hex(), "verdict": "ATTESTED" if ok else "INVALID", "commit": commit})
+    return out
+
+
+# The cosigner. At an admission threshold of 2 a rotation of the scope needs a second member's seal (§3 check 3). The
+# GitHub Actions witness gives it to a raise of the threshold another member proposed, judging form and time, not merit:
+# - form: the proposal is exactly a `threshold` of the governing scope now, rebuilt here as that command builds it, to a
+#   threshold above the one it has and no higher than a majority of the roster, and another member sealed it;
+# - time: this key first saw it COSIGN_WINDOW ago;
+# - no veto: nobody has put a ref at refs/vars/veto/minds/<its cell>, and this key never saw one there.
+# It seals only what tightens. A second seal on a join or on a lower threshold would let one member pass the threshold
+# alone: join a second key of its own, or lower it to 1, then act with no one (the analysis session, review of PR #95).
+# Those take the members' own seals, and so does a rules change, which is bound to the tip its shadow replay read.
+PROPOSALS = f"refs/vars/proposals/{SCOPE}/"
+VETOES = f"refs/vars/veto/{SCOPE}/"
+# Seconds from this key's first sight of a proposal. A raise is never urgent and can neither weaken the chain nor, up
+# to a majority, stop it; the window is the time to see a mistaken one and veto it, and a day is enough for that.
+COSIGN_WINDOW = 24 * 3600
+LEDGER_FORMAT = "minds.cosign-ledger@1"
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+_MALFORMED = (V.VarsError, subprocess.CalledProcessError, KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError)
+
+
+def proposal_ref(cell_id: bytes) -> str:
+    return PROPOSALS + cell_id.hex()
+
+
+def cosign_ref(pk: bytes) -> str:
+    """The ref the cosigner `pk` keeps its ledger in, beside the chain (`read_ledger`)."""
+    return f"refs/vars/cosign/{SCOPE}/{pk.hex()}"
+
+
+def _refs(repo_dir: Path, prefix: str) -> Dict[str, str]:
+    """The refs under `prefix`: their names after it, and what each points at."""
+    out = subprocess.run(["git", "-C", str(repo_dir), "for-each-ref", "--format=%(refname) %(objectname)", prefix],
+                         capture_output=True, text=True, check=True).stdout
+    return {ref[len(prefix):]: oid for ref, oid in (line.split(" ") for line in out.splitlines())}
+
+
+def _signed(doc: Dict[str, object]) -> bytes:
+    """The bytes a ledger's signature signs: every member of the document but the signature, as canonical JSON."""
+    return LEDGER_FORMAT.encode() + b"\x00" + json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
+
+
+def read_ledger(repo_dir: Path, pk: bytes) -> Dict[str, Dict[str, object]]:
+    """What the cosigner `pk` remembers: `{cell: {"seen": unix seconds of its first sight, "vetoed": bool}}`, in the message
+    of the commit at `cosign_ref`, signed by `pk`. Whoever can push can move that ref, so the ledger counts only under this
+    key's own signature, and one that does not verify is refused rather than read as empty. A missing ledger is empty:
+    every window starts again, which delays a rotation and never hastens one."""
+    out = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--verify", "--quiet", cosign_ref(pk)],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        return {}
+    raw = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "commit", out.stdout.strip()], capture_output=True,
+                         check=True).stdout
+    try:
+        doc = json.loads(raw.split(b"\n\n", 1)[1])
+        if V.ed25519_verify(pk, _signed({k: v for k, v in doc.items() if k != "signature"}), bytes.fromhex(doc["signature"])):
+            return doc["proposals"]
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        pass
+    raise V.VarsError(f"the cosign ledger at {cosign_ref(pk)} is not signed by this key: refusing to cosign")
+
+
+def write_ledger(repo_dir: Path, sk: bytes, proposals: Dict[str, Dict[str, object]]) -> str:
+    """Sign `proposals` and move `cosign_ref` to a commit holding them, the previous ledger its parent."""
+    pk = V.ed25519_pubkey(sk)
+    doc: Dict[str, object] = {"format": LEDGER_FORMAT, "key": pk.hex(), "proposals": proposals}
+    doc["signature"] = V.ed25519_sign(sk, _signed(doc)).hex()
+    git = ["git", "-C", str(repo_dir)]
+    tree = subprocess.run([*git, "mktree"], input="", capture_output=True, text=True, check=True).stdout.strip()
+    last = subprocess.run([*git, "rev-parse", "--verify", "--quiet", cosign_ref(pk)], capture_output=True, text=True)
+    cmd = [*git, "commit-tree", tree, "-m", json.dumps(doc, sort_keys=True, separators=(",", ":"))]
+    if last.returncode == 0:
+        cmd += ["-p", last.stdout.strip()]
+    commit = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()
+    subprocess.run([*git, "update-ref", cosign_ref(pk), commit], check=True)
+    return commit
+
+
+def proposed_act(repo: V.GitVarsRepo, commit: str, cell_id: bytes) -> Tuple[Dict[bytes, bytes], V.Cell, bytes, List[V.Seal]]:
+    """The proposal at `commit`, if it is what a cosigner may seal: `(atoms, cell, the scope it supersedes, its seals on the
+    cell)`. It must be a `threshold` of the roster as it is, to a threshold above the one the scope has and no higher than
+    `majority` of the roster, and the cell rebuilt here from the governing scope now, as `threshold` checks and builds it,
+    must be the proposed cell to the byte. Anything else is refused, and so is a proposal from before a rotation: it
+    supersedes a scope that no longer governs."""
+    atoms, cells, seals = repo.read_cas_tree(commit)
+    cell = cells.get(cell_id)
+    if cell is None or cell.h_schema != V.H_SCHEMA["scope"]:
+        raise V.VarsError("the proposal holds no scope cell of its name")
+    keys = roster(repo)
+    t, hv = V.parse_pol1(atoms[cell.slots[0]])
+    if V.parse_hvec(atoms[hv], require_sorted=True) != keys:
+        raise V.VarsError("cosign seals only a raise of the threshold: a join or any change of the roster takes the "
+                          "members' own seals")
+    k, a, c, say = _threshold_act(repo, t)
+    if t <= max(thresholds(repo)):
+        raise V.VarsError(f"cosign seals only a raise of the threshold: {t} does not raise it, and lowering it takes the "
+                          "members' own seals")
+    if t > majority(len(keys)):
+        raise V.VarsError(f"cosign raises the threshold to a majority of the roster at most, {majority(len(keys))} of "
+                          f"{len(keys)}: above it one member who stops answering stops every rotation")
+    built_atoms, built, s = _rotation(repo, k, a, c, say)
+    if built.id != cell_id:
+        raise V.VarsError("the proposal is not the raise it reads as, built from the governing scope now")
+    return built_atoms, built, s, [x for x in seals.values() if x.h_target == cell_id and x.h_scope_ctx == s]
+
+
+def cosign(repo_dir: Path, sk: bytes, now: Optional[int] = None) -> List[Dict[str, object]]:
+    """As a member on a host of its own (the GitHub Actions witness): give the second seal to each proposal that has waited
+    its window, and admit it. Each proposal at refs/vars/proposals/minds/<cell> is, by name order:
+    - VETOED: a ref refs/vars/veto/minds/<cell> is there, or this key saw one there once (the ledger remembers it);
+    - ON_CHAIN: its cell is on the chain already;
+    - REFUSED: not exactly a raise of the threshold of the governing scope now, up to a majority (`proposed_act`), no
+      other member's seal on it, or refused by the gate;
+    - WAITING: this key first saw it less than COSIGN_WINDOW ago;
+    - COSIGNED: sealed by this key with the other members' seals, admitted by the gate, and the chain moved.
+    The first sight of each proposal is recorded in this key's signed ledger (`read_ledger`); a proposal whose ref is gone
+    (withdrawn) leaves it, unless it was vetoed. No key that remembers a history seals on a fork of it."""
+    now = int(time.time()) if now is None else now
+    pk = V.ed25519_pubkey(sk)
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    refuse_a_fork(repo_dir, pk, tip)
+    if pk not in roster(repo):
+        raise V.VarsError("this key is not on the roster; a member must `join` it first")
+    ledger = read_ledger(repo_dir, pk)
+    proposed, vetoed = _refs(repo_dir, PROPOSALS), set(_refs(repo_dir, VETOES))
+    book = {h: dict(e) for h, e in ledger.items() if e["vetoed"] or h in proposed}
+    out: List[Dict[str, object]] = []
+    for name, commit in sorted(proposed.items()):
+        if not _HEX64.fullmatch(name):
+            out.append({"proposal": name, "outcome": "REFUSED", "why": "not named by a scope cell id"})
+            continue
+        entry = book.setdefault(name, {"seen": now, "vetoed": False})
+        entry["vetoed"] = entry["vetoed"] or name in vetoed
+        row: Dict[str, object] = {"proposal": name, "seen": entry["seen"]}
+        if entry["vetoed"]:
+            out.append({**row, "outcome": "VETOED"})
+            continue
+        cid = bytes.fromhex(name)
+        if cid in repo.read_cas_tree(tip)[1]:
+            del book[name]
+            out.append({**row, "outcome": "ON_CHAIN"})
+            continue
+        try:
+            atoms, cell, s, seals = proposed_act(repo, commit, cid)
+            members = roster(repo)
+            others = [x for x in seals if x.actor_pubkey in members and x.actor_pubkey != pk]  # read: signatures hold
+            if not others:
+                raise V.VarsError("no other member sealed it: a cosign is a second seal")
+        except _MALFORMED as e:
+            out.append({**row, "outcome": "REFUSED", "why": str(e)})
+            continue
+        if now < entry["seen"] + COSIGN_WINDOW:
+            out.append({**row, "outcome": "WAITING", "until": entry["seen"] + COSIGN_WINDOW})
+            continue
+        c = repo.build_candidate_commit(SCOPE, atoms, [cell], [*others, V.Seal.sign(sk, cid, s)], parent_commit=tip)
+        try:
+            repo.admit_and_advance(SCOPE, c, expected_old=tip)
+        except V.VarsError as e:
+            out.append({**row, "outcome": "REFUSED", "why": f"the gate: {e}"})
+            continue
+        tip = c
+        del book[name]
+        out.append({**row, "outcome": "COSIGNED", "commit": c})
+    if book != ledger:
+        write_ledger(repo_dir, sk, book)
     return out
 
 
@@ -1566,24 +1836,37 @@ def _main(argv: List[str]) -> int:
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
     if cmd in ("join", "threshold") and len(argv) >= 2:
+        propose = cmd == "threshold" and argv[-1] == "--propose"
+        argv = argv[:-1] if propose else argv
         rest = argv[3:] if cmd == "join" else argv[2:]
         files = rest[1::2]
         if rest[0::2] != ["--key"] * len(files) or len(rest) % 2 or (cmd == "join" and len(argv) < 3):
             raise SystemExit(__doc__)
         sks = [bytes.fromhex(Path(f).read_text().strip()) for f in files] or [load_or_create_key(repo_dir)]
         print(join(repo_dir, sks, bytes.fromhex(argv[1]), argv[2]) if cmd == "join"
-              else set_threshold(repo_dir, sks, int(argv[1])))
+              else set_threshold(repo_dir, sks, int(argv[1]), propose=propose))
+        return 0
+    if cmd == "cosign" and len(argv) == 3 and argv[1] == "--key":
+        print(json.dumps(cosign(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip())), indent=2))
+        return 0
+    if cmd == "cosign-ref" and len(argv) == 3 and argv[1] == "--key":
+        print(cosign_ref(V.ed25519_pubkey(bytes.fromhex(Path(argv[2]).read_text().strip()))))
         return 0
     if cmd == "verify-release" and len(argv) == 6 and argv[2] == "--key" and argv[4] == "--name":
         sk = bytes.fromhex(Path(argv[3]).read_text().strip())
-        commit, ok, lines = verify_release(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
+        try:
+            commit, ok, lines = verify_release(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
+        except Unreproducible as e:
+            print(json.dumps({"commit": None, "verdict": "UNREPRODUCIBLE", "why": str(e)}))
+            return 3
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
     if cmd == "witness" and len(argv) == 5 and argv[1] == "--key" and argv[3] == "--name":
         done = witness(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip()), argv[4])
         print(json.dumps(done, indent=2))
-        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0  # ANSWERED_BEFORE is the member's to answer
+        # ANSWERED_BEFORE is the member's to answer; UNREPRODUCIBLE is no failure of the release, and waits as it is
+        return 1 if any(x["verdict"] == "INVALID" for x in done) else 0
     if cmd == "shadow" and len(argv) in (2, 4) and argv[2:3] in ([], ["--out"]):
         doc = json.dumps(shadow(repo_dir, bytes.fromhex(argv[1])), indent=2)
         if len(argv) == 4:

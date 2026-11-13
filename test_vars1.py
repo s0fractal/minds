@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
 import io
 import json
 import os
@@ -2023,7 +2024,7 @@ class TestVars1Conformance(unittest.TestCase):
         # Bob rejoins and witnesses a later projection without having attested r2: still missing for the pin
         mc.join(self.repo_path, ska, pkb, "bob")
         _, r4 = mc.release(self.repo_path, ska, "d" * 40, ["test_vars1 OK"])
-        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
+        mc.verify_release(self.repo_path, skb, r4["decision"], "bob", checks=lambda *a, **kw: (["test_vars1 OK"], True))
         b4 = json.loads(json.dumps(V.export_attestation(repo, "minds", r2["decision"], r4["projection"])))
         self.assertIn(pkb.hex(), V.verify_projection(b4["projection"])["witnesses"])
         self.assertEqual(V.verify_attestation(b4, require=[pka, pkb])["required_missing"], [pkb.hex()])
@@ -2129,7 +2130,7 @@ class TestVars1Conformance(unittest.TestCase):
         _, r = mc.release(self.repo_path, sk, m1, ["x OK"], {"sigma-glyph": s_same, "primitives": p1})
         got = []
         mc.verify_release(self.repo_path, skb, r["decision"], "bob",
-                          checks=lambda *a, **kw: (got.append((a[1:], kw)), (["ok"], True))[1])
+                          checks=lambda *a, **kw: (got.append((a[1:], kw)), (["x OK"], True))[1])
         then = V.GitVarsRepo(self.repo_path).commit_chain(V.GitVarsRepo(self.repo_path).ref_commit("minds"))[-2]
         self.assertEqual(got, [((m1, V.H_LENS_KERNEL), {"siblings": {"sigma-glyph": s_same, "primitives": p1},
                                                         "chain": then})])
@@ -4605,7 +4606,7 @@ class TestVars1Conformance(unittest.TestCase):
         waiting = mc.status(self.repo_path)["unwitnessed_projections"]
         self.assertEqual({w["id"] for w in waiting}, {r2["projection"].hex(), r3["projection"].hex()})
         self.assertTrue(all(w["unwitnessed_by"] == [pk2] for w in waiting))
-        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a, **kw: (["x FAILED"], False))
+        mc.verify_release(self.repo_path, sk2, r3["decision"], "second", checks=lambda *a, **kw: (["test_vars1 FAILED"], False))
         before = subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"], capture_output=True).stdout
         st = mc.status(self.repo_path)
         self.assertEqual(subprocess.run(["git", "-C", str(self.repo_path), "for-each-ref"],
@@ -4649,7 +4650,7 @@ class TestVars1Conformance(unittest.TestCase):
             return next(r for r in mc.status(self.repo_path)["releases"] if r["id"] == did.hex())
 
         def answer(did: bytes, ok: bool) -> V.Cell:
-            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a, **kw: (["x OK"], ok))
+            mc.verify_release(self.repo_path, sk2, did, "second", checks=lambda *a, **kw: (["x OK" if ok else "x FAILED"], ok))
             atoms, cells, _ = repo.read_cas_tree(repo.ref_commit("minds"))
             return next(c for c in cells.values() if c.h_schema == V.H_SCHEMA["verdict"] and c.h_payload == did
                         and V.parse_utf8(atoms[c.slots[2]]) == "second")
@@ -4953,7 +4954,7 @@ class TestVars1Conformance(unittest.TestCase):
         mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
         _, r = mc.release(self.repo_path, sk, "a" * 40, ["lake build OK", "test_vars1 OK"])
         mc.verify_release(self.repo_path, sk2, r["decision"], "second",
-                          checks=lambda *a, **kw: (["kernel rebuild hashes to H_LENS_KERNEL OK", "test_vars1 OK"], True))
+                          checks=lambda *a, **kw: (["lake build OK", "test_vars1 OK"], True))
         repo = V.GitVarsRepo(self.repo_path)
         lens = repo.lens("minds")
         atoms, cells = lens["atoms"], lens["cells"]
@@ -4971,7 +4972,7 @@ class TestVars1Conformance(unittest.TestCase):
                          sorted([mine, named[f"{tag}/second/attested/check/01"]]))
         tip = repo.ref_commit("minds")
 
-        out = mc.what_if(self.repo_path, sk, [mine])  # the maintainer supposes the member's kernel rebuild was wrong
+        out = mc.what_if(self.repo_path, sk, [mine])  # the maintainer supposes the member's lake build was wrong
         lost = {x["name"]: x for x in out["lost"]}
         self.assertEqual(lost[f"{tag}/second/attested"]["after"].get("stale"), True)
         self.assertEqual((lost[tag]["before"], lost[tag]["after"]), ({"settled": True}, {"settled": False}),
@@ -6144,7 +6145,7 @@ class TestVars1Conformance(unittest.TestCase):
         sk, skw = b"\x07" * 32, b"\x0a" * 32
         pk, pkw = V.ed25519_pubkey(sk), V.ed25519_pubkey(skw)
         mc.init(work, sk)
-        _, r0 = mc.release(work, sk, sha, ["test_vars1 OK"])
+        _, r0 = mc.release(work, sk, sha, ["spy OK"])
         mc.join(work, sk, pkw, "github-actions")
         live = V.GitVarsRepo(work).ref_commit(mc.SCOPE)
         seen = []
@@ -7850,7 +7851,8 @@ class TestVars1Conformance(unittest.TestCase):
 
         # the workflow does what this test does, and forces nothing but the fetch
         flow = (ROOT_DIR / ".github" / "workflows" / "witness.yml").read_text()
-        self.assertIn("git push --atomic origin refs/vars/heads/minds \"$memory\"", flow)
+        self.assertIn('for ref in "$memory" "$ledger"; do', flow)
+        self.assertIn('git push --atomic origin "${refs[@]}"', flow)
         self.assertEqual(flow.count("--force"), 0)
 
     def test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals(self) -> None:
@@ -8254,7 +8256,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual((row["status"]["settled"], row["keys"]["threshold"], row["keys"]["counted"], row["keys"]["waiting"]),
                          (False, 2, [f"minds-maintainer {pka.hex()[:8]}"], [f"? {pkb.hex()[:8]}"]))
         self.assertIn(f"waiting for: ? {pkb.hex()[:8]}", mc.explain_text(doc))
-        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=lambda *a, **kw: (["ok"], True))
+        mc.verify_release(self.repo_path, skb, r1["decision"], "bob", checks=lambda *a, **kw: (["test_vars1 OK"], True))
         row = mc.explain(self.repo_path, r1["decision"].hex()[:12])["path"][0]
         self.assertEqual((row["status"]["settled"], row["status"]["grounded"], row["keys"]["counted"], row["keys"]["waiting"]),
                          (True, True, sorted([f"bob {pkb.hex()[:8]}", f"minds-maintainer {pka.hex()[:8]}"]), []))
@@ -8583,6 +8585,516 @@ class TestVars1Conformance(unittest.TestCase):
                 self.assertFalse(ch.repo.power(ch.scope, D.id)["grounded"]["exact"])
         for eff, n in seen.items():
             self.assertGreater(n, 0, f"the search never reached {eff}")
+
+    def test_134_the_browser_verifier_answers_as_this_file_does(self) -> None:
+        """verify/minds_verify.mjs, the verifier a browser runs (site/), is a second implementation held to
+        verify/minds_verify.py by verify/vectors.json (tools/verify_vectors.py): every input the offline verifier's
+        tests give it (command lines with their files, calls, kernel inputs), bundles spoiled as text and as seals, and
+        the live chain's published bundles, each with this file's answer. The Python file still gives every recorded
+        answer; the JavaScript file, alone in a fresh folder under Node and importing nothing, gives the same bytes for
+        each: exit code, stdout and stderr of a command line, a call's result or its refusal's class and words. A short
+        or empty run is no agreement. The page reads with it and draws text as text, under `script-src 'self'`."""
+        import importlib.util
+        from collections import Counter
+        spec = importlib.util.spec_from_file_location("verify_vectors", ROOT_DIR / "tools" / "verify_vectors.py")
+        VV = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(VV)
+        doc = json.loads((ROOT_DIR / "verify" / "vectors.json").read_text())
+        vectors = doc["vectors"]
+        self.assertEqual(doc["tests"], list(VV.OFFLINE_TESTS))
+        for t in VV.OFFLINE_TESTS:
+            self.assertTrue(callable(getattr(self, t, None)), f"{t} is not a test of this file")
+        self.assertEqual(VV.check(), [], "minds_verify.py answers a vector otherwise than verify/vectors.json: export again")
+
+        # What the vectors ask: every verdict and refusal, from every recorded test, the spoiled bytes and the live chain
+        codes = Counter(v["answer"]["code"] for v in vectors if v["kind"] == "command")
+        self.assertTrue(all(codes[c] for c in (0, 1, 2, 4)), codes)
+        self.assertEqual(codes[3], 0, "a vector crashed the Python file")
+        raised = Counter(v["answer"].get("raised") for v in vectors if v["kind"] != "command")
+        self.assertTrue(raised[None] and raised["VarsError"], raised)
+        sources = {v["source"] for v in vectors}
+        self.assertEqual(set(VV.OFFLINE_TESTS) - sources, set(), "a recorded test gave the verifier nothing")
+        self.assertIn("live", sources)
+        self.assertGreater(sum(s.startswith("spoiled: seal") for s in sources), 4)
+        self.assertTrue(any(v["kind"] == "command" and "--kernel" in v["argv"] and v["answer"]["code"] == 0 for v in vectors))
+
+        # The module alone: no import but Node's own, behind the command line
+        src = (ROOT_DIR / "verify" / "minds_verify.mjs").read_text()
+        self.assertEqual(re.findall(r"^\s*import\b.*$", src, re.M), [])
+        self.assertEqual(sorted(set(re.findall(r'import\("([^"]+)"\)', src))), ["node:fs/promises", "node:url"])
+        self.assertEqual(re.search(r'KNOWN_RULES_TABLE = `\n(.*?)`;', src, re.S).group(1),
+                         V._MV.KNOWN_RULES_TABLE.lstrip("\n"), "both files interpret the same rules identities")
+        fresh = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fresh, True)
+        for name in ("minds_verify.mjs", "check_vectors.mjs", "vectors.json"):
+            shutil.copy(ROOT_DIR / "verify" / name, fresh / name)
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "the JavaScript verifier is checked under Node")
+        env = {"PATH": str(Path(node).parent)}
+        out = subprocess.run([node, "check_vectors.mjs", "vectors.json"], cwd=fresh, env=env, capture_output=True, text=True)
+        self.assertEqual(out.stderr, "")
+        report = json.loads(out.stdout.strip().splitlines()[-1])
+        self.assertEqual((out.returncode, report["vectors"], report["answered"], report["differences"]),
+                         (0, len(vectors), len(vectors), 0), json.dumps(report["first"], indent=1)[:3000])
+
+        # And as a reader runs it: Node on the file, the live bundles on disk, the keys that endorsed the published
+        # release and witnessed its projection pinned (the page's default); pinning a key that did not is a veto
+        lives = [v for v in vectors if v["source"] == "live" and v["argv"][0] == "verify-attestation"]
+        live = next(v for v in lives if v["answer"]["code"] == 0)
+        self.assertTrue(any(v["answer"]["code"] == 1 for v in lives), "no live pin was shown to veto")
+        blobs = {h: (bytes.fromhex(t[4:]) if t.startswith("hex:") else t.encode()) for h, t in doc["blobs"].items()}
+        for name, h in live["files"].items():
+            (fresh / name).write_bytes(blobs[h])
+        got = subprocess.run([node, "minds_verify.mjs", *live["argv"]], cwd=fresh, env=env, capture_output=True, text=True)
+        self.assertEqual({"code": got.returncode, "stdout": got.stdout, "stderr": got.stderr}, live["answer"])
+
+        # The page: scripts of its own origin only, text drawn as text, the verifier it serves is this one
+        html = (ROOT_DIR / "site" / "index.html").read_text()
+        csp = re.search(r'http-equiv="Content-Security-Policy" content="([^"]+)"', html).group(1)
+        self.assertIn("script-src 'self' 'wasm-unsafe-eval';", csp)  # WebAssembly may compile; JavaScript eval may not
+        self.assertEqual(re.findall(r"'unsafe-[a-z-]+'|'wasm-unsafe-eval'", csp), ["'wasm-unsafe-eval'"])
+        self.assertEqual(re.findall(r"<script\b[^>]*>", html), ['<script type="module" src="page.mjs">'])
+        page = (ROOT_DIR / "site" / "page.mjs").read_text()
+        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
+            self.assertNotIn(sink, page)
+        self.assertIn('from "./minds_verify.mjs"', page)
+
+    def _warrant_checker(self):
+        import importlib.util
+        folder = ROOT_DIR / "experiments" / "warrant-checker"
+        spec = importlib.util.spec_from_file_location("warrant_checker_run", folder / "run.py")
+        run = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(run)
+        return folder, run.VEC, run
+
+    def test_135_a_warrant_checker_runs_as_a_metered_rules_module(self) -> None:
+        """Experiment 6a (experiments/warrant-checker/README.md): warrant's check of a record's body against its schema
+        (engine._schema_problem and _body_problem at the pinned commit), written again as a no_std wasm module and run
+        under meter.py, answers every recorded vector as warrant's own Python does, byte for byte: the code of the return
+        statement the engine took, the reason's text, or the refusal. The vectors hold every schema and every body the
+        engine checks in warrant's store at the pin, this repository's store, those records changed one way at a time,
+        edges (Python's == in a guard's match, code point order against UTF-16 order, the Unicode edges of an actor id)
+        and bytes jcs.loads refuses. A short or one-sided set is no agreement. With MINDS_WARRANT_CHECKER_WASM, a mutant
+        built by tools/run_mutants.py is the module asked."""
+        from collections import Counter
+        folder, VEC, _ = self._warrant_checker()
+        module = Path(os.environ.get("MINDS_WARRANT_CHECKER_WASM") or VEC.MODULE)
+        doc = VEC.load()
+        self.assertEqual((doc["format"], doc["warrant"]["commit"], doc["unicode"]), (VEC.FORMAT, VEC.PIN, "17.0.0"))
+        diffs, steps = VEC.check(module, doc)
+        first = [{**doc["vectors"][i], "expected": want, "got": got} for i, want, got in diffs[:3]]
+        self.assertEqual(len(diffs), 0, json.dumps(first, ensure_ascii=False)[:3000])
+        self.assertEqual(len(steps), len(doc["vectors"]))
+
+        # the comparison bites: the module with one byte of every output's first bytes changed differs on every output
+        changed = bytearray(VEC.MODULE.read_bytes())
+        self.assertEqual(changed.count(b'{"code":"'), 1)
+        changed[changed.index(b'{"code":"') + 2] ^= 1
+        control = Path(tempfile.mkdtemp()) / "changed.wasm"
+        self.addCleanup(shutil.rmtree, control.parent, True)
+        control.write_bytes(bytes(changed))
+        self.assertEqual(len(VEC.check(control, doc)[0]), sum("out" in v for v in doc["vectors"]))
+
+        # what the vectors ask: every return statement, every refusal, from every source
+        codes = Counter(json.loads(v["out"])["code"] if "out" in v else v["refusal"] for v in doc["vectors"])
+        for c in ("counted", "not-counted", *VEC.BODY_CODES, VEC.NOT_CANONICAL, VEC.NOT_AN_INPUT, VEC.NOT_ASKED):
+            self.assertGreater(codes[c], 0, f"no vector reaches {c}")
+        sources = Counter(v["source"] for v in doc["vectors"])
+        self.assertEqual(set(sources), {"live", "live-minds", "mutation", "edge", "jcs"})
+        self.assertEqual(sources["live"], doc["warrant"]["checked"] - doc["warrant"]["unpaired"])
+        self.assertGreater(sources["live"], 1800)
+
+    def test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it(self) -> None:
+        """A run of the warrant checker is a statement (experiments/warrant-checker/run.py) naming the module and the
+        input by SHA-256, the budget, the steps and the result's digest. Rerun, it gives the same bytes. A module
+        changed in one byte is another module: the statement does not count for it. A budget one step short gives
+        `exhausted`, never a verdict, and the run's own steps give the output. A trap is a fault, told apart from the
+        refusal the checker gives the same input. The committed modules are the pinned ones."""
+        folder, VEC, run = self._warrant_checker()
+        module, variant = VEC.MODULE.read_bytes(), (folder / "checker-fault-variant.wasm").read_bytes()
+        self.assertEqual(hashlib.sha256(module).hexdigest(), VEC.MODULE_SHA256)
+        self.assertEqual(hashlib.sha256(variant).hexdigest(), VEC.FAULT_VARIANT_SHA256)
+        live = next(v for v in VEC.load()["vectors"] if v["source"] == "live" and v["in"].startswith('{"record"'))
+        raw = VEC.raw_of(live)
+
+        stated = run.statement(module, raw)
+        doc = json.loads(stated)
+        self.assertEqual((doc["module"], doc["input"], doc["budget"], doc["result"]["kind"]),
+                         (VEC.MODULE_SHA256, hashlib.sha256(raw).hexdigest(), VEC.BUDGET, "output"))
+        self.assertEqual(doc["result"]["sha256"], hashlib.sha256(b"O" + live["out"].encode()).hexdigest())
+        self.assertEqual(run.rerun(stated, module, raw)[0], 0)
+        self.assertEqual(run.statement(module, raw), stated)
+        forged = json.dumps(dict(doc, steps=doc["steps"] + 1), sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        self.assertEqual(run.rerun(forged, module, raw)[0], 1)
+        # the result's encoding is the one a decision's digests hash (vars1.RulesResult.encode)
+        for result, rr in (("E-2", V.RulesResult("refusal", code=-2)), ("X", V.RulesResult("exhausted")),
+                           ("T", V.RulesResult("fault")), ("6869", V.RulesResult("output", output=b"hi"))):
+            self.assertEqual(run.encode(result), (rr.kind, rr.encode()))
+        self.assertEqual(json.loads(run.statement(module, b"[]"))["result"]["sha256"],
+                         hashlib.sha256(V.RulesResult("refusal", code=-2).encode()).hexdigest())
+
+        changed = bytearray(module)
+        changed[changed.index(b"verdict") + 6] ^= 1
+        code, why = run.rerun(stated, bytes(changed), raw)
+        self.assertEqual(code, 2, why)
+        self.assertIn("not counted: the module hashes to", why)
+        self.assertNotEqual(json.loads(run.statement(bytes(changed), raw))["result"], doc["result"])
+        self.assertEqual(run.rerun(stated, module, raw + b" ")[0], 2)
+
+        steps = doc["steps"]
+        short = json.loads(run.statement(module, raw, steps - 1))
+        exact = json.loads(run.statement(module, raw, steps))
+        self.assertEqual((short["result"]["kind"], short["steps"]), ("exhausted", steps - 1))
+        self.assertEqual(short["result"]["sha256"], hashlib.sha256(b"X").hexdigest())
+        self.assertEqual((exact["result"], exact["steps"]), (doc["result"], steps))
+        self.assertEqual(json.loads(run.statement(module, raw, 0))["result"]["kind"], "exhausted")
+
+        refused = json.loads(run.statement(module, b"!" + raw))
+        trapped = json.loads(run.statement(variant, b"!" + raw))
+        self.assertEqual(refused["result"], {"kind": "refusal",
+                                             "sha256": hashlib.sha256(b"E" + struct.pack("<i", -1)).hexdigest()})
+        self.assertEqual(trapped["result"], {"kind": "fault", "sha256": hashlib.sha256(b"T").hexdigest()})
+        self.assertEqual(json.loads(run.statement(variant, raw))["result"], doc["result"])
+
+    def test_137_the_warrant_checker_builds_to_its_pin(self) -> None:
+        """experiments/warrant-checker/ built with its pinned toolchain (Rust 1.100.0) gives the committed module byte
+        for byte, and with `fault-variant` the committed variant: the hash a statement names is the source's."""
+        folder, VEC, _ = self._warrant_checker()
+        cargo = shutil.which("cargo")
+        if cargo is None:
+            if os.environ.get("CI") == "true":
+                self.fail("cargo is not installed on this runner; CI must rebuild the module it pins")
+            self.skipTest("cargo is not installed")
+        for features, pinned in (((), VEC.MODULE_SHA256), (("--features", "fault-variant"), VEC.FAULT_VARIANT_SHA256)):
+            target = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, target, True)
+            b = subprocess.run([cargo, "build", "--release", "--target", "wasm32-unknown-unknown", *features],
+                               cwd=folder, capture_output=True, text=True, env=dict(os.environ, CARGO_TARGET_DIR=str(target)))
+            self.assertEqual(b.returncode, 0, b.stderr[-2000:])
+            built = (target / "wasm32-unknown-unknown" / "release" / "warrant_checker.wasm").read_bytes()
+            self.assertEqual(hashlib.sha256(built).hexdigest(), pinned, features)
+
+    def _git(self, *args: str, stdin: str = "") -> str:
+        return subprocess.run(["git", "-C", str(self.repo_path), *args], input=stdin, capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+    def _cosign_chain(self, mc, members: str = "abp", threshold: int = 2) -> V.GitVarsRepo:
+        """A chain of the live shape: the maintainer m and `members` (b is the witness), at admission and acceptance
+        `threshold`."""
+        mc.init(self.repo_path, SK["m"])
+        for k in members:
+            mc.join(self.repo_path, SK["m"], PK[k], k)
+        mc.set_threshold(self.repo_path, SK["m"], threshold)
+        return V.GitVarsRepo(self.repo_path)
+
+    def test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed(self) -> None:
+        """M2 (the owner's yes, 2026-11-13): at a threshold of 2 a rotation needs two seals, and the witness gives the second
+        to a raise of the threshold another member proposed, once it first saw it COSIGN_WINDOW ago and nobody vetoed it.
+        The first sight is in the witness's own signed ledger, a veto once seen stays, a withdrawn proposal starts its
+        window again, and the gate still decides. Six members, so a majority (4) leaves room for two raises."""
+        mc = self._minds_chain()
+        repo = self._cosign_chain(mc, "abpqc")
+        W, T0 = mc.COSIGN_WINDOW, 1_800_000_000
+        outsider = b"\x0b" * 32
+
+        def cosign(now: int) -> list:
+            return [r["outcome"] for r in mc.cosign(self.repo_path, SK["b"], now=now)]
+
+        def named(commit: str) -> str:
+            (name,) = [n for n, oid in mc._refs(self.repo_path, mc.PROPOSALS).items() if oid == commit]
+            return name
+
+        def propose(threshold: int, *sealers: str) -> str:
+            tip = repo.ref_commit("minds")
+            try:
+                commit = mc.set_threshold(self.repo_path, [SK[k] for k in sealers], threshold, propose=True)
+            except V.VarsError as e:
+                self.fail(f"a proposal goes to no gate, so no quorum refuses it: {e}")
+            self.assertEqual(repo.ref_commit("minds"), tip)
+            return named(commit)
+
+        # a veto: a ref of that name, from anyone; once seen it stays, though its ref goes and the proposal is made again
+        tip = repo.ref_commit("minds")
+        cv = propose(4, "m")
+        self.assertEqual(cosign(T0), ["WAITING"])
+        self._git("update-ref", mc.VETOES + cv, tip)
+        self.assertEqual(cosign(T0 + W), ["VETOED"])
+        self._git("update-ref", "-d", mc.VETOES + cv)
+        self._git("update-ref", "-d", mc.PROPOSALS + cv)
+        self.assertEqual(cosign(T0 + W + 1), [])
+        self.assertEqual(propose(4, "m"), cv)
+        self.assertEqual(cosign(T0 + 3 * W), ["VETOED"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self._git("update-ref", "-d", mc.PROPOSALS + cv)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # proposed, not admitted: alone, its one seal is refused by the gate at a threshold of 2
+        T1 = T0 + 4 * W
+        c1 = propose(3, "m")
+        p1 = mc._refs(self.repo_path, mc.PROPOSALS)[c1]
+        with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+            repo.admit_and_advance("minds", p1, expected_old=tip)
+
+        # only a member cosigns, and none on a fork of what it sealed
+        with self.assertRaisesRegex(V.VarsError, "not on the roster"):
+            mc.cosign(self.repo_path, outsider, now=T1)
+        self._git("update-ref", mc.witnessed_ref(PK["b"]), p1)  # a tip the chain does not descend from
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.cosign(self.repo_path, SK["b"], now=T1)
+        self._git("update-ref", "-d", mc.witnessed_ref(PK["b"]))
+
+        # the first sight starts the window, and a later sight does not move it
+        self.assertEqual(cosign(T1), ["WAITING"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"])[c1], {"seen": T1, "vetoed": False})
+        self.assertEqual(cosign(T1 + W - 1), ["WAITING"])
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # the ledger counts only under the witness's own signature: another key's, or its own with an earlier sight
+        mine = self._git("rev-parse", mc.cosign_ref(PK["b"]))
+        mc.write_ledger(self.repo_path, SK["a"], {c1: {"seen": T1 - W, "vetoed": False}})
+        empty = self._git("mktree")
+        message = self._git("cat-file", "commit", mine).split("\n\n", 1)[1]
+        self.assertIn(f'"seen":{T1},', message)
+        for forged in (self._git("rev-parse", mc.cosign_ref(PK["a"])),
+                       self._git("commit-tree", empty, "-m", message.replace(f'"seen":{T1},', f'"seen":{T1 - W},'))):
+            self._git("update-ref", mc.cosign_ref(PK["b"]), forged)
+            with self.assertRaisesRegex(V.VarsError, "not signed by this key"):
+                mc.cosign(self.repo_path, SK["b"], now=T1 + W - 1)
+        self._git("update-ref", mc.cosign_ref(PK["b"]), mine)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # at the window's end: sealed by the proposer and the witness, admitted by the gate, and gone from the ledger
+        self.assertEqual(cosign(T1 + W), ["COSIGNED"])
+        self.assertEqual(mc.thresholds(repo), (3, 3))
+        _, cells, seals = repo.read_cas_tree(repo.ref_commit("minds"))
+        self.assertEqual({x.actor_pubkey for x in seals.values() if x.h_target.hex() == c1}, {PK["m"], PK["b"]})
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self.assertEqual(cosign(T1 + W + 1), ["ON_CHAIN"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self._git("update-ref", "-d", mc.PROPOSALS + c1)
+
+        # at 3, one proposer and the witness are two seals: the gate refuses, as a row of the report
+        T2, tip = T0 + 10 * W, repo.ref_commit("minds")
+        c2 = propose(4, "m")
+        self.assertEqual(cosign(T2), ["WAITING"])
+        try:
+            (row,) = mc.cosign(self.repo_path, SK["b"], now=T2 + W)
+        except V.VarsError as e:
+            self.fail(f"the gate's refusal is a row of the report, not a stop: {e}")
+        self.assertEqual((row["proposal"], row["outcome"]), (c2, "REFUSED"))
+        self.assertRegex(row["why"], r"\Athe gate: .*admission quorum")
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # withdrawn (its ref gone, no veto): it leaves the ledger, and made again it waits a whole window again
+        self._git("update-ref", "-d", mc.PROPOSALS + c2)
+        self.assertEqual(cosign(T2 + W + 1), [])
+        self.assertNotIn(c2, mc.read_ledger(self.repo_path, PK["b"]))
+        self.assertEqual(propose(4, "m", "a"), c2)
+        U = T2 + W + 10
+        self.assertEqual(cosign(U), ["WAITING"])
+        self.assertEqual(cosign(U + W), ["COSIGNED"])
+        self.assertEqual(mc.thresholds(repo), (4, 4))
+
+        # the workflow cosigns after it witnesses, and pushes the ledger with the chain, in one atomic push
+        flow = (ROOT_DIR / ".github" / "workflows" / "witness.yml").read_text()
+        steps = [flow.find('python tools/minds_chain.py witness --key "$key"'),
+                 flow.find('python tools/minds_chain.py cosign --key "$key" || outcome=$?'), flow.find('rm -f "$key"')]
+        self.assertTrue(0 < steps[0] < steps[1] < steps[2], steps)
+        self.assertIn('ledger=$(python tools/minds_chain.py cosign-ref --key "$key")', flow)
+        self.assertIn('for ref in "$memory" "$ledger"; do', flow)
+
+    def test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it(self) -> None:
+        """What the witness cosigns is rebuilt from the governing scope now and must be the proposed cell to the byte: a
+        raise of the threshold of the roster as it is, up to a majority. A join or a lower threshold is refused, since its
+        second seal would let one member pass the threshold alone (a second key of its own, or a threshold of 1; the
+        analysis session on PR #95). Another member must have sealed it. Every other proposal is refused at first sight and
+        moves nothing. The commands propose a threshold (not a join), name the ledger's ref and cosign."""
+        mc = self._minds_chain()
+        repo = self._cosign_chain(mc)  # m, a, b (the witness), p: four, at 2; a majority is 3
+        T, tip = 1_800_000_000, repo.ref_commit("minds")
+        keys = mc.roster(repo)
+
+        def propose(keys_, admission, acceptance, say, sealers=("m",), name=None, seals=None):
+            atoms, cell, s = mc._rotation(repo, list(keys_), admission, acceptance, say)
+            seals = [V.Seal.sign(SK[k], cell.id, s) for k in sealers] if seals is None else seals(cell, s)
+            c = repo.build_candidate_commit("minds", atoms, [cell], seals, parent_commit=tip)
+            ref = mc.PROPOSALS + (name or cell.id.hex())
+            self._git("update-ref", ref, c)
+            return ref
+
+        def why(ref: str) -> str:
+            """The one row, refused at first sight; the chain does not move."""
+            (row,) = mc.cosign(self.repo_path, SK["b"], now=T)
+            self._git("update-ref", "-d", ref)
+            self.assertEqual(repo.ref_commit("minds"), tip)
+            self.assertEqual(row["outcome"], "REFUSED", row)
+            return row["why"]
+
+        raise3 = (keys, 3, 3, "admission and acceptance 3 of 4")
+        # what loosens is refused: one member joins a second key of its own, or lowers the threshold to 1
+        self.assertIn("a join or any change of the roster", why(propose([*keys, PK["c"]], 2, 2, "c joins")))
+        self.assertIn("1 does not raise it", why(propose(keys, 1, 1, "admission and acceptance 1 of 4")))
+        self.assertIn("a join or any change of the roster", why(propose([PK["m"], PK["a"], PK["b"]], 2, 2, "p leaves")))
+        # above a majority, one member who stops answering would stop every rotation
+        self.assertIn("a majority of the roster at most, 3 of 4", why(propose(keys, 4, 4, "admission and acceptance 4 of 4")))
+        # not what `threshold` builds from the scope now
+        self.assertIn("not the raise it reads as", why(propose(keys, 3, 4, "admission and acceptance 3 of 4")))
+        self.assertIn("has this threshold already", why(propose(keys, 2, 2, "admission and acceptance 2 of 4")))
+        # no other member's seal: the witness's own, a key off the roster; a bad signature does not read at all
+        self.assertIn("no other member", why(propose(*raise3, sealers=("b",))))
+        self.assertIn("no other member", why(propose(*raise3, sealers=("c",))))
+        self.assertIn("signature on SEAL", why(propose(*raise3, seals=lambda cell, s: [
+            V.Seal(h_target=cell.id, h_scope_ctx=s, actor_pubkey=PK["m"], signature=bytes(64))])))
+        # not a scope cell, not named by a cell id, not a commit
+        at: dict = {}
+        put = lambda raw: mc._put(at, raw)  # noqa: E731
+        decision = V.Cell(V.H_SCHEMA["decision"], put(V.atom_utf8("minds/x")), put(V.atom_utf8("not a rotation")),
+                          slots=(put(V.atom_utf8("provisional")), V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        ref = mc.PROPOSALS + decision.id.hex()
+        self._git("update-ref", ref, repo.build_candidate_commit("minds", at, [decision], [], parent_commit=tip))
+        self.assertIn("holds no scope cell", why(ref))
+        right = propose(*raise3, name="x")
+        self.assertEqual(mc.cosign(self.repo_path, SK["b"], now=T)[0]["proposal"], "x")
+        self.assertIn("not named by a scope cell id", why(right))
+        cell_id = mc._rotation(repo, *raise3)[1].id.hex()
+        self.assertIn("not named by a scope cell id", why(propose(*raise3, name=cell_id.upper())))
+        blob = self._git("hash-object", "-w", "--stdin", stdin="not a commit")
+        self._git("update-ref", mc.PROPOSALS + "ab" * 32, blob)
+        why(mc.PROPOSALS + "ab" * 32)
+
+        # the commands: a threshold is proposed, a join is not; the ledger's ref; cosign
+        files = {k: self.repo_path / f"{k}.seed" for k in ("m", "b")}
+        for k, f in files.items():
+            f.write_text(SK[k].hex())
+
+        def main(*argv: str) -> object:
+            """The command's exit code, or that it printed its usage: a refusal here fails on the assertion."""
+            try:
+                return mc._main(list(argv))
+            except SystemExit:
+                return "usage"
+            except V.VarsError as e:
+                return str(e)
+
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(main("join", PK["c"].hex(), "c", "--key", str(files["m"]), "--propose"), "usage")
+            self.assertEqual(main("threshold", "3", "--key", str(files["m"]), "--propose"), 0)
+            self.assertEqual(main("cosign-ref", "--key", str(files["b"])), 0)
+            self.assertEqual(main("cosign", "--key", str(files["b"])), 0)
+        text = out.getvalue()
+        self.assertIn(mc.cosign_ref(PK["b"]) + "\n", text)
+        (row,) = json.loads(text[text.index("["):])
+        self.assertEqual((row["proposal"], row["outcome"]), (cell_id, "WAITING"))
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # made stale by a rotation filed since: it supersedes a scope that no longer governs
+        mc.join(self.repo_path, [SK["m"], SK["a"]], PK["c"], "c")
+        (row,) = mc.cosign(self.repo_path, SK["b"], now=T + mc.COSIGN_WINDOW)
+        self.assertEqual(row["outcome"], "REFUSED")
+        self.assertIn("a join or any change of the roster", row["why"])
+
+    def test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict(self) -> None:
+        """verify-release answers what a release claims, rerun at its commit. Releases of 2026-10-19 before a512f8b read
+        ../sigma-glyph as it happened to be, pinned by neither their statement nor a requirements.txt, so a member cannot
+        rerun their checks: it records neither ATTESTED nor INVALID (UNREPRODUCIBLE, decided before any check runs). A
+        claimed check this verifier does not run is the same. A claimed check that runs and fails is INVALID, pinned or
+        not, and a check the release never claimed is no part of the answer."""
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        mc.join(self.repo_path, SK["m"], PK["b"], "b")
+        repo = V.GitVarsRepo(self.repo_path)
+
+        def git(*args: str, stdin: str = "", env=None) -> str:
+            return subprocess.run(["git", "-C", str(self.repo_path), *args], input=stdin, capture_output=True, text=True,
+                                  check=True, env=env).stdout.strip()
+
+        def commit(salt: str, files: dict) -> str:
+            """A commit holding `files` (path: text), on no branch."""
+            index = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, index, True)
+            env = dict(os.environ, GIT_INDEX_FILE=str(index / "index"))
+            for path, text in {**files, "salt": salt}.items():
+                oid = git("hash-object", "-w", "--stdin", stdin=text)
+                git("update-index", "--add", "--cacheinfo", f"100644,{oid},{path}", env=env)
+            return git("commit-tree", git("write-tree", env=env), "-m", salt)
+
+        old = {"proofs/lakefile.toml": 'srcDir = "../../sigma-glyph/proofs"\n',
+               "test_vars1.py": 'import sys\nvectors = PROJECTS_DIR / "primitives" / "vectors"\n'}
+        ran: list = []
+
+        def answer(sha: str, claimed: list, lines: list, **release) -> tuple:
+            """A member's answer to a release of `sha` claiming `claimed`, its checks giving `lines`: the verdict and the
+            lines it rests on, why it cannot be rerun, or why the statement is refused. Never a crash, so a mutant fails
+            here on the assertion."""
+            _, r = mc.release(self.repo_path, SK["m"], sha, claimed, **release)
+            tip = repo.ref_commit("minds")
+
+            def checks(repo_dir, sha_, rules, siblings=None, chain=None):
+                ran.append(sha_)
+                return list(lines), all(x.endswith(" OK") for x in lines)
+            try:
+                _, ok, got = mc.verify_release(self.repo_path, SK["b"], r["decision"], "bob", checks=checks)
+            except mc.Unreproducible as e:
+                self.assertEqual(repo.ref_commit("minds"), tip)
+                return "UNREPRODUCIBLE", str(e)
+            except V.VarsError as e:
+                return "REFUSED", str(e)
+            return ("ATTESTED" if ok else "INVALID"), got
+
+        # read from a sibling nothing pins: neither verdict, and no check is run
+        unpinned = commit("1", old)
+        verdict, why = answer(unpinned, ["x OK"], ["x OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("sigma-glyph (read by proofs/lakefile.toml:1), primitives (read by test_vars1.py:2)", why)
+        self.assertEqual(ran, [])
+        # pinned by the commit's requirements.txt or by the statement: a failing check is a failure
+        self.assertEqual(answer(commit("2", {**old, "requirements.txt": "sigma-glyph==1.0.1\n"}), ["x OK"], ["x FAILED"]),
+                         ("INVALID", ["x FAILED"]))
+        pins = {"sigma-glyph": "1" * 40, "primitives": "2" * 40}
+        self.assertEqual(answer(commit("3", old), ["x OK"], ["x FAILED"], siblings=pins), ("INVALID", ["x FAILED"]))
+        # a commit that reads no sibling needs no pin
+        self.assertEqual(answer(commit("4", {"test_vars1.py": "import sys\n"}), ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
+
+        # what the statement claims is answered: an unclaimed check that passes is no part of it, and one that fails earns
+        # no seal (leaving it out cannot be told from a commit that did not have it); a claim that fails is INVALID first
+        fresh = lambda salt: commit(salt, {"requirements.txt": "sigma-glyph==1.0.1\n"})  # noqa: E731
+        self.assertEqual(answer(fresh("5a"), ["x OK", "y OK"], ["x OK", "z OK", "y OK"]), ("ATTESTED", ["x OK", "y OK"]))
+        verdict, why = answer(fresh("5"), ["x OK", "y OK"], ["x OK", "z FAILED", "y OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("runs ['z'] at main@", why)
+        self.assertEqual(answer(fresh("6"), ["x OK", "y OK"], ["x OK", "y FAILED"]), ("INVALID", ["x OK", "y FAILED"]))
+        self.assertEqual(answer(fresh("6a"), ["x OK", "y OK"], ["x FAILED"]), ("INVALID", ["x FAILED"]))
+        self.assertEqual(answer(fresh("6b"), ["x OK"], ["x FAILED", "z FAILED"]), ("INVALID", ["x FAILED"]))
+        verdict, why = answer(fresh("7"), ["x OK", "y OK"], ["x OK"])
+        self.assertEqual(verdict, "UNREPRODUCIBLE")
+        self.assertIn("claims ['y'], which this verifier does not run", why)
+        # the profile stays out of the checks and is checked as before
+        self.assertEqual(answer(fresh("8"), ["x OK"], ["x OK"], profile="0" * 64),
+                         ("INVALID", ["x OK", "release profile 000000000000 is the commit's FAILED"]))
+
+        # the witness reports it and records nothing; the command says so with its own exit code
+        tip = repo.ref_commit("minds")
+        try:
+            done = mc.witness(self.repo_path, SK["b"], "bob", checks=lambda *a, **kw: (["x OK"], True))
+        except V.VarsError as e:
+            self.fail(f"an unreproducible release is a row of the witness's report, not a stop: {e}")
+        self.assertEqual({(x["verdict"], x["commit"]) for x in done}, {("UNREPRODUCIBLE", None)})
+        self.assertEqual(len(done), 3)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+        key = self.repo_path / "b.seed"
+        key.write_text(SK["b"].hex())
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path), contextlib.redirect_stdout(io.StringIO()) as out:
+            code = mc._main(["verify-release", next(x["decision"] for x in done if "sigma-glyph" in x["why"]), "--key",
+                             str(key), "--name", "bob"])
+        self.assertEqual((code, json.loads(out.getvalue())["verdict"]), (3, "UNREPRODUCIBLE"))
+
+        # a statement that claims no checks, or one that did not pass, is no release to verify
+        head = f"minds release main@{'a' * 40} rules@{'b' * 64};"
+        for statement in (head, head + " checks:", head + f" checks: ; profile@{'0' * 64}"):
+            with self.assertRaisesRegex(V.VarsError, "names no checks"):
+                mc.claimed_checks(statement)
+        self.assertEqual(mc.claimed_checks(head + f" checks: x OK; y OK; profile@{'0' * 64}"), ["x", "y"])
+        self.assertIn("did not pass", answer(fresh("10"), ["x FAILED"], ["x FAILED"])[1])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

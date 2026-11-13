@@ -308,6 +308,16 @@
       "`test_vars1.py` 39"
      ],
      [
+      "The JavaScript verifier `verify/minds_verify.mjs`, which the release check page runs, answers every recorded offline input as `verify/minds_verify.py` does, byte for byte: the exit code, stdout and stderr of a command line, a call's result or its refusal's class and words",
+      "Tested, with mutants: 516 vectors, the inputs that 27 offline tests give the Python file, bundles spoiled as text and as seals, and the live chain's published bundles, each with the Python file's answer; equal under Node and in Chromium. Its SHA-256 and Ed25519 are the host's WebCrypto, behind the Python file's own filters",
+      "`test_vars1.py` 134; `verify/vectors.json` (`tools/verify_vectors.py`)"
+     ],
+     [
+      "The JavaScript verifier agrees with the Python file beyond the recorded inputs",
+      "**Not established**: no vector reaches a foreign endorsement through an acceptance, a question cell, or a fork shown by seals alone, and mutants of those lines survive. Node's own Ed25519 refuses a small-order R or key and S ≥ L before the port's filters do, so no vector shows those filters on Node; other hosts are not measured",
+      "—"
+     ],
+     [
       "Every Settled release on `refs/vars/heads/minds` was checked in a fresh checkout by each evaluator whose verdict counts, and those are at least its threshold: every member for a release recorded before 2026-11-11, a majority after",
       "Recorded on the chain; each member's checks are its own claim",
       "`tools/minds_chain.py`"
@@ -416,6 +426,31 @@
       "Every normative character of a §0–§5 part is covered by the quotes it carries",
       "**Not established**: a part may say more than its carriers' quotes, as a block did before; block boundaries are now declared in spec.json, not inferred (closing Codex review of PR #4, round 9, F4), but what a part says beyond its quotes is held by nothing",
       "—"
+     ],
+     [
+      "A raise of the admission threshold can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` of the roster as it is, as that command builds it from the governing scope now, to a threshold above the one the scope has and no higher than a majority of the roster, another member sealed it, this key first saw it `COSIGN_WINDOW` (24 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+      "Tested, with mutants: refused at first sight and moving nothing are a join (a second key of one member), a lower threshold, a key leaving, a raise above a majority, a cell not rebuilt to the byte, the threshold it has, the witness's own seal or a non-member's as the only other, a non-scope cell, a name that is no cell id, a ref at no commit, and a proposal made stale by a rotation since; a window one second short waits; at 3, a proposer and the witness are refused by the gate, as a row of the report; on the first head of PR #95, which cosigned joins, the join case fails on its assertion",
+      "`test_vars1.py` 138, 139; `tools/minds_chain.py` `cosign`, `proposed_act`; `.github/workflows/witness.yml`"
+     ],
+     [
+      "What the witness remembers for this, the first sight of each proposal and each veto it saw, is a ledger signed by its own key at `refs/vars/cosign/minds/<key>`: one that does not verify is refused, a missing one starts every window again, a withdrawn proposal leaves it and waits a whole window when made again, and a veto stays in it",
+      "Tested, with mutants: another key's ledger and the witness's own with an earlier sight are refused",
+      "`test_vars1.py` 138; `tools/minds_chain.py` `read_ledger`, `write_ledger`"
+     ],
+     [
+      "The cosigner judges whether a raise is right, a veto cannot be undone, and a join, a lower threshold or a rules change can be cosigned",
+      "**Not established**: it judges form and time, not merit. It never seals a join, a lower threshold or a rules change: its second seal there would let one member pass the threshold alone, by joining a second key of its own or by lowering it to 1 (the analysis session's review of PR #95). At a threshold of 2 each of them takes a second member's own seal, so without antigravity the roster and the rules stay as they are; whether the witness may cosign a join is the owner's separate question. Whoever can push can delete a veto's ref and set the ledger's ref back to a version signed before the veto, which undoes it; the same move gives a withdrawn proposal, made again, its first sight back, so a proposal is stopped by a veto and not by deleting it. Raising the threshold to 2 is a separate act",
+      "`tools/minds_chain.py` `cosign`"
+     ],
+     [
+      "A member's `verify-release` answers what the release's statement claims, rerun at its commit: a claimed check that runs and fails, or a profile that is not the commit's, is INVALID, pinned or not, and an unclaimed check that passes is no part of the answer. A release whose checks cannot be rerun as they ran is answered by neither verdict and nothing is recorded (UNREPRODUCIBLE: the command exits 3, the witness reports it and stays green): its commit carries no requirements.txt, its statement pins no sibling commits and a file of the commit reads a sibling checkout by path, decided before any check runs; or it claims a check this verifier does not run; or its commit fails a check this verifier runs there and the statement does not claim, so leaving a check out earns no seal",
+      "Tested, with mutants: on real commits, `../sigma-glyph` and `\"primitives\"` read unpinned give UNREPRODUCIBLE with no check run; the same reads pinned by requirements.txt or by the statement, with a failing check, give INVALID; a commit that reads no sibling, ATTESTED; an unclaimed check that passes is left out of an ATTESTED, one that fails gives UNREPRODUCIBLE; a claimed check not run gives UNREPRODUCIBLE, one that fails INVALID, and INVALID comes first; the profile is checked as before; the witness's row and the command's exit 3. On main the same test finds the unpinned release ATTESTED",
+      "`test_vars1.py` 140; `tools/minds_chain.py` `verify_release`, `unpinned_reads`, `claimed_checks`"
+     ],
+     [
+      "Every recorded release can be verified again by another member",
+      "**Not established**: five releases of 2026-10-19 (25f3b4a86901, 527881608b40, 53561713aa31, 991c4f2d9009, d44399d82ca4) read `../sigma-glyph` unpinned and nobody can rerun their checks: asked, the witness answers each UNREPRODUCIBLE. Three (38b7192fbb1b, 63ceffddbd97, af245c8e6558) claim `kernel/lens1c.wasm`, which this verifier no longer rebuilds. Three of the five (527881608b40, 991c4f2d9009, d44399d82ca4) name no evaluator policy and read the admission policy: at a threshold of 2 they would stand on one verdict, neither Settled nor INVALID, unless the rules change. A requirements.txt is taken as pinning what a commit reads: true of every commit since a512f8b, but a proxy, and a later commit with one that still read a sibling checkout would not be caught",
+      "`tools/minds_chain.py` `unpinned_reads`; goal Q1 in `.warrant/`"
      ]
     ]
    }
@@ -636,6 +671,35 @@
       "On a store whose invalidates edges climb a rank, which content addressing gives, the Pass 1 equations for `Invalidated` and `Effective` have at most one solution for a given `Accepted`; on a store of local cells whose invalidates edges it decides, the witness prover's `effB` and `deadB` are that solution",
       "Proved (`pass1_kernel_unique`, `IsPass1.kernel_unique`, `kernel_iff`; axioms `propext` and `Quot.sound` only)",
       "`proofs/Vars1/Pass1.lean`; `proofs/Vars1/WitnessComplete.lean`"
+     ]
+    ]
+   }
+  },
+  {
+   "md": "\n## A warrant checker as a rules module (experiments/warrant-checker)\n\nExperiment 6a, measured and not activated: warrant's check of a record's body against its schema, written again as\na no_std wasm module and run under `meter.py`, as a rules module runs. Nothing in the chain, the spec or warrant changes.\n\n"
+  },
+  {
+   "table": {
+    "header": [
+     "Claim",
+     "Evidence",
+     "Where"
+    ],
+    "rows": [
+     [
+      "The warrant checker as a rules module, `experiments/warrant-checker/checker.wasm`, answers every recorded vector as warrant's own `engine._schema_problem` and `engine._body_problem` at f7e3637b do under Python 3.15, byte for byte: the return statement the engine took, the reason's text, or the refusal",
+      "Tested, with mutants: 3615 vectors (every schema and body the engine checks in warrant's store at the pin and in this repository's, those records changed one way at a time, edges of Python's `==`, of code point order and of actor ids, and bytes `jcs.loads` refuses), 0 differences under `meter.py`; 44 mutants, 42 of them one per branch of `src/lib.rs`",
+      "`test_vars1.py` 135; `experiments/warrant-checker/vectors.json.gz` (`vectors.py`)"
+     ],
+     [
+      "A metered run of it is a statement naming the module and the input by SHA-256, the budget, the steps and the result's digest: rerun, it gives the same bytes; a module changed in one byte does not count; a budget one step short gives `exhausted`, never a verdict; a trap is a fault, told apart from a refusal; the committed modules are what `src/` builds",
+      "Tested, with mutants: the statement's encoding is `vars1.RulesResult.encode`'s, a forged statement with the right hashes is refused, and Rust 1.100.0 rebuilds both committed modules to their pins",
+      "`test_vars1.py` 136, 137; `experiments/warrant-checker/run.py`"
+     ],
+     [
+      "The module agrees with warrant beyond the recorded vectors, and warrant answers one way on every interpreter",
+      "**Not established**: nothing is proved, and CI does not ask warrant again (a later engine is a new pin and a new export). warrant's own answer is not one: on 2 vectors (a role U+16D67 U+16D67, composed by Unicode 16) Python 3.13 counts a schema that Python 3.15 does not; the module carries Unicode 17's tables. Measured once, as registered (record 5c724596): the metered module is 0.41 times the Python check's time on the same vectors (README)",
+      "experiments/warrant-checker/README.md"
      ]
     ]
    }
