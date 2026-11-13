@@ -2,6 +2,9 @@
 # (witness-key.yml), `tools/minds_chain.py witness` reruns every check of each release waiting for its verdict, in a
 # fresh checkout with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
 # environment `witness`, which only main may deploy to.
+# Then `tools/minds_chain.py cosign` gives the second seal to each threshold or join another member proposed at
+# refs/vars/proposals/minds/, once this key first saw it 72 hours ago and nobody vetoed it (refs/vars/veto/minds/): form
+# and time, not merit. Its ledger of first sights is signed by the same key and kept beside the chain.
 name: witness
 
 on:
@@ -64,14 +67,16 @@ jobs:
           (umask 077 && printf %s "$SEED" > "$key")
           outcome=0
           memory=$(python tools/minds_chain.py witnessed-ref --key "$key")
+          ledger=$(python tools/minds_chain.py cosign-ref --key "$key")
           # the fetch above brought what this key remembers: on a chain that does not descend from it, this refuses
           python tools/minds_chain.py witness --key "$key" --name github-actions || outcome=$?
+          python tools/minds_chain.py cosign --key "$key" || outcome=$?
           rm -f "$key"
           # an INVALID is a verdict too: it is recorded, and the run then fails. Nothing here is forced: a refusal above
-          # pushes nothing new, and the memory moves only with the chain it names
-          if git rev-parse --verify --quiet "$memory" >/dev/null; then
-            git push --atomic origin refs/vars/heads/minds "$memory"
-          else
-            git push origin refs/vars/heads/minds
-          fi
+          # pushes nothing new, and the memory and the ledger move only with the chain they name
+          refs=(refs/vars/heads/minds)
+          for ref in "$memory" "$ledger"; do
+            if git rev-parse --verify --quiet "$ref" >/dev/null; then refs+=("$ref"); fi
+          done
+          git push --atomic origin "${refs[@]}"
           exit "$outcome"

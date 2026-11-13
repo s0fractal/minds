@@ -3149,6 +3149,57 @@
     "m-wc-encode-kinds",
     "m-wc-rerun-bytes"
    ]
+  },
+  {
+   "id": "assurance.cosign",
+   "source": "ASSURANCE.md",
+   "quote": "A rotation of the scope can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` or a `join` of the governing scope now, as those commands build it, another member sealed it, this key first saw it `COSIGN_WINDOW` (72 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_proposed_rotation_after_its_window_unless_vetoed",
+    "test:test_139_cosign_seals_only_a_threshold_or_a_join_as_those_commands_build_it"
+   ],
+   "mutants": [
+    "m-propose-admits",
+    "m-cosign-fork",
+    "m-cosign-roster",
+    "m-cosign-veto-ref",
+    "m-cosign-on-chain",
+    "m-cosign-window",
+    "m-cosign-no-window",
+    "m-cosign-gate",
+    "m-cosign-not-self",
+    "m-cosign-members-only",
+    "m-cosign-second-seal",
+    "m-cosign-hex-name",
+    "m-cosign-scope-only",
+    "m-cosign-threshold-act",
+    "m-cosign-join-act",
+    "m-cosign-reads-as-join",
+    "m-cosign-rebuilt",
+    "m-cli-propose",
+    "m-witness-flow-cosign",
+    "m-witness-flow-ledger"
+   ]
+  },
+  {
+   "id": "assurance.cosign-ledger",
+   "source": "ASSURANCE.md",
+   "quote": "What the witness remembers for this, the first sight of each proposal and each veto it saw, is a ledger signed by its own key at `refs/vars/cosign/minds/<key>`: one that does not verify is refused, a missing one starts every window again, a withdrawn proposal leaves it and waits a whole window when made again, and a veto stays in it",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_proposed_rotation_after_its_window_unless_vetoed"
+   ],
+   "mutants": [
+    "m-cosign-ledger-signature",
+    "m-cosign-ledger-write",
+    "m-cosign-first-sight",
+    "m-cosign-withdrawn",
+    "m-cosign-veto-kept",
+    "m-cosign-veto-sticky",
+    "m-cosign-on-chain-forget",
+    "m-cosign-cosigned-forget"
+   ]
   }
  ],
  "informative": [

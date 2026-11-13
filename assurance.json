@@ -426,6 +426,21 @@
       "Every normative character of a §0–§5 part is covered by the quotes it carries",
       "**Not established**: a part may say more than its carriers' quotes, as a block did before; block boundaries are now declared in spec.json, not inferred (closing Codex review of PR #4, round 9, F4), but what a part says beyond its quotes is held by nothing",
       "—"
+     ],
+     [
+      "A rotation of the scope can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` or a `join` of the governing scope now, as those commands build it, another member sealed it, this key first saw it `COSIGN_WINDOW` (72 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+      "Tested, with mutants: refused at first sight and moving nothing are the witness's own seal or a non-member's as the only other, a cell not rebuilt to the byte (other acceptance, other thresholds, a key leaving, a join that does not read as one, a weak key, the threshold it has), a non-scope cell, a name that is no cell id, a ref at no commit, and a proposal made stale by a rotation since; a window one second short waits; two seals short of a quorum of four are refused by the gate, as a row of the report",
+      "`test_vars1.py` 138, 139; `tools/minds_chain.py` `cosign`, `proposed_act`; `.github/workflows/witness.yml`"
+     ],
+     [
+      "What the witness remembers for this, the first sight of each proposal and each veto it saw, is a ledger signed by its own key at `refs/vars/cosign/minds/<key>`: one that does not verify is refused, a missing one starts every window again, a withdrawn proposal leaves it and waits a whole window when made again, and a veto stays in it",
+      "Tested, with mutants: another key's ledger and the witness's own with an earlier sight are refused",
+      "`test_vars1.py` 138; `tools/minds_chain.py` `read_ledger`, `write_ledger`"
+     ],
+     [
+      "The cosigner judges whether a rotation is right, a veto cannot be undone, and a rules change can be cosigned",
+      "**Not established**: it judges form and time, not merit. Whoever can push can delete a veto's ref and set the ledger's ref back to a version signed before the veto, which undoes it; the same move gives a withdrawn proposal, made again, its first sight back, so a proposal is stopped by a veto and not by deleting it. A rules change is never proposed: it is bound to the tip its shadow replay read (`change_rules`). Raising the threshold is a separate act",
+      "`tools/minds_chain.py` `cosign`"
      ]
     ]
    }
