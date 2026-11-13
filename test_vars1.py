@@ -8584,5 +8584,78 @@ class TestVars1Conformance(unittest.TestCase):
         for eff, n in seen.items():
             self.assertGreater(n, 0, f"the search never reached {eff}")
 
+    def test_134_the_browser_verifier_answers_as_this_file_does(self) -> None:
+        """verify/minds_verify.mjs, the verifier a browser runs (site/), is a second implementation held to
+        verify/minds_verify.py by verify/vectors.json (tools/verify_vectors.py): every input the offline verifier's
+        tests give it (command lines with their files, calls, kernel inputs), bundles spoiled as text and as seals, and
+        the live chain's published bundles, each with this file's answer. The Python file still gives every recorded
+        answer; the JavaScript file, alone in a fresh folder under Node and importing nothing, gives the same bytes for
+        each: exit code, stdout and stderr of a command line, a call's result or its refusal's class and words. A short
+        or empty run is no agreement. The page reads with it and draws text as text, under `script-src 'self'`."""
+        import importlib.util
+        from collections import Counter
+        spec = importlib.util.spec_from_file_location("verify_vectors", ROOT_DIR / "tools" / "verify_vectors.py")
+        VV = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(VV)
+        doc = json.loads((ROOT_DIR / "verify" / "vectors.json").read_text())
+        vectors = doc["vectors"]
+        self.assertEqual(doc["tests"], list(VV.OFFLINE_TESTS))
+        for t in VV.OFFLINE_TESTS:
+            self.assertTrue(callable(getattr(self, t, None)), f"{t} is not a test of this file")
+        self.assertEqual(VV.check(), [], "minds_verify.py answers a vector otherwise than verify/vectors.json: export again")
+
+        # What the vectors ask: every verdict and refusal, from every recorded test, the spoiled bytes and the live chain
+        codes = Counter(v["answer"]["code"] for v in vectors if v["kind"] == "command")
+        self.assertTrue(all(codes[c] for c in (0, 1, 2, 4)), codes)
+        self.assertEqual(codes[3], 0, "a vector crashed the Python file")
+        raised = Counter(v["answer"].get("raised") for v in vectors if v["kind"] != "command")
+        self.assertTrue(raised[None] and raised["VarsError"], raised)
+        sources = {v["source"] for v in vectors}
+        self.assertEqual(set(VV.OFFLINE_TESTS) - sources, set(), "a recorded test gave the verifier nothing")
+        self.assertIn("live", sources)
+        self.assertGreater(sum(s.startswith("spoiled: seal") for s in sources), 4)
+        self.assertTrue(any(v["kind"] == "command" and "--kernel" in v["argv"] and v["answer"]["code"] == 0 for v in vectors))
+
+        # The module alone: no import but Node's own, behind the command line
+        src = (ROOT_DIR / "verify" / "minds_verify.mjs").read_text()
+        self.assertEqual(re.findall(r"^\s*import\b.*$", src, re.M), [])
+        self.assertEqual(sorted(set(re.findall(r'import\("([^"]+)"\)', src))), ["node:fs/promises", "node:url"])
+        self.assertEqual(re.search(r'KNOWN_RULES_TABLE = `\n(.*?)`;', src, re.S).group(1),
+                         V._MV.KNOWN_RULES_TABLE.lstrip("\n"), "both files interpret the same rules identities")
+        fresh = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, fresh, True)
+        for name in ("minds_verify.mjs", "check_vectors.mjs", "vectors.json"):
+            shutil.copy(ROOT_DIR / "verify" / name, fresh / name)
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "the JavaScript verifier is checked under Node")
+        env = {"PATH": str(Path(node).parent)}
+        out = subprocess.run([node, "check_vectors.mjs", "vectors.json"], cwd=fresh, env=env, capture_output=True, text=True)
+        self.assertEqual(out.stderr, "")
+        report = json.loads(out.stdout.strip().splitlines()[-1])
+        self.assertEqual((out.returncode, report["vectors"], report["answered"], report["differences"]),
+                         (0, len(vectors), len(vectors), 0), json.dumps(report["first"], indent=1)[:3000])
+
+        # And as a reader runs it: Node on the file, the live bundles on disk, the keys that endorsed the published
+        # release and witnessed its projection pinned (the page's default); pinning a key that did not is a veto
+        lives = [v for v in vectors if v["source"] == "live" and v["argv"][0] == "verify-attestation"]
+        live = next(v for v in lives if v["answer"]["code"] == 0)
+        self.assertTrue(any(v["answer"]["code"] == 1 for v in lives), "no live pin was shown to veto")
+        blobs = {h: (bytes.fromhex(t[4:]) if t.startswith("hex:") else t.encode()) for h, t in doc["blobs"].items()}
+        for name, h in live["files"].items():
+            (fresh / name).write_bytes(blobs[h])
+        got = subprocess.run([node, "minds_verify.mjs", *live["argv"]], cwd=fresh, env=env, capture_output=True, text=True)
+        self.assertEqual({"code": got.returncode, "stdout": got.stdout, "stderr": got.stderr}, live["answer"])
+
+        # The page: scripts of its own origin only, text drawn as text, the verifier it serves is this one
+        html = (ROOT_DIR / "site" / "index.html").read_text()
+        csp = re.search(r'http-equiv="Content-Security-Policy" content="([^"]+)"', html).group(1)
+        self.assertIn("script-src 'self' 'wasm-unsafe-eval';", csp)  # WebAssembly may compile; JavaScript eval may not
+        self.assertEqual(re.findall(r"'unsafe-[a-z-]+'|'wasm-unsafe-eval'", csp), ["'wasm-unsafe-eval'"])
+        self.assertEqual(re.findall(r"<script\b[^>]*>", html), ['<script type="module" src="page.mjs">'])
+        page = (ROOT_DIR / "site" / "page.mjs").read_text()
+        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
+            self.assertNotIn(sink, page)
+        self.assertIn('from "./minds_verify.mjs"', page)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

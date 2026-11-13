@@ -3542,5 +3542,165 @@
   "kills": [
    "experiments.decisions.test_profile.T.test_05_trajectories_cost_what_is_shown"
   ]
+ },
+ "m-js-bom": {
+  "file": "verify/minds_verify.mjs",
+  "find": "ignoreBOM: true",
+  "replace": "ignoreBOM: false",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-repeated-key": {
+  "file": "verify/minds_verify.mjs",
+  "find": "if (oneReading && new Set(pairs.map(([k]) => k)).size !== pairs.length) {",
+  "replace": "if (false) {",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-nan": {
+  "file": "verify/minds_verify.mjs",
+  "find": "if (oneReading) throw new VarsError(`${name} is not JSON`);",
+  "replace": "if (false) throw new VarsError(`${name} is not JSON`);",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-withdraw": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    const got = new Set([...inter(t.endorsers(w), pk)].filter((k) => !withdrawn.has(pair(c.slots[2], k))));",
+  "replace": "    const got = new Set([...inter(t.endorsers(w), pk)]);",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-required-witness": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    if (!pr.witnesses.includes(k)) reasons.push(\"did not witness the projection\");",
+  "replace": "",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-hex-space": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    if (space(s[i])) {",
+  "replace": "    if (false) {",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-sort-keys": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    const keys = sortedStr(Object.keys(x));",
+  "replace": "    const keys = Object.keys(x);",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-trailing-comma": {
+  "file": "verify/minds_verify.mjs",
+  "find": "      if (s[i] === \"}\") throw err(\"Illegal trailing comma before end of object\", comma);",
+  "replace": "",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-equivocation": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    equivocation: relation === \"forked\" && sealedBoth.length > 0,",
+  "replace": "    equivocation: relation === \"forked\",",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-same-tip": {
+  "file": "verify/minds_verify.mjs",
+  "find": "  if (relation === \"same\" && (ra.tip !== rb.tip ||",
+  "replace": "  if (relation === \"same\" && (false ||",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-after-tip": {
+  "file": "verify/minds_verify.mjs",
+  "find": "  if (laterBlocks.size) {\n    traceNow = {};",
+  "replace": "  if (false) {\n    traceNow = {};",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-relies": {
+  "file": "verify/minds_verify.mjs",
+  "find": "      if (grounded[i] || !live[i] || !c.relies.every((g) => grounded[g])) return;",
+  "replace": "      if (grounded[i] || !live[i]) return;",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-kernel-output": {
+  "file": "verify/minds_verify.mjs",
+  "find": "      if (how === \"output\" && !eq(got, output)) throw",
+  "replace": "      if (false) throw",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-utf8-e0": {
+  "file": "verify/minds_verify.mjs",
+  "find": "        if (c === 0xe0) lo = 0xa0;",
+  "replace": "        if (c === 0xe0) lo = 0x80;",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-omits": {
+  "file": "verify/minds_verify.mjs",
+  "find": "  if (missing.length) {",
+  "replace": "  if (false) {",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-input-birth": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    if (birth >= commits) throw",
+  "replace": "    if (false) throw",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-inspect-word": {
+  "file": "verify/minds_verify.mjs",
+  "find": "    result.accepted_under_own_policy = result.accepted;\n    delete result.accepted;",
+  "replace": "    result.accepted_under_own_policy = result.accepted;",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-kernel-needed": {
+  "file": "verify/minds_verify.mjs",
+  "find": "  if (modules.length) ok = ok && result.kernel === \"verified_here\";",
+  "replace": "",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-cell-births": {
+  "file": "verify/minds_verify.mjs",
+  "find": "  const cells = (ki) => new Set(ki.cells.filter((c) => c.birth < n).map((c) => `${c.id},${c.birth}`));",
+  "replace": "  const cells = (ki) => new Set(ki.cells.filter((c) => c.birth < n).map((c) => `${c.id}`));",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-js-replay-bound": {
+  "file": "verify/minds_verify.mjs",
+  "find": "        } else if (!assumeReplay || x.slots[1] !== REPLAYED) continue;",
+  "replace": "        } else if (x.slots[1] !== REPLAYED) continue;",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
  }
 }

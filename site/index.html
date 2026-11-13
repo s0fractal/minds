@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https:; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="description" content="Check the latest release of minds in this browser: its attestation and projection bundles, against keys you pin.">
+<title>minds release check</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="mark" href="./">minds</a>
+  <nav>
+    <a href="https://github.com/s0fractal/minds/blob/main/VARS-1-SPEC.md">Spec §4.4</a>
+    <a href="https://github.com/s0fractal/minds/tree/main/verify">Verifier</a>
+    <a href="https://github.com/s0fractal/minds">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<section>
+  <h1>Is the latest release of minds accepted?</h1>
+  <p class="small">This page fetches the latest release's attestation bundle and the projection that covers it, and
+  checks them here, in this browser, with <code>minds_verify.mjs</code>: the verifier of <code>verify/minds_verify.py</code>
+  written again in JavaScript and held to it byte for byte. Nothing is sent anywhere. The answer is only as good as the
+  keys you pin: the bundle's own policy was chosen by whoever made it.</p>
+  <output id="status" class="status">Loading…</output>
+</section>
+
+<section id="release" hidden>
+  <h2>The release</h2>
+  <dl id="release-facts" class="facts"></dl>
+</section>
+
+<section id="pins" hidden>
+  <h2>Keys you trust</h2>
+  <p class="small">Pin the keys whose word you take (<code>--require</code>). The names are what the publisher's index
+  says; check each key against a source of your own.</p>
+  <div id="roster" class="roster"></div>
+  <label for="extra">More keys, 64 hex digits each, one per line</label>
+  <textarea id="extra" rows="3" spellcheck="false" autocomplete="off"></textarea>
+  <div class="options">
+    <label><input type="checkbox" id="kernel"> Run the rules module here (<code>--kernel</code>), so the output is checked, not taken on the witnesses' word</label>
+    <label for="file">Or check a bundle of your own <input type="file" id="file" accept=".json,application/json"></label>
+  </div>
+  <button type="button" id="check">Check</button>
+</section>
+
+<section id="verdict" hidden>
+  <h2 id="verdict-head"></h2>
+  <p id="verdict-word" class="word"></p>
+  <ul id="reasons" class="reasons"></ul>
+  <h3>What was counted</h3>
+  <dl id="counted" class="facts"></dl>
+  <p id="history" class="small"></p>
+  <details>
+    <summary>The verifier's answer, as the command line prints it</summary>
+    <p id="command" class="small"></p>
+    <pre id="raw"></pre>
+  </details>
+</section>
+</main>
+
+<footer>
+  <p>This page runs scripts of its own origin and no other. Bundle text is drawn as text, never as markup.
+  Run the same check yourself: <code>python3 -I minds_verify.py verify-attestation BUNDLE.json --require KEY</code>.</p>
+</footer>
+<script type="module" src="page.mjs"></script>
+</body>
+</html>

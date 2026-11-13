@@ -150,6 +150,18 @@ says nothing of whom to trust in NEW (spec §4.4, One history).
 made it, so they say nothing about whom you trust. Pin the member keys listed above. `inspect-*` checks a bundle
 against its own policies and claims no trust.
 
+A reader with a browser and no Python: `verify/minds_verify.mjs` is the same verifier written again in JavaScript, one
+ES module with no dependencies (the host's WebCrypto for SHA-256 and Ed25519, its WebAssembly for `--kernel`). It is
+held to the Python file byte for byte by `verify/vectors.json` (test 134): every input the offline tests give the
+Python file, bundles spoiled as text and as seals, and the live chain's bundles, with the Python file's answers. Under
+Node it is the same command line (`node minds_verify.mjs verify-attestation BUNDLE.json --require PUBKEY`). The page
+in `site/` runs it on the latest release: `tools/publish_site.py` writes the page, the verifier, the rules modules and
+the bundles of the newest witnessed projection and the newest release accepted at it to the branch `site`, read at
+
+```
+https://raw.githubusercontent.com/s0fractal/minds/site/index.json   # minds.published-bundles@1: names every file
+```
+
 ```
 ```
 
