@@ -67,8 +67,8 @@ spec §4.2). `minds_chain.py threshold 2` raises it with one member's key: it re
 takes effect at once, and a member still admits cells alone. **Run it before the first key of someone outside joins.** Until
 then it stays at 1 on purpose: every key here is ours, and raising it takes Settled from three early releases, whose policy
 falls back to the admission policy, until a second member attests them. After it, `join` and `change-rules` take `--key` once
-per seal the quorum needs, and `join` and `threshold` may be proposed for the witness to cosign (below). To give each a
-veto, pin every key when you verify:
+per seal the quorum needs, and a raise of the threshold may be proposed for the witness to cosign (below). To give each
+a veto, pin every key when you verify:
 `vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 
 `join PUBKEY NAME` adds a member; from then on every release needs verdicts and projection seals from a majority of
@@ -92,13 +92,14 @@ can rewrite both defeats this; rewriting the chain alone turns its run red. Like
 member it may admit cells; what it does is what `main`'s workflow says, and whoever controls the owner's GitHub
 account controls that. Its key joined the roster on 2026-10-29 (chain commit `35a2a467`).
 
-**Cosigned rotations.** At a threshold of 2 a `join` or a `threshold` needs a second seal, and the witness gives it after
-a public window (the owner's yes, 2026-11-13):
-- A member runs `minds_chain.py threshold N --propose` (or `join PUBKEY NAME --propose`), then pushes the ref it names,
-  `refs/vars/proposals/minds/<cell>`. Nothing is admitted.
+**Cosigned raises.** At a threshold of 2 every rotation needs a second seal. The witness gives it only to a raise of the
+threshold, after a public window (the owner's yes, 2026-11-13):
+- A member runs `minds_chain.py threshold N --propose`, then pushes the ref it names, `refs/vars/proposals/minds/<cell>`.
+  Nothing is admitted.
 - After `witness`, each run of the workflow runs `minds_chain.py cosign`. It rebuilds the proposed cell from the governing
-  scope as `threshold` or `join` would and requires it to the byte. It requires another member's seal, a first sight
-  72 hours ago and no veto. Then it adds its seal, and the gate admits the rotation or refuses it.
+  scope as `threshold` would and requires it to the byte. It requires the same roster, a threshold above the one the
+  scope has and no higher than a majority of the roster, another member's seal, a first sight 24 hours ago and no veto.
+  Then it adds its seal, and the gate admits the raise or refuses it.
 - **A veto** is any ref `refs/vars/veto/minds/<cell>`, for example
   `git push origin HEAD:refs/vars/veto/minds/<cell>`. Once the witness has seen one, it never cosigns that cell.
   Deleting the proposal's ref is the proposer's withdrawal: made again, it waits a whole window again.
@@ -106,10 +107,13 @@ a public window (the owner's yes, 2026-11-13):
   `refs/vars/cosign/minds/<key>`, pushed with the chain. A ledger that does not verify stops it; a missing one restarts
   every window.
 
-The witness judges form and time, not merit: for a rotation, threshold 2 means a member, a public window and no veto, not
-two judgments. Whoever can push can delete a veto's ref and set the ledger back to a version signed before it. A rules
-change is never proposed, since it is bound to the tip its shadow replay read: at threshold 2 it takes two members'
-`--key`, or a cosigned `threshold 1` first.
+It cosigns nothing that loosens. A second seal on a `join` would let one member join a second key of its own and then pass
+the threshold alone; on a lower threshold, return it to 1. So a `join`, a lower threshold and a rules change take two
+members' own `--key` at a threshold of 2. Without antigravity, the roster and the rules then stay as they are; whether the
+witness may cosign a join is the owner's separate question.
+
+The witness judges form and time, not merit. Whoever can push can delete a veto's ref and set the ledger back to a version
+signed before it.
 
 ## The spec and the assurance map are renderings
 

@@ -23,13 +23,13 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py threshold N [--key FILE]...
                                               # rotate to the same roster and rules under admission and acceptance
                                               # N-of-n, sealed by each FILE or the maintainer key
-    tools/minds_chain.py join|threshold ... --propose
+    tools/minds_chain.py threshold N [--key FILE]... --propose
                                               # the same rotation, sealed the same way but not admitted: it is kept at
                                               # refs/vars/proposals/minds/<its scope cell> for a cosigner (`cosign`)
-    tools/minds_chain.py cosign --key FILE    # as the witness: seal and admit each proposed threshold or join that this
-                                              # key first saw COSIGN_WINDOW ago, that another member sealed and that
-                                              # nobody vetoed (a ref refs/vars/veto/minds/<cell>); it judges form and
-                                              # time, not merit
+    tools/minds_chain.py cosign --key FILE    # as the witness: seal and admit each proposed raise of the threshold, up
+                                              # to a majority of the roster, that this key first saw COSIGN_WINDOW ago,
+                                              # that another member sealed and that nobody vetoed (a ref
+                                              # refs/vars/veto/minds/<cell>); it judges form and time, not merit
     tools/minds_chain.py cosign-ref --key FILE  # the ref this key keeps its signed cosign ledger in (for the push)
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks at the release's commit, record a
@@ -242,7 +242,7 @@ def _threshold_act(repo: V.GitVarsRepo, threshold: int) -> Tuple[List[bytes], in
     return keys, threshold, threshold, f"admission and acceptance {threshold} of {len(keys)}"
 
 
-def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str, propose: bool = False) -> str:
+def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
     """Rotate the scope so the roster is the current one plus `pubkey`, under the thresholds it has. Every key of `sks`
     seals it, so a roster whose admission threshold is above 1 needs that many here. Any member may admit cells whatever
     the threshold; releases are settled only by all of them (see `release`).
@@ -251,8 +251,7 @@ def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name
     alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2). While
     every key is ours this stays at 1 on purpose, since raising it costs three early releases their Settled until a second
     key attests them (`status` says `one_key_is_the_quorum`)."""
-    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, *_join_act(V.GitVarsRepo(repo_dir), pubkey, name),
-                   propose=propose)
+    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, *_join_act(V.GitVarsRepo(repo_dir), pubkey, name))
 
 
 def set_threshold(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], threshold: int, propose: bool = False) -> str:
@@ -1481,15 +1480,19 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
 
 
 # The cosigner. At an admission threshold of 2 a rotation of the scope needs a second member's seal (§3 check 3). The
-# GitHub Actions witness gives it to a rotation another member proposed, judging form and time, not merit:
-# - form: the proposal is exactly a `threshold` or a `join` of the governing scope now, rebuilt here as those commands
-#   build it, and another member sealed it;
+# GitHub Actions witness gives it to a raise of the threshold another member proposed, judging form and time, not merit:
+# - form: the proposal is exactly a `threshold` of the governing scope now, rebuilt here as that command builds it, to a
+#   threshold above the one it has and no higher than a majority of the roster, and another member sealed it;
 # - time: this key first saw it COSIGN_WINDOW ago;
 # - no veto: nobody has put a ref at refs/vars/veto/minds/<its cell>, and this key never saw one there.
-# It seals nothing else. A rules change is no proposal: it is bound to the tip its shadow replay read (`change_rules`).
+# It seals only what tightens. A second seal on a join or on a lower threshold would let one member pass the threshold
+# alone: join a second key of its own, or lower it to 1, then act with no one (the analysis session, review of PR #95).
+# Those take the members' own seals, and so does a rules change, which is bound to the tip its shadow replay read.
 PROPOSALS = f"refs/vars/proposals/{SCOPE}/"
 VETOES = f"refs/vars/veto/{SCOPE}/"
-COSIGN_WINDOW = 72 * 3600  # seconds from this key's first sight of a proposal
+# Seconds from this key's first sight of a proposal. A raise is never urgent and can neither weaken the chain nor, up
+# to a majority, stop it; the window is the time to see a mistaken one and veto it, and a day is enough for that.
+COSIGN_WINDOW = 24 * 3600
 LEDGER_FORMAT = "minds.cosign-ledger@1"
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _MALFORMED = (V.VarsError, subprocess.CalledProcessError, KeyError, IndexError, TypeError, ValueError, UnicodeDecodeError)
@@ -1552,33 +1555,32 @@ def write_ledger(repo_dir: Path, sk: bytes, proposals: Dict[str, Dict[str, objec
     return commit
 
 
-def proposed_act(repo: V.GitVarsRepo, commit: str, cell_id: bytes) -> Tuple[str, Dict[bytes, bytes], V.Cell, bytes,
-                                                                            List[V.Seal]]:
-    """What the proposal at `commit` is: `(act, atoms, cell, the scope it supersedes, its seals on the cell)`, with `act`
-    `threshold` or `join`. The cell is rebuilt here from the governing scope now, by what `threshold` and `join` check and
-    build, and it must be the proposed cell to the byte. Anything else is refused, and so is a proposal from before a
-    rotation: it supersedes a scope that no longer governs."""
+def proposed_act(repo: V.GitVarsRepo, commit: str, cell_id: bytes) -> Tuple[Dict[bytes, bytes], V.Cell, bytes, List[V.Seal]]:
+    """The proposal at `commit`, if it is what a cosigner may seal: `(atoms, cell, the scope it supersedes, its seals on the
+    cell)`. It must be a `threshold` of the roster as it is, to a threshold above the one the scope has and no higher than
+    `majority` of the roster, and the cell rebuilt here from the governing scope now, as `threshold` checks and builds it,
+    must be the proposed cell to the byte. Anything else is refused, and so is a proposal from before a rotation: it
+    supersedes a scope that no longer governs."""
     atoms, cells, seals = repo.read_cas_tree(commit)
     cell = cells.get(cell_id)
     if cell is None or cell.h_schema != V.H_SCHEMA["scope"]:
         raise V.VarsError("the proposal holds no scope cell of its name")
     keys = roster(repo)
     t, hv = V.parse_pol1(atoms[cell.slots[0]])
-    new = V.parse_hvec(atoms[hv], require_sorted=True)
-    if new == keys:
-        act, (k, a, c, say) = "threshold", _threshold_act(repo, t)
-    elif len(new) == len(keys) + 1 and set(keys) < set(new):
-        (pubkey,) = set(new) - set(keys)
-        payload, head, tail = V.parse_utf8(atoms[cell.h_payload]), f"{SCOPE} roster of {len(new)}: ", " joins"
-        if not (payload.startswith(head) and payload.endswith(tail)):
-            raise V.VarsError("the proposal adds a key but does not read as a join")
-        act, (k, a, c, say) = "join", _join_act(repo, pubkey, payload[len(head):-len(tail)])
-    else:
-        raise V.VarsError("cosign seals only a threshold or a join of the roster as it is")
+    if V.parse_hvec(atoms[hv], require_sorted=True) != keys:
+        raise V.VarsError("cosign seals only a raise of the threshold: a join or any change of the roster takes the "
+                          "members' own seals")
+    k, a, c, say = _threshold_act(repo, t)
+    if t <= max(thresholds(repo)):
+        raise V.VarsError(f"cosign seals only a raise of the threshold: {t} does not raise it, and lowering it takes the "
+                          "members' own seals")
+    if t > majority(len(keys)):
+        raise V.VarsError(f"cosign raises the threshold to a majority of the roster at most, {majority(len(keys))} of "
+                          f"{len(keys)}: above it one member who stops answering stops every rotation")
     built_atoms, built, s = _rotation(repo, k, a, c, say)
     if built.id != cell_id:
-        raise V.VarsError(f"the proposal is not the {act} it reads as, built from the governing scope now")
-    return act, built_atoms, built, s, [x for x in seals.values() if x.h_target == cell_id and x.h_scope_ctx == s]
+        raise V.VarsError("the proposal is not the raise it reads as, built from the governing scope now")
+    return built_atoms, built, s, [x for x in seals.values() if x.h_target == cell_id and x.h_scope_ctx == s]
 
 
 def cosign(repo_dir: Path, sk: bytes, now: Optional[int] = None) -> List[Dict[str, object]]:
@@ -1586,8 +1588,8 @@ def cosign(repo_dir: Path, sk: bytes, now: Optional[int] = None) -> List[Dict[st
     its window, and admit it. Each proposal at refs/vars/proposals/minds/<cell> is, by name order:
     - VETOED: a ref refs/vars/veto/minds/<cell> is there, or this key saw one there once (the ledger remembers it);
     - ON_CHAIN: its cell is on the chain already;
-    - REFUSED: not exactly a threshold or a join of the governing scope now (`proposed_act`), no other member's valid
-      seal on it, or refused by the gate;
+    - REFUSED: not exactly a raise of the threshold of the governing scope now, up to a majority (`proposed_act`), no
+      other member's seal on it, or refused by the gate;
     - WAITING: this key first saw it less than COSIGN_WINDOW ago;
     - COSIGNED: sealed by this key with the other members' seals, admitted by the gate, and the chain moved.
     The first sight of each proposal is recorded in this key's signed ledger (`read_ledger`); a proposal whose ref is gone
@@ -1619,7 +1621,7 @@ def cosign(repo_dir: Path, sk: bytes, now: Optional[int] = None) -> List[Dict[st
             out.append({**row, "outcome": "ON_CHAIN"})
             continue
         try:
-            act, atoms, cell, s, seals = proposed_act(repo, commit, cid)
+            atoms, cell, s, seals = proposed_act(repo, commit, cid)
             members = roster(repo)
             others = [x for x in seals if x.actor_pubkey in members and x.actor_pubkey != pk]  # read: signatures hold
             if not others:
@@ -1627,7 +1629,6 @@ def cosign(repo_dir: Path, sk: bytes, now: Optional[int] = None) -> List[Dict[st
         except _MALFORMED as e:
             out.append({**row, "outcome": "REFUSED", "why": str(e)})
             continue
-        row["act"] = act
         if now < entry["seen"] + COSIGN_WINDOW:
             out.append({**row, "outcome": "WAITING", "until": entry["seen"] + COSIGN_WINDOW})
             continue
@@ -1762,14 +1763,14 @@ def _main(argv: List[str]) -> int:
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
         return 0
     if cmd in ("join", "threshold") and len(argv) >= 2:
-        propose = argv[-1] == "--propose"
+        propose = cmd == "threshold" and argv[-1] == "--propose"
         argv = argv[:-1] if propose else argv
         rest = argv[3:] if cmd == "join" else argv[2:]
         files = rest[1::2]
         if rest[0::2] != ["--key"] * len(files) or len(rest) % 2 or (cmd == "join" and len(argv) < 3):
             raise SystemExit(__doc__)
         sks = [bytes.fromhex(Path(f).read_text().strip()) for f in files] or [load_or_create_key(repo_dir)]
-        print(join(repo_dir, sks, bytes.fromhex(argv[1]), argv[2], propose=propose) if cmd == "join"
+        print(join(repo_dir, sks, bytes.fromhex(argv[1]), argv[2]) if cmd == "join"
               else set_threshold(repo_dir, sks, int(argv[1]), propose=propose))
         return 0
     if cmd == "cosign" and len(argv) == 3 and argv[1] == "--key":

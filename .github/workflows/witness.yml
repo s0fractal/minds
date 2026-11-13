@@ -2,9 +2,10 @@
 # (witness-key.yml), `tools/minds_chain.py witness` reruns every check of each release waiting for its verdict, in a
 # fresh checkout with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
 # environment `witness`, which only main may deploy to.
-# Then `tools/minds_chain.py cosign` gives the second seal to each threshold or join another member proposed at
-# refs/vars/proposals/minds/, once this key first saw it 72 hours ago and nobody vetoed it (refs/vars/veto/minds/): form
-# and time, not merit. Its ledger of first sights is signed by the same key and kept beside the chain.
+# Then `tools/minds_chain.py cosign` gives the second seal to each raise of the threshold (up to a majority) another
+# member proposed at refs/vars/proposals/minds/, once this key first saw it 24 hours ago and nobody vetoed it
+# (refs/vars/veto/minds/): form and time, not merit. It seals no join and no lower threshold. Its ledger of first sights
+# is signed by the same key and kept beside the chain.
 name: witness
 
 on:

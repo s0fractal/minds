@@ -428,8 +428,8 @@
       "—"
      ],
      [
-      "A rotation of the scope can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` or a `join` of the governing scope now, as those commands build it, another member sealed it, this key first saw it `COSIGN_WINDOW` (72 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
-      "Tested, with mutants: refused at first sight and moving nothing are the witness's own seal or a non-member's as the only other, a cell not rebuilt to the byte (other acceptance, other thresholds, a key leaving, a join that does not read as one, a weak key, the threshold it has), a non-scope cell, a name that is no cell id, a ref at no commit, and a proposal made stale by a rotation since; a window one second short waits; two seals short of a quorum of four are refused by the gate, as a row of the report",
+      "A raise of the admission threshold can be proposed instead of filed: sealed by its proposer, kept at `refs/vars/proposals/minds/<cell>`, admitted by no one. The witness (`cosign`) gives it the second seal only if it is exactly a `threshold` of the roster as it is, as that command builds it from the governing scope now, to a threshold above the one the scope has and no higher than a majority of the roster, another member sealed it, this key first saw it `COSIGN_WINDOW` (24 hours) ago, and no ref `refs/vars/veto/minds/<cell>` is there or was ever seen there by this key; the gate still decides",
+      "Tested, with mutants: refused at first sight and moving nothing are a join (a second key of one member), a lower threshold, a key leaving, a raise above a majority, a cell not rebuilt to the byte, the threshold it has, the witness's own seal or a non-member's as the only other, a non-scope cell, a name that is no cell id, a ref at no commit, and a proposal made stale by a rotation since; a window one second short waits; at 3, a proposer and the witness are refused by the gate, as a row of the report; on the first head of PR #95, which cosigned joins, the join case fails on its assertion",
       "`test_vars1.py` 138, 139; `tools/minds_chain.py` `cosign`, `proposed_act`; `.github/workflows/witness.yml`"
      ],
      [
@@ -438,8 +438,8 @@
       "`test_vars1.py` 138; `tools/minds_chain.py` `read_ledger`, `write_ledger`"
      ],
      [
-      "The cosigner judges whether a rotation is right, a veto cannot be undone, and a rules change can be cosigned",
-      "**Not established**: it judges form and time, not merit. Whoever can push can delete a veto's ref and set the ledger's ref back to a version signed before the veto, which undoes it; the same move gives a withdrawn proposal, made again, its first sight back, so a proposal is stopped by a veto and not by deleting it. A rules change is never proposed: it is bound to the tip its shadow replay read (`change_rules`). Raising the threshold is a separate act",
+      "The cosigner judges whether a raise is right, a veto cannot be undone, and a join, a lower threshold or a rules change can be cosigned",
+      "**Not established**: it judges form and time, not merit. It never seals a join, a lower threshold or a rules change: its second seal there would let one member pass the threshold alone, by joining a second key of its own or by lowering it to 1 (the analysis session's review of PR #95). At a threshold of 2 each of them takes a second member's own seal, so without antigravity the roster and the rules stay as they are; whether the witness may cosign a join is the owner's separate question. Whoever can push can delete a veto's ref and set the ledger's ref back to a version signed before the veto, which undoes it; the same move gives a withdrawn proposal, made again, its first sight back, so a proposal is stopped by a veto and not by deleting it. Raising the threshold to 2 is a separate act",
       "`tools/minds_chain.py` `cosign`"
      ]
     ]
