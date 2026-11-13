@@ -3046,6 +3046,37 @@
     "m-lag-scope",
     "m-lag-pins"
    ]
+  },
+  {
+   "id": "assurance.browser-verifier",
+   "source": "ASSURANCE.md",
+   "quote": "The JavaScript verifier `verify/minds_verify.mjs`, which the release check page runs, answers every recorded offline input as `verify/minds_verify.py` does, byte for byte",
+   "status": "tested",
+   "witnesses": [
+    "test:test_134_the_browser_verifier_answers_as_this_file_does"
+   ],
+   "mutants": [
+    "m-js-bom",
+    "m-js-repeated-key",
+    "m-js-nan",
+    "m-js-withdraw",
+    "m-js-required-witness",
+    "m-js-hex-space",
+    "m-js-sort-keys",
+    "m-js-trailing-comma",
+    "m-js-equivocation",
+    "m-js-same-tip",
+    "m-js-after-tip",
+    "m-js-relies",
+    "m-js-kernel-output",
+    "m-js-utf8-e0",
+    "m-js-omits",
+    "m-js-input-birth",
+    "m-js-inspect-word",
+    "m-js-kernel-needed",
+    "m-js-cell-births",
+    "m-js-replay-bound"
+   ]
   }
  ],
  "informative": [
