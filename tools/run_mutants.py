@@ -6,8 +6,8 @@ is assertRaisesRegex meeting the expected refusal in other words: the input is s
 by the gate's net for crashes), so the mutant took nothing away. A mutant of a value the module checks as it loads
 names that check (`refused_at_import`: module and message) and counts only if that check stops the import. The file
 is restored after every mutant.
-A mutant of kernel/src/ or kernel2/src/ is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
-default kernel-mutants-target in the checkout's git directory) and its tests receive the build as MINDS_KERNEL_WASM or MINDS_KERNEL2_WASM.
+A mutant of a crate's src/ in KERNELS is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
+default kernel-mutants-target in the checkout's git directory) and its tests receive the build in the variable KERNELS names.
 
     .venv/bin/python tools/run_mutants.py            # all
     .venv/bin/python tools/run_mutants.py ID...      # some
@@ -30,9 +30,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # A kernel build a mutant may need: its crate, cargo's features, the wasm, the variable that hands it to the tests,
-# and the pinned module it must differ from. A mutant of kernel/src or kernel2/src gets its crate's default build.
+# and the pinned module it must differ from. A mutant of a crate's src/ gets that crate's default build.
 KERNELS = {"kernel": ("kernel", (), "vars_lens.wasm", "MINDS_KERNEL_WASM", "kernel/lens.wasm"),
-           "kernel2": ("kernel2", (), "vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm")}
+           "kernel2": ("kernel2", (), "vars_lens2.wasm", "MINDS_KERNEL2_WASM", "kernel2/lens2.wasm"),
+           # experiment 6a (experiments/warrant-checker/README.md): test 135 asks the build
+           "warrant-checker": ("experiments/warrant-checker", (), "warrant_checker.wasm", "MINDS_WARRANT_CHECKER_WASM",
+                               "experiments/warrant-checker/checker.wasm")}
 
 
 def git_dir() -> Path:
@@ -130,7 +133,7 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
     cleanup: list = []
     try:
         path.write_text(original.replace(m["find"], m["replace"]))
-        build = m.get("build") or next((k for k in ("kernel", "kernel2") if m["file"].startswith(f"{k}/src/")), None)
+        build = m.get("build") or next((k for k, spec in KERNELS.items() if m["file"].startswith(f"{spec[0]}/src/")), None)
         if build:
             # a mutant of a rules kernel: build it beside the real one (its own target directory, never the crate's)
             # and hand the build to the tests; the kernel the gate runs is untouched

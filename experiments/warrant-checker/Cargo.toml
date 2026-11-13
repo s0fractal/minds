@@ -1,0 +1,26 @@
+[package]
+name = "warrant-checker"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# NFC for actor ids (warrant/shapes.py actor_problem); its tables are Unicode 17.0.0, as Python 3.15's unicodedata
+unicode-normalization = { version = "=0.1.25", default-features = false }
+
+[features]
+# a second module that traps on an input starting with "!": the host must tell its fault from the refusal the real
+# module gives the same input (README.md); never the checker
+fault-variant = []
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = true
+incremental = false

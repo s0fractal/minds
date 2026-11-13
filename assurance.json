@@ -651,6 +651,35 @@
    }
   },
   {
+   "md": "\n## A warrant checker as a rules module (experiments/warrant-checker)\n\nExperiment 6a, measured and not activated: warrant's check of a record's body against its schema, written again as\na no_std wasm module and run under `meter.py`, as a rules module runs. Nothing in the chain, the spec or warrant changes.\n\n"
+  },
+  {
+   "table": {
+    "header": [
+     "Claim",
+     "Evidence",
+     "Where"
+    ],
+    "rows": [
+     [
+      "The warrant checker as a rules module, `experiments/warrant-checker/checker.wasm`, answers every recorded vector as warrant's own `engine._schema_problem` and `engine._body_problem` at f7e3637b do under Python 3.15, byte for byte: the return statement the engine took, the reason's text, or the refusal",
+      "Tested, with mutants: 3615 vectors (every schema and body the engine checks in warrant's store at the pin and in this repository's, those records changed one way at a time, edges of Python's `==`, of code point order and of actor ids, and bytes `jcs.loads` refuses), 0 differences under `meter.py`; 44 mutants, 42 of them one per branch of `src/lib.rs`",
+      "`test_vars1.py` 135; `experiments/warrant-checker/vectors.json.gz` (`vectors.py`)"
+     ],
+     [
+      "A metered run of it is a statement naming the module and the input by SHA-256, the budget, the steps and the result's digest: rerun, it gives the same bytes; a module changed in one byte does not count; a budget one step short gives `exhausted`, never a verdict; a trap is a fault, told apart from a refusal; the committed modules are what `src/` builds",
+      "Tested, with mutants: the statement's encoding is `vars1.RulesResult.encode`'s, a forged statement with the right hashes is refused, and Rust 1.100.0 rebuilds both committed modules to their pins",
+      "`test_vars1.py` 136, 137; `experiments/warrant-checker/run.py`"
+     ],
+     [
+      "The module agrees with warrant beyond the recorded vectors, and warrant answers one way on every interpreter",
+      "**Not established**: nothing is proved, and CI does not ask warrant again (a later engine is a new pin and a new export). warrant's own answer is not one: on 2 vectors (a role U+16D67 U+16D67, composed by Unicode 16) Python 3.13 counts a schema that Python 3.15 does not; the module carries Unicode 17's tables. Measured once, as registered (record 5c724596): the metered module is 0.41 times the Python check's time on the same vectors (README)",
+      "experiments/warrant-checker/README.md"
+     ]
+    ]
+   }
+  },
+  {
    "md": "\n## What a reader must read\n\nThe size law of \"decision `d` is in force at tip `T`\": which part of that message is a proof that travels and which is the\nword of someone who read the whole tip. A status reads a **frame**: the cell, the cells that judge it and their seals, what\nthose rely on, every cell with an edge into that set, and, for a cell with no evaluator policy of its own, the governing\nscope's admission policy. While no later object touches the frame the status is what it was, so a witness is renewed by\nreading the commits between two tips and nothing else. The frame cannot be closed from inside: nothing in a cell names\nwhat refers to it, so any commit a reader skips may hold the cell that invalidates the decision, and a reader with no\ncommitment to reverse edges reads every commit. Nor does a summary smaller than the store decide every later status: an\nInvalidated cell changes nothing now and a status later, once what invalidated it is invalidated. Under one set of rules\nthe fold's state and the store are enough; a rules change reads the commits again, which is what the log is for.\n\nMeasured on `refs/vars/heads/minds` at `7c6899b` (2026-11-07; `experiments/witness/frame.py`, pinned by test 19): the\nstatus of each of the 34 Settled decisions reads 2, 3 and 39 cells (least, median, most) of 651, and 1,179, 1,833 and\n15,890 bytes of cells, seals and atoms; the attestation bundle a client receives for it is 310,324, 311,855 and 338,629\nbytes of JSON, of which the kernel's input is 150,784 to 163,532 bytes before hex; 3 of the 47 decisions, all Settled,\nname no evaluator policy and read the scope's. A draft message that carries the positive part as a witness term with\nthe objects it names, and a projection's cell and seals as the vouch, is 9,509, 10,090 and 38,624 bytes. A projection's\nwitnesses vouch for more than the closed-world part and in a form a small message cannot use: they seal the digest of\nthe whole input, which says that nothing else touches the frame only to a reader who holds that input; and for less,\nsince the digests say nothing of Pass 3 or of commits after the tip (`experiments/witness/README.md`).\n\n"
   },
   {
