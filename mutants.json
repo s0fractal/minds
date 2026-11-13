@@ -2921,8 +2921,8 @@
  },
  "m-witness-flow-memory": {
   "file": ".github/workflows/witness.yml",
-  "find": "            git push --atomic origin refs/vars/heads/minds \"$memory\"\n",
-  "replace": "            git push origin refs/vars/heads/minds\n",
+  "find": "          for ref in \"$memory\" \"$ledger\"; do\n",
+  "replace": "          for ref in \"$ledger\"; do\n",
   "kills": [
    "test_125_a_witness_with_no_disk_refuses_a_rewritten_chain"
   ]
@@ -2937,16 +2937,16 @@
  },
  "m-threshold-join-keeps": {
   "file": "tools/minds_chain.py",
-  "find": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), admission, acceptance,",
-  "replace": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, sorted(keys + [pubkey]), 1, 1,",
+  "find": "    return sorted(keys + [pubkey]), admission, acceptance, f\"{name} joins\"",
+  "replace": "    return sorted(keys + [pubkey]), 1, 1, f\"{name} joins\"",
   "kills": [
    "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
   ]
  },
  "m-threshold-rotate": {
   "file": "tools/minds_chain.py",
-  "find": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, threshold, threshold,",
-  "replace": "    return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, keys, 1, threshold,",
+  "find": "    return keys, threshold, threshold, f\"admission and acceptance {threshold} of {len(keys)}\"",
+  "replace": "    return keys, 1, threshold, f\"admission and acceptance {threshold} of {len(keys)}\"",
   "kills": [
    "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
   ]
@@ -4093,6 +4093,238 @@
   "replace": "    if False:",
   "kills": [
    "test_136_a_metered_run_is_named_by_hashes_and_anyone_reruns_it"
+  ]
+ },
+ "m-propose-admits": {
+  "file": "tools/minds_chain.py",
+  "find": "    if propose:\n        subprocess.run",
+  "replace": "    if False:\n        subprocess.run",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-fork": {
+  "file": "tools/minds_chain.py",
+  "find": "    refuse_a_fork(repo_dir, pk, tip)\n    if pk not in roster(repo):",
+  "replace": "    if pk not in roster(repo):",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-roster": {
+  "file": "tools/minds_chain.py",
+  "find": "        raise V.VarsError(\"this key is not on the roster; a member must `join` it first\")\n    ledger = read_ledger",
+  "replace": "        pass\n    ledger = read_ledger",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-ledger-signature": {
+  "file": "tools/minds_chain.py",
+  "find": "        if V.ed25519_verify(pk, _signed({k: v for k, v in doc.items() if k != \"signature\"}), bytes.fromhex(doc[\"signature\"])):",
+  "replace": "        if True:",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-ledger-write": {
+  "file": "tools/minds_chain.py",
+  "find": "    if book != ledger:\n        write_ledger",
+  "replace": "    if False:\n        write_ledger",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-first-sight": {
+  "file": "tools/minds_chain.py",
+  "find": "        entry = book.setdefault(name, {\"seen\": now, \"vetoed\": False})",
+  "replace": "        entry = book[name] = {\"seen\": now, \"vetoed\": book.get(name, {\"vetoed\": False})[\"vetoed\"]}",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-withdrawn": {
+  "file": "tools/minds_chain.py",
+  "find": "    book = {h: dict(e) for h, e in ledger.items() if e[\"vetoed\"] or h in proposed}",
+  "replace": "    book = {h: dict(e) for h, e in ledger.items()}",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-veto-kept": {
+  "file": "tools/minds_chain.py",
+  "find": "    book = {h: dict(e) for h, e in ledger.items() if e[\"vetoed\"] or h in proposed}",
+  "replace": "    book = {h: dict(e) for h, e in ledger.items() if h in proposed}",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-veto-ref": {
+  "file": "tools/minds_chain.py",
+  "find": "        entry[\"vetoed\"] = entry[\"vetoed\"] or name in vetoed",
+  "replace": "        entry[\"vetoed\"] = entry[\"vetoed\"]",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-veto-sticky": {
+  "file": "tools/minds_chain.py",
+  "find": "        entry[\"vetoed\"] = entry[\"vetoed\"] or name in vetoed",
+  "replace": "        entry[\"vetoed\"] = name in vetoed",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-on-chain": {
+  "file": "tools/minds_chain.py",
+  "find": "        if cid in repo.read_cas_tree(tip)[1]:",
+  "replace": "        if False:",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-on-chain-forget": {
+  "file": "tools/minds_chain.py",
+  "find": "            del book[name]\n            out.append({**row, \"outcome\": \"ON_CHAIN\"})",
+  "replace": "            out.append({**row, \"outcome\": \"ON_CHAIN\"})",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-cosigned-forget": {
+  "file": "tools/minds_chain.py",
+  "find": "        del book[name]\n        out.append({**row, \"outcome\": \"COSIGNED\"",
+  "replace": "        out.append({**row, \"outcome\": \"COSIGNED\"",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-window": {
+  "file": "tools/minds_chain.py",
+  "find": "        if now < entry[\"seen\"] + COSIGN_WINDOW:",
+  "replace": "        if now <= entry[\"seen\"] + COSIGN_WINDOW:",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-no-window": {
+  "file": "tools/minds_chain.py",
+  "find": "        if now < entry[\"seen\"] + COSIGN_WINDOW:",
+  "replace": "        if False:",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-gate": {
+  "file": "tools/minds_chain.py",
+  "find": "        except V.VarsError as e:\n            out.append({**row, \"outcome\": \"REFUSED\", \"why\": f\"the gate: {e}\"})",
+  "replace": "        except KeyError as e:\n            out.append({**row, \"outcome\": \"REFUSED\", \"why\": f\"the gate: {e}\"})",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cosign-not-self": {
+  "file": "tools/minds_chain.py",
+  "find": "x.actor_pubkey in members and x.actor_pubkey != pk]",
+  "replace": "x.actor_pubkey in members]",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-members-only": {
+  "file": "tools/minds_chain.py",
+  "find": "x.actor_pubkey in members and x.actor_pubkey != pk]",
+  "replace": "x.actor_pubkey != pk]",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-second-seal": {
+  "file": "tools/minds_chain.py",
+  "find": "            if not others:\n                raise V.VarsError(\"no other member",
+  "replace": "            if False:\n                raise V.VarsError(\"no other member",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-hex-name": {
+  "file": "tools/minds_chain.py",
+  "find": "        if not _HEX64.fullmatch(name):",
+  "replace": "        if not _HEX64.fullmatch(name.lower()):",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-scope-only": {
+  "file": "tools/minds_chain.py",
+  "find": "    if cell is None or cell.h_schema != V.H_SCHEMA[\"scope\"]:",
+  "replace": "    if cell is None:",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-rebuilt": {
+  "file": "tools/minds_chain.py",
+  "find": "    if built.id != cell_id:",
+  "replace": "    if False:",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cli-propose": {
+  "file": "tools/minds_chain.py",
+  "find": "        propose = cmd == \"threshold\" and argv[-1] == \"--propose\"",
+  "replace": "        propose = False",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-witness-flow-cosign": {
+  "file": ".github/workflows/witness.yml",
+  "find": "          python tools/minds_chain.py cosign --key \"$key\" || outcome=$?\n",
+  "replace": "",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-witness-flow-ledger": {
+  "file": ".github/workflows/witness.yml",
+  "find": "          for ref in \"$memory\" \"$ledger\"; do\n",
+  "replace": "          for ref in \"$memory\"; do\n",
+  "kills": [
+   "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-cli-propose-join": {
+  "file": "tools/minds_chain.py",
+  "find": "        propose = cmd == \"threshold\" and argv[-1] == \"--propose\"",
+  "replace": "        propose = argv[-1] == \"--propose\"",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-roster-same": {
+  "file": "tools/minds_chain.py",
+  "find": "    if V.parse_hvec(atoms[hv], require_sorted=True) != keys:\n        raise V.VarsError(\"cosign seals only a raise",
+  "replace": "    if False:\n        raise V.VarsError(\"cosign seals only a raise",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-raise-only": {
+  "file": "tools/minds_chain.py",
+  "find": "    if t <= max(thresholds(repo)):",
+  "replace": "    if False:",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
+  ]
+ },
+ "m-cosign-majority": {
+  "file": "tools/minds_chain.py",
+  "find": "    if t > majority(len(keys)):",
+  "replace": "    if False:",
+  "kills": [
+   "test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it"
   ]
  }
 }

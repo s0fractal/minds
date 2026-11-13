@@ -7851,7 +7851,8 @@ class TestVars1Conformance(unittest.TestCase):
 
         # the workflow does what this test does, and forces nothing but the fetch
         flow = (ROOT_DIR / ".github" / "workflows" / "witness.yml").read_text()
-        self.assertIn("git push --atomic origin refs/vars/heads/minds \"$memory\"", flow)
+        self.assertIn('for ref in "$memory" "$ledger"; do', flow)
+        self.assertIn('git push --atomic origin "${refs[@]}"', flow)
         self.assertEqual(flow.count("--force"), 0)
 
     def test_126_a_rules_change_at_a_threshold_of_two_takes_two_seals(self) -> None:
@@ -8772,6 +8773,225 @@ class TestVars1Conformance(unittest.TestCase):
             self.assertEqual(b.returncode, 0, b.stderr[-2000:])
             built = (target / "wasm32-unknown-unknown" / "release" / "warrant_checker.wasm").read_bytes()
             self.assertEqual(hashlib.sha256(built).hexdigest(), pinned, features)
+
+    def _git(self, *args: str, stdin: str = "") -> str:
+        return subprocess.run(["git", "-C", str(self.repo_path), *args], input=stdin, capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+    def _cosign_chain(self, mc, members: str = "abp", threshold: int = 2) -> V.GitVarsRepo:
+        """A chain of the live shape: the maintainer m and `members` (b is the witness), at admission and acceptance
+        `threshold`."""
+        mc.init(self.repo_path, SK["m"])
+        for k in members:
+            mc.join(self.repo_path, SK["m"], PK[k], k)
+        mc.set_threshold(self.repo_path, SK["m"], threshold)
+        return V.GitVarsRepo(self.repo_path)
+
+    def test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed(self) -> None:
+        """M2 (the owner's yes, 2026-11-13): at a threshold of 2 a rotation needs two seals, and the witness gives the second
+        to a raise of the threshold another member proposed, once it first saw it COSIGN_WINDOW ago and nobody vetoed it.
+        The first sight is in the witness's own signed ledger, a veto once seen stays, a withdrawn proposal starts its
+        window again, and the gate still decides. Six members, so a majority (4) leaves room for two raises."""
+        mc = self._minds_chain()
+        repo = self._cosign_chain(mc, "abpqc")
+        W, T0 = mc.COSIGN_WINDOW, 1_800_000_000
+        outsider = b"\x0b" * 32
+
+        def cosign(now: int) -> list:
+            return [r["outcome"] for r in mc.cosign(self.repo_path, SK["b"], now=now)]
+
+        def named(commit: str) -> str:
+            (name,) = [n for n, oid in mc._refs(self.repo_path, mc.PROPOSALS).items() if oid == commit]
+            return name
+
+        def propose(threshold: int, *sealers: str) -> str:
+            tip = repo.ref_commit("minds")
+            try:
+                commit = mc.set_threshold(self.repo_path, [SK[k] for k in sealers], threshold, propose=True)
+            except V.VarsError as e:
+                self.fail(f"a proposal goes to no gate, so no quorum refuses it: {e}")
+            self.assertEqual(repo.ref_commit("minds"), tip)
+            return named(commit)
+
+        # a veto: a ref of that name, from anyone; once seen it stays, though its ref goes and the proposal is made again
+        tip = repo.ref_commit("minds")
+        cv = propose(4, "m")
+        self.assertEqual(cosign(T0), ["WAITING"])
+        self._git("update-ref", mc.VETOES + cv, tip)
+        self.assertEqual(cosign(T0 + W), ["VETOED"])
+        self._git("update-ref", "-d", mc.VETOES + cv)
+        self._git("update-ref", "-d", mc.PROPOSALS + cv)
+        self.assertEqual(cosign(T0 + W + 1), [])
+        self.assertEqual(propose(4, "m"), cv)
+        self.assertEqual(cosign(T0 + 3 * W), ["VETOED"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self._git("update-ref", "-d", mc.PROPOSALS + cv)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # proposed, not admitted: alone, its one seal is refused by the gate at a threshold of 2
+        T1 = T0 + 4 * W
+        c1 = propose(3, "m")
+        p1 = mc._refs(self.repo_path, mc.PROPOSALS)[c1]
+        with self.assertRaisesRegex(V.VarsError, "admission quorum"):
+            repo.admit_and_advance("minds", p1, expected_old=tip)
+
+        # only a member cosigns, and none on a fork of what it sealed
+        with self.assertRaisesRegex(V.VarsError, "not on the roster"):
+            mc.cosign(self.repo_path, outsider, now=T1)
+        self._git("update-ref", mc.witnessed_ref(PK["b"]), p1)  # a tip the chain does not descend from
+        with self.assertRaisesRegex(V.VarsError, "sign a fork"):
+            mc.cosign(self.repo_path, SK["b"], now=T1)
+        self._git("update-ref", "-d", mc.witnessed_ref(PK["b"]))
+
+        # the first sight starts the window, and a later sight does not move it
+        self.assertEqual(cosign(T1), ["WAITING"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"])[c1], {"seen": T1, "vetoed": False})
+        self.assertEqual(cosign(T1 + W - 1), ["WAITING"])
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # the ledger counts only under the witness's own signature: another key's, or its own with an earlier sight
+        mine = self._git("rev-parse", mc.cosign_ref(PK["b"]))
+        mc.write_ledger(self.repo_path, SK["a"], {c1: {"seen": T1 - W, "vetoed": False}})
+        empty = self._git("mktree")
+        message = self._git("cat-file", "commit", mine).split("\n\n", 1)[1]
+        self.assertIn(f'"seen":{T1},', message)
+        for forged in (self._git("rev-parse", mc.cosign_ref(PK["a"])),
+                       self._git("commit-tree", empty, "-m", message.replace(f'"seen":{T1},', f'"seen":{T1 - W},'))):
+            self._git("update-ref", mc.cosign_ref(PK["b"]), forged)
+            with self.assertRaisesRegex(V.VarsError, "not signed by this key"):
+                mc.cosign(self.repo_path, SK["b"], now=T1 + W - 1)
+        self._git("update-ref", mc.cosign_ref(PK["b"]), mine)
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # at the window's end: sealed by the proposer and the witness, admitted by the gate, and gone from the ledger
+        self.assertEqual(cosign(T1 + W), ["COSIGNED"])
+        self.assertEqual(mc.thresholds(repo), (3, 3))
+        _, cells, seals = repo.read_cas_tree(repo.ref_commit("minds"))
+        self.assertEqual({x.actor_pubkey for x in seals.values() if x.h_target.hex() == c1}, {PK["m"], PK["b"]})
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self.assertEqual(cosign(T1 + W + 1), ["ON_CHAIN"])
+        self.assertEqual(mc.read_ledger(self.repo_path, PK["b"]), {cv: {"seen": T0, "vetoed": True}})
+        self._git("update-ref", "-d", mc.PROPOSALS + c1)
+
+        # at 3, one proposer and the witness are two seals: the gate refuses, as a row of the report
+        T2, tip = T0 + 10 * W, repo.ref_commit("minds")
+        c2 = propose(4, "m")
+        self.assertEqual(cosign(T2), ["WAITING"])
+        try:
+            (row,) = mc.cosign(self.repo_path, SK["b"], now=T2 + W)
+        except V.VarsError as e:
+            self.fail(f"the gate's refusal is a row of the report, not a stop: {e}")
+        self.assertEqual((row["proposal"], row["outcome"]), (c2, "REFUSED"))
+        self.assertRegex(row["why"], r"\Athe gate: .*admission quorum")
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # withdrawn (its ref gone, no veto): it leaves the ledger, and made again it waits a whole window again
+        self._git("update-ref", "-d", mc.PROPOSALS + c2)
+        self.assertEqual(cosign(T2 + W + 1), [])
+        self.assertNotIn(c2, mc.read_ledger(self.repo_path, PK["b"]))
+        self.assertEqual(propose(4, "m", "a"), c2)
+        U = T2 + W + 10
+        self.assertEqual(cosign(U), ["WAITING"])
+        self.assertEqual(cosign(U + W), ["COSIGNED"])
+        self.assertEqual(mc.thresholds(repo), (4, 4))
+
+        # the workflow cosigns after it witnesses, and pushes the ledger with the chain, in one atomic push
+        flow = (ROOT_DIR / ".github" / "workflows" / "witness.yml").read_text()
+        steps = [flow.find('python tools/minds_chain.py witness --key "$key"'),
+                 flow.find('python tools/minds_chain.py cosign --key "$key" || outcome=$?'), flow.find('rm -f "$key"')]
+        self.assertTrue(0 < steps[0] < steps[1] < steps[2], steps)
+        self.assertIn('ledger=$(python tools/minds_chain.py cosign-ref --key "$key")', flow)
+        self.assertIn('for ref in "$memory" "$ledger"; do', flow)
+
+    def test_139_cosign_seals_only_a_raise_of_the_threshold_as_the_command_builds_it(self) -> None:
+        """What the witness cosigns is rebuilt from the governing scope now and must be the proposed cell to the byte: a
+        raise of the threshold of the roster as it is, up to a majority. A join or a lower threshold is refused, since its
+        second seal would let one member pass the threshold alone (a second key of its own, or a threshold of 1; the
+        analysis session on PR #95). Another member must have sealed it. Every other proposal is refused at first sight and
+        moves nothing. The commands propose a threshold (not a join), name the ledger's ref and cosign."""
+        mc = self._minds_chain()
+        repo = self._cosign_chain(mc)  # m, a, b (the witness), p: four, at 2; a majority is 3
+        T, tip = 1_800_000_000, repo.ref_commit("minds")
+        keys = mc.roster(repo)
+
+        def propose(keys_, admission, acceptance, say, sealers=("m",), name=None, seals=None):
+            atoms, cell, s = mc._rotation(repo, list(keys_), admission, acceptance, say)
+            seals = [V.Seal.sign(SK[k], cell.id, s) for k in sealers] if seals is None else seals(cell, s)
+            c = repo.build_candidate_commit("minds", atoms, [cell], seals, parent_commit=tip)
+            ref = mc.PROPOSALS + (name or cell.id.hex())
+            self._git("update-ref", ref, c)
+            return ref
+
+        def why(ref: str) -> str:
+            """The one row, refused at first sight; the chain does not move."""
+            (row,) = mc.cosign(self.repo_path, SK["b"], now=T)
+            self._git("update-ref", "-d", ref)
+            self.assertEqual(repo.ref_commit("minds"), tip)
+            self.assertEqual(row["outcome"], "REFUSED", row)
+            return row["why"]
+
+        raise3 = (keys, 3, 3, "admission and acceptance 3 of 4")
+        # what loosens is refused: one member joins a second key of its own, or lowers the threshold to 1
+        self.assertIn("a join or any change of the roster", why(propose([*keys, PK["c"]], 2, 2, "c joins")))
+        self.assertIn("1 does not raise it", why(propose(keys, 1, 1, "admission and acceptance 1 of 4")))
+        self.assertIn("a join or any change of the roster", why(propose([PK["m"], PK["a"], PK["b"]], 2, 2, "p leaves")))
+        # above a majority, one member who stops answering would stop every rotation
+        self.assertIn("a majority of the roster at most, 3 of 4", why(propose(keys, 4, 4, "admission and acceptance 4 of 4")))
+        # not what `threshold` builds from the scope now
+        self.assertIn("not the raise it reads as", why(propose(keys, 3, 4, "admission and acceptance 3 of 4")))
+        self.assertIn("has this threshold already", why(propose(keys, 2, 2, "admission and acceptance 2 of 4")))
+        # no other member's seal: the witness's own, a key off the roster; a bad signature does not read at all
+        self.assertIn("no other member", why(propose(*raise3, sealers=("b",))))
+        self.assertIn("no other member", why(propose(*raise3, sealers=("c",))))
+        self.assertIn("signature on SEAL", why(propose(*raise3, seals=lambda cell, s: [
+            V.Seal(h_target=cell.id, h_scope_ctx=s, actor_pubkey=PK["m"], signature=bytes(64))])))
+        # not a scope cell, not named by a cell id, not a commit
+        at: dict = {}
+        put = lambda raw: mc._put(at, raw)  # noqa: E731
+        decision = V.Cell(V.H_SCHEMA["decision"], put(V.atom_utf8("minds/x")), put(V.atom_utf8("not a rotation")),
+                          slots=(put(V.atom_utf8("provisional")), V.H_EMPTY, V.H_EMPTY, V.H_EMPTY))
+        ref = mc.PROPOSALS + decision.id.hex()
+        self._git("update-ref", ref, repo.build_candidate_commit("minds", at, [decision], [], parent_commit=tip))
+        self.assertIn("holds no scope cell", why(ref))
+        right = propose(*raise3, name="x")
+        self.assertEqual(mc.cosign(self.repo_path, SK["b"], now=T)[0]["proposal"], "x")
+        self.assertIn("not named by a scope cell id", why(right))
+        cell_id = mc._rotation(repo, *raise3)[1].id.hex()
+        self.assertIn("not named by a scope cell id", why(propose(*raise3, name=cell_id.upper())))
+        blob = self._git("hash-object", "-w", "--stdin", stdin="not a commit")
+        self._git("update-ref", mc.PROPOSALS + "ab" * 32, blob)
+        why(mc.PROPOSALS + "ab" * 32)
+
+        # the commands: a threshold is proposed, a join is not; the ledger's ref; cosign
+        files = {k: self.repo_path / f"{k}.seed" for k in ("m", "b")}
+        for k, f in files.items():
+            f.write_text(SK[k].hex())
+
+        def main(*argv: str) -> object:
+            """The command's exit code, or that it printed its usage: a refusal here fails on the assertion."""
+            try:
+                return mc._main(list(argv))
+            except SystemExit:
+                return "usage"
+            except V.VarsError as e:
+                return str(e)
+
+        with unittest.mock.patch.object(mc, "ROOT", self.repo_path), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(main("join", PK["c"].hex(), "c", "--key", str(files["m"]), "--propose"), "usage")
+            self.assertEqual(main("threshold", "3", "--key", str(files["m"]), "--propose"), 0)
+            self.assertEqual(main("cosign-ref", "--key", str(files["b"])), 0)
+            self.assertEqual(main("cosign", "--key", str(files["b"])), 0)
+        text = out.getvalue()
+        self.assertIn(mc.cosign_ref(PK["b"]) + "\n", text)
+        (row,) = json.loads(text[text.index("["):])
+        self.assertEqual((row["proposal"], row["outcome"]), (cell_id, "WAITING"))
+        self.assertEqual(repo.ref_commit("minds"), tip)
+
+        # made stale by a rotation filed since: it supersedes a scope that no longer governs
+        mc.join(self.repo_path, [SK["m"], SK["a"]], PK["c"], "c")
+        (row,) = mc.cosign(self.repo_path, SK["b"], now=T + mc.COSIGN_WINDOW)
+        self.assertEqual(row["outcome"], "REFUSED")
+        self.assertIn("a join or any change of the roster", row["why"])
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
