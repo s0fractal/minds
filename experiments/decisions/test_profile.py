@@ -255,8 +255,12 @@ class T(unittest.TestCase):
         self.assertEqual(moved["on-g1"]["flipped_grounded"], [g1.id.hex()])
 
     def test_03_the_live_chain(self):
-        """On refs/vars/heads/minds, a profile of every decision: under `min_cut_threshold` 1 the lens is silent (every
-        decision is Grounded); under 2 every decision is FRAGILITY, at margin 0. A profile of five decisions lists
+        """On refs/vars/heads/minds, a profile of every decision, held to the lens itself rather than to a count of the
+        day: under `min_cut_threshold` 1 the profile names exactly the decisions the lens does not hold Settled and
+        Grounded, each an INCOMPLETENESS (a release between its record and a second member's verdict, say), and
+        nothing else; under 2 it adds a FRAGILITY for exactly the Grounded decisions at margin 0 (endorsers counted
+        by Pass 3 equal to the threshold). Until 2026-11-13 this asserted silence under 1, which a release recorded
+        and not yet witnessed turned red on every push in that window. A profile of five decisions lists
         silent the readings that touch none of them, and the gate confirms ten of those change none. Skipped when
         the chain is not fetched, unless MINDS_REQUIRE_CHAIN=1."""
         repo = V.GitVarsRepo(ROOT)
@@ -272,9 +276,15 @@ class T(unittest.TestCase):
         quiet = PF.filter_tensions(repo, "minds", {**prof, "preferences": {"min_cut_threshold": 1}})
         loud = PF.filter_tensions(repo, "minds", {**prof, "preferences": {"min_cut_threshold": 2}})
         self.assertLess(time.perf_counter() - t0, 30.0)
-        self.assertEqual(quiet["tensions"], [])
-        self.assertEqual({t["kind"] for t in loud["tensions"]}, {"FRAGILITY"})
-        self.assertEqual(sorted(t["target_goal"] for t in loud["tensions"]), [d.hex() for d in ds])
+        held = [d for d in ds if lens["settled"].get(d) and lens["grounded"].get(d)]
+        short = [d.hex() for d in ds if d not in held]
+        margin0 = [d.hex() for d in held if len(lens["endorsers"][d]) == lens["evaluators"][d][0]]
+        self.assertGreater(len(held), 40)  # the live chain holds its releases: an empty `held` would pass vacuously
+        self.assertEqual(sorted((t["kind"], t["target_goal"]) for t in quiet["tensions"]),
+                         [("INCOMPLETENESS", g) for g in short])
+        self.assertEqual(sorted(t["target_goal"] for t in loud["tensions"] if t["kind"] == "FRAGILITY"), margin0)
+        self.assertEqual(sorted((t["kind"], t["target_goal"]) for t in loud["tensions"] if t["kind"] != "FRAGILITY"),
+                         [("INCOMPLETENESS", g) for g in short])
         keys = sorted(V.parse_hvec(atoms[V.parse_pol1(atoms[cells[lens["scope"]].slots[0]])[1]], require_sorted=True))
         five = ds[:5]
         others = [d for d in ds if d not in five]
