@@ -1,0 +1,21 @@
+[package]
+name = "vars-lens2-arena"
+version = "2.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[features]
+# a second v2-encoded rules module for the tests of a rules change under v2 (test_vars1.py); never pinned in RULES
+test-variant = []
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+strip = true
+incremental = false
