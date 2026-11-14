@@ -95,7 +95,7 @@ theorem Q_eq {v : Nat} (hv : v < F.n) : Q F v = step1 F (Q F) v :=
   fill_fix (step1 F) (step1_dep F) F.n _ v hv
 
 theorem pass1_get {v : Nat} (hv : v < F.n) : geta (pass1 F) v = Q F v := by
-  simp [pass1, Q, geta_tab _ _ hv]
+  simp [pass1, tabFill, Q, geta_tab _ _ hv]
 
 theorem inv_raw {v : Nat} (hv : v < F.n) :
     (Q F v).inv = true ↔ ∃ w, (w < F.n ∧ v < w) ∧
@@ -378,7 +378,7 @@ theorem Lq_eq (S : Array Bool) {x : Nat} (hx : x < F.n) : Lq F S x = stepLive F 
   fill_fix _ (stepLive_dep F _ S) F.n _ x hx
 
 theorem live_get (S : Array Bool) {x : Nat} (hx : x < F.n) : geta (live F (pass1 F) S) x = Lq F S x := by
-  simp [live, Lq, geta_tab _ _ hx]
+  simp [live, tabFill, Lq, geta_tab _ _ hx]
 
 theorem live_raw (S : Array Bool) {x : Nat} (hx : x < F.n) :
     Lq F S x = true ↔
@@ -481,7 +481,7 @@ theorem sweep_corr (S : Array Bool) :
 include hT in
 theorem round_corr (S : Array Bool) (v : Fin F.n) :
     geta (round F (pass1 F) S) v.val = true ↔ Vars1.round (inst2 F) (fun a => geta S a.val = true) v := by
-  simp only [round, geta_tab _ _ v.isLt]
+  simp only [round, tabFillUp, geta_tab _ _ v.isLt]
   exact sweep_corr hT S F.n v
 
 include hT in
