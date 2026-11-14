@@ -133,6 +133,37 @@ def import_refuses(module: str, check: str, cwd: Path, env: dict) -> tuple[bool,
     return out.returncode != 0 and check in last, last or "imported cleanly"
 
 
+def kernel_of(m: dict) -> str | None:
+    """The kernel build of KERNELS a mutant needs, if any: the one it names, or the crate whose src/ it mutates."""
+    return m.get("build") or next((k for k, spec in KERNELS.items() if m["file"].startswith(f"{spec[0]}/src/")), None)
+
+
+def baseline(builds) -> list[str]:
+    """Each kernel crate of `builds` built once, unmutated, one after another, before any mutant: the first `cargo` in a
+    crate installs the toolchain its rust-toolchain.toml pins and fetches its dependencies, which workers starting at
+    once would each do into the same rustup and cargo homes (CI run 43531374137: 51 mutants that did not build, every
+    error rustup's or cargo's). A crate that does not build unmutated gives no ground to read any of its mutants:
+    the problems, one per crate, and then nothing runs."""
+    problems = []
+    base = Path(os.environ.get("MINDS_KERNEL_TARGET") or git_dir() / "kernel-mutants-target")
+    base.mkdir(parents=True, exist_ok=True)
+    for build in sorted(builds):
+        crate, features, wasm, _var, _pinned = KERNELS[build]
+        target = Path(tempfile.mkdtemp(prefix=f"baseline-{build}-", dir=base))
+        try:
+            b = subprocess.run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", *features],
+                               cwd=ROOT / crate, capture_output=True, text=True,
+                               env=dict(os.environ, CARGO_TARGET_DIR=str(target)))
+            if b.returncode != 0 or not (target / "wasm32-unknown-unknown" / "release" / wasm).is_file():
+                problems.append(f"{build}: the unmutated crate does not build: "
+                                + ((b.stderr.strip().splitlines() or ["no wasm"])[-1][:160]))
+        except OSError as e:
+            problems.append(f"{build}: cargo cannot run in {crate}: {e}")
+        finally:
+            shutil.rmtree(target, ignore_errors=True)
+    return problems
+
+
 def run(mid: str, m: dict, root: Path | None = None) -> tuple[bool, str]:
     """One mutant in the tree at `root` (default ROOT): applied, its tests run there, the file restored."""
     root = root or ROOT
@@ -144,7 +175,7 @@ def run(mid: str, m: dict, root: Path | None = None) -> tuple[bool, str]:
     cleanup: list = []
     try:
         path.write_text(original.replace(m["find"], m["replace"]))
-        build = m.get("build") or next((k for k, spec in KERNELS.items() if m["file"].startswith(f"{spec[0]}/src/")), None)
+        build = kernel_of(m)
         if build:
             # a mutant of a rules kernel: build it beside the real one (its own target directory, never the crate's)
             # and hand the build to the tests; the kernel the gate runs is untouched
@@ -237,6 +268,12 @@ def main(argv: list[str]) -> int:
     if shard:
         chosen = chosen[shard[0] - 1::shard[1]]
     jobs = max(1, min(jobs, len(chosen)))
+    problems = baseline({b for mid in chosen if (b := kernel_of(mutants[mid]))})
+    if problems:
+        for p in problems:
+            print(f"BASELINE {p}")
+        print(f"nothing run: {len(problems)} kernel crate(s) do not build unmutated")
+        return 2
     results: dict[str, tuple[bool, str]] = {}
     if jobs == 1:
         for mid in chosen:

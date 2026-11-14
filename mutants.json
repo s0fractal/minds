@@ -4486,5 +4486,13 @@
   "kills": [
    "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
   ]
+ },
+ "m-pool-baseline": {
+  "file": "tools/run_mutants.py",
+  "find": "    problems = baseline({b for mid in chosen if (b := kernel_of(mutants[mid]))})",
+  "replace": "    problems = []",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
  }
 }

@@ -9170,6 +9170,20 @@ class TestVars1Conformance(unittest.TestCase):
                              [(0, ["killed   m-a"]), (1, ["SURVIVED m-b", "SURVIVED m-b"])])
         self.assertEqual((fx / "subject.py").read_text(), files["subject.py"], "the runner restores the file")
         self.assertEqual(list((fx / ".git" / "mutant-workers").iterdir()), [], "the workers' clones are removed")
+        # a kernel crate is built once, unmutated, before any worker starts (so they do not each install its toolchain
+        # at once, CI run 43531374137); one that does not build stops the run with no verdict, rather than counting its
+        # mutants as survivors
+        (fx / "crate" / "src").mkdir(parents=True)
+        (fx / "crate" / "Cargo.toml").write_text("this is not a manifest [\n")
+        (fx / "crate" / "src" / "lib.rs").write_text("pub fn f() -> u32 { 1 }\n")
+        doc = json.loads(files["mutants.json"])
+        doc["m-c"] = {"file": "crate/src/lib.rs", "find": "{ 1 }", "replace": "{ 2 }", "kills": ["sx.T.test_value"]}
+        (fx / "mutants.json").write_text(json.dumps(doc))
+        with unittest.mock.patch.object(rm, "ROOT", fx), \
+                unittest.mock.patch.object(rm, "KERNELS", {"fx": ("crate", (), "fx.wasm", "MINDS_FX_WASM", "crate/fx.wasm")}), \
+                unittest.mock.patch.dict(os.environ, {"MINDS_KERNEL_TARGET": str(Path(self.tmp.name) / "targets")}):
+            self.assertEqual(main("--jobs", "2"), (2, [], set()), "nothing runs when a crate does not build unmutated")
+            self.assertEqual(rm.baseline({"fx"})[0][:40], "fx: the unmutated crate does not build: ")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

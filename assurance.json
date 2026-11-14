@@ -800,8 +800,8 @@
       "`test_vars1.py` 84; `tools/mutant_test.py`, `tools/run_mutants.py` `verdict`"
      ],
      [
-      "Mutants run N at once give the verdicts of one at a time: each worker mutates a clone of its own that is the working tree (HEAD, its uncommitted changes, new and deleted files, the chain's refs, the built Lean executables by a link), and no worker touches the checkout it was started from; a shard is every K-th mutant in sorted order",
-      "Tested, with mutants: a fixture repository with a change, a new file, a deletion and an ignored file; serial, pooled and two shards",
+      "Mutants run N at once give the verdicts of one at a time: each worker mutates a clone of its own that is the working tree (HEAD, its uncommitted changes, new and deleted files, the chain's refs, the built Lean executables by a link), and no worker touches the checkout it was started from; a shard is every K-th mutant in sorted order. Each kernel crate the mutants build is first built once, unmutated, before any worker starts (installing its pinned toolchain once); a crate that does not build stops the run with no verdict",
+      "Tested, with mutants: a fixture repository with a change, a new file, a deletion and an ignored file; serial, pooled and two shards; a crate that does not build",
       "`test_vars1.py` 141; `tools/run_mutants.py` `worker_trees`, `main`"
      ],
      [
