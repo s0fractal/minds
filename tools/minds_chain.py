@@ -250,12 +250,11 @@ def _threshold_act(repo: V.GitVarsRepo, threshold: int) -> Tuple[List[bytes], in
 def join(repo_dir: Path, sks: Union[bytes, Sequence[bytes]], pubkey: bytes, name: str) -> str:
     """Rotate the scope so the roster is the current one plus `pubkey`, under the thresholds it has. Every key of `sks`
     seals it, so a roster whose admission threshold is above 1 needs that many here. Any member may admit cells whatever
-    the threshold; releases are settled only by all of them (see `release`).
+    the threshold; releases are settled by a majority of them (see `release`).
 
-    Before the first key of someone outside joins, raise the admission threshold to 2 or more (`threshold`): at 1 each key
-    alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2). While
-    every key is ours this stays at 1 on purpose, since raising it costs three early releases their Settled until a second
-    key attests them (`status` says `one_key_is_the_quorum`)."""
+    Before the first key of someone outside joins, the admission threshold is to be 2 or more (`threshold`): at 1 each key
+    alone is the quorum, so the newcomer alone could invalidate any verdict or rotate the others out (spec §4.2; `status`
+    says `one_key_is_the_quorum`). refs/vars/heads/minds has been at 2 since 2026-11-14 (README)."""
     return _rotate(repo_dir, [sks] if isinstance(sks, bytes) else sks, *_join_act(V.GitVarsRepo(repo_dir), pubkey, name))
 
 
