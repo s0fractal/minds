@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request's branch cancels the run on its older head, which nothing will merge. A run on main
+# (a push, or the merge gate's dispatch after a merge) is never cancelled: a second run on one commit waits.
+concurrency:
+  group: check-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-24.04
