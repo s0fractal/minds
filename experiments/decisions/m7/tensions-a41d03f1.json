@@ -1,0 +1,1239 @@
+{
+ "scope": "minds",
+ "tip": "a41d03f117673b00a4df4891443c688f1b8e6700",
+ "since": null,
+ "absent": [],
+ "over_budget": [],
+ "tensions": [
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "00f978cc066a10140f6978b51f71ece9802dbcae506f0ec1023ff3105d0085d2",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 00f978cc is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "61296db297a794df30414253349ce050c06010c75e8632fd6939a1c74859623b",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "016d0036da91061228cc21f5fe3c0e5b045732b131d14a6a86e76c89bef90594",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 016d0036 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "b89732f1df92c926ea5859d0e49ef350ceae68a5a6dce7c6e6caaf7d164d0aa5",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "0802cbae9aa0ba1dc53df4ccd09fb79158d00974700086bca121647f78daba9f",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 0802cbae is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "584f27e08a9c4a9769ea4668e26a0a9348fff4188a7cbe626260ed959fbb371c",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "09dc897d5103747afde1a6897294bc0333283f5033c1624e7321b36fef6c4dcc",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 09dc897d is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "05c1a07912ec5a3ff0e7f9e218ff1d5a3f97e6c34b5d6993b88632a348f1d50c",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "0b527f7241ee53275dd2c497ca7e3173ced416e75f6c3defa412540af944d3d2",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 0b527f72 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "62e503e74ef8f1b03a50460d532e3611bf17f1be6f459ae7c68abd5e3472be86",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "12823d02ec8517f3defca08cf832a2f24af00812293da926bc4b3a0044aa8a4c",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 12823d02 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "a9385d4bcc64bc2ffcb8f35e6111e66326263249eb9e605dd757dace710bb8d2",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "1536bf2f4fa55f4ccb1423cd74c0fef0f7690baf09bd54c8e9a43fef155c5042",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 1536bf2f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "d84c737014882e059ef2fd3dcc782a72efc7a9a52c1619a82ff73d1c326240a7",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "17156b644980b7aa708c1baafd4f25a707b75c65c2f266076fb0532fcefa3241",
+   "evidence_gap": [
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 17156b64 is Grounded, and 1 withdrawal(s) of its 1 counted keys unsettle it; the profile asks for 2",
+   "signature": "98b33eea2cb3181c9f3fea3cbe47dced0ed937ace699dc24b2d391fbd2086c5d",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     1,
+     [
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "1ba30187cc17b8a0e6672625ddc4c228f2e4df62cd880126a2e63d6032f8d61f",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 1ba30187 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "0dfe89ce716d77bed70d8db98ae2c12f81a137e9edb6d5cb8cdc6d670582ed60",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "28304741cdbaed64f82e74be6fdd07321f0e617c41ca4b4b3784b8ef92af41a2",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 28304741 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "22ebf6ff8d96ff9f41d98cad1fb9e1a3bc014286c7d76ad6ab6b61ef25a9e899",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "2e72933485e0e5155e265902af9b144ec0432d9db8497d5d4f31b48036d8ae42",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 2e729334 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "2d62547a5f0680255d9a4c82763f857db94297af82fb216e07eedb30a6ebc585",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "300bbc1f98dee38c2b63adeecf0226c3fa2ad1f8ef5ed48f57cae197a7e5ef4f",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 300bbc1f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "e94b22963ab4307a7c9c23fa62c083f2dd4a801f62a09331e42127d838c6c123",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "369cf51fc8284dd97c03f7a91ff5d29fce7079434ef8863d7434b6e1a28d669f",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 369cf51f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "c5f3b7d766a388ff62b605d1f20f757a509dbb3c40653e30ae0fa5dc5e27b5c7",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "396d1d79fb325ec6d80ad3f43cb45b8fd1a5867e44658549ccab9dd317084fd0",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 396d1d79 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "356b8a3993e31a9b57d4dc4763d26eb087b940b94306c0ac38a4cf8ba3d53c87",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "3f50fdf2df2e78fce1cd0d507fc3d5ddb266b2d796554626a133e0a546fb098a",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 3f50fdf2 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "1f7dc5b3db8e2f5d8c63838fc3388b6563bf13df801f86e50e7ef4f2dc649af7",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "46090a3e1d1568123b384be655316975b4b5682ed851a31f15820ec268bacdbb",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 46090a3e is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "5758d7bb1a7492bc7e73f68e2c62ccbd902564ec021c7c55e9d92ee8157b9d4f",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "4632165603dada5227028832e85b86ec11b7bc287af074f21d5fcb1098625c93",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 46321656 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "64308ccb55c010567f8b2c614cae4e9b274d7ae1d334d1a5349c2c1ecca565e5",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "4775f24d6f86a2ef4db6f0984cc37de836bdd45a5c495139ed7043fd95f3eefe",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 4775f24d is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "9a349aa871880a9a88d5e9b7187c6d995452d9204f62e093ee13fc9acb0be2f9",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "49b4e771a97595a9d4d05481249fd4b71c8587e3aafcfd42811eedeea8ba3ce2",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 49b4e771 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "1cdd75eb0415df234ac785173870450dd1fa45c530e89f80082127eb9b931d58",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "4a2a22eb7c614a0b27bb9698d5d451da40fda54f9a446929370489a9b1abddbc",
+   "evidence_gap": [
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 4a2a22eb is Grounded, and 1 withdrawal(s) of its 1 counted keys unsettle it; the profile asks for 2",
+   "signature": "22e7a0f09cc78678c473dcdc72f7e5cd32dbdd82092f6aced08997c9184b39b4",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     1,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "568e6978e01c39416a55e70ddb18af23408fd2a9ea05a361a4211d2b422ae44e",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 568e6978 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "67b058ca81214d8bcff29cc9acf57ad9621868f2af69d47b3e0c9ab7623db95d",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "6236d9fff554ecb620f8e5f4ac5f05fca18fd8f9856a313b51503a433a09c659",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 6236d9ff is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "3ef1d1f7f24233adb77befe45f3237daa73822b80befd2ca8c06f821b0ace110",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "6ea7572f089d14db2b6e416c114aa0e6c396b6b50580a7fc950074cd13f0542f",
+   "evidence_gap": [
+    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 6ea7572f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "eee3853a106827d00bedbb9059360000176334c853b256742445d758b7d46911",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "70c09a0f646aa70bfbc612c6ab6826465e414727126a563addf6c36a5cb2f3c3",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 70c09a0f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "d1515d96c05e586103aff69d26b0c9d2bc213b6672bcd5607b3da66a0afb5640",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "71c0a8f86ea7e500d540e08da6ab19dd98330c23fbb6c87547e26f0a7933b271",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 71c0a8f8 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "ef83849e3d59acb1575bf1017e6e7a0b8f388d6c98a40d8ed162042a4cac8fd2",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "72b2cda64394edb7d72d824a6a96ab114e6539a4187d316ee14624f0027c2dec",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 72b2cda6 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "5136432dc677e78bee755ca9bd9f710a805f70914eaf3b373b3758f3d8ed9093",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "732757ebb8b67ca2678c15c7d75c762e63bf9d5e447f1c857c2aac7c26b5207b",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 732757eb is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "d21d6c714d14cef4c9160e324d3307584f8ccc92f6ebfe190cf9e01bed237e2c",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "73d561253dc7d7788eb59ed1207349abbab2868b103e2edf36abeaa490fb86c6",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 73d56125 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "dff291ae72894f3faed8554f340e26a8ee6683d09e2e603275b36d94d03f6aa6",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "756eee58a67d1dcf8ad470b12567e1d60be2c906093591e1537b8645db120946",
+   "evidence_gap": [
+    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 756eee58 is Grounded, and 1 withdrawal(s) of its 3 counted keys unsettle it; the profile asks for 2",
+   "signature": "298d46967879a199698550936fedef64a505f0425b9f03984f307fe11e351183",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     3,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "7d8fe5c57cd0d86308271c99ecec066b384976cc86a26ac561c12ebde58f1b7c",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 7d8fe5c5 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "523645640886fc457c0d5a7d7780b9e64fb5d0eea11f6182a25f06ffacb82a20",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "7eedd274d3c24d726b9e40ad36e8842a9472de08b8c948aa27c639e80a164e14",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 7eedd274 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "6f41a5eb555d5b91685f196408f32b462b51138625bc9a271922794247ec6a89",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "84183342a742bdd708474ae247942a3548e4bfa962306633cb78f44a5dcc4693",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 84183342 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "78e097e4ac5216340bb1adc872d597066ccf8f817706e972ba10f04b7360e200",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "89ad0594c410be1adaa720c11f190669b568a4b65789610a2089ba508aeb733f",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 89ad0594 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "3c0d2bcd669466da2ad570af79f4b757cf18cc204e14c7a57f7b351fd6882c76",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "8a926fdc1f32c89ab12740519ebf43f9b94e3d02b97d12e86b68d99c8456c509",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 8a926fdc is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "164425d09640432ac3c6c97beb5d3ce71924192805aa9783b2db88070e6f8968",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "8b528741cd08cb061cb11e1755acba41ac11292d149e8c179f85ed3583d1c5bb",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 8b528741 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "b8603aca391b919590a11c1f43a07d3bda9d499c6a47b7424ebf0a0c74ea0287",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "9289acbdf586dcd7ce0398792acdcce30c58fdde510708ea4478a742a7cf34be",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 9289acbd is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "ea2bb7cc968615400615766d57c2b5e56419a1c8b62c9b361dd58b2482ece6bf",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "9be3d435626bf314621b8ba1c9399dd411dc9442ccca4ed5e995544d4af83723",
+   "evidence_gap": [
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal 9be3d435 is Grounded, and 1 withdrawal(s) of its 1 counted keys unsettle it; the profile asks for 2",
+   "signature": "f96f16b1e0a439257d7d5c9789525b31b3df7fd7903129748476110a4703bf11",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     1,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "adfd77621c0e59740b1a4dab3f12892448281582db2c923684436f065e09af8a",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal adfd7762 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "9f21b95f1b8ac1e5d329ef9cb15d5838c133fbdb03629c0f320ba3b2fffd9400",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "b23b89737b33c9d88307f0af3bbc79d93f45fc1de3ad878b281de989162acf76",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal b23b8973 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "f64f4118220af8b2b7f3785e6f73242033616e4447a7dd5f31a25e0d79444854",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "bd31fb88e914bf2d127f324a5ece3610376d40a73cf29dce14587dca30b4ada7",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal bd31fb88 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "5830c6783e2d390d13329088d19a1684a1acc5f7e203610013d74a8508a1cd9d",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "cb5545ad1d48e5c28bc0fd70737fd8f813162adc343bae81fac0d1da2f4e48bb",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal cb5545ad is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "b8dbc95ae950f0f959360b052325563c6ee707d9c3c8aac478089ae4c58205a2",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "cb863df1d05ed38703bfc85c0b00177a41ddf428aafb69bacec5c23e8f77e785",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal cb863df1 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "547c4d3ecaeb4dfc9746965f11570060874ecdbf040fefce45fcd540c7292caa",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "e6dc7b9a797bc352c70e0fd22d5c06b9d75515246284d75e710339defe0d5b10",
+   "evidence_gap": [
+    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal e6dc7b9a is Grounded, and 1 withdrawal(s) of its 3 counted keys unsettle it; the profile asks for 2",
+   "signature": "0c0139ce21faa0d8129aca09154e12aef7192b6c223f7b2c149e0d62750a27f8",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     3,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "e7005e36830df78e1629eef850ff92ba2a23c27dc14b280e78689923d9e600b5",
+   "evidence_gap": [
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal e7005e36 is Grounded, and 1 withdrawal(s) of its 1 counted keys unsettle it; the profile asks for 2",
+   "signature": "f3b4d8b2c7dc66d60e24555a9d125ac761e1485133004f39420cea4b1059abef",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     1,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "edb0d5f6d451b83c4a04176000ff29dae52ad6a29c3ab5cf3c22772a4fe7b10a",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal edb0d5f6 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "a0043f181e9b933e5f4d55ba2ff5b81acf427a98d5ef4b1f464f6f3c7e3927f1",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "f27f1455f5bd7f12f6ddd8870227e99de99192e026e85de8215abafe7c850ac9",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal f27f1455 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "b0061c23de89b3d459ad5ceadf5046d38f2a43ff39e94ba6acba8f5dacc43216",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "f51935b3bdb72bde918917f8230acd397964c62665937d0b0c444a7217182f91",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal f51935b3 is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "4f398777ef3d386e7f1bb85bd71ce6313ce39fd4923042ef8b4eb7b124748965",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "fa1a343d77f93a9ba1fe27eb32193806f5a34f83e341ccae86f34e73da988404",
+   "evidence_gap": [
+    "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal fa1a343d is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "d76966015980f301766602434903c2134d49be920e274b1eeee5b669188a97c9",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  },
+  {
+   "kind": "FRAGILITY",
+   "target_goal": "fb80479ffa7396232982806acf4f735dbf20867e938fef9305ca34cbfaffdfb0",
+   "evidence_gap": [
+    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+   ],
+   "competing_trajectories": [],
+   "blast_radius_on_goals": 1,
+   "question_prompt": "goal fb80479f is Grounded, and 1 withdrawal(s) of its 2 counted keys unsettle it; the profile asks for 2",
+   "signature": "bf704cbade31a00f977c4d9f14da879d33e71366f16b738b32a53c8586f8e169",
+   "detail": {
+    "margin": 0
+   },
+   "conditions": {
+    "policy": [
+     2,
+     [
+      "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
+      "a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7",
+      "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
+     ]
+    ],
+    "min_cut_threshold": 2
+   }
+  }
+ ],
+ "suppressed": []
+}
