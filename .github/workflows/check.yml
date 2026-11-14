@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # the merge gate (merge-on-acceptance.yml) dispatches this on main after a merge it makes: a GITHUB_TOKEN merge
+  # starts no push workflow
+  workflow_dispatch:
 
 permissions:
   contents: read
