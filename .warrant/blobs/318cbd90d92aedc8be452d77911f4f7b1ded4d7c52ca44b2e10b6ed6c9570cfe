@@ -1,0 +1,152 @@
+{
+  "actor": "codex",
+  "answer": "The isize::MAX difference is acceptable for implementation-equivalent as VARS-1-SPEC.md section 4.3 actually defines it: byte equality over this chain, the same encoding, preservation of earlier changes, and the release shadow condition. It is not a claim of equality on every possible input. Adopting the allocator is worth doing after the concrete assurance and release conditions below; the unsafe lifetime reduction justifies the measured cost. Do not wait solely for Kani to drop feature(allocator_api).",
+  "base": "65114fcd5686051971f3a1ae4e1963745d641653",
+  "code_assessment": "The diff removes the fabricated static array lifetimes and makes fold/group/lens safe, while keeping evaluate unsafe for input raw pointers. That is useful compiler enforcement, not proof that all 198 remaining unsafe-context lines are sound. The 662-to-198 source-line metric is the experiment report; this review inspected the diff rather than independently parsing that metric.",
+  "conditions_for_adoption": [
+    {
+      "condition": "Strengthen experiments/arena/kani-check/src/lib.rs:71-78 to assert the length and contents of EACH Ok result independently, including mixed Ok/Err outcomes; retain the overlap assertion when both succeed, rerun Kani, and retain a mutant that corrupts a successful survivor only when its companion fails.",
+      "id": "A1",
+      "why": "At n=m=12 the 64-byte arena yields x=Ok(12 words), y=Err(-3); the current match skips every assertion about x. The native falsification control below corrupts x[0] to 8 and the current assertions still pass. This is an assurance gap, not an observed production-kernel data corruption."
+    },
+    {
+      "condition": "Check in a production-WASM regression for controlled allocation failure and reset after failure, plus zero-length arrays; test actual memory.grow refusal in addition to the small fixed-buffer Kani model. The attached bounded-host probe supplies a working starting point for the failure/reset regression.",
+      "id": "A2",
+      "why": "The Kani arena replaces linear-memory growth with a 64-byte buffer; its result alone does not establish the production host boundary."
+    },
+    {
+      "condition": "Prepare a reviewed activation change that pins the candidate module and Rust 1.100.0 reproducible build in both CI and tools/minds_chain.py KERNELS, retains the 1.88.0 historical builds, and adds matching RULES / offline KNOWN_RULES_TABLE v2 registrations. Run the release checks on that change.",
+      "id": "R1",
+      "why": "At M the candidate is an experiment: CI and the release KERNELS list do not rebuild it as rules. Its hash must become a new identity while historical rules stay reproducible."
+    },
+    {
+      "condition": "Immediately before rotation, rerun shadow on the then-current tip with no differences, replay section 4.3(d) and basis equality, and let the gate check the rotation commit under the new module. Carry the exact manifest and reproduce digest, obtain the governing admission quorum and observe the 16-commit rules-change delay.",
+      "id": "R2",
+      "why": "This review replayed a41d03f1, not an unknown future basis. The answer is a recommendation and confers no admission seal or release authority."
+    }
+  ],
+  "decision": "adopt_later",
+  "large_array_qualification": {
+    "finding": "The old arr checks usize multiplication and allocation failure, then constructs from_raw_parts_mut without an isize::MAX bound. Above that bound it violates the Rust slice safety contract. Its compiled WASM might answer on a permissive host, but this is not a defined Rust success that Vec must preserve. Retain the observable WASM boundary as a disclosed limitation; do not erase it by calling the change universally equivalent. No multi-GiB success was reproduced in this review.",
+    "resource_classification": "The candidate maps try_reserve_exact failure to NO_MEMORY (-3). Current declared resource codes remain {-7}; this verdict does not reclassify -3 or claim to have established a resource-hardening witness. Equivalent is available without such a witness under the present spec.",
+    "source": "https://doc.rust-lang.org/core/slice/fn.from_raw_parts_mut.html",
+    "where": "kernel2/src/lib.rs:226-234; experiments/arena/src/lib.rs:267-272"
+  },
+  "lineage": "b8d120b322b4ea68d04310bce48122d5b75b653d50349bdc38411a7d82aa9aba",
+  "question": "b8d120b322b4ea68d04310bce48122d5b75b653d50349bdc38411a7d82aa9aba",
+  "reproduction": [
+    "Build candidate with cargo +1.100.0 build --manifest-path experiments/arena/Cargo.toml --release --target wasm32-unknown-unknown, CARGO_TARGET_DIR outside the checkout. Likewise build kernel2/Cargo.toml with +1.100.0 as compiler control.",
+    "Fetch refs/vars/* into an external bare repository. At each of its 108 tips encode kernel_facts(minds,deltas[:i+1],H_LENS_KERNEL_V2)[0], compare KernelRunner.run output or exact refusal code for tracked v2, same-compiler control, candidate and lens2-test-variant.wasm.",
+    "Use the property setup above, run equal.py props C kernel2/lens2-test-variant.wasm. Use steps.py A B C with GitVarsRepo redirected to that bare repository. Only paths and binary locations change; code and test conditions remain those of M."
+  ],
+  "subject": "29a2b4915ad6a82a932a75cdae9d21e7b3f9f73c",
+  "verification": {
+    "builds": [
+      {
+        "bytes": 26119,
+        "compiler": "1.100.0",
+        "sha256": "423b83890e0494e4c6123d615f0e3fb9f9188fb42c8dbb91a971e102d9176626",
+        "source": "experiments/arena"
+      },
+      {
+        "bytes": 24604,
+        "compiler": "1.100.0",
+        "sha256": "0b1138b57e4346a4ef6208fca37126677c4ebbaa2c8fba202ce7a8dce858b46b",
+        "source": "kernel2 same source, compiler control"
+      },
+      {
+        "bytes": 24802,
+        "sha256": "1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e",
+        "source": "kernel2/lens2.wasm tracked reference"
+      }
+    ],
+    "chain": {
+      "differences": {
+        "/Users/s0fractal/.warrant/work/codex/b8d120b322b4/control-target/wasm32-unknown-unknown/release/vars_lens2.wasm": 0,
+        "/Users/s0fractal/.warrant/work/codex/b8d120b322b4/target/wasm32-unknown-unknown/release/vars_lens2_arena.wasm": 0,
+        "kernel2/lens2-test-variant.wasm": 67,
+        "kernel2/lens2.wasm": 0
+      },
+      "tip": "a41d03f117673b00a4df4891443c688f1b8e6700",
+      "tips": 108
+    },
+    "checks": "warrant.roadmap check: 23 lineages, 0 problems; tools/check_claims.py: 221 claims, 677 mutants, checker passed (catalogue check, mutants not executed).",
+    "cost": "On all 108 current tips, C uses 0.140401749% more metered steps than the same-compiler control, 6.1575% more WASM bytes. Metered outputs all equal the reference. The compiler-alone step reduction remains separate.",
+    "due": "Waker package warrant.roadmap due --actor codex --json returned exactly this Q3, asked=true, D=T, no requires/evidence/refs. MCP context returned opened.for=codex, guard NONE, no waiting and no prior attest/challenge. Workspace signer codex is trusted and holds roadmap/acceptor.",
+    "identity": "Clean detached HEAD at M; origin https://github.com/s0fractal/minds.git; remote main still M and remote minds tip a41d03f117673b00a4df4891443c688f1b8e6700 at final pre-sign check. Subject is an ancestor of M.",
+    "initial_property_attempt": "Before that setup: 10 run, 9 infrastructure errors for missing Lean binaries, 1 missing-chain skip; 3 candidate comparisons, zero differences. Superseded by the complete successful rerun, not counted as a pass.",
+    "mixed_result_falsification": {
+      "command": "rustc +1.100.0 --edition=2021 mixed.rs -o mixed && ./mixed",
+      "result": "PASS: the copied current assertions accept a deliberately corrupted successful array when the other allocation fails. This demonstrates the missing assertion only.",
+      "script": "#[path = \"/Users/s0fractal/.warrant/codex-waker/minds/trees/accept-b8d120b322b4-0-65114fcd5686/experiments/arena/kani-check/src/lib.rs\"]\nmod k;\nfn main() {\n    let a = k::Arena::new();\n    let x = k::arr(&a, 12, 7u32);\n    let y = k::arr(&a, 12, 9u32);\n    assert!(x.is_ok() && y.is_err());\n    // A falsification control for what the current harness asserts:\n    // deliberately damage the successful survivor, then use its exact match.\n    let x = x.map(|s| { s[0] = 8; s });\n    match (x, y) {\n        (Ok(x), Ok(y)) => {\n            assert!(x.len() == 12 && y.len() == 12);\n            assert!(x.iter().all(|&v| v == 7) && y.iter().all(|&v| v == 9));\n            let (xs, ys) = (x.as_ptr() as usize, y.as_ptr() as usize);\n            assert!(xs + 48 <= ys || ys + 48 <= xs);\n        }\n        (Err(e), _) | (_, Err(e)) => assert!(e == -3),\n    }\n    println!(\"n=m=12: current harness assertions accept a corrupted successful array when the other allocation fails\");\n}\n"
+    },
+    "not_run": [
+      "Kani model checker itself",
+      "full repository conformance/mutant/release suites",
+      "multi-GiB host-success counterexample",
+      "a sealed activation or rules rotation"
+    ],
+    "oom_reset": {
+      "input_sha256": "02b1e6b7cb18d425e39ba77e713cc8cbb44231e2453e54238d742677d69d0285",
+      "method": "Change only each module memory limit to max 128 pages (8 MiB), leave instructions unchanged. On one reused instance, run honest tip input; 100 times run a 100000-byte input with words [VAR2,1,0,100000,100000], forcing policy-key allocation beyond the host cap; reset and rerun the honest input. Both modules return -3 for all 100 attempts, no trap, and reproduce the honest result.",
+      "result": "PASS for reference and candidate",
+      "script": "import fs from 'node:fs';\n// A host with an eight-MiB linear-memory ceiling. Change only memory limits,\n// not instructions, to exercise memory.grow failure without allocating GiB.\nfunction leb(n) { const b=[]; do { let x=n&127; n=Math.floor(n/128); b.push(x|(n?128:0)); } while(n); return b; }\nfunction capped(bytes) {\n  let at=8; const out=[...bytes.subarray(0,8)];\n  function read() { let n=0,k=0,x; do { x=bytes[at++]; n+=(x&127)*2**k; k+=7; } while(x&128); return n; }\n  while(at<bytes.length) {\n    const id=bytes[at++], n=read(), end=at+n;\n    if(id===5) {\n      if(read()!==1) throw Error('expected one memory');\n      const flags=read(), min=read(); if(flags&1) read();\n      if(flags>1 || min>128 || at!==end) throw Error('unexpected memory');\n      const payload=[1,1,...leb(min),...leb(128)];\n      out.push(5,...leb(payload.length),...payload);\n    } else { out.push(id,...leb(n)); for(;at<end;at++) out.push(bytes[at]); }\n    at=end;\n  }\n  return new Uint8Array(out);\n}\nconst good=fs.readFileSync(process.argv[2]);\nconst bad=Buffer.alloc(100000);\n[0x32524156,1,0,100000,100000].forEach((x,i)=>bad.writeUInt32LE(x,i*4));\nfor(const filename of process.argv.slice(3)) {\n  const mod=await WebAssembly.compile(capped(fs.readFileSync(filename)));\n  const {exports:e}=await WebAssembly.instantiate(mod,{});\n  function run(input) {\n    e.reset(); const ptr=e.alloc(input.length); if(!ptr) throw Error('input allocation failed');\n    new Uint8Array(e.memory.buffer,ptr,input.length).set(input);\n    const out=e.run(ptr,input.length);\n    if(out<0) return out;\n    const n=new DataView(e.memory.buffer).getUint32(out,true);\n    return Buffer.from(new Uint8Array(e.memory.buffer,out+4,n)).toString('hex');\n  }\n  const before=run(good), failures=[];\n  for(let i=0;i<100;i++) failures.push(run(bad));\n  const after=run(good);\n  if(failures.some(x=>x!==-3) || before!==after || typeof before!=='string') throw Error('OOM/reset regression');\n  console.log(JSON.stringify({module:filename,cap_pages:128,refusals:failures.length,code:-3,reset_reproduces:true}));\n}\n"
+    },
+    "prior_changes_and_basis": "earlier_changes: PASS\nbasis_equal: True\nreproduce: 8732539f5bf585afa7841ef49275476f00bb312bce862c474cd756677fd0a0d5\n",
+    "properties": {
+      "candidate_differences": 0,
+      "differences_by_module": {
+        "lens2-test-variant.wasm": 900
+      },
+      "inputs": 1468,
+      "refusals": 24,
+      "suite_exit": {
+        "errors": 0,
+        "failures": 0,
+        "run": 10,
+        "skipped": 0
+      }
+    },
+    "property_setup": "Exact-M Lean sources were git-archived to an external work directory and lake build vars1exec vars1fold vars1cycle passed. In-memory replacements point the suite EXEC_BIN/FOLD_BIN/CYCLE_BIN there and redirect only GitVarsRepo(checkout root) to the externally fetched bare chain. Generated repositories, suite assertions, seeds and counts are unchanged; MINDS_REQUIRE_CHAIN=1. equal.py props wraps its normal tests. Counts are compared calls, not unique input hashes.",
+    "shadow": {
+      "differences": [],
+      "digest": "8d489fafe5e3d05e4b8f1e7405861a7484916c66eaf59352b9231c98007f7159",
+      "new_rules": "423b83890e0494e4c6123d615f0e3fb9f9188fb42c8dbb91a971e102d9176626",
+      "scope": "minds",
+      "tip": "a41d03f117673b00a4df4891443c688f1b8e6700",
+      "tips": 108
+    },
+    "shadow_setup": "Review-only in-memory Rules(candidate_path, v2, {-7}, rotation_delay=16) and RULES_MODULES registration; tools.minds_chain.shadow(external_bare_repo,candidate_hash), GitVarsRepo._check_earlier_changes and rules_change_basis. No source registry, chain ref, scope, decision or projection was changed.",
+    "steps": [
+      {
+        "at_tip": 40577043,
+        "max": 40577043,
+        "median": 3604841.0,
+        "module": "lens2.wasm",
+        "outputs_equal_first": true,
+        "tips": 108,
+        "total": 1030848921
+      },
+      {
+        "at_tip": 40385616,
+        "max": 40385616,
+        "median": 3576688.5,
+        "module": "vars_lens2.wasm",
+        "outputs_equal_first": true,
+        "tips": 108,
+        "total": 1025136801
+      },
+      {
+        "at_tip": 40422674,
+        "max": 40422674,
+        "median": 3586967.0,
+        "module": "vars_lens2_arena.wasm",
+        "outputs_equal_first": true,
+        "tips": 108,
+        "total": 1026576111
+      }
+    ],
+    "store_scope": "One schema-free attest on Q3 plus this cited evidence blob only; no commit, push or pull request.",
+    "tooling": "System python has no warrant; the older codex-mcp install returned an empty due list. Verification and MCP used PYTHONPATH=/Users/s0fractal/.warrant/codex-waker/package with the codex-mcp interpreter and the supplied warrant-mcp-call; no unrelated identity or replay key was read or used."
+  }
+}
