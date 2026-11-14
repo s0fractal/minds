@@ -4335,9 +4335,9 @@
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
   ]
  },
- "m-unrep-requirements": {
+ "m-unrep-history": {
   "file": "tools/minds_chain.py",
-  "find": "    if subprocess.run([*git, \"cat-file\", \"-e\", f\"{sha}:requirements.txt\"], capture_output=True).returncode == 0:\n        return []",
+  "find": "    if subprocess.run([*git, \"merge-base\", \"--is-ancestor\", sha, UNPINNED_UNTIL], capture_output=True).returncode != 0:\n        return []",
   "replace": "    if False:\n        return []",
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"

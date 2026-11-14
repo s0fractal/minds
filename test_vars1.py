@@ -8996,9 +8996,11 @@ class TestVars1Conformance(unittest.TestCase):
     def test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict(self) -> None:
         """verify-release answers what a release claims, rerun at its commit. Releases of 2026-10-19 before a512f8b read
         ../sigma-glyph as it happened to be, pinned by neither their statement nor a requirements.txt, so a member cannot
-        rerun their checks: it records neither ATTESTED nor INVALID (UNREPRODUCIBLE, decided before any check runs). A
-        claimed check this verifier does not run is the same. A claimed check that runs and fails is INVALID, pinned or
-        not, and a check the release never claimed is no part of the answer."""
+        rerun their checks: it records neither ATTESTED nor INVALID (UNREPRODUCIBLE, decided before any check runs). That
+        is history: a commit outside it is answered by its checks whatever its files say, so a comment or an unused file
+        naming a sibling cannot turn a failing check into no verdict (Codex, finding 3da1bc22 on #96). A claimed check
+        this verifier does not run is the same. A claimed check that runs and fails is INVALID, pinned or not, and a
+        check the release never claimed is no part of the answer."""
         mc = self._minds_chain()
         mc.init(self.repo_path, SK["m"])
         mc.join(self.repo_path, SK["m"], PK["b"], "b")
@@ -9008,7 +9010,7 @@ class TestVars1Conformance(unittest.TestCase):
             return subprocess.run(["git", "-C", str(self.repo_path), *args], input=stdin, capture_output=True, text=True,
                                   check=True, env=env).stdout.strip()
 
-        def commit(salt: str, files: dict) -> str:
+        def commit(salt: str, files: dict, *parents: str) -> str:
             """A commit holding `files` (path: text), on no branch."""
             index = Path(tempfile.mkdtemp())
             self.addCleanup(shutil.rmtree, index, True)
@@ -9016,7 +9018,7 @@ class TestVars1Conformance(unittest.TestCase):
             for path, text in {**files, "salt": salt}.items():
                 oid = git("hash-object", "-w", "--stdin", stdin=text)
                 git("update-index", "--add", "--cacheinfo", f"100644,{oid},{path}", env=env)
-            return git("commit-tree", git("write-tree", env=env), "-m", salt)
+            return git("commit-tree", git("write-tree", env=env), *(x for p in parents for x in ("-p", p)), "-m", salt)
 
         old = {"proofs/lakefile.toml": 'srcDir = "../../sigma-glyph/proofs"\n',
                "test_vars1.py": 'import sys\nvectors = PROJECTS_DIR / "primitives" / "vectors"\n'}
@@ -9041,19 +9043,42 @@ class TestVars1Conformance(unittest.TestCase):
                 return "REFUSED", str(e)
             return ("ATTESTED" if ok else "INVALID"), got
 
+        # the history before the first requirements.txt: its commits read the siblings beside the checkout
+        early = commit("0", {"test_vars1.py": "import sys\n"})
+        unpinned = commit("1", old, early)
+        pinned = commit("3", old, unpinned)
+        # that history is this repository's, checked where the checkout holds it (a shallow clone, as CI's, does not): no
+        # commit up to UNPINNED_UNTIL carries a requirements.txt, and every commit since does
+        here = ["git", "-C", str(ROOT_DIR)]
+        if subprocess.run([*here, "cat-file", "-e", f"{mc.UNPINNED_UNTIL}^{{commit}}"], capture_output=True).returncode == 0:
+            def without(*rev: str) -> tuple:
+                revs = subprocess.run([*here, "rev-list", *rev], capture_output=True, text=True, check=True).stdout.split()
+                out = subprocess.run([*here, "cat-file", "--batch-check"], capture_output=True, text=True, check=True,
+                                     input="".join(f"{r}:requirements.txt\n" for r in revs)).stdout.splitlines()
+                return len(revs), sum(line.endswith(" missing") for line in out)
+            self.assertEqual(without(mc.UNPINNED_UNTIL)[0], without(mc.UNPINNED_UNTIL)[1])
+            self.assertEqual(without("HEAD", f"^{mc.UNPINNED_UNTIL}")[1], 0)
+        unittest.mock.patch.object(mc, "UNPINNED_UNTIL", pinned).start()
+        self.addCleanup(unittest.mock.patch.stopall)
         # read from a sibling nothing pins: neither verdict, and no check is run
-        unpinned = commit("1", old)
         verdict, why = answer(unpinned, ["x OK"], ["x OK"])
         self.assertEqual(verdict, "UNREPRODUCIBLE")
         self.assertIn("sigma-glyph (read by proofs/lakefile.toml:1), primitives (read by test_vars1.py:2)", why)
         self.assertEqual(ran, [])
-        # pinned by the commit's requirements.txt or by the statement: a failing check is a failure
+        # pinned by the statement: a failing check is a failure; a commit of that history that reads no sibling, answered
+        pins = {"sigma-glyph": "1" * 40, "primitives": "2" * 40}
+        self.assertEqual(answer(pinned, ["x OK"], ["x FAILED"], siblings=pins), ("INVALID", ["x FAILED"]))
+        self.assertEqual(answer(early, ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
+        # outside that history the checks answer, whatever the files name: by its requirements.txt, by the same reads,
+        # by a comment in a file nothing reads (Codex's F1); a commit that reads no sibling needs no pin
         self.assertEqual(answer(commit("2", {**old, "requirements.txt": "sigma-glyph==1.0.1\n"}), ["x OK"], ["x FAILED"]),
                          ("INVALID", ["x FAILED"]))
-        pins = {"sigma-glyph": "1" * 40, "primitives": "2" * 40}
-        self.assertEqual(answer(commit("3", old), ["x OK"], ["x FAILED"], siblings=pins), ("INVALID", ["x FAILED"]))
-        # a commit that reads no sibling needs no pin
+        comment = {"test_vars1.py": "import sys\n", "unused.toml": "# historical path: ../sigma-glyph/proofs\n"}
+        self.assertEqual(answer(commit("2b", comment), ["x OK"], ["x FAILED"]), ("INVALID", ["x FAILED"]))
+        self.assertEqual(answer(commit("2c", comment), ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
+        self.assertEqual(answer(commit("2a", old), ["x OK"], ["x FAILED"]), ("INVALID", ["x FAILED"]))
         self.assertEqual(answer(commit("4", {"test_vars1.py": "import sys\n"}), ["x OK"], ["x OK"]), ("ATTESTED", ["x OK"]))
+        self.assertEqual(len(ran), 7)
 
         # what the statement claims is answered: an unclaimed check that passes is no part of it, and one that fails earns
         # no seal (leaving it out cannot be told from a commit that did not have it); a claim that fails is INVALID first
