@@ -9100,7 +9100,8 @@ class TestVars1Conformance(unittest.TestCase):
         """tools/run_mutants.py runs N mutants at once, each in a worker's own clone: the working tree as it is (HEAD,
         its uncommitted changes and new files, the chain's refs, the built Lean executables by a link; not what git
         ignores), so a mutant is applied, built and tested there alone. Pooled or sharded, the verdicts are the serial
-        run's, and no worker touches the checkout it was started from."""
+        run's, and no worker touches the checkout it was started from: a link is copied as a link and nothing is written
+        through one (Codex, finding 1e86277d on #98)."""
         import importlib.util
         spec = importlib.util.spec_from_file_location("run_mutants", ROOT_DIR / "tools" / "run_mutants.py")
         rm = importlib.util.module_from_spec(spec)
@@ -9117,9 +9118,15 @@ class TestVars1Conformance(unittest.TestCase):
                           "class T(unittest.TestCase):\n    def test_value(self):\n"
                           "        with open(os.environ['MINDS_TEST_LOG'], 'a') as f:\n"
                           "            f.write(str(Path(__file__).resolve().parent) + '\\n')\n"
-                          "        self.assertEqual(value, 1)\n"}
+                          "        self.assertEqual(value, 1)\n"
+                          "        self.assertEqual(Path('old.txt').read_text(), 'original\\n')\n"
+                          "        self.assertEqual(Path('selected.txt').read_text(), 'replacement\\n')\n",
+                 "old.txt": "original\n", "new.txt": "replacement\n"}
         for name, text in files.items():
             (fx / name).write_text(text)
+        # tracked links: one relative, one naming this checkout's own file by its absolute path
+        (fx / "selected.txt").symlink_to("old.txt")
+        (fx / "abs.txt").symlink_to(fx / "old.txt")
         g("add", "-A")
         g("commit", "-q", "-m", "fixture")
         g("update-ref", "refs/vars/heads/minds", g("rev-parse", "HEAD"))
@@ -9128,6 +9135,10 @@ class TestVars1Conformance(unittest.TestCase):
         (fx / "new.py").write_text("z = 0\n")
         (fx / "gone.py").unlink()
         (fx / "ignored.txt").write_text("not the tree\n")
+        (fx / "selected.txt").unlink()
+        (fx / "selected.txt").symlink_to("new.txt")  # the link now names another file
+        (fx / "abs.txt").unlink()
+        (fx / "abs.txt").write_text("local\n")  # the link is now a file
         (fx / "proofs" / ".lake" / "build").mkdir(parents=True)
         (fx / "proofs" / ".lake" / "build" / "exe").write_text("built\n")
 
@@ -9139,13 +9150,24 @@ class TestVars1Conformance(unittest.TestCase):
         with unittest.mock.patch.object(rm, "ROOT", fx):
             base = Path(self.tmp.name) / "workers"
             base.mkdir()
-            trees = rm.worker_trees(2, base)
+            try:
+                trees = rm.worker_trees(2, base)
+            finally:  # refusing a tree would be safe; writing into this checkout through a link never is
+                self.assertEqual((fx / "old.txt").read_text(), "original\n", "nothing is written through a link")
             self.assertEqual(len(set(trees)), 2)
             for t in trees:
                 self.assertEqual(tree_files(t), want, "a worker's tree is the working tree")
+                link = t / "selected.txt"
+                self.assertEqual((link.is_symlink() and os.readlink(link), (t / "old.txt").read_text()),
+                                 ("new.txt", "original\n"), "a link is copied as a link")
+                self.assertFalse((t / "abs.txt").is_symlink())
                 self.assertEqual((t / "proofs" / ".lake").resolve(), (fx / "proofs" / ".lake").resolve())
                 self.assertEqual(subprocess.run(["git", "-C", str(t), "rev-parse", "refs/vars/heads/minds"], capture_output=True,
                                                 text=True).stdout.strip(), g("rev-parse", "refs/vars/heads/minds"))
+            # a mutant is written into a file of the tree, never through a link (here into new.txt)
+            self.assertEqual(rm.run("m-link", {"file": "selected.txt", "find": "replacement", "replace": "other",
+                                               "kills": ["sx.T.test_value"]}, trees[0])[1][:30],
+                             "selected.txt is a link or unde")
             (trees[0] / "subject.py").write_text("value = 9\n")
             self.assertEqual((trees[1] / "subject.py").read_text(), files["subject.py"], "each worker has its own files")
             self.assertEqual((fx / "subject.py").read_text(), files["subject.py"])

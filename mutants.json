@@ -4449,16 +4449,16 @@
  },
  "m-pool-changes": {
   "file": "tools/run_mutants.py",
-  "find": "        for entry in changed:",
-  "replace": "        for entry in []:",
+  "find": "        overlay(tree, [entry[3:] for entry in changed])",
+  "replace": "        pass",
   "kills": [
    "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
   ]
  },
  "m-pool-deleted": {
   "file": "tools/run_mutants.py",
-  "find": "            elif dst.is_file():\n                dst.unlink()",
-  "replace": "            elif False:\n                dst.unlink()",
+  "find": "        if inside(tree, rel):\n            _remove(tree / rel)",
+  "replace": "        if False:\n            _remove(tree / rel)",
   "kills": [
    "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
   ]
@@ -4491,6 +4491,30 @@
   "file": "tools/run_mutants.py",
   "find": "    problems = baseline({b for mid in chosen if (b := kernel_of(mutants[mid]))})",
   "replace": "    problems = []",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-link": {
+  "file": "tools/run_mutants.py",
+  "find": "        if src.is_symlink():\n            dst.symlink_to(os.readlink(src))\n        elif src.is_file():\n            shutil.copy2(src, dst, follow_symlinks=False)",
+  "replace": "        if src.is_file():\n            shutil.copy2(src, dst)",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-through": {
+  "file": "tools/run_mutants.py",
+  "find": "        _remove(dst)\n        if src.is_symlink():",
+  "replace": "        if src.is_symlink():",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-run-link": {
+  "file": "tools/run_mutants.py",
+  "find": "    if path.is_symlink() or not inside(root, m[\"file\"]):",
+  "replace": "    if False:",
   "kills": [
    "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
   ]

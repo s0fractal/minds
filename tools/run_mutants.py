@@ -168,6 +168,8 @@ def run(mid: str, m: dict, root: Path | None = None) -> tuple[bool, str]:
     """One mutant in the tree at `root` (default ROOT): applied, its tests run there, the file restored."""
     root = root or ROOT
     path = root / m["file"]
+    if path.is_symlink() or not inside(root, m["file"]):
+        return False, f"{m['file']} is a link or under one: a mutant is written into a file of the tree, never through a link"
     original = path.read_text()
     if original.count(m["find"]) != 1:
         return False, f"find string occurs {original.count(m['find'])} times in {m['file']}"
@@ -212,6 +214,49 @@ def run(mid: str, m: dict, root: Path | None = None) -> tuple[bool, str]:
             shutil.rmtree(d, ignore_errors=True)
 
 
+def inside(tree: Path, rel: str) -> bool:
+    """Whether every directory on the way to `tree/rel` is a directory of `tree`, none of them a link."""
+    d = tree
+    for part in Path(rel).parts[:-1]:
+        d = d / part
+        if d.is_symlink() or not d.is_dir():
+            return False
+    return True
+
+
+def _remove(p: Path) -> None:
+    """Remove what is at `p`, a link as a link (never what it names)."""
+    if p.is_symlink() or p.is_file():
+        p.unlink()
+    elif p.is_dir():
+        shutil.rmtree(p)
+
+
+def overlay(tree: Path, rels: list[str]) -> None:
+    """Make each path of `rels` in `tree` what it is in this working tree: a file with its bytes and mode, a link with
+    its own text, or nothing. No link is followed on either side: a link is copied as a link, and what stands at a
+    destination or on the way to it (a tracked link the working tree replaced) is removed, never written through, so
+    nothing is written outside `tree` (Codex, finding 1e86277d on #98: copy2 wrote a new link's target bytes through
+    the old link, into another file of the tree or, for an absolute link, into this checkout)."""
+    gone = [rel for rel in rels if not os.path.lexists(ROOT / rel)]
+    for rel in gone:
+        if inside(tree, rel):
+            _remove(tree / rel)
+    for rel in sorted(set(rels) - set(gone)):
+        src, dst = ROOT / rel, tree / rel
+        d = tree
+        for part in Path(rel).parts[:-1]:
+            d = d / part
+            if d.is_symlink() or (d.exists() and not d.is_dir()):
+                d.unlink()
+            d.mkdir(exist_ok=True)
+        _remove(dst)
+        if src.is_symlink():
+            dst.symlink_to(os.readlink(src))
+        elif src.is_file():
+            shutil.copy2(src, dst, follow_symlinks=False)
+
+
 def worker_trees(n: int, base: Path) -> list[Path]:
     """`n` copies of the tree under test, one per worker, so that each mutates its own files. Each is a clone sharing
     this repository's objects (as `minds_chain.checks_at` makes its checkout), at HEAD, with the working tree's own
@@ -228,18 +273,11 @@ def worker_trees(n: int, base: Path) -> list[Path]:
         git("clone", "-q", "--shared", "--no-checkout", "--no-tags", str(ROOT), str(tree))
         git("fetch", "-q", "--no-tags", str(ROOT), "+refs/vars/*:refs/vars/*", cwd=tree)
         git("checkout", "-q", "--detach", head, cwd=tree)
-        for entry in changed:
-            rel = entry[3:]
-            src, dst = ROOT / rel, tree / rel
-            if src.is_file():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-            elif dst.is_file():
-                dst.unlink()
-        lake = ROOT / "proofs" / ".lake"
-        if lake.exists():
-            (tree / "proofs").mkdir(exist_ok=True)
-            (tree / "proofs" / ".lake").symlink_to(lake, target_is_directory=True)
+        overlay(tree, [entry[3:] for entry in changed])
+        lake, proofs = ROOT / "proofs" / ".lake", tree / "proofs"
+        if lake.exists() and not proofs.is_symlink():  # never a link made through a link out of the tree
+            proofs.mkdir(exist_ok=True)
+            (proofs / ".lake").symlink_to(lake, target_is_directory=True)
         trees.append(tree)
     return trees
 
