@@ -4446,5 +4446,45 @@
   "kills": [
    "test_140_a_release_whose_checks_cannot_be_rerun_is_answered_by_neither_verdict"
   ]
+ },
+ "m-pool-changes": {
+  "file": "tools/run_mutants.py",
+  "find": "        for entry in changed:",
+  "replace": "        for entry in []:",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-deleted": {
+  "file": "tools/run_mutants.py",
+  "find": "            elif dst.is_file():\n                dst.unlink()",
+  "replace": "            elif False:\n                dst.unlink()",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-refs": {
+  "file": "tools/run_mutants.py",
+  "find": "        git(\"fetch\", \"-q\", \"--no-tags\", str(ROOT), \"+refs/vars/*:refs/vars/*\", cwd=tree)\n",
+  "replace": "",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-own-tree": {
+  "file": "tools/run_mutants.py",
+  "find": "                        got = run(mid, mutants[mid], tree)",
+  "replace": "                        got = run(mid, mutants[mid])",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
+ },
+ "m-pool-shard": {
+  "file": "tools/run_mutants.py",
+  "find": "        chosen = chosen[shard[0] - 1::shard[1]]",
+  "replace": "        chosen = chosen[shard[0] % shard[1]::shard[1]]",
+  "kills": [
+   "test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+  ]
  }
 }

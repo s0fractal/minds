@@ -152,6 +152,56 @@ def tab {α : Type} (n : Nat) (g : Nat → α) : Array α := Array.ofFn (n := n)
 /-- Lookup with a default past the end. -/
 def geta {α : Type} [Inhabited α] (a : Array α) (w : Nat) : α := a.getD w default
 
+/-! ### Tabulating a fill once
+
+`fillFastGo step g k a` is a function of the index looked up, and the compiler gives it that index as a fourth
+argument: `tab n (fill step n g)` then ran the whole fill again for each of its `n` entries, `n` steps that each read
+up to `n` newer cells, so `vars1exec` took time cubic in the number of cells (34 s on the live chain's 1008). The
+lens tabulates every fill it makes, so it calls `tabFill` and `tabFillUp`; the compiler runs `tabFillFast` and
+`tabFillUpFast` instead, which fill one array once and read it (`@[csimp]`, proved equal below). -/
+
+/-- The array `fillFastGo` reads from once its `i` steps are done. -/
+def fillFastArr {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) : Nat → Array α → Array α
+  | 0, a => a
+  | i + 1, a => fillFastArr step g i (a.set! i (step (fun w => a.getD w (g w)) i))
+
+theorem fillFastGo_arr {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) :
+    ∀ (i : Nat) (a : Array α), fillFastGo step g i a = fun w => (fillFastArr step g i a).getD w (g w)
+  | 0, _ => rfl
+  | i + 1, _ => fillFastGo_arr step g i _
+
+/-- The array `fillUpFastGo` reads from once its `m` steps are done. -/
+def fillUpFastArr {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) : Nat → Nat → Array α → Array α
+  | 0, _, a => a
+  | m + 1, i, a => fillUpFastArr step g m (i + 1) (a.set! i (step (fun w => a.getD w (g w)) i))
+
+theorem fillUpFastGo_arr {α : Type} (step : (Nat → α) → Nat → α) (g : Nat → α) :
+    ∀ (m i : Nat) (a : Array α), fillUpFastGo step g m i a = fun w => (fillUpFastArr step g m i a).getD w (g w)
+  | 0, _, _ => rfl
+  | m + 1, i, _ => fillUpFastGo_arr step g m (i + 1) _
+
+/-- `fill` tabulated on `0 … k-1`. -/
+def tabFill {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Array α := tab k (fill step k g)
+
+/-- `fillUp` tabulated on `0 … k-1`. -/
+def tabFillUp {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Array α := tab k (fillUp step k g)
+
+def tabFillFast {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Array α :=
+  let a := fillFastArr step g k (Array.ofFn (n := k) fun j => g j.val)
+  Array.ofFn (n := k) fun i => a.getD i.val (g i.val)
+
+def tabFillUpFast {α : Type} (step : (Nat → α) → Nat → α) (k : Nat) (g : Nat → α) : Array α :=
+  let a := fillUpFastArr step g k 0 (Array.ofFn (n := k) fun j => g j.val)
+  Array.ofFn (n := k) fun i => a.getD i.val (g i.val)
+
+@[csimp] theorem tabFill_eq_fast : @tabFill = @tabFillFast := by
+  funext α step k g
+  simp only [tabFill, tabFillFast, tab, fill_eq_fast, fillFast, fillFastGo_arr]
+
+@[csimp] theorem tabFillUp_eq_fast : @tabFillUp = @tabFillUpFast := by
+  funext α step k g
+  simp only [tabFillUp, tabFillUpFast, tab, fillUp_eq_fast, fillUpFast, fillUpFastGo_arr]
+
 /-! ## Pass 1 -/
 
 structure S1 where
@@ -183,7 +233,7 @@ def step1 (g0 : Nat → S1) (v : Nat) : S1 :=
   { acc, reach, inv, ret, sup, act }
 
 /-- Pass 1 for every cell. -/
-def pass1 : Array S1 := tab F.n (fill (step1 F) F.n fun _ => default)
+def pass1 : Array S1 := tabFill (step1 F) F.n fun _ => default
 
 /-! ## Pass 2 (over the Pass 1 result `P`) -/
 
@@ -196,7 +246,7 @@ def stepLive (P : Array S1) (S : Array Bool) (g0 : Nat → Bool) (x : Nat) : Boo
   (src.any fun y => g y && (F.cell y).refs.contains x && (F.cell y).origin == (F.cell x).origin)
 
 def live (P : Array S1) (S : Array Bool) : Array Bool :=
-  tab F.n (fill (stepLive F P S) F.n fun _ => false)
+  tabFill (stepLive F P S) F.n fun _ => false
 
 /-- The Pass 2 right-hand side: live acceptance `lv`, dependencies read from `D`. -/
 def psi (P : Array S1) (lv : Array Bool) (D : Nat → Bool) (v : Nat) : Bool :=
@@ -206,7 +256,7 @@ def psi (P : Array S1) (lv : Array Bool) (D : Nat → Bool) (v : Nat) : Bool :=
 /-- One spec round from `S`: live acceptance fixed from `S`, then oldest first, in place. -/
 def round (P : Array S1) (S : Array Bool) : Array Bool :=
   let lv := live F P S
-  tab F.n (fillUp (psi F P lv) F.n (geta S))
+  tabFillUp (psi F P lv) F.n (geta S)
 
 /-- `Stale`: `N` rounds from the empty set. -/
 def staleOf (P : Array S1) : Array Bool := Nat.repeat (round F P) F.n (tab F.n fun _ => false)

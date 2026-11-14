@@ -9,8 +9,12 @@ is restored after every mutant.
 A mutant of a crate's src/ in KERNELS is built to wasm in its own target directory (under MINDS_KERNEL_TARGET,
 default kernel-mutants-target in the checkout's git directory) and its tests receive the build in the variable KERNELS names.
 
-    .venv/bin/python tools/run_mutants.py            # all
-    .venv/bin/python tools/run_mutants.py ID...      # some
+    .venv/bin/python tools/run_mutants.py                     # all, one worker per CPU
+    .venv/bin/python tools/run_mutants.py ID...               # some
+    .venv/bin/python tools/run_mutants.py --shard 2/3 --jobs 4  # the second of three shards, four at once
+
+Workers run in clones of their own under the checkout's git directory (`worker_trees`): a mutant is applied, built
+and tested in one of them alone, so N at once give the verdicts of one at a time.
 
 A kill names a test of test_vars1.TestVars1Conformance by its method, or any other test by its dotted name. A test
 that asks for a named refusal (`_gate_refuses`) is run first asking only for the refusal: a mutant caught only by the
@@ -22,10 +26,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,7 +56,10 @@ def outcomes(test: str, cwd: Path, env: dict) -> list:
     # a fresh bytecode cache per run: a cache written for an earlier mutant of the same size in the same second
     # would otherwise be loaded in place of this one's source
     with tempfile.TemporaryDirectory() as cache:
-        harness = Path(__file__).resolve().parent / "mutant_test.py"
+        # the harness of the tree under test, as a mutant of the harness itself sees it; a fixture has none
+        harness = Path(cwd) / "tools" / "mutant_test.py"
+        if not harness.is_file():
+            harness = Path(__file__).resolve().parent / "mutant_test.py"
         out = subprocess.run([sys.executable, "-X", f"pycache_prefix={cache}", str(harness), test],
                              cwd=cwd, capture_output=True, text=True, env=env)
     try:
@@ -124,8 +133,10 @@ def import_refuses(module: str, check: str, cwd: Path, env: dict) -> tuple[bool,
     return out.returncode != 0 and check in last, last or "imported cleanly"
 
 
-def run(mid: str, m: dict) -> tuple[bool, str]:
-    path = ROOT / m["file"]
+def run(mid: str, m: dict, root: Path | None = None) -> tuple[bool, str]:
+    """One mutant in the tree at `root` (default ROOT): applied, its tests run there, the file restored."""
+    root = root or ROOT
+    path = root / m["file"]
     original = path.read_text()
     if original.count(m["find"]) != 1:
         return False, f"find string occurs {original.count(m['find'])} times in {m['file']}"
@@ -145,22 +156,22 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             target = Path(tempfile.mkdtemp(prefix=f"{mid}-", dir=base))
             cleanup.append(target)
             b = subprocess.run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", *features],
-                               cwd=ROOT / crate, capture_output=True, text=True,
+                               cwd=root / crate, capture_output=True, text=True,
                                env=dict(os.environ, CARGO_TARGET_DIR=str(target)))
             if b.returncode != 0:
                 return False, "the mutant does not build: " + b.stderr.strip().splitlines()[-1][:120]
             built = target / "wasm32-unknown-unknown" / "release" / wasm
-            if hashlib.sha256(built.read_bytes()).digest() == hashlib.sha256((ROOT / pinned).read_bytes()).digest():
+            if hashlib.sha256(built.read_bytes()).digest() == hashlib.sha256((root / pinned).read_bytes()).digest():
                 return False, "the mutant builds to the unmutated kernel (an equivalent mutant)"
             env_extra[var] = str(built)
         if "refused_at_import" in m:
             module, check = m["refused_at_import"]
-            ok, last = import_refuses(module, check, ROOT, dict(os.environ, MINDS_MUTANT=mid))
+            ok, last = import_refuses(module, check, root, dict(os.environ, MINDS_MUTANT=mid))
             return ok, (f"refused at import by {check!r}" if ok else f"not refused at import by {check!r}: {last[:160]}")
         rows = []
         for t in m["kills"]:
             env = dict(os.environ, MINDS_MUTANT=mid, **env_extra)  # check_claims skips the applied mutant
-            rows.append((t, *classify(t if "." in t else f"test_vars1.TestVars1Conformance.{t}", ROOT, env)))
+            rows.append((t, *classify(t if "." in t else f"test_vars1.TestVars1Conformance.{t}", root, env)))
             if not m.get("diagnostic") and rows[-1][1] in ("semantic", "twin"):
                 break  # a burn: the other tests need not run; a declared mutant asks them all
         return decide(rows, m.get("diagnostic", False))
@@ -170,15 +181,102 @@ def run(mid: str, m: dict) -> tuple[bool, str]:
             shutil.rmtree(d, ignore_errors=True)
 
 
+def worker_trees(n: int, base: Path) -> list[Path]:
+    """`n` copies of the tree under test, one per worker, so that each mutates its own files. Each is a clone sharing
+    this repository's objects (as `minds_chain.checks_at` makes its checkout), at HEAD, with the working tree's own
+    changes copied in and the chain's refs fetched, so that it is the tree a serial run would mutate; the Lean
+    executables the tests run are this checkout's, by a link (built, never tracked, never mutated)."""
+    git = lambda *a, cwd=ROOT: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True).stdout
+    head = git("rev-parse", "HEAD").decode().strip()
+    # tracked files that differ from HEAD, and files git does not track or ignore; build outputs are not the tree
+    changed = [p for p in git("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", ".",
+                              ":(exclude)proofs/.lake", ":(exclude,glob)**/target/**").decode().split("\0") if p]
+    trees = []
+    for k in range(n):
+        tree = base / f"w{k}"
+        git("clone", "-q", "--shared", "--no-checkout", "--no-tags", str(ROOT), str(tree))
+        git("fetch", "-q", "--no-tags", str(ROOT), "+refs/vars/*:refs/vars/*", cwd=tree)
+        git("checkout", "-q", "--detach", head, cwd=tree)
+        for entry in changed:
+            rel = entry[3:]
+            src, dst = ROOT / rel, tree / rel
+            if src.is_file():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+            elif dst.is_file():
+                dst.unlink()
+        lake = ROOT / "proofs" / ".lake"
+        if lake.exists():
+            (tree / "proofs").mkdir(exist_ok=True)
+            (tree / "proofs" / ".lake").symlink_to(lake, target_is_directory=True)
+        trees.append(tree)
+    return trees
+
+
 def main(argv: list[str]) -> int:
+    """`[--jobs N] [--shard I/K] [ID...]`: the mutants named (all if none), or the I-th of K shards of them (every
+    K-th in sorted order), run by N workers at once (MINDS_MUTANT_JOBS, default the CPUs), each in a tree of its own.
+    The verdicts are the serial run's: each mutant is applied, built and tested alone, in a tree that differs from
+    this one only by that mutant."""
     mutants = json.loads((ROOT / "mutants.json").read_text())
-    chosen = argv or sorted(mutants)
-    survived = 0
-    for mid in chosen:
-        ok, why = run(mid, mutants[mid])
-        survived += not ok
-        print(f"{'killed  ' if ok else 'SURVIVED'} {mid}: {why}", flush=True)
-    print(f"{len(chosen) - survived}/{len(chosen)} killed")
+    jobs = int(os.environ.get("MINDS_MUTANT_JOBS") or os.cpu_count() or 1)
+    shard = None
+    ids = []
+    it = iter(argv)
+    for a in it:
+        if a == "--jobs":
+            jobs = int(next(it))
+        elif a == "--shard":
+            i, k = map(int, next(it).split("/"))
+            if not 1 <= i <= k:
+                raise SystemExit(f"--shard {i}/{k}: I must be in 1..K")
+            shard = (i, k)
+        else:
+            ids.append(a)
+    chosen = ids or sorted(mutants)
+    if shard:
+        chosen = chosen[shard[0] - 1::shard[1]]
+    jobs = max(1, min(jobs, len(chosen)))
+    results: dict[str, tuple[bool, str]] = {}
+    if jobs == 1:
+        for mid in chosen:
+            results[mid] = run(mid, mutants[mid])
+            print(f"{'killed  ' if results[mid][0] else 'SURVIVED'} {mid}: {results[mid][1]}", flush=True)
+    else:
+        base = git_dir() / "mutant-workers"
+        base.mkdir(parents=True, exist_ok=True)
+        base = Path(tempfile.mkdtemp(prefix="run-", dir=base))
+        try:
+            pending = queue.SimpleQueue()
+            for mid in chosen:
+                pending.put(mid)
+            lock = threading.Lock()
+
+            def work(tree: Path) -> None:
+                while True:
+                    try:
+                        mid = pending.get_nowait()
+                    except queue.Empty:
+                        return
+                    try:
+                        got = run(mid, mutants[mid], tree)
+                    except Exception as e:  # noqa: BLE001  a runner fault is a survivor, never a kill
+                        got = (False, f"the runner failed: {type(e).__name__}: {e}")
+                    with lock:
+                        results[mid] = got
+                        print(f"{'killed  ' if got[0] else 'SURVIVED'} {mid}: {got[1]}", flush=True)
+
+            threads = [threading.Thread(target=work, args=(t,)) for t in worker_trees(jobs, base)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+    survived = sorted(mid for mid in chosen if not results.get(mid, (False, ""))[0])
+    for mid in survived:
+        print(f"SURVIVED {mid}: {results.get(mid, (False, 'not run'))[1]}")
+    print(f"{len(chosen) - len(survived)}/{len(chosen)} killed")
     return 1 if survived else 0
 
 

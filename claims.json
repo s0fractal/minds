@@ -2272,6 +2272,22 @@
    ]
   },
   {
+   "id": "assurance.mutant-workers",
+   "source": "ASSURANCE.md",
+   "quote": "Mutants run N at once give the verdicts of one at a time",
+   "status": "tested",
+   "witnesses": [
+    "test:test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree"
+   ],
+   "mutants": [
+    "m-pool-changes",
+    "m-pool-deleted",
+    "m-pool-refs",
+    "m-pool-own-tree",
+    "m-pool-shard"
+   ]
+  },
+  {
    "id": "assurance.named-refusals",
    "source": "ASSURANCE.md",
    "diagnostic": true,
