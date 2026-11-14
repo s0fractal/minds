@@ -121,7 +121,6 @@ jobs:
     # shards (every third mutant in sorted order, tools/run_mutants.py --shard), each run by every CPU of its runner,
     # and the witness spike's mutants beside them
     name: mutants ${{ matrix.part }}
-    if: false  # PROBE: every part skipped; the required `mutants` must be red. Reverted by the next commit.
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
