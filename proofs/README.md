@@ -125,7 +125,11 @@ The compiled code is not `Exec.lean`'s `fill`, `fillUp` and `staleOf` as written
 nested closures and always run `n` rounds of Pass 2, which took seconds at 75 cells and did not finish at the live
 chain's 600. `@[csimp]` theorems (`fill_eq_fast`, `fillUp_eq_fast`, `staleOf_eq_fast`) prove array-backed versions,
 and a Pass 2 that stops at the first round changing nothing, equal to them; the compiler substitutes a constant only by
-a proved equal one, so `pass1_correct` and `stale_correct` hold of what runs. Under v2 the facts' references are the
+a proved equal one, so `pass1_correct` and `stale_correct` hold of what runs. The array-backed fill is still a
+function of the index looked up, and the compiler passes that index as one more argument: tabulating it ran the whole
+fill again for every entry, time cubic in the cells (34 s per tip at the live chain's 1008, 651 s over its 108 tips).
+`tabFill_eq_fast` and `tabFillUp_eq_fast` prove equal a form that fills one array once, which is what the lens's
+`pass1`, `live` and `round` run (2 s over the 108 tips). Under v2 the facts' references are the
 input's typed list (RULES-V2.md §3) instead of every payload or slot equal to a cell id: Passes 1–2 read references,
 not the encoding, so the same proofs apply.
 

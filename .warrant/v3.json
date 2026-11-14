@@ -4,7 +4,11 @@
    "schema/author": 2
   },
   "roles": {
+   "challenger": [
+    "s0fractal"
+   ],
    "pr/acceptor": [
+    "claude",
     "codex"
    ],
    "pr/owner": [
@@ -14,6 +18,8 @@
     "codex"
    ],
    "roadmap/owner": [
+    "claude",
+    "codex",
     "s0fractal"
    ],
    "schema/author": [
@@ -31,6 +37,9 @@
    ],
    "codex": [
     "793e615ef5693cf6be7304aa284c6cc6f1fae9e3a2996cfafd23e1c160023b12"
+   ],
+   "s0fractal": [
+    "a44c7a84b7ab91a2d5654ebd0647cbb3224551dce294c87255d3538e0fc39ca3"
    ]
   },
   "warrant": "trust/3"

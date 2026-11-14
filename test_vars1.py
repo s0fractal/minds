@@ -9096,5 +9096,116 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.claimed_checks(head + f" checks: x OK; y OK; profile@{'0' * 64}"), ["x", "y"])
         self.assertIn("did not pass", answer(fresh("10"), ["x FAILED"], ["x FAILED"])[1])
 
+    def test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree(self) -> None:
+        """tools/run_mutants.py runs N mutants at once, each in a worker's own clone: the working tree as it is (HEAD,
+        its uncommitted changes and new files, the chain's refs, the built Lean executables by a link; not what git
+        ignores), so a mutant is applied, built and tested there alone. Pooled or sharded, the verdicts are the serial
+        run's, and no worker touches the checkout it was started from: a link is copied as a link and nothing is written
+        through one (Codex, finding 1e86277d on #98)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("run_mutants", ROOT_DIR / "tools" / "run_mutants.py")
+        rm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rm)
+        fx = Path(self.tmp.name) / "fixture"
+        fx.mkdir()
+        g = lambda *a: subprocess.run(["git", "-C", str(fx), *a], capture_output=True, check=True).stdout.decode().strip()
+        g("init", "-q")
+        files = {".gitignore": "ignored.txt\n", "subject.py": "value = 1\nother = 3\n", "gone.py": "x = 0\n",
+                 "kept.py": "y = 0\n", "mutants.json": json.dumps({
+                     "m-a": {"file": "subject.py", "find": "value = 1", "replace": "value = 2", "kills": ["sx.T.test_value"]},
+                     "m-b": {"file": "subject.py", "find": "other = 3", "replace": "other = 4", "kills": ["sx.T.test_value"]}}),
+                 "sx.py": "import os, unittest\nfrom pathlib import Path\nfrom subject import value\n"
+                          "class T(unittest.TestCase):\n    def test_value(self):\n"
+                          "        with open(os.environ['MINDS_TEST_LOG'], 'a') as f:\n"
+                          "            f.write(str(Path(__file__).resolve().parent) + '\\n')\n"
+                          "        self.assertEqual(value, 1)\n"
+                          "        self.assertEqual(Path('old.txt').read_text(), 'original\\n')\n"
+                          "        self.assertEqual(Path('selected.txt').read_text(), 'replacement\\n')\n",
+                 "old.txt": "original\n", "new.txt": "replacement\n"}
+        for name, text in files.items():
+            (fx / name).write_text(text)
+        # tracked links: one relative, one naming this checkout's own file by its absolute path
+        (fx / "selected.txt").symlink_to("old.txt")
+        (fx / "abs.txt").symlink_to(fx / "old.txt")
+        g("add", "-A")
+        g("commit", "-q", "-m", "fixture")
+        g("update-ref", "refs/vars/heads/minds", g("rev-parse", "HEAD"))
+        # the working tree's own state: a change, a new file, a deletion, an ignored file and the built executables
+        (fx / "kept.py").write_text("y = 1\n")
+        (fx / "new.py").write_text("z = 0\n")
+        (fx / "gone.py").unlink()
+        (fx / "ignored.txt").write_text("not the tree\n")
+        (fx / "selected.txt").unlink()
+        (fx / "selected.txt").symlink_to("new.txt")  # the link now names another file
+        (fx / "abs.txt").unlink()
+        (fx / "abs.txt").write_text("local\n")  # the link is now a file
+        (fx / "proofs" / ".lake" / "build").mkdir(parents=True)
+        (fx / "proofs" / ".lake" / "build" / "exe").write_text("built\n")
+
+        def tree_files(root: Path) -> dict:
+            return {str(f.relative_to(root)): f.read_bytes() for f in root.rglob("*")
+                    if f.is_file() and ".git" not in f.relative_to(root).parts and "proofs" not in f.relative_to(root).parts}
+
+        want = {k: v for k, v in tree_files(fx).items() if k != "ignored.txt"}
+        with unittest.mock.patch.object(rm, "ROOT", fx):
+            base = Path(self.tmp.name) / "workers"
+            base.mkdir()
+            try:
+                trees = rm.worker_trees(2, base)
+            finally:  # refusing a tree would be safe; writing into this checkout through a link never is
+                self.assertEqual((fx / "old.txt").read_text(), "original\n", "nothing is written through a link")
+            self.assertEqual(len(set(trees)), 2)
+            for t in trees:
+                self.assertEqual(tree_files(t), want, "a worker's tree is the working tree")
+                link = t / "selected.txt"
+                self.assertEqual((link.is_symlink() and os.readlink(link), (t / "old.txt").read_text()),
+                                 ("new.txt", "original\n"), "a link is copied as a link")
+                self.assertFalse((t / "abs.txt").is_symlink())
+                self.assertEqual((t / "proofs" / ".lake").resolve(), (fx / "proofs" / ".lake").resolve())
+                self.assertEqual(subprocess.run(["git", "-C", str(t), "rev-parse", "refs/vars/heads/minds"], capture_output=True,
+                                                text=True).stdout.strip(), g("rev-parse", "refs/vars/heads/minds"))
+            # a mutant is written into a file of the tree, never through a link (here into new.txt)
+            self.assertEqual(rm.run("m-link", {"file": "selected.txt", "find": "replacement", "replace": "other",
+                                               "kills": ["sx.T.test_value"]}, trees[0])[1][:30],
+                             "selected.txt is a link or unde")
+            (trees[0] / "subject.py").write_text("value = 9\n")
+            self.assertEqual((trees[1] / "subject.py").read_text(), files["subject.py"], "each worker has its own files")
+            self.assertEqual((fx / "subject.py").read_text(), files["subject.py"])
+
+            log = Path(self.tmp.name) / "ran-in"
+
+            def main(*argv: str) -> tuple:
+                log.write_text("")
+                with unittest.mock.patch.dict(os.environ, {"MINDS_TEST_LOG": str(log)}), \
+                        contextlib.redirect_stdout(io.StringIO()) as out:
+                    code = rm.main(list(argv))
+                verdicts = sorted(line.split(":")[0] for line in out.getvalue().splitlines()
+                                  if line.startswith(("killed", "SURVIVED")))
+                return code, verdicts, set(log.read_text().split())
+
+            serial = main("--jobs", "1")
+            self.assertEqual(serial, (1, ["SURVIVED m-b", "SURVIVED m-b", "killed   m-a"], {str(fx.resolve())}))
+            pooled = main("--jobs", "2")
+            self.assertEqual(pooled[:2], serial[:2], "pooled, the serial verdicts")
+            self.assertTrue(pooled[2] and not pooled[2] & serial[2], f"no worker ran in the checkout: {pooled[2]}")
+            self.assertEqual([main("--jobs", "2", "--shard", s)[:2] for s in ("1/2", "2/2")],
+                             [(0, ["killed   m-a"]), (1, ["SURVIVED m-b", "SURVIVED m-b"])])
+        self.assertEqual((fx / "subject.py").read_text(), files["subject.py"], "the runner restores the file")
+        self.assertEqual(list((fx / ".git" / "mutant-workers").iterdir()), [], "the workers' clones are removed")
+        # a kernel crate is built once, unmutated, before any worker starts (so they do not each install its toolchain
+        # at once, CI run 43531374137); one that does not build stops the run with no verdict, rather than counting its
+        # mutants as survivors
+        (fx / "crate" / "src").mkdir(parents=True)
+        (fx / "crate" / "Cargo.toml").write_text("this is not a manifest [\n")
+        (fx / "crate" / "src" / "lib.rs").write_text("pub fn f() -> u32 { 1 }\n")
+        doc = json.loads(files["mutants.json"])
+        doc["m-c"] = {"file": "crate/src/lib.rs", "find": "{ 1 }", "replace": "{ 2 }", "kills": ["sx.T.test_value"]}
+        (fx / "mutants.json").write_text(json.dumps(doc))
+        with unittest.mock.patch.object(rm, "ROOT", fx), \
+                unittest.mock.patch.object(rm, "KERNELS", {"fx": ("crate", (), "fx.wasm", "MINDS_FX_WASM", "crate/fx.wasm")}), \
+                unittest.mock.patch.dict(os.environ, {"MINDS_KERNEL_TARGET": str(Path(self.tmp.name) / "targets")}):
+            self.assertEqual(main("--jobs", "2"), (2, [], set()), "nothing runs when a crate does not build unmutated")
+            self.assertEqual(rm.baseline({"fx"})[0][:40], "fx: the unmutated crate does not build: ")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

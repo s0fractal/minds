@@ -14,8 +14,45 @@
   "hold_label": "hold",
   "owner_paths": [
     ".github/",
-    ".warrant/merge.json",
-    ".warrant/v3.json",
-    "REVIEWING.md"
-  ]
+    ".warrant/merge.json"
+  ],
+  "watched": {
+    "paths": [
+      "VARS-1-SPEC.md",
+      "kernel/",
+      "kernel2/",
+      "meter.py",
+      "requirements.txt",
+      "tools/minds_chain.py",
+      "vars1.py",
+      "verify/"
+    ],
+    "window_hours": 24,
+    "solo_window_hours": 72,
+    "families": 2,
+    "veto_role": "pr/owner"
+  },
+  "constitutional": {
+    "paths": [
+      ".warrant/v3.json",
+      ".warrant/v3/",
+      "REVIEWING.md"
+    ],
+    "window_hours": 72,
+    "solo_window_hours": 168,
+    "families": 2,
+    "veto_role": "pr/owner",
+    "notify": [
+      "s0fractal"
+    ]
+  },
+  "solo": {
+    "window_hours": 0,
+    "veto_role": "pr/owner"
+  },
+  "presence": {
+    "login": "s0fractal",
+    "days": 14,
+    "since": 1794613669
+  }
 }
