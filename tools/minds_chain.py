@@ -100,6 +100,10 @@ SIBLINGS = ("sigma-glyph", "primitives")
 # release is checked against it. Releases since carry requirements.txt, and the spec has moved on (sigma-glyph 1.0.1).
 SIGMA_PIN = "c864d3ee01a2fe46c528bd6e9552438e64df5f6b"
 BOOK_I = ("impl/sigma_resume.py", "proofs")
+# The last commit whose checks read the sibling checkouts beside it, nothing pinning them: its child a512f8b carried the
+# first requirements.txt and removed them. Its ancestors are a closed set, history: no commit made since is one of them.
+# Every commit of main without a requirements.txt is one, and none of them has one (403 commits, 2026-11-14).
+UNPINNED_UNTIL = "f161db7c50d5dd1b8a9dfdf7e52fb8913249f6d5"
 
 
 def key_path(repo_dir: Path) -> Path:
@@ -1263,16 +1267,19 @@ class Unreproducible(V.VarsError):
 
 def unpinned_reads(repo_dir: Path, sha: str, pins: Optional[Dict[str, str]]) -> List[str]:
     """What the checks of a release of `sha` read that nothing pins: each sibling checkout (SIBLINGS) a file of the commit
-    reads by its path (`../sigma-glyph/`, `"sigma-glyph"`), when the commit carries no requirements.txt and the statement
-    names no sibling commits. Releases of 2026-10-19 before a512f8b are such: they read `../sigma-glyph` as it happened to
-    be. Empty when nothing is unpinned, so a check that fails there is a failure (INVALID); empty as well for a commit
-    this repository does not hold, where nothing shows a read. A requirements.txt is taken as pinning what the commit
-    reads: true of every commit since a512f8b, which removed the sibling checkouts (later matches are test fixtures),
-    but a proxy: a future commit with one that still read `../primitives` would not be caught here."""
+    names by its path (`../sigma-glyph/`, `"sigma-glyph"`), when the commit is `UNPINNED_UNTIL` or one of its ancestors
+    and the statement names no sibling commits. Releases of 2026-10-19 before a512f8b are such: they read
+    `../sigma-glyph` as it happened to be. Empty when nothing is unpinned, so a check that fails there is a failure
+    (INVALID). The set is history, not text: a commit outside it is answered by its checks whatever its files name, so
+    a comment or a file nothing reads cannot turn a failing check into no verdict (Codex, finding 3da1bc22 on #96), and
+    a commit made since whose checks still read a sibling fails them where nothing sits beside the checkout. Within it a
+    name in a comment would count as well; the five releases' commits each read both siblings in code (proofs/
+    lakefile.toml's `srcDir`, test_vars1.py's paths). Empty in a repository that does not hold `UNPINNED_UNTIL` or
+    `sha`, which has no such commit."""
     if pins is not None:
         return []
     git = ["git", "-C", str(repo_dir)]
-    if subprocess.run([*git, "cat-file", "-e", f"{sha}:requirements.txt"], capture_output=True).returncode == 0:
+    if subprocess.run([*git, "merge-base", "--is-ancestor", sha, UNPINNED_UNTIL], capture_output=True).returncode != 0:
         return []
     reads = []
     for sib in SIBLINGS:
@@ -1458,8 +1465,8 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     claimed = claimed_checks(statement)
     unpinned = unpinned_reads(repo_dir, sha, pins)
     if unpinned:
-        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which neither "
-                             "its statement nor a requirements.txt of the commit pins")
+        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which its "
+                             "statement does not pin: the commit is from before the first requirements.txt (a512f8b)")
     then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
     # the lines carry the outcome (checks_at's flag is every line's and every pre-check line's), so the flag is not read
     ran, _ = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
