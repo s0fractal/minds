@@ -63,8 +63,10 @@ GitHub Actions witness (below), whose key is on GitHub.
 
 The admission threshold is 2 of 3 since 2026-11-14 (chain `28450d3d`, on codex's answer `409398bc` to the question
 Q1 of experiment M7): no member alone may invalidate another's verdict or the ground under it, or rotate the others out,
-and a member still admits cells alone (`status` says `admission.one_key_is_the_quorum: false`; spec §4.2). Raising it
-took Settled from three early releases, `main@527881608b40`, `main@991c4f2d9009` and `main@d44399d82ca4`, whose policy
+and a member still admits cells alone (`status` says `admission.one_key_is_the_quorum: false`; spec §4.2). A chain
+starts at 1, where each member alone is the quorum; `minds_chain.py threshold 2` raises it with one member's key: it
+removes no key and changes no rules, so it takes effect at once. **Run it before the first key of someone outside joins.**
+Here, raising it took Settled from three early releases, `main@527881608b40`, `main@991c4f2d9009` and `main@d44399d82ca4`, whose policy
 falls back to the admission policy. They stay Provisional: their commits read sibling checkouts their statements do not
 pin, so `verify-release` answers them UNREPRODUCIBLE and no second member can attest them. `join`, `change-rules` and a
 lower threshold take `--key` once per seal the quorum needs, two members' own keys; a raise of the threshold may be
