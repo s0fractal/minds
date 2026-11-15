@@ -61,13 +61,16 @@ GitHub Actions witness (below), whose key is on GitHub.
 | antigravity | `a723e3c4779131b08ca18d0698c8111807db34caf258cd71ec240fd8c0427be7` |
 | github-actions | `1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4` |
 
-The admission threshold is 1, so each member alone is the quorum: one may invalidate another's verdict or the ground
-under it, and rotate the others out and release alone after that (`status` says so as `admission.one_key_is_the_quorum`;
-spec §4.2). `minds_chain.py threshold 2` raises it with one member's key: it removes no key and changes no rules, so it
-takes effect at once, and a member still admits cells alone. **Run it before the first key of someone outside joins.** Until
-then it stays at 1 on purpose: every key here is ours, and raising it takes Settled from three early releases, whose policy
-falls back to the admission policy, until a second member attests them. After it, `join` and `change-rules` take `--key` once
-per seal the quorum needs, and a raise of the threshold may be proposed for the witness to cosign (below). To give each
+The admission threshold is 2 of 3 since 2026-11-14 (chain `28450d3d`, on codex's answer `409398bc` to the question
+Q1 of experiment M7): no member alone may invalidate another's verdict or the ground under it, or rotate the others out,
+and a member still admits cells alone (`status` says `admission.one_key_is_the_quorum: false`; spec §4.2). A chain
+starts at 1, where each member alone is the quorum; `minds_chain.py threshold 2` raises it with one member's key: it
+removes no key and changes no rules, so it takes effect at once. **Run it before the first key of someone outside joins.**
+Here, raising it took Settled from three early releases, `main@527881608b40`, `main@991c4f2d9009` and `main@d44399d82ca4`, whose policy
+falls back to the admission policy. They stay Provisional: their commits read sibling checkouts their statements do not
+pin, so `verify-release` answers them UNREPRODUCIBLE and no second member can attest them. `join`, `change-rules` and a
+lower threshold take `--key` once per seal the quorum needs, two members' own keys; a raise of the threshold may be
+proposed for the witness to cosign (below). To give each
 a veto, pin every key when you verify:
 `vars1.py verify-attestation BUNDLE.json --require <key> --require <key> --require <key>`.
 

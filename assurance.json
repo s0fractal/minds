@@ -329,7 +329,7 @@
      ],
      [
       "The rotation delay (latch 4a) and the rules-change quarantine (4b) give a removed key or a vetoer time to act",
-      "**Not established**: the 16 commits are counted, not timed. The admission quorum alone can make them at once (on `refs/vars/heads/minds` it is 1 of 3 keys), so they give an interval only to a party that watches the chain while it lasts. A reader who pins keys (§4.4) is protected without watching. A real period of objection needs a witness outside the initiator's own history (Monday review 2026-10-28, F45)",
+      "**Not established**: the 16 commits are counted, not timed. The admission quorum alone can make them at once (on `refs/vars/heads/minds` it is 2 of 3 keys since 2026-11-14), so they give an interval only to a party that watches the chain while it lasts. A reader who pins keys (§4.4) is protected without watching. A real period of objection needs a witness outside the initiator's own history (Monday review 2026-10-28, F45)",
       "VARS-1-SPEC.md §4.1"
      ],
      [

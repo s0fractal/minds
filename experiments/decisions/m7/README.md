@@ -12,3 +12,6 @@ This folder holds the baseline its stop rule compares against:
 At the verdict the same command runs once more on the chain's tip then:
 
     python3 experiments/decisions/profile.py . minds experiments/decisions/m7/profile-releases.json --tip TIP
+- `tensions-28450d3d.json`: that run at the verdict (2026-11-14), on the tip after `threshold 2` (28450d3d), SHA-256
+  6f85d682: 49 tensions, 46 FRAGILITY and 3 INCOMPLETENESS. The baseline's three 1-of-3 FRAGILITY, Q1's releases, are
+  the three INCOMPLETENESS (2 of 3, one key counted); the other 46 are the baseline's, by the same split.
