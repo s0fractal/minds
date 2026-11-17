@@ -2,6 +2,11 @@
 # (witness-key.yml), `tools/minds_chain.py witness` reruns every check of each release waiting for its verdict, in a
 # fresh checkout with nothing cached, and records that verdict on refs/vars/heads/minds. The key is a secret of the
 # environment `witness`, which only main may deploy to.
+# Two jobs, so that no release's code runs beside the key: a release's checks run the release's own tests, and a test
+# merged at once could otherwise read the key at the next release. `verify`, with no secret, a read-only token and no
+# persisted credentials, runs the checks of every release waiting for the witness's public key (`precheck`) and hands
+# on their lines; `sign`, with the key, runs no release's code: it verifies each release from those lines alone
+# (`witness --checks-from`), and a release the verify job did not run waits (UNCHECKED).
 # Then `tools/minds_chain.py cosign` gives the second seal to each raise of the threshold (up to a majority) another
 # member proposed at refs/vars/proposals/minds/, once this key first saw it 24 hours ago and nobody vetoed it
 # (refs/vars/veto/minds/): form and time, not merit. It seals no join and no lower threshold. Its ledger of first sights
@@ -21,7 +26,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  witness:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      # the checks build chain commits with git commit-tree, and so does the verdict
+      GIT_AUTHOR_NAME: minds-witness
+      GIT_AUTHOR_EMAIL: witness@invalid
+      GIT_COMMITTER_NAME: minds-witness
+      GIT_COMMITTER_EMAIL: witness@invalid
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the self-governance chain (refs/vars/*)
+        run: git fetch --no-tags origin '+refs/vars/*:refs/vars/*'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install Book I (sigma-glyph, hash-pinned)
+        run: python -m pip install --require-hashes -r requirements.txt
+      - name: Install elan (Lean toolchain from proofs/lean-toolchain)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Run the checks of every release waiting for the witness (no key here)
+        env:
+          # the witness's public key (README's roster); the sign job refuses lines made for any other key
+          WITNESS_PUBKEY: 1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4
+        run: python tools/minds_chain.py precheck --pubkey "$WITNESS_PUBKEY" --out "$RUNNER_TEMP/witness-checks.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: witness-checks
+          path: ${{ runner.temp }}/witness-checks.json
+          retention-days: 7
+
+  sign:
+    needs: verify
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     environment: witness
@@ -45,16 +97,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.15"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
       - name: Install Book I (sigma-glyph, hash-pinned)
         run: python -m pip install --require-hashes -r requirements.txt
-      - name: Install elan (Lean toolchain from proofs/lean-toolchain)
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/227caca133724d5516bee25c2aeb3e609478f2d8/elan-init.sh \
-            | sh -s -- -y --default-toolchain none
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: witness-checks
+          path: ${{ runner.temp }}/checks
 
       - name: Verify every release waiting for this key, and record the verdicts
         env:
@@ -70,7 +118,8 @@ jobs:
           memory=$(python tools/minds_chain.py witnessed-ref --key "$key")
           ledger=$(python tools/minds_chain.py cosign-ref --key "$key")
           # the fetch above brought what this key remembers: on a chain that does not descend from it, this refuses
-          python tools/minds_chain.py witness --key "$key" --name github-actions || outcome=$?
+          python tools/minds_chain.py witness --key "$key" --name github-actions \
+            --checks-from "$RUNNER_TEMP/checks/witness-checks.json" || outcome=$?
           python tools/minds_chain.py cosign --key "$key" || outcome=$?
           rm -f "$key"
           # an INVALID is a verdict too: it is recorded, and the run then fails. Nothing here is forced: a refusal above
