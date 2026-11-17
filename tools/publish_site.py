@@ -13,7 +13,9 @@ What it writes, at stable paths:
   `--kernel`, and the verifier uses it only when its hash is the projection's rules);
 - `index.html`, `page.mjs`, `style.css` (site/), and `minds_verify.mjs` (verify/), as of this checkout's commit.
 
-Older bundle files in OUT stay: a reader who kept a link keeps the bytes. The index is the publisher's word, not a
+Older bundle files in OUT stay: a reader who kept a link keeps the bytes. The same chain and checkout write the same
+bytes (`published` is the chain tip's commit time), so `.github/workflows/site.yml` republishes on every change of
+main or of the chain and commits only a difference. The index is the publisher's word, not a
 trust anchor: the page asks the reader to pin keys, and the verifier counts only those. Nothing here signs or pushes.
 """
 from __future__ import annotations
@@ -85,7 +87,11 @@ def publish(out: Path) -> dict:
                  "tools/publish_site.py. The names and the roster are the publisher's word: pin the keys you trust.",
         "chain": "refs/vars/heads/minds",
         "chain_tip": chain[-1],
-        "published": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # the chain tip's commit time, not the clock's: the same chain and checkout publish the same bytes, so the
+        # workflow that republishes on every change (.github/workflows/site.yml) commits only what changed
+        "published": datetime.datetime.fromtimestamp(int(subprocess.run(
+            ["git", "show", "-s", "--format=%ct", chain[-1]], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.strip()), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "projection": {"id": pid.hex(), "tip": ptip, "witnesses": V.verify_projection(proj)["witnesses"],
                        **_write(out, f"bundles/projection-{pid.hex()}.json", (json.dumps(proj, indent=1) + "\n").encode())},
         "attestation": {"decision": did.hex(), "statement": r["statement"], "endorsers": r["endorsers_at_tip"],

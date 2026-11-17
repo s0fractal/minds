@@ -1,0 +1,57 @@
+# The release check site (GitHub Pages from the `site` branch), republished by tools/publish_site.py whenever main or
+# the chain may have moved: a push to main, a finished witness run (it pushes verdicts to refs/vars/heads/minds, which
+# starts no workflow), and every three hours for a member's own push of the chain. publish_site.py writes the same
+# bytes for the same chain and checkout, so a run with nothing new commits nothing. It runs main's code only, with no
+# secret; the token can write this repository's contents, and only the `site` branch is pushed.
+name: site
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [witness]
+    types: [completed]
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # to push the `site` branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fetch the chain (refs/vars/*) and the site branch
+        run: |
+          git fetch --no-tags origin '+refs/vars/*:refs/vars/*' '+refs/heads/site:refs/remotes/origin/site'
+          git worktree add out origin/site
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+      - name: Install Book I (sigma-glyph, hash-pinned)
+        run: python -m pip install --require-hashes -r requirements.txt
+      - name: Publish, and push only a difference
+        run: |
+          python tools/publish_site.py out
+          cd out
+          git add -A
+          if git diff --cached --quiet; then
+            echo "the site already shows this chain and this main"
+            exit 0
+          fi
+          main=$(git -C .. rev-parse --short=12 HEAD)
+          tip=$(git -C .. rev-parse --short=12 refs/vars/heads/minds)
+          git -c user.name=minds-site -c user.email=site@invalid commit -q -m "site: main@$main, chain $tip"
+          git push origin HEAD:refs/heads/site
