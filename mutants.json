@@ -4542,5 +4542,29 @@
   "kills": [
    "test_76_the_release_profile_names_the_gate_the_rules_hash_does_not"
   ]
+ },
+ "m-next-unrep-attest": {
+  "file": "tools/minds_chain.py",
+  "find": "        if a[\"act\"] == \"attest\":\n            return bool(unreproducible(a[\"cell\"]))\n",
+  "replace": "",
+  "kills": [
+   "test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+  ]
+ },
+ "m-next-unrep-cosign": {
+  "file": "tools/minds_chain.py",
+  "find": "            return bool(ds) and all(unreproducible(d) for d in ds)",
+  "replace": "            return False",
+  "kills": [
+   "test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+  ]
+ },
+ "m-next-unrep-wait": {
+  "file": "tools/minds_chain.py",
+  "find": "        waiting.append(dict(row, unreproducible=why) if why else row)",
+  "replace": "        waiting.append(row)",
+  "kills": [
+   "test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+  ]
  }
 }

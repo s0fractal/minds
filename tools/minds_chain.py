@@ -886,7 +886,32 @@ def next_acts(repo_dir: Path, actor: Optional[str] = None) -> Dict[str, object]:
             raise V.VarsError(f"{len(keys)} roster keys answer to {actor!r}"
                               + (f" ({', '.join(t.who(k) for k in keys)})" if keys else "")
                               + ": name one by its verifier id or 8 or more hex digits of it")
-    menu = [a for a in t.menu() if a["key"] in keys]
+    blocked: Dict[bytes, Optional[str]] = {}
+
+    def unreproducible(x: bytes) -> Optional[str]:
+        """Why no member can answer release `x` (`release_inputs` refuses it before any check runs), or None: an attest
+        of it is no act anyone can make, and its wait never ends (the README's three releases of 2026-10-19)."""
+        if x not in blocked:
+            blocked[x] = None
+            c = t.cells[x]
+            if c.h_schema == V.H_SCHEMA["decision"] and V.parse_utf8(t.atoms[c.h_slot_name]).startswith(f"{SCOPE}/release/"):
+                try:
+                    release_inputs(repo_dir, t.repo, x)
+                except Unreproducible as e:
+                    blocked[x] = str(e)
+                except V.VarsError:
+                    pass
+        return blocked[x]
+    def answers_none(a: Dict[str, object]) -> bool:
+        """An act on a release no one can verify: an attest of it, or a cosign of a verdict that counts only for such
+        releases (a second seal on what the sealer cannot rerun)."""
+        if a["act"] == "attest":
+            return bool(unreproducible(a["cell"]))
+        if a["act"] == "cosign":
+            ds = [d for d, ws in t.lens["counted_witnesses"].items() if a["cell"] in ws]
+            return bool(ds) and all(unreproducible(d) for d in ds)
+        return False
+    menu = [a for a in t.menu() if a["key"] in keys and not answers_none(a)]
     rows = []
     for act in menu:
         got = t.through_gate(act) if act["act"] == "seal" else t.predict(act)
@@ -915,8 +940,10 @@ def next_acts(repo_dir: Path, actor: Optional[str] = None) -> Dict[str, object]:
             have = t.wend(x) & pks
         else:
             continue
-        waiting.append({"cell": x.hex(), "name": t.name(x), "threshold": thr,
-                        "counted": [t.who(k) for k in sorted(have)], "waiting_for": [t.who(k) for k in sorted(pks - have)]})
+        row = {"cell": x.hex(), "name": t.name(x), "threshold": thr,
+               "counted": [t.who(k) for k in sorted(have)], "waiting_for": [t.who(k) for k in sorted(pks - have)]}
+        why = unreproducible(x)
+        waiting.append(dict(row, unreproducible=why) if why else row)
     margins = {}
     for d in L["evaluators"]:
         if L["settled"].get(d) and t.judged(d):
@@ -932,6 +959,10 @@ def next_text(doc: Dict[str, object], top: int = 12) -> str:
     w = doc["waiting"]
     out = [f"chain {doc['tip'][:12]}: " + (f"{len(w)} cells wait for an answer" if w else "nothing waits for an answer")]
     for x in w:
+        if x.get("unreproducible"):  # no member can answer it: it waits for ever, and offers no act
+            out.append(f"  {x['name']}: {len(x['counted'])} of {x['threshold']}, cannot be verified by anyone: its checks "
+                       "read sibling checkouts nothing pins")
+            continue
         out.append(f"  {x['name']}: {len(x['counted'])} of {x['threshold']}, waiting for {', '.join(x['waiting_for'])}")
     acts = doc["acts"]
     out.append(f"{len(acts)} of the {doc['considered']} acts of one key ({', '.join(doc['keys'])}) change a status")
