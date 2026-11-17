@@ -1,4 +1,10 @@
 # Every check a release runs, on a fresh runner with nothing beside the repository.
+#
+# A commit that changes only .warrant/ (a review head, Codex's verdict) does not change what `suites` and the mutants
+# test: no test reads .warrant/. `code` names the tree without .warrant/ (a git tree id); when a run of this workflow
+# already passed both on exactly that tree (a cache entry `check-code-pass-<tree>`, saved by `check` only after such a
+# run, readable by a pull request from main's runs), they are skipped and `check` and `mutants`, the two required
+# checks of .warrant/merge.json, say so and pass. Everything else runs them in full.
 name: check
 
 on:
@@ -19,7 +25,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  code:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
+      heavy: ${{ steps.passed.outputs.cache-hit != 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tree without .warrant/ (what suites and mutants test)
+        id: tree
+        run: |
+          set -euo pipefail
+          tree=$(git ls-tree HEAD | awk -F '\t' '$2 != ".warrant"' | git mktree)
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "code tree $tree (HEAD tree $(git rev-parse 'HEAD^{tree}'))"
+      - name: Suites and mutants passed on this tree already?
+        id: passed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/check-code-pass
+          key: check-code-pass-${{ steps.tree.outputs.tree }}
+          lookup-only: true
+
+  suites:
+    needs: code
+    if: needs.code.outputs.heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -124,6 +157,8 @@ jobs:
     # shards (every third mutant in sorted order, tools/run_mutants.py --shard), each run by every CPU of its runner,
     # and the witness spike's mutants beside them
     name: mutants ${{ matrix.part }}
+    needs: code
+    if: needs.code.outputs.heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -175,14 +210,55 @@ jobs:
           fi
 
   mutants:
-    # the required check of .warrant/merge.json: green only when every part above passed (a part that failed, was
-    # cancelled or was skipped makes it red)
-    needs: mutant-parts
+    # a required check of .warrant/merge.json: green only when every part above passed (a part that failed, was
+    # cancelled or was skipped makes it red), or when `code` found this tree passed already
+    needs: [code, mutant-parts]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every shard and the witness spike's mutants passed
         env:
+          HEAVY: ${{ needs.code.outputs.heavy }}
+          CODE: ${{ needs.code.result }}
           RESULT: ${{ needs.mutant-parts.result }}
-        run: test "$RESULT" = success
+          TREE: ${{ needs.code.outputs.tree }}
+        run: |
+          test "$CODE" = success
+          if [ "$HEAVY" = false ]; then
+            echo "the mutants passed on code tree $TREE already: this commit changes only .warrant/"
+            exit 0
+          fi
+          test "$RESULT" = success
+
+  check:
+    # a required check of .warrant/merge.json: `suites` passed here, or `code` found this tree passed already; after
+    # a full run whose suites and mutants both passed, it remembers the tree (the cache entry `code` looks up)
+    needs: [code, suites, mutants]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The suites passed
+        env:
+          HEAVY: ${{ needs.code.outputs.heavy }}
+          CODE: ${{ needs.code.result }}
+          SUITES: ${{ needs.suites.result }}
+          TREE: ${{ needs.code.outputs.tree }}
+        run: |
+          test "$CODE" = success
+          if [ "$HEAVY" = false ]; then
+            echo "the suites passed on code tree $TREE already: this commit changes only .warrant/"
+            exit 0
+          fi
+          test "$SUITES" = success
+      - name: Remember the tree (suites and mutants passed on it)
+        if: needs.code.outputs.heavy == 'true' && needs.suites.result == 'success' && needs.mutants.result == 'success'
+        env:
+          TREE: ${{ needs.code.outputs.tree }}
+        run: mkdir -p "$RUNNER_TEMP/check-code-pass" && echo "$TREE" > "$RUNNER_TEMP/check-code-pass/tree"
+      - if: needs.code.outputs.heavy == 'true' && needs.suites.result == 'success' && needs.mutants.result == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/check-code-pass
+          key: check-code-pass-${{ needs.code.outputs.tree }}
