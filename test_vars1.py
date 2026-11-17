@@ -7121,7 +7121,8 @@ class TestVars1Conformance(unittest.TestCase):
         repo = V.GitVarsRepo(self.repo_path)
         mc.join(self.repo_path, SK["m"], PK["a"], "a")
         mc.join(self.repo_path, SK["m"], PK["b"], "b")
-        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 1, "keys": 3, "one_key_is_the_quorum": True})
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 1, "keys": 3, "one_key_is_the_quorum": True,
+                                                                       "keys_on_this_host": 0, "this_host_is_the_quorum": False})
         ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
         at = {}
         early = V.Cell(V.H_SCHEMA["decision"], ch.put(at, V.atom_utf8("minds/early")), ch.put(at, V.atom_utf8("no policy of its own")),
@@ -7135,7 +7136,8 @@ class TestVars1Conformance(unittest.TestCase):
             mc.set_threshold(self.repo_path, SK["m"], 4)
         mc.set_threshold(self.repo_path, SK["m"], 2)
         lens = repo.lens("minds")
-        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 2, "keys": 3, "one_key_is_the_quorum": False})
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 2, "keys": 3, "one_key_is_the_quorum": False,
+                                                                       "keys_on_this_host": 0, "this_host_is_the_quorum": False})
         self.assertEqual((mc.thresholds(repo), lens["evaluators"][early.id][0]), ((2, 2), 2))
         # a policy of its own does not move; one that falls back to the admission policy does, and a second key mends it
         self.assertFalse(lens["settled"][early.id])
