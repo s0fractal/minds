@@ -9187,6 +9187,14 @@ class TestVars1Conformance(unittest.TestCase):
         rows = {r["id"]: r for r in st["releases"]}
         self.assertEqual((st["unverifiable"], "unreproducible" in rows[new["decision"].hex()]),
                          ([rows[old["decision"].hex()]["name"]], False), "status names the same release as next does")
+        vars_dir = self.repo_path / ".git" / "vars"
+        vars_dir.mkdir(parents=True, exist_ok=True)
+        (vars_dir / "maintainer.key").write_text(SK["m"].hex())
+        one = mc.status(self.repo_path)["admission"]
+        (vars_dir / "b.key").write_text(SK["b"].hex())
+        two = mc.status(self.repo_path)["admission"]
+        self.assertEqual([(x["keys_on_this_host"], x["this_host_is_the_quorum"]) for x in (one, two)], [(1, False), (2, True)],
+                         "status says when the seeds of a threshold's worth of keys sit on this host")
         wait = {w["cell"]: w for w in doc["waiting"]}
         acts = {(r["act"], r["cell"]) for r in doc["acts"]}
         on = lambda d: {a for a, c in acts if c == d["decision"].hex()}  # noqa: E731

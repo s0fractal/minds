@@ -363,6 +363,11 @@
       "`test_vars1.py` 138; `tools/minds_chain.py` `status`, `proposals_state`"
      ],
      [
+      "`status` says how many roster keys' seeds this checkout's git directory holds and whether they reach the admission threshold: one key is not the quorum, but one host can be",
+      "Tested, with mutants",
+      "`test_vars1.py` 143; `tools/minds_chain.py` `keys_on_this_host`"
+     ],
+     [
       "The witness runs no release's code beside its key: a job holding no secret and no write token runs the checks (`precheck`), and the job holding the key verifies each release from those lines alone (`witness --checks-from`), refusing lines made for another key and recording nothing for a release they do not cover (UNCHECKED)",
       "Tested, with mutants",
       "`test_vars1.py` 142; `tools/minds_chain.py` `precheck`, `recorded`; `.github/workflows/witness.yml`"

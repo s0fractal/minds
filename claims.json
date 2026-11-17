@@ -1980,6 +1980,18 @@
    ]
   },
   {
+   "id": "assurance.status-host-quorum",
+   "source": "ASSURANCE.md",
+   "quote": "`status` says how many roster keys' seeds this checkout's git directory holds and whether they reach the admission threshold: one key is not the quorum, but one host can be",
+   "status": "tested",
+   "witnesses": [
+    "test:test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+   ],
+   "mutants": [
+    "m-status-host-quorum"
+   ]
+  },
+  {
    "id": "assurance.witness-split",
    "source": "ASSURANCE.md",
    "quote": "The witness runs no release's code beside its key: a job holding no secret and no write token runs the checks (`precheck`), and the job holding the key verifies each release from those lines alone (`witness --checks-from`), refusing lines made for another key and recording nothing for a release they do not cover (UNCHECKED)",

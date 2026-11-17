@@ -113,6 +113,21 @@ def key_path(repo_dir: Path) -> Path:
     return Path(repo_dir) / ".git" / "vars" / "maintainer.key"
 
 
+def keys_on_this_host(repo_dir: Path, keys) -> List[bytes]:
+    """The roster keys whose seeds this checkout's git directory holds (`.git/vars/*.key`, where `init`, `join` and the
+    members keep theirs): only their public keys are derived, nothing is signed. A seed elsewhere on the host is not
+    seen, so this is a lower bound of what one host holds."""
+    common = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"], capture_output=True, text=True)
+    vars_dir = (Path(repo_dir) / common.stdout.strip() / "vars") if common.returncode == 0 else Path(repo_dir) / ".git" / "vars"
+    here = set()
+    for f in sorted(vars_dir.glob("*.key")) if vars_dir.is_dir() else []:
+        try:
+            here.add(V.ed25519_pubkey(bytes.fromhex(f.read_text().strip())))
+        except (ValueError, OSError):
+            continue
+    return sorted(k for k in keys if k in here)
+
+
 def load_or_create_key(repo_dir: Path) -> bytes:
     """The maintainer's Ed25519 seed, created on first use (mode 0600, inside .git, never tracked)."""
     p = key_path(repo_dir)
@@ -1131,7 +1146,11 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
         "roster": sorted(k.hex() for k in keys),
         # with an admission threshold of 1 and more than one key, each key alone is the quorum (spec §4.2)
         "admission": {"threshold": thresholds(repo)[0], "keys": len(keys),
-                      "one_key_is_the_quorum": thresholds(repo)[0] == 1 and len(keys) > 1},
+                      "one_key_is_the_quorum": thresholds(repo)[0] == 1 and len(keys) > 1,
+                      # the quorum one host holds, as far as this checkout sees: one key is not the quorum, but one
+                      # machine holding the threshold's worth of seeds is
+                      "keys_on_this_host": len(here := keys_on_this_host(repo_dir, keys)),
+                      "this_host_is_the_quorum": len(here) >= thresholds(repo)[0]},
         "releases": releases,
         "unsettled": [r["name"] for r in releases if not r["settled"]],
         # of those, the ones no member can verify (the same predicate as `next`): they never settle

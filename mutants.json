@@ -2953,8 +2953,8 @@
  },
  "m-threshold-status": {
   "file": "tools/minds_chain.py",
-  "find": "                      \"one_key_is_the_quorum\": thresholds(repo)[0] == 1 and len(keys) > 1},",
-  "replace": "                      \"one_key_is_the_quorum\": False},",
+  "find": "                      \"one_key_is_the_quorum\": thresholds(repo)[0] == 1 and len(keys) > 1,\n",
+  "replace": "                      \"one_key_is_the_quorum\": False,\n",
   "kills": [
    "test_119_what_one_key_can_do_by_an_edge_is_the_admission_thresholds"
   ]
@@ -4589,6 +4589,14 @@
   "replace": "\"cosign_from\": led[cell][\"seen\"],",
   "kills": [
    "test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+  ]
+ },
+ "m-status-host-quorum": {
+  "file": "tools/minds_chain.py",
+  "find": "\"this_host_is_the_quorum\": len(here) >= thresholds(repo)[0]},",
+  "replace": "\"this_host_is_the_quorum\": False},",
+  "kills": [
+   "test_143_next_offers_no_act_on_a_release_no_one_can_verify"
   ]
  }
 }
