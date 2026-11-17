@@ -4514,6 +4514,9 @@ class TestVars1Conformance(unittest.TestCase):
         with self.assertRaisesRegex(V.VarsError, "malformed profile"):
             mc.parse_release_profile(f"minds release main@{fresh} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK; "
                                      f"profile@{'0' * 64}; extra")
+        with self.assertRaisesRegex(V.VarsError, "malformed profile"):  # `$` would admit the newline
+            mc.parse_release_profile(f"minds release main@{fresh} rules@{V.H_LENS_KERNEL.hex()}; checks: x OK; "
+                                     f"profile@{'0' * 64}\n")
 
         # A symlink's blob is a name, not the bytes that run (Codex PR #4 r1 F1): a profile path must be a regular file
         (self.repo_path / "kernel" / "body.mjs").write_bytes(b"// runner\n")
@@ -9120,6 +9123,43 @@ class TestVars1Conformance(unittest.TestCase):
                 mc.claimed_checks(statement)
         self.assertEqual(mc.claimed_checks(head + f" checks: x OK; y OK; profile@{'0' * 64}"), ["x", "y"])
         self.assertIn("did not pass", answer(fresh("10"), ["x FAILED"], ["x FAILED"])[1])
+
+    def test_142_the_witness_signs_lines_a_keyless_job_ran(self) -> None:
+        """The witness in two jobs (.github/workflows/witness.yml): `precheck`, holding only the public key, runs the
+        checks of every release waiting for it that it has not answered and writes their lines; `witness` with
+        `recorded` in place of the checks verifies each release from those lines alone and runs nothing. The verdicts
+        are those of one job running both. A release the verify job did not run is UNCHECKED and records nothing; a
+        document for another key, or a malformed one, is refused."""
+        mc = self._minds_chain()
+        sk, skw = b"\x07" * 32, b"\x0a" * 32
+        pkw = V.ed25519_pubkey(skw)
+        mc.init(self.repo_path, sk)
+        mc.join(self.repo_path, sk, pkw, "github-actions")
+        _, r1 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        _, r2 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])
+        ran = []
+
+        def checks(repo_dir, sha, rules, **kw):
+            ran.append(sha)
+            return (["test_vars1 OK"], True) if sha == "b" * 40 else (["test_vars1 FAILED"], False)
+        doc = mc.precheck(self.repo_path, pkw, checks=checks)
+        self.assertEqual([(r["decision"], r["ok"]) for r in doc["runs"]],
+                         [(r1["decision"].hex(), True), (r2["decision"].hex(), False)])
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [r1["decision"], r2["decision"]], "precheck records nothing")
+        with self.assertRaises(V.VarsError):
+            mc.recorded(doc, V.ed25519_pubkey(sk))
+        with self.assertRaises(V.VarsError):
+            mc.recorded(dict(doc, runs=[{"inputs": "x", "lines": "test_vars1 OK", "ok": True}]), pkw)
+        _, r3 = mc.release(self.repo_path, sk, "d" * 40, ["test_vars1 OK"])  # recorded after the verify job read
+        done = mc.witness(self.repo_path, skw, "github-actions", checks=mc.recorded(json.loads(json.dumps(doc)), pkw))
+        self.assertEqual([(x["decision"], x["verdict"]) for x in done],
+                         [(r1["decision"].hex(), "ATTESTED"), (r2["decision"].hex(), "INVALID"),
+                          (r3["decision"].hex(), "UNCHECKED")])
+        self.assertEqual(ran, ["b" * 40, "c" * 40], "the sign job ran no check")
+        self.assertEqual(mc.awaiting(self.repo_path, pkw), [r3["decision"]], "the unchecked release still waits")
+        lens = V.GitVarsRepo(self.repo_path).lens("minds")
+        self.assertTrue(lens["settled"][r1["decision"]])
+        self.assertFalse(lens["settled"][r2["decision"]])
 
     def test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree(self) -> None:
         """tools/run_mutants.py runs N mutants at once, each in a worker's own clone: the working tree as it is (HEAD,

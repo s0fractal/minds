@@ -36,9 +36,12 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # a verdict, and witness the projections that name your key; exit 3 and
                                               # nothing recorded when they cannot be rerun as they ran (UNREPRODUCIBLE)
     tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
-    tools/minds_chain.py witness --key FILE --name NAME
+    tools/minds_chain.py witness --key FILE --name NAME [--checks-from FILE]
                                               # as a member: verify-release every release awaiting your key
-                                              # (the GitHub Actions witness, .github/workflows/witness.yml)
+                                              # (the GitHub Actions witness, .github/workflows/witness.yml); with
+                                              # --checks-from, from precheck's lines, running no release's code
+    tools/minds_chain.py precheck --pubkey HEX --out FILE
+                                              # with no key: run the checks of every release awaiting HEX, write lines
     tools/minds_chain.py show                # releases and projections with their status
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
@@ -1241,7 +1244,7 @@ def parse_release_profile(statement: str) -> Tuple[str, bytes, Optional[str], Op
     if m is None:
         raise V.VarsError("not a release statement")
     pins = dict(zip(SIBLINGS, m.groups()[2:])) if m.group(3) else None
-    tail = re.search(r"; profile@([0-9a-f]{64})$", statement)
+    tail = re.search(r"; profile@([0-9a-f]{64})\Z", statement)  # \Z: `$` admits a trailing newline
     if tail is None and "; profile@" in statement:  # a marker that is not a profile is not "no profile"
         raise V.VarsError("a release statement with a malformed profile")
     return m.group(1), bytes.fromhex(m.group(2)), tail.group(1) if tail else None, pins
@@ -1433,6 +1436,27 @@ def admit_sealing(repo_dir: Path, repo: "V.GitVarsRepo", pk: bytes, tip: str, co
     remember_witnessed(repo_dir, repo, pk, tip, named)
 
 
+def release_inputs(repo_dir: Path, repo: "V.GitVarsRepo", decision_id: bytes):
+    """(statement, sha, rules, profile, pins, chain) of release `decision_id`: what its checks run on, read from the
+    chain alone. `Unreproducible` before any check runs when they read a sibling checkout nothing pins."""
+    atoms, cells, _ = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    d = cells.get(decision_id)
+    if d is None or d.h_schema != V.H_SCHEMA["decision"]:
+        raise V.VarsError("not a decision of this chain")
+    statement = V.parse_utf8(atoms[d.h_payload])
+    sha, rules, profile, pins = parse_release_profile(statement)
+    unpinned = unpinned_reads(repo_dir, sha, pins)
+    if unpinned:
+        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which its "
+                             "statement does not pin: the commit is from before the first requirements.txt (a512f8b)")
+    return statement, sha, rules, profile, pins, recorded_at(repo, decision_id)  # the chain the release was recorded on
+
+
+def run_release_checks(checks, repo_dir: Path, sha: str, rules: bytes, pins, chain):
+    return (checks(repo_dir, sha, rules, siblings=pins, chain=chain) if pins
+            else checks(repo_dir, sha, rules, chain=chain))
+
+
 def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
                    checks=checks_at) -> Tuple[str, bool, List[str]]:
     """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
@@ -1457,19 +1481,10 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     if pk not in roster(repo):
         raise V.VarsError("this key is not on the roster; a member must `join` it first")
     d = cells.get(decision_id)
-    if d is None or d.h_schema != V.H_SCHEMA["decision"]:
-        raise V.VarsError("not a decision of this chain")
-    statement = V.parse_utf8(atoms[d.h_payload])
-    sha, rules, profile, pins = parse_release_profile(statement)
+    statement, sha, rules, profile, pins, then = release_inputs(repo_dir, repo, decision_id)
     claimed = claimed_checks(statement)
-    unpinned = unpinned_reads(repo_dir, sha, pins)
-    if unpinned:
-        raise Unreproducible(f"not reproducible: the checks of main@{sha[:12]} read {', '.join(unpinned)}, which its "
-                             "statement does not pin: the commit is from before the first requirements.txt (a512f8b)")
-    then = recorded_at(repo, decision_id)  # the checks read the chain the release was recorded on
     # the lines carry the outcome (checks_at's flag is every line's and every pre-check line's), so the flag is not read
-    ran, _ = (checks(repo_dir, sha, rules, siblings=pins, chain=then) if pins
-              else checks(repo_dir, sha, rules, chain=then))
+    ran, _ = run_release_checks(checks, repo_dir, sha, rules, pins, then)
     got = {line.rsplit(" ", 1)[0]: line.rsplit(" ", 1)[-1] == "OK" for line in ran}
     lines = [f"{n} {'OK' if got[n] else 'FAILED'}" for n in claimed if n in got]
     ok = all(got[n] for n in claimed if n in got)
@@ -1522,6 +1537,70 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     return c, ok, lines
 
 
+def answered_by(repo: "V.GitVarsRepo", pk: bytes) -> set:
+    """The releases a verdict this key sealed attests (a verdict that attests nothing is no answer)."""
+    atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
+    mine = [cells[x.h_target] for x in seals.values()
+            if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
+    return {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
+
+
+# The witness in two jobs (.github/workflows/witness.yml). The checks of a release run the release's own code, and
+# code that runs beside a key can read it: a test merged at once could hand the key out at the next release. So the
+# verify job, holding no secret and no write token, runs the checks of every release waiting for the public key and
+# writes their lines (`precheck`); the sign job, holding the key, runs no release's code: it verifies each release
+# with `recorded` in place of `checks_at`, which answers from those lines alone. A release's own code decides its own
+# lines either way; what it can no longer reach is the key.
+CHECKS_FORMAT = "minds.witness-checks@1"
+
+
+class Unchecked(Unreproducible):
+    """A release the verify job ran no checks for (recorded after it read the chain): no verdict, it waits."""
+
+
+def _inputs_key(sha: str, rules: bytes, pins, chain) -> str:
+    return json.dumps([sha, rules.hex(), pins or None, chain], sort_keys=True)
+
+
+def precheck(repo_dir: Path, pk: bytes, checks=checks_at) -> Dict[str, object]:
+    """The verify job: the lines of the checks of every release that waits for `pk` and that it has not answered,
+    each under the inputs they ran on. No key: it signs and writes nothing on the chain."""
+    repo = V.GitVarsRepo(repo_dir)
+    answered = answered_by(repo, pk)
+    runs = []
+    for d in awaiting(repo_dir, pk):
+        if d in answered:
+            continue
+        try:
+            _, sha, rules, _, pins, chain = release_inputs(repo_dir, repo, d)
+        except Unreproducible:  # the sign job finds it so again, before any check
+            continue
+        lines, ok = run_release_checks(checks, repo_dir, sha, rules, pins, chain)
+        runs.append({"decision": d.hex(), "inputs": _inputs_key(sha, rules, pins, chain), "lines": list(lines),
+                     "ok": bool(ok)})
+    return {"format": CHECKS_FORMAT, "key": pk.hex(), "chain": repo.ref_commit(SCOPE), "runs": runs}
+
+
+def recorded(doc: Dict[str, object], pk: bytes):
+    """A `checks` that answers from the verify job's `doc` (precheck) for key `pk`, never running anything: the lines
+    of the run on exactly these inputs, else `Unchecked`."""
+    if not isinstance(doc, dict) or doc.get("format") != CHECKS_FORMAT or doc.get("key") != pk.hex():
+        raise V.VarsError(f"not a {CHECKS_FORMAT} document for key {pk.hex()[:12]}")
+    runs = {}
+    for r in doc.get("runs") or []:
+        if not (isinstance(r, dict) and isinstance(r.get("inputs"), str) and isinstance(r.get("lines"), list)
+                and all(isinstance(x, str) for x in r["lines"]) and isinstance(r.get("ok"), bool)):
+            raise V.VarsError(f"a malformed run in the {CHECKS_FORMAT} document")
+        runs[r["inputs"]] = (list(r["lines"]), r["ok"])
+
+    def checks(repo_dir, sha, rules, siblings=None, chain=None):
+        got = runs.get(_inputs_key(sha, rules, siblings, chain))
+        if got is None:
+            raise Unchecked(f"the verify job ran no checks of main@{sha[:12]} on these inputs")
+        return got
+    return checks
+
+
 def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict[str, Optional[str]]]:
     """As a member on a host of its own (the GitHub Actions witness, `.github/workflows/witness.yml`, whose key is
     made on its runner and never leaves GitHub): `verify-release` every release that waits for this key's verdict,
@@ -1541,9 +1620,7 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
     sealed = {V.parse_utf8(atoms[cells[x.h_target].slots[0]]) for x in seals.values()
               if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["projection"]}
     remember_witnessed(repo_dir, repo, pk, tip, sealed)
-    mine = [cells[x.h_target] for x in seals.values()
-            if x.actor_pubkey == pk and x.h_target in cells and cells[x.h_target].h_schema == V.H_SCHEMA["verdict"]]
-    answered = {d for v in mine if v.h_attests != V.H_EMPTY for d in V.parse_hvec(atoms[v.h_attests])}
+    answered = answered_by(repo, pk)
     out: List[Dict[str, Optional[str]]] = []
     for d in awaiting(repo_dir, pk):
         if d in answered:
@@ -1551,6 +1628,9 @@ def witness(repo_dir: Path, sk: bytes, name: str, checks=checks_at) -> List[Dict
             continue
         try:
             commit, ok, _ = verify_release(repo_dir, sk, d, name, checks=checks)
+        except Unchecked as e:  # the verify job did not run this release: nothing is recorded, it waits
+            out.append({"decision": d.hex(), "verdict": "UNCHECKED", "commit": None, "why": str(e)})
+            continue
         except Unreproducible as e:  # recorded by no one: the release keeps waiting for this key, and says why
             out.append({"decision": d.hex(), "verdict": "UNREPRODUCIBLE", "commit": None, "why": str(e)})
             continue
@@ -1868,8 +1948,16 @@ def _main(argv: List[str]) -> int:
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
-    if cmd == "witness" and len(argv) == 5 and argv[1] == "--key" and argv[3] == "--name":
-        done = witness(repo_dir, bytes.fromhex(Path(argv[2]).read_text().strip()), argv[4])
+    if cmd == "precheck" and len(argv) == 5 and argv[1] == "--pubkey" and argv[3] == "--out":
+        doc = precheck(repo_dir, bytes.fromhex(argv[2]))
+        Path(argv[4]).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+        print(json.dumps({"runs": [(r["decision"], r["ok"]) for r in doc["runs"]]}))
+        return 0
+    if cmd == "witness" and len(argv) in (5, 7) and argv[1] == "--key" and argv[3] == "--name" \
+            and argv[5:6] in ([], ["--checks-from"]):
+        sk = bytes.fromhex(Path(argv[2]).read_text().strip())
+        checks = recorded(json.loads(Path(argv[6]).read_text()), V.ed25519_pubkey(sk)) if len(argv) == 7 else checks_at
+        done = witness(repo_dir, sk, argv[4], checks=checks)
         print(json.dumps(done, indent=2))
         # ANSWERED_BEFORE is the member's to answer; UNREPRODUCIBLE is no failure of the release, and waits as it is
         return 1 if any(x["verdict"] == "INVALID" for x in done) else 0
