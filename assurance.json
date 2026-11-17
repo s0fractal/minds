@@ -353,9 +353,19 @@
       "`test_vars1.py` 93–95; `tools/minds_chain.py` `witness`, `awaiting`, `unanswered`"
      ],
      [
-      "`next` offers no act on a release no member can verify (its checks read sibling checkouts nothing pins): no attest of it and no cosign of a verdict that counts only for it, and it says the release cannot be verified by anyone instead of whom it waits for",
+      "`next` offers no act on a release no member can verify (its checks read sibling checkouts nothing pins): no attest of it and no cosign of a verdict that counts only for it, and it says the release cannot be verified by anyone instead of whom it waits for; `status` lists it under `unverifiable` by the same predicate",
       "Tested, with mutants",
       "`test_vars1.py` 143; `tools/minds_chain.py` `next_acts`"
+     ],
+     [
+      "`status` shows each proposed rotation at refs/vars/proposals/minds/: whether a veto names it, and for each key that keeps a cosign ledger when it first saw it and from when its cosign may come",
+      "Tested, with mutants",
+      "`test_vars1.py` 138; `tools/minds_chain.py` `status`, `proposals_state`"
+     ],
+     [
+      "`status` says how many roster keys' seeds this checkout's git directory holds and whether they reach the admission threshold: one key is not the quorum, but one host can be",
+      "Tested, with mutants",
+      "`test_vars1.py` 143; `tools/minds_chain.py` `keys_on_this_host`"
      ],
      [
       "The witness runs no release's code beside its key: a job holding no secret and no write token runs the checks (`precheck`), and the job holding the key verifies each release from those lines alone (`witness --checks-from`), refusing lines made for another key and recording nothing for a release they do not cover (UNCHECKED)",

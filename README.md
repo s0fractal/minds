@@ -154,7 +154,7 @@ under the requirements its own commit pins, installed once under `.git/vars/envs
 ```
 git clone https://github.com/s0fractal/minds && cd minds
 python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
-(cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build vars1cycle && lake build Vars1Sigma)
+(cd proofs && lake build && lake build vars1exec && lake build vars1fold && lake build vars1cycle && lake build Vars1Sigma && lake build vars1mask && lake build vars1witness)
 .venv/bin/python -m unittest test_vars1     # conformance; every fold and lens runs kernel/lens.wasm and its twin
 .venv/bin/python test_vars1_props.py        # property-based invariants I0–I12 (I9, I10, I12 need the proofs' executables)
 .venv/bin/python vars1.py verify-projection BUNDLE.json --require PUBKEY   # with no repository (spec §4.4)
@@ -183,14 +183,13 @@ held to the Python file byte for byte by `verify/vectors.json` (test 134): every
 Python file, bundles spoiled as text and as seals, and the live chain's bundles, with the Python file's answers. Under
 Node it is the same command line (`node minds_verify.mjs verify-attestation BUNDLE.json --require PUBKEY`). The page
 in `site/` runs it on the latest release: `tools/publish_site.py` writes the page, the verifier, the rules modules and
-the bundles of the newest witnessed projection and the newest release accepted at it to the branch `site`, read at
+the bundles of the newest witnessed projection and the newest release accepted at it to the branch `site`
+(republished by `.github/workflows/site.yml` whenever main or the chain moves), read at
 
 ```
 https://raw.githubusercontent.com/s0fractal/minds/site/index.json   # minds.published-bundles@1: names every file
 ```
 
-```
-```
 
 Each result has an `explain` trace (counted witnesses and keys, blocked verifiers at and after the tip, the scope
 epoch, the policy, why a pinned key is missing, and whether the rules identity is one it interprets). It is derived

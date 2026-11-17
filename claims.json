@@ -1954,7 +1954,7 @@
   {
    "id": "assurance.next-unreproducible",
    "source": "ASSURANCE.md",
-   "quote": "`next` offers no act on a release no member can verify (its checks read sibling checkouts nothing pins): no attest of it and no cosign of a verdict that counts only for it, and it says the release cannot be verified by anyone instead of whom it waits for",
+   "quote": "`next` offers no act on a release no member can verify (its checks read sibling checkouts nothing pins): no attest of it and no cosign of a verdict that counts only for it, and it says the release cannot be verified by anyone instead of whom it waits for; `status` lists it under `unverifiable` by the same predicate",
    "status": "tested",
    "witnesses": [
     "test:test_143_next_offers_no_act_on_a_release_no_one_can_verify"
@@ -1962,7 +1962,33 @@
    "mutants": [
     "m-next-unrep-attest",
     "m-next-unrep-cosign",
-    "m-next-unrep-wait"
+    "m-next-unrep-wait",
+    "m-status-unverifiable"
+   ]
+  },
+  {
+   "id": "assurance.status-proposals",
+   "source": "ASSURANCE.md",
+   "quote": "`status` shows each proposed rotation at refs/vars/proposals/minds/: whether a veto names it, and for each key that keeps a cosign ledger when it first saw it and from when its cosign may come",
+   "status": "tested",
+   "witnesses": [
+    "test:test_138_the_witness_cosigns_a_raise_of_the_threshold_after_its_window_unless_vetoed"
+   ],
+   "mutants": [
+    "m-status-proposal-veto",
+    "m-status-proposal-window"
+   ]
+  },
+  {
+   "id": "assurance.status-host-quorum",
+   "source": "ASSURANCE.md",
+   "quote": "`status` says how many roster keys' seeds this checkout's git directory holds and whether they reach the admission threshold: one key is not the quorum, but one host can be",
+   "status": "tested",
+   "witnesses": [
+    "test:test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+   ],
+   "mutants": [
+    "m-status-host-quorum"
    ]
   },
   {

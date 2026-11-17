@@ -113,6 +113,21 @@ def key_path(repo_dir: Path) -> Path:
     return Path(repo_dir) / ".git" / "vars" / "maintainer.key"
 
 
+def keys_on_this_host(repo_dir: Path, keys) -> List[bytes]:
+    """The roster keys whose seeds this checkout's git directory holds (`.git/vars/*.key`, where `init`, `join` and the
+    members keep theirs): only their public keys are derived, nothing is signed. A seed elsewhere on the host is not
+    seen, so this is a lower bound of what one host holds."""
+    common = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"], capture_output=True, text=True)
+    vars_dir = (Path(repo_dir) / common.stdout.strip() / "vars") if common.returncode == 0 else Path(repo_dir) / ".git" / "vars"
+    here = set()
+    for f in sorted(vars_dir.glob("*.key")) if vars_dir.is_dir() else []:
+        try:
+            here.add(V.ed25519_pubkey(bytes.fromhex(f.read_text().strip())))
+        except (ValueError, OSError):
+            continue
+    return sorted(k for k in keys if k in here)
+
+
 def load_or_create_key(repo_dir: Path) -> bytes:
     """The maintainer's Ed25519 seed, created on first use (mode 0600, inside .git, never tracked)."""
     p = key_path(repo_dir)
@@ -872,6 +887,22 @@ class NextTip:
         return {"refused": False, "flips": flips}
 
 
+def release_unreproducible(repo_dir: Path, repo: "V.GitVarsRepo", cells, atoms, x: bytes) -> Optional[str]:
+    """Why no member can answer release `x` (`release_inputs` refuses it before any check runs), or None: an attest of
+    it is no act anyone can make, and its wait never ends (the README's three releases of 2026-10-19). One predicate
+    for `next` and `status`."""
+    c = cells.get(x)
+    if c is None or c.h_schema != V.H_SCHEMA["decision"] or not V.parse_utf8(atoms[c.h_slot_name]).startswith(f"{SCOPE}/release/"):
+        return None
+    try:
+        release_inputs(repo_dir, repo, x)
+    except Unreproducible as e:
+        return str(e)
+    except V.VarsError:
+        return None
+    return None
+
+
 def next_acts(repo_dir: Path, actor: Optional[str] = None) -> Dict[str, object]:
     """Read only: which single act of one roster key would change a status now, and which cells wait (`next`). Each
     act of the menu (`NextTip.menu`) is read in memory (`NextTip.predict`) or, for a seal that can move Pass 1, through
@@ -889,19 +920,10 @@ def next_acts(repo_dir: Path, actor: Optional[str] = None) -> Dict[str, object]:
     blocked: Dict[bytes, Optional[str]] = {}
 
     def unreproducible(x: bytes) -> Optional[str]:
-        """Why no member can answer release `x` (`release_inputs` refuses it before any check runs), or None: an attest
-        of it is no act anyone can make, and its wait never ends (the README's three releases of 2026-10-19)."""
         if x not in blocked:
-            blocked[x] = None
-            c = t.cells[x]
-            if c.h_schema == V.H_SCHEMA["decision"] and V.parse_utf8(t.atoms[c.h_slot_name]).startswith(f"{SCOPE}/release/"):
-                try:
-                    release_inputs(repo_dir, t.repo, x)
-                except Unreproducible as e:
-                    blocked[x] = str(e)
-                except V.VarsError:
-                    pass
+            blocked[x] = release_unreproducible(repo_dir, t.repo, t.cells, t.atoms, x)
         return blocked[x]
+
     def answers_none(a: Dict[str, object]) -> bool:
         """An act on a release no one can verify: an attest of it, or a cosign of a verdict that counts only for such
         releases (a second seal on what the sealer cannot rerun)."""
@@ -1096,6 +1118,10 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
                        attested_by=sorted(k.hex() for k in counted),
                        invalid_by=sorted(k.hex() for k in invalid),
                        awaiting=sorted(k.hex() for k in unanswered(lens, cid)))
+        if not row["settled"]:
+            why = release_unreproducible(repo_dir, repo, cells, atoms, cid)
+            if why:  # no member can answer it: unsettled for ever, and `awaiting` names no act anyone can make
+                row["unreproducible"] = why
         releases.append(row)
     released = {r["commit"] for r in releases}
     last = None
@@ -1120,13 +1146,44 @@ def status(repo_dir: Path, main: str = "main") -> Dict[str, object]:
         "roster": sorted(k.hex() for k in keys),
         # with an admission threshold of 1 and more than one key, each key alone is the quorum (spec §4.2)
         "admission": {"threshold": thresholds(repo)[0], "keys": len(keys),
-                      "one_key_is_the_quorum": thresholds(repo)[0] == 1 and len(keys) > 1},
+                      "one_key_is_the_quorum": thresholds(repo)[0] == 1 and len(keys) > 1,
+                      # the quorum one host holds, as far as this checkout sees: one key is not the quorum, but one
+                      # machine holding the threshold's worth of seeds is
+                      "keys_on_this_host": len(here := keys_on_this_host(repo_dir, keys)),
+                      "this_host_is_the_quorum": len(here) >= thresholds(repo)[0]},
         "releases": releases,
         "unsettled": [r["name"] for r in releases if not r["settled"]],
+        # of those, the ones no member can verify (the same predicate as `next`): they never settle
+        "unverifiable": [r["name"] for r in releases if r.get("unreproducible")],
+        "proposals": proposals_state(repo_dir, keys),
         "unwitnessed_projections": projections,
         "rules_changes": len(evidence(repo_dir)["changes"]),
         "claims_at_main": dict(sorted(debt.items())),
     }
+
+
+def proposals_state(repo_dir: Path, keys) -> List[Dict[str, object]]:
+    """Each proposed rotation at refs/vars/proposals/minds/ as a reader sees it, read only: whether a veto ref names it,
+    and, per roster key that keeps a cosign ledger, when that key first saw it and from when its cosign may come
+    (COSIGN_WINDOW later). A ledger its key did not sign is named, not read."""
+    vetoed = _refs(repo_dir, VETOES)
+    ledgers: Dict[str, object] = {}
+    for k in keys:
+        try:
+            ledgers[k.hex()] = read_ledger(repo_dir, k)
+        except V.VarsError as e:
+            ledgers[k.hex()] = str(e)
+    out = []
+    for cell in sorted(_refs(repo_dir, PROPOSALS)):
+        seen = {}
+        for k, led in sorted(ledgers.items()):
+            if isinstance(led, str):
+                seen[k] = {"refused": led}
+            elif isinstance(led.get(cell), dict) and isinstance(led[cell].get("seen"), int):
+                seen[k] = {"seen": led[cell]["seen"], "cosign_from": led[cell]["seen"] + COSIGN_WINDOW,
+                           "vetoed": bool(led[cell].get("vetoed"))}
+        out.append({"cell": cell, "vetoed": cell in vetoed, "seen_by": seen})
+    return out
 
 
 def covering_projection(repo: V.GitVarsRepo, decision_id: bytes) -> Optional[bytes]:

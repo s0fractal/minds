@@ -7121,7 +7121,8 @@ class TestVars1Conformance(unittest.TestCase):
         repo = V.GitVarsRepo(self.repo_path)
         mc.join(self.repo_path, SK["m"], PK["a"], "a")
         mc.join(self.repo_path, SK["m"], PK["b"], "b")
-        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 1, "keys": 3, "one_key_is_the_quorum": True})
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 1, "keys": 3, "one_key_is_the_quorum": True,
+                                                                       "keys_on_this_host": 0, "this_host_is_the_quorum": False})
         ch = SmallChain.attach(repo, "minds", mc.governing_scope(repo))
         at = {}
         early = V.Cell(V.H_SCHEMA["decision"], ch.put(at, V.atom_utf8("minds/early")), ch.put(at, V.atom_utf8("no policy of its own")),
@@ -7135,7 +7136,8 @@ class TestVars1Conformance(unittest.TestCase):
             mc.set_threshold(self.repo_path, SK["m"], 4)
         mc.set_threshold(self.repo_path, SK["m"], 2)
         lens = repo.lens("minds")
-        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 2, "keys": 3, "one_key_is_the_quorum": False})
+        self.assertEqual(mc.status(self.repo_path)["admission"], {"threshold": 2, "keys": 3, "one_key_is_the_quorum": False,
+                                                                       "keys_on_this_host": 0, "this_host_is_the_quorum": False})
         self.assertEqual((mc.thresholds(repo), lens["evaluators"][early.id][0]), ((2, 2), 2))
         # a policy of its own does not move; one that falls back to the admission policy does, and a second key mends it
         self.assertFalse(lens["settled"][early.id])
@@ -8820,7 +8822,12 @@ class TestVars1Conformance(unittest.TestCase):
         tip = repo.ref_commit("minds")
         cv = propose(4, "m")
         self.assertEqual(cosign(T0), ["WAITING"])
+        row = {p["cell"]: p for p in mc.status(self.repo_path)["proposals"]}.get(cv, {})
+        self.assertEqual((row.get("vetoed"), row.get("seen_by", {}).get(PK["b"].hex())),
+                         (False, {"seen": T0, "cosign_from": T0 + W, "vetoed": False}),
+                         "status shows the proposal, who first saw it and from when its cosign may come")
         self._git("update-ref", mc.VETOES + cv, tip)
+        self.assertTrue({p["cell"]: p for p in mc.status(self.repo_path)["proposals"]}[cv]["vetoed"], "and its veto")
         self.assertEqual(cosign(T0 + W), ["VETOED"])
         self._git("update-ref", "-d", mc.VETOES + cv)
         self._git("update-ref", "-d", mc.PROPOSALS + cv)
@@ -9162,7 +9169,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertFalse(lens["settled"][r2["decision"]])
 
     def test_143_next_offers_no_act_on_a_release_no_one_can_verify(self) -> None:
-        """`next` on a release whose checks no member can rerun (`release_inputs` raises Unreproducible: the three
+        """`next` and `status` on a release whose checks no member can rerun (`release_inputs` raises Unreproducible: the three
         releases of 2026-10-19): it waits for ever, so `next` says so instead of naming whom it waits for, and offers
         no attest of it and no cosign of a verdict that counts only for it. A release anyone can verify keeps both."""
         from unittest import mock
@@ -9178,6 +9185,18 @@ class TestVars1Conformance(unittest.TestCase):
                                lambda repo_dir, sha, pins: ["sigma-glyph (read by x:1)"] if sha == "b" * 40 else real(repo_dir, sha, pins)):
             doc = mc.next_acts(self.repo_path)
             text = mc.next_text(doc)
+            st = mc.status(self.repo_path)
+        rows = {r["id"]: r for r in st["releases"]}
+        self.assertEqual((st["unverifiable"], "unreproducible" in rows[new["decision"].hex()]),
+                         ([rows[old["decision"].hex()]["name"]], False), "status names the same release as next does")
+        vars_dir = self.repo_path / ".git" / "vars"
+        vars_dir.mkdir(parents=True, exist_ok=True)
+        (vars_dir / "maintainer.key").write_text(SK["m"].hex())
+        one = mc.status(self.repo_path)["admission"]
+        (vars_dir / "b.key").write_text(SK["b"].hex())
+        two = mc.status(self.repo_path)["admission"]
+        self.assertEqual([(x["keys_on_this_host"], x["this_host_is_the_quorum"]) for x in (one, two)], [(1, False), (2, True)],
+                         "status says when the seeds of a threshold's worth of keys sit on this host")
         wait = {w["cell"]: w for w in doc["waiting"]}
         acts = {(r["act"], r["cell"]) for r in doc["acts"]}
         on = lambda d: {a for a, c in acts if c == d["decision"].hex()}  # noqa: E731
