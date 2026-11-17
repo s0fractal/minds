@@ -1952,6 +1952,20 @@
    ]
   },
   {
+   "id": "assurance.next-unreproducible",
+   "source": "ASSURANCE.md",
+   "quote": "`next` offers no act on a release no member can verify (its checks read sibling checkouts nothing pins): no attest of it and no cosign of a verdict that counts only for it, and it says the release cannot be verified by anyone instead of whom it waits for",
+   "status": "tested",
+   "witnesses": [
+    "test:test_143_next_offers_no_act_on_a_release_no_one_can_verify"
+   ],
+   "mutants": [
+    "m-next-unrep-attest",
+    "m-next-unrep-cosign",
+    "m-next-unrep-wait"
+   ]
+  },
+  {
    "id": "assurance.witness-split",
    "source": "ASSURANCE.md",
    "quote": "The witness runs no release's code beside its key: a job holding no secret and no write token runs the checks (`precheck`), and the job holding the key verifies each release from those lines alone (`witness --checks-from`), refusing lines made for another key and recording nothing for a release they do not cover (UNCHECKED)",

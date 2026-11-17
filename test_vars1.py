@@ -9161,6 +9161,35 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(lens["settled"][r1["decision"]])
         self.assertFalse(lens["settled"][r2["decision"]])
 
+    def test_143_next_offers_no_act_on_a_release_no_one_can_verify(self) -> None:
+        """`next` on a release whose checks no member can rerun (`release_inputs` raises Unreproducible: the three
+        releases of 2026-10-19): it waits for ever, so `next` says so instead of naming whom it waits for, and offers
+        no attest of it and no cosign of a verdict that counts only for it. A release anyone can verify keeps both."""
+        from unittest import mock
+        mc = self._minds_chain()
+        mc.init(self.repo_path, SK["m"])
+        mc.join(self.repo_path, SK["m"], PK["b"], "b")
+        mc.join(self.repo_path, SK["m"], PK["c"], "c")
+        mc.set_threshold(self.repo_path, SK["m"], 2)
+        _, old = mc.release(self.repo_path, SK["m"], "b" * 40, ["test_vars1 OK"])
+        _, new = mc.release(self.repo_path, SK["m"], "c" * 40, ["test_vars1 OK"])
+        real = mc.unpinned_reads
+        with mock.patch.object(mc, "unpinned_reads",
+                               lambda repo_dir, sha, pins: ["sigma-glyph (read by x:1)"] if sha == "b" * 40 else real(repo_dir, sha, pins)):
+            doc = mc.next_acts(self.repo_path)
+            text = mc.next_text(doc)
+        wait = {w["cell"]: w for w in doc["waiting"]}
+        acts = {(r["act"], r["cell"]) for r in doc["acts"]}
+        on = lambda d: {a for a, c in acts if c == d["decision"].hex()}  # noqa: E731
+        self.assertIn("unreproducible", wait.get(old["decision"].hex(), {}), doc["waiting"])
+        self.assertNotIn("unreproducible", wait.get(new["decision"].hex(), {}), doc["waiting"])
+        self.assertEqual(on(old), set(), "no act on the release no one can verify")
+        self.assertIn("attest", on(new), "an attest of the release anyone can verify")
+        self.assertIn("cannot be verified by anyone", text)
+        cos = [r for r in doc["acts"] if r["act"] == "cosign"
+               and any(f["cell"] == old["decision"].hex() for f in r["flips"])]
+        self.assertEqual(cos, [], "no cosign that settles it")
+
     def test_141_mutant_workers_mutate_trees_of_their_own_that_are_the_working_tree(self) -> None:
         """tools/run_mutants.py runs N mutants at once, each in a worker's own clone: the working tree as it is (HEAD,
         its uncommitted changes and new files, the chain's refs, the built Lean executables by a link; not what git
