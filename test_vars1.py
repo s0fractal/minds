@@ -8820,7 +8820,12 @@ class TestVars1Conformance(unittest.TestCase):
         tip = repo.ref_commit("minds")
         cv = propose(4, "m")
         self.assertEqual(cosign(T0), ["WAITING"])
+        row = {p["cell"]: p for p in mc.status(self.repo_path)["proposals"]}.get(cv, {})
+        self.assertEqual((row.get("vetoed"), row.get("seen_by", {}).get(PK["b"].hex())),
+                         (False, {"seen": T0, "cosign_from": T0 + W, "vetoed": False}),
+                         "status shows the proposal, who first saw it and from when its cosign may come")
         self._git("update-ref", mc.VETOES + cv, tip)
+        self.assertTrue({p["cell"]: p for p in mc.status(self.repo_path)["proposals"]}[cv]["vetoed"], "and its veto")
         self.assertEqual(cosign(T0 + W), ["VETOED"])
         self._git("update-ref", "-d", mc.VETOES + cv)
         self._git("update-ref", "-d", mc.PROPOSALS + cv)
@@ -9162,7 +9167,7 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertFalse(lens["settled"][r2["decision"]])
 
     def test_143_next_offers_no_act_on_a_release_no_one_can_verify(self) -> None:
-        """`next` on a release whose checks no member can rerun (`release_inputs` raises Unreproducible: the three
+        """`next` and `status` on a release whose checks no member can rerun (`release_inputs` raises Unreproducible: the three
         releases of 2026-10-19): it waits for ever, so `next` says so instead of naming whom it waits for, and offers
         no attest of it and no cosign of a verdict that counts only for it. A release anyone can verify keeps both."""
         from unittest import mock
@@ -9178,6 +9183,10 @@ class TestVars1Conformance(unittest.TestCase):
                                lambda repo_dir, sha, pins: ["sigma-glyph (read by x:1)"] if sha == "b" * 40 else real(repo_dir, sha, pins)):
             doc = mc.next_acts(self.repo_path)
             text = mc.next_text(doc)
+            st = mc.status(self.repo_path)
+        rows = {r["id"]: r for r in st["releases"]}
+        self.assertEqual((st["unverifiable"], "unreproducible" in rows[new["decision"].hex()]),
+                         ([rows[old["decision"].hex()]["name"]], False), "status names the same release as next does")
         wait = {w["cell"]: w for w in doc["waiting"]}
         acts = {(r["act"], r["cell"]) for r in doc["acts"]}
         on = lambda d: {a for a, c in acts if c == d["decision"].hex()}  # noqa: E731
