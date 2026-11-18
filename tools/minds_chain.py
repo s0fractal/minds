@@ -14,8 +14,10 @@ the checks run the test suites with that same interpreter, or, for a release who
 with one that has the commit's own installed (`interpreter_for`).
 
     tools/minds_chain.py init                 # genesis of refs/vars/heads/minds (once)
-    tools/minds_chain.py release              # with HEAD = main and a clean tree, run every check on main in a
-                                              # fresh checkout, then record main
+    tools/minds_chain.py release [--publish]  # with HEAD = main and a clean tree, run every check on main in a
+                                              # fresh checkout, then record main; --publish then pushes the chain
+                                              # and dispatches witness.yml, so the release need not wait for its
+                                              # schedule
     tools/minds_chain.py join PUBKEY NAME [--key FILE]...
                                               # rotate the roster to add a member's Ed25519 public key (hex), under
                                               # the thresholds it has, sealed by each FILE or the maintainer key.
@@ -1304,6 +1306,21 @@ def run_checks(root: Path, rules: bytes = V.H_LENS_KERNEL, python: str = sys.exe
     return [f"{n} {'OK' if ok else 'FAILED'}" for n, ok in results], all(ok for _, ok in results)
 
 
+PUBLISH = (["git", "push", "origin", "refs/vars/heads/minds:refs/vars/heads/minds"], ["gh", "workflow", "run", "witness.yml", "--ref", "main"])
+
+
+def publish(repo_dir: Path, run=subprocess.run) -> int:
+    """After a release: push the chain, then dispatch the witness (obligation 141bd684), so its verdict does not wait for
+    the schedule GitHub keeps loosely (scheduled runs came 4 to 13 hours apart on 2026-11-16). The push first: a
+    witness started before it would find nothing new. Each command and its outcome is printed; 1 if either failed."""
+    for cmd in PUBLISH:
+        ok = run(cmd, cwd=str(repo_dir)).returncode == 0
+        print(f"{' '.join(cmd)}: {'OK' if ok else 'FAILED'}", file=sys.stderr)
+        if not ok:
+            return 1
+    return 0
+
+
 def release_target(repo_dir: Path) -> Tuple[str, Optional[str]]:
     """The commit a release would record — `main` — and why it may not be recorded now, if so: the checks run in this
     checkout, so its HEAD must be main's commit and its tree clean."""
@@ -1992,7 +2009,7 @@ def _main(argv: List[str]) -> int:
         print(init(repo_dir, load_or_create_key(repo_dir)))
         print("maintainer key:", V.ed25519_pubkey(load_or_create_key(repo_dir)).hex())
         return 0
-    if cmd == "release":
+    if cmd == "release" and argv[1:] in ([], ["--publish"]):
         main_sha, why = release_target(repo_dir)
         if why:
             print(f"refused: {why}", file=sys.stderr)
@@ -2008,7 +2025,7 @@ def _main(argv: List[str]) -> int:
         commit, ids = release(repo_dir, load_or_create_key(repo_dir), main_sha, checks,
                               profile=profile_at(repo_dir, main_sha)["id"])
         print(json.dumps({"commit": commit, **{k: v.hex() for k, v in ids.items()}}, indent=2))
-        return 0
+        return publish(repo_dir) if argv[1:] == ["--publish"] else 0
     if cmd in ("join", "threshold") and len(argv) >= 2:
         propose = cmd == "threshold" and argv[-1] == "--propose"
         argv = argv[:-1] if propose else argv
