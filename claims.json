@@ -3330,6 +3330,23 @@
    ]
   },
   {
+   "id": "assurance.outside-overlay",
+   "source": "ASSURANCE.md",
+   "quote": "A key outside the roster answers a release as an overlay (`verify-release --outside`)",
+   "status": "tested",
+   "witnesses": [
+    "test:test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+   ],
+   "mutants": [
+    "m-overlay-roster",
+    "m-overlay-sealed",
+    "m-overlay-scope",
+    "m-overlay-agrees",
+    "m-outside-roster",
+    "m-outside-chain"
+   ]
+  },
+  {
    "id": "assurance.since-last-visit",
    "source": "ASSURANCE.md",
    "quote": "The release page says, on a return visit, which cells read differently than at the last projection the browser accepted",

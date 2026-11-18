@@ -83,7 +83,13 @@ Without push access to `refs/vars/heads/minds`: make a key (`tools/minds_chain.p
 prints its public key) and ask a member to `join` it; run `verify-release` in your clone, then
 `tools/minds_chain.py bundle --out verdict.json` and hand the file to anyone with push access, who runs
 `tools/minds_chain.py ingest verdict.json` and pushes. The gate checks every seal in it under the roster, so whoever
-carries the file can lose it, never change it.
+carries the file can lose it, never change it. `verify-release ... --bundle-out verdict.json` does both steps at once.
+
+Not a member, and not asking to be one: any key can answer a release beside the chain.
+`tools/minds_chain.py verify-release <decision> --key <any key> --name <your id> --outside --out answer.json` runs the
+same checks and writes your sealed verdict as an overlay; the chain does not move. Anyone reads it with
+`tools/minds_chain.py overlay answer.json`, which checks every seal and says whether your answer agrees with what the
+chain settled. An overlay counts for no threshold: it is a second opinion a reader can weigh, a dissent included.
 
 `verify-release` reruns every check on the released commit in a fresh checkout, against the chain as it stood when
 the release was recorded, and records your verdict under your

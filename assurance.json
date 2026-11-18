@@ -383,6 +383,11 @@
       "`test_vars1.py` 19c; `tools/minds_chain.py` `bundle`, `ingest`, `keygen`"
      ],
      [
+      "A key outside the roster answers a release as an overlay (`verify-release --outside`): the same checks a member runs, its verdict and grounds sealed by that key and admitted nowhere, the chain unchanged; `overlay` reads it beside the chain, refusing a forged or missing seal, a roster key, a seal bound to no scope of this chain and a verdict on no decision the chain holds, and says whether the outside answer agrees with what the chain settled",
+      "Tested, with mutants",
+      "`test_vars1.py` 19d; `tools/minds_chain.py` `verify_outside`, `overlay`"
+     ],
+     [
       "The release page says, on a return visit, which cells read differently than at the last projection the browser accepted: each cell's kernel bits as the witnessed projection states them, gained and lost, and the cells new or gone; it says nothing of why, nor that an unnamed cell could not have changed",
       "Tested, with mutants",
       "`test_vars1.py` 134; `site/since.mjs`, `site/page.mjs`"

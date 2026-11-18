@@ -1871,6 +1871,48 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.publish(Path(self.tmp.name), run([1])), 1)
         self.assertEqual(calls, [list(mc.PUBLISH[0])], "a failed push dispatches no witness")
 
+    def test_19d_a_key_outside_the_roster_answers_as_an_overlay(self) -> None:
+        """A key no member joined runs the same checks and writes its verdict as an overlay (4259a47d): sealed by that
+        key, read beside the chain, counted for nothing. The chain does not move; the reader says whether the outside
+        answer agrees with what the chain settled; a forged seal, a roster key, a seal on a cell the overlay lacks and a
+        verdict on a decision the chain does not hold are refused."""
+        mc = self._minds_chain()
+        sk, out = b"\x07" * 32, b"\x09" * 32
+        mc.init(self.repo_path, sk)
+        _, r1 = mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        repo = V.GitVarsRepo(self.repo_path)
+        tip = repo.ref_commit("minds")
+        good = lambda *a, **kw: (["test_vars1 OK"], True)
+        bad = lambda *a, **kw: (["test_vars1 FAILED"], False)
+        doc = json.loads(json.dumps(mc.verify_outside(self.repo_path, out, r1["decision"], "stranger", checks=good)))
+        self.assertEqual(repo.ref_commit("minds"), tip, "an overlay moves no ref")
+        try:
+            got = mc.overlay(self.repo_path, doc)
+        except V.VarsError as e:
+            self.fail(f"the overlay verify_outside wrote is refused: {e}")
+        self.assertEqual((got["key"], got["name"], got["outcome"], got["settled"], got["agrees"], got["checks"]),
+                         (V.ed25519_pubkey(out).hex(), "stranger", "ATTESTED", True, True, 1))
+        no = mc.overlay(self.repo_path, mc.verify_outside(self.repo_path, out, r1["decision"], "stranger", checks=bad))
+        self.assertEqual((no["outcome"], no["agrees"]), ("INVALID", False), "a dissent reads as one, beside the chain")
+        self.assertTrue(repo.lens("minds")["settled"][r1["decision"]], "and changes nothing the chain settled")
+        forged = dict(doc, seals=[doc["seals"][0][:-2] + ("00" if doc["seals"][0][-2:] != "00" else "01")] + doc["seals"][1:])
+        with self.assertRaisesRegex(V.VarsError, "malformed overlay"):
+            mc.overlay(self.repo_path, forged)
+        with self.assertRaisesRegex(V.VarsError, "seals each of its cells once"):
+            mc.overlay(self.repo_path, dict(doc, seals=doc["seals"][1:]))
+        elsewhere = [V.Seal.sign(out, V.Seal.decode(bytes.fromhex(x)).h_target, b"\x00" * 32).encode().hex() for x in doc["seals"]]
+        with self.assertRaisesRegex(V.VarsError, "no scope of this chain"):
+            mc.overlay(self.repo_path, dict(doc, seals=elsewhere))
+        with self.assertRaisesRegex(V.VarsError, "on the roster"):
+            mc.verify_outside(self.repo_path, sk, r1["decision"], "maintainer", checks=good)
+        with self.assertRaisesRegex(V.VarsError, "one verdict, on a decision"):
+            mc.overlay(self.repo_path, dict(doc, decision=r1["projection"].hex()))
+        with self.assertRaisesRegex(V.VarsError, "not a minds.overlay@1"):
+            mc.overlay(self.repo_path, dict(doc, format="minds.cells@1"))
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(out), "stranger")   # once a member, its answer belongs on the chain
+        with self.assertRaisesRegex(V.VarsError, "on the roster"):
+            mc.overlay(self.repo_path, doc)
+
     def test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle(self) -> None:
         """A member's verdict, recorded in its own clone, reaches the chain as a bundle anyone admits (9a0b88aa): the
         release settles; a bundle with one byte altered, a second ingest of the same bundle, and a bundle made after
