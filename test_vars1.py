@@ -1853,6 +1853,24 @@ class TestVars1Conformance(unittest.TestCase):
         (work / "x").write_text("x")
         self.assertIn("not clean", mc.release_target(work)[1] or "")
 
+    def test_18b_release_publish_pushes_the_chain_then_dispatches_the_witness(self) -> None:
+        """`release --publish` pushes refs/vars/heads/minds and then dispatches witness.yml (obligation 141bd684): in that
+        order, and it stops, failing, at the first command that fails."""
+        mc = self._minds_chain()
+        calls = []
+        def run(rc):
+            def f(cmd, cwd=None):
+                calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, rc.pop(0) if rc else 0)
+            return f
+        self.assertEqual(mc.publish(Path(self.tmp.name), run([0, 0])), 0)
+        self.assertEqual(calls, [list(c) for c in mc.PUBLISH])
+        self.assertEqual(calls[0][:2], ["git", "push"])
+        self.assertEqual(calls[1][:3], ["gh", "workflow", "run"])
+        calls.clear()
+        self.assertEqual(mc.publish(Path(self.tmp.name), run([1])), 1)
+        self.assertEqual(calls, [list(mc.PUBLISH[0])], "a failed push dispatches no witness")
+
     def test_19_a_second_member_verifies_releases(self) -> None:
         """After `join`, a release is settled, and its projection witnessed, only when every member has attested and
         sealed: one key alone no longer suffices. A member's verdict follows the checks it ran itself."""

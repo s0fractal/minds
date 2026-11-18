@@ -8,7 +8,7 @@ The workspace's rules (`~/Projects/AGENTS.md`) hold here; this file says how the
    later closed with evidence) or an attest `{"verdict": "decline", "reason": ...}` whose reason rests on code, a
    measurement or a priority. A document a person reads is generated from these records when asked; `.drafts/` holds
    scratch for hours, not decisions.
-2. **Releases are delegated.** `tools/minds_chain.py release` records main when its checks pass; a member pushes
+2. **Releases are delegated.** `tools/minds_chain.py release --publish` records main when its checks pass, pushes
    `refs/vars/heads/minds` and dispatches `witness.yml` (`gh workflow run witness.yml --ref main`), whose verdict
    settles it at the admission threshold. No owner confirmation is needed for that act (owner, 2026-11-01).
 3. **Owner paths stay the owner's.** `.github/` and `.warrant/merge.json` changes are prepared as pull requests and

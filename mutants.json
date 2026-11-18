@@ -4598,5 +4598,13 @@
   "kills": [
    "test_143_next_offers_no_act_on_a_release_no_one_can_verify"
   ]
+ },
+ "m-publish-order": {
+  "file": "tools/minds_chain.py",
+  "find": "        if not ok:\n            return 1\n    return 0",
+  "replace": "    return 0",
+  "kills": [
+   "test_18b_release_publish_pushes_the_chain_then_dispatches_the_witness"
+  ]
  }
 }
