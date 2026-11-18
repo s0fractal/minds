@@ -4606,5 +4606,37 @@
   "kills": [
    "test_18b_release_publish_pushes_the_chain_then_dispatches_the_witness"
   ]
+ },
+ "m-ingest-format": {
+  "file": "tools/minds_chain.py",
+  "find": "    if not (isinstance(doc, dict) and doc.get(\"format\") == BUNDLE and doc.get(\"scope\") == SCOPE\n",
+  "replace": "    if not (isinstance(doc, dict) and doc.get(\"scope\") == SCOPE\n",
+  "kills": [
+   "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
+  ]
+ },
+ "m-ingest-twice": {
+  "file": "tools/minds_chain.py",
+  "find": "    if all(c.id in have for c in cells) and all(x.id in have_seals for x in seals):\n",
+  "replace": "    if False:\n",
+  "kills": [
+   "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
+  ]
+ },
+ "m-bundle-delta": {
+  "file": "tools/minds_chain.py",
+  "find": "repo.chain_deltas(repo.commit_chain(commit))[-1]",
+  "replace": "repo.chain_deltas(repo.commit_chain(commit))[0]",
+  "kills": [
+   "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
+  ]
+ },
+ "m-keygen-mode": {
+  "file": "tools/minds_chain.py",
+  "find": "fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)",
+  "replace": "fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)",
+  "kills": [
+   "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
+  ]
  }
 }

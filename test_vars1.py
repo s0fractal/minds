@@ -1871,6 +1871,43 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(mc.publish(Path(self.tmp.name), run([1])), 1)
         self.assertEqual(calls, [list(mc.PUBLISH[0])], "a failed push dispatches no witness")
 
+    def test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle(self) -> None:
+        """A member's verdict, recorded in its own clone, reaches the chain as a bundle anyone admits (9a0b88aa): the
+        release settles; a bundle with one byte altered, a second ingest of the same bundle, and a bundle made after
+        the chain moved on (a later release meanwhile) are answered by the gate, not by trust in the carrier."""
+        mc = self._minds_chain()
+        sk, sk2 = b"\x07" * 32, b"\x08" * 32
+        mc.init(self.repo_path, sk)
+        mc.release(self.repo_path, sk, "a" * 40, ["test_vars1 OK"])
+        mc.join(self.repo_path, sk, V.ed25519_pubkey(sk2), "second")
+        _, r2 = mc.release(self.repo_path, sk, "b" * 40, ["test_vars1 OK"])
+        clone = Path(self.tmp.name) / "member-clone"
+        shutil.copytree(self.repo_path, clone)
+        fake = lambda *a, **kw: (["test_vars1 OK"], True)
+        c, ok, _ = mc.verify_release(clone, sk2, r2["decision"], "second", checks=fake)
+        self.assertTrue(ok)
+        doc = json.loads(json.dumps(mc.bundle(clone, c)))
+        self.assertIn(r2["decision"], [V.Cell.decode(bytes.fromhex(x)).h_payload for x in doc["cells"]],
+                      "the bundle is what that commit added: the member's verdict on the release")
+        repo = V.GitVarsRepo(self.repo_path)
+        self.assertFalse(repo.lens("minds")["settled"][r2["decision"]])
+        bad = dict(doc, seals=[doc["seals"][0][:-2] + ("00" if doc["seals"][0][-2:] != "00" else "01")] + doc["seals"][1:])
+        with self.assertRaises(V.VarsError):
+            mc.ingest(self.repo_path, bad)
+        _, r3 = mc.release(self.repo_path, sk, "c" * 40, ["test_vars1 OK"])     # the chain moves on meanwhile
+        with self.assertRaisesRegex(V.VarsError, "not a minds.cells@1"):
+            mc.ingest(self.repo_path, dict(doc, format="minds.cells@0"))
+        mc.ingest(self.repo_path, doc)
+        self.assertTrue(repo.lens("minds")["settled"][r2["decision"]], "the bundle settles the release it answers")
+        with self.assertRaisesRegex(V.VarsError, "already"):
+            mc.ingest(self.repo_path, doc)
+        key = Path(self.tmp.name) / "new.key"
+        pk = mc.keygen(key)
+        self.assertEqual(V.ed25519_pubkey(bytes.fromhex(key.read_text().strip())), pk)
+        self.assertEqual(oct(key.stat().st_mode & 0o777), "0o600")
+        with self.assertRaisesRegex(V.VarsError, "never overwritten"):
+            mc.keygen(key)
+
     def test_19_a_second_member_verifies_releases(self) -> None:
         """After `join`, a release is settled, and its projection witnessed, only when every member has attested and
         sealed: one key alone no longer suffices. A member's verdict follows the checks it ran itself."""
