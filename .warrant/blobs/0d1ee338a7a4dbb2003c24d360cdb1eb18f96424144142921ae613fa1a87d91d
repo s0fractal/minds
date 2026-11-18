@@ -1,0 +1,60 @@
+{
+  "additional_interface_observation": {
+    "observed": "verify-release DECISION --key FILE --name NAME --bundle-out OUT exits 2 with usage and writes no bundle. Implemented export is a separate bundle [COMMIT] --out FILE step. The challenge rests on the missing overlay regardless of whether that two-command equivalent is accepted.",
+    "where": "tools/minds_chain.py:2116"
+  },
+  "blocking": {
+    "boundary": "This does not request weakening the admission gate: non-roster overlay evidence must remain distinct from roster authority.",
+    "closure_residual": "a key outside the roster is not read as an overlay yet",
+    "ingest_message": "Local seal signer not in active SCOPE policy [rules kernel E-13: local seal key]",
+    "message": "this key is not on the roster; a member must `join` it first",
+    "observed": "verify_release rejects a fresh valid Ed25519 key outside the roster before calling checks; the chain ref is unchanged and no overlay verdict or bundle is produced. ingest also refuses a bundle whose seals are replaced by valid outsider signatures. The implemented handoff requires joining the roster.",
+    "owed": "a key outside the roster reads as an overlay",
+    "where": [
+      "tools/minds_chain.py:1590",
+      "REVIEWING.md:82"
+    ]
+  },
+  "decision": "challenge: the explicit non-roster overlay requirement is not done",
+  "duty": "4259a47d3ca46dbef486dd2acdfb0a879dccc6d5c0963ad38ee8ce1b7a1fc646",
+  "evidence_named_by_target": {
+    "id": "30f71f861ccc1b4f64f69f8dc13df351e6abffaeea2f9956bbe3b821da10ca04",
+    "kind": "record",
+    "pr": 124,
+    "schema": "pr-head@1"
+  },
+  "implementation_commit": "507aee65d9fcde804f70a004d42c5ce539792bb8",
+  "main": "ad4b94160be50636b61f8aaefac861e128225c0e",
+  "pull_request": "https://github.com/s0fractal/minds/pull/124",
+  "repository": "s0fractal/minds",
+  "reproduction": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 TMPDIR=<scratch>/tmp <pinned-python> probe.py <checkout-at-M>",
+    "source": "import json\nimport shutil\nimport subprocess\nimport sys\nfrom pathlib import Path\n\nROOT = Path(sys.argv[1])\nsys.path.insert(0, str(ROOT))\nimport test_vars1 as tests\nimport vars1 as V\nfrom tools import minds_chain as mc\n\nt = tests.TestVars1Conformance()\nt.setUp()\ntry:\n    owner, member, outsider = b'\\x07' * 32, b'\\x08' * 32, b'\\x09' * 32\n    mc.init(t.repo_path, owner)\n    _, rel = mc.release(t.repo_path, owner, 'a' * 40, ['test_vars1 OK'])\n    tip = V.GitVarsRepo(t.repo_path).ref_commit('minds')\n    called = []\n    def checks(*a, **kw):\n        called.append(True)\n        return ['test_vars1 OK'], True\n    try:\n        mc.verify_release(t.repo_path, outsider, rel['decision'], 'outsider', checks=checks)\n    except V.VarsError as e:\n        assert 'not on the roster' in str(e)\n        assert not called\n        assert V.GitVarsRepo(t.repo_path).ref_commit('minds') == tip\n        print('REPRODUCED overlay missing: ' + str(e), flush=True)\n    else:\n        raise AssertionError('outsider was not refused')\n\n    cli = subprocess.run([sys.executable, str(ROOT / 'tools/minds_chain.py'), 'verify-release',\n                          rel['decision'].hex(), '--key', 'unused.key', '--name', 'outsider',\n                          '--bundle-out', str(t.repo_path / 'out.json')], capture_output=True, text=True)\n    assert cli.returncode == 2 and not (t.repo_path / 'out.json').exists()\n    print('REPRODUCED --bundle-out absent: CLI exit 2, no bundle', flush=True)\n\n    mc.join(t.repo_path, owner, V.ed25519_pubkey(member), 'member')\n    _, rel = mc.release(t.repo_path, owner, 'b' * 40, ['test_vars1 OK'])\n    clone = t.repo_path / 'clone'\n    shutil.copytree(t.repo_path, clone)\n    commit, ok, _ = mc.verify_release(clone, member, rel['decision'], 'member', checks=checks)\n    assert ok\n    doc = json.loads(json.dumps(mc.bundle(clone, commit)))\n    assert any(V.Seal.decode(bytes.fromhex(s)).h_target == rel['projection'] for s in doc['seals'])\n    before = V.GitVarsRepo(t.repo_path).ref_commit('minds')\n    wrong_key = dict(doc, seals=[V.Seal.sign(outsider, s.h_target, s.h_scope_ctx).encode().hex()\n                               for s in map(lambda raw: V.Seal.decode(bytes.fromhex(raw)), doc['seals'])])\n    try:\n        mc.ingest(t.repo_path, wrong_key)\n    except V.VarsError as e:\n        assert V.GitVarsRepo(t.repo_path).ref_commit('minds') == before\n        print('PASS outsider-signed replacement bundle refused, ref unchanged: ' + str(e), flush=True)\n    else:\n        raise AssertionError('outsider bundle admitted')\n    mc.ingest(t.repo_path, doc)\n    lens = V.GitVarsRepo(t.repo_path).lens('minds')\n    assert lens['settled'][rel['decision']] and lens['settled'][rel['projection']]\n    print('PASS member bundle transports verdict and projection seal; both settle', flush=True)\nfinally:\n    t.tearDown()\n"
+  },
+  "review": "codex roadmap verdict",
+  "target": "79ca3f521a418cd9a152ab711f552c8400efe75f1f0f2ac71b8b59ac922ab371",
+  "validation": {
+    "claims": "tools/check_claims.py passed: 228 claims, 694 mutants; reported debt 5 assumed and 2 unburned",
+    "extra_probe_results": [
+      "outsider verify_release refused before checks; ref unchanged",
+      "--bundle-out command refused with exit 2; no output bundle",
+      "outsider-signed replacement bundle refused by gate; ref unchanged",
+      "member bundle carries a seal of the release projection and settles both decision and projection"
+    ],
+    "killed_mutants": [
+      "m-ingest-format",
+      "m-ingest-twice",
+      "m-bundle-delta",
+      "m-keygen-mode"
+    ],
+    "limits": "Synthetic test keys and stub release checks exercise transport and authority. Full conformance suite, all 694 mutants, live witness workflow and real release checks were not rerun.",
+    "mutant_execution": "Ran the repository run_mutants.run helper serially against a git archive of M outside the verdict worktree; all four reported semantic kills.",
+    "passed_tests": [
+      "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle",
+      "test_19_a_second_member_verifies_releases"
+    ],
+    "protocol": "Implementation diff changes tools/docs/tests/claim data only; vars1.py, VAR1 and kernel files unchanged.",
+    "python": "3.15; isolated venv with sigma-glyph==1.0.1 installed using --require-hashes -r requirements.txt",
+    "roadmap_before": "32 lineages, 0 problems"
+  }
+}
