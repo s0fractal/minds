@@ -44,8 +44,8 @@ This repository keeps its own chain, `refs/vars/heads/minds` (pushed to GitHub a
 `decision` naming `main@<sha>`, the rules kernel, the release profile (the SHA-256 of the bytes of every file
 that commit tracks: `tools/minds_chain.py profile <sha>`) and the checks that passed, attested by the maintainer's key, with a
 witnessed projection of the chain. `tools/minds_chain.py release` refuses unless HEAD is `main` and the tree is
-clean, before and after; it runs every check on that commit in a fresh checkout, so nothing left from earlier builds
-counts. `tools/minds_chain.py show` lists releases; `status` says, read only, whether `main` is released and which
+clean, before and after; it runs every release check (below) on that commit in a fresh checkout, so nothing left
+from earlier builds counts. `tools/minds_chain.py show` lists releases; `status` says, read only, whether `main` is released and which
 members have not yet attested each release or witnessed each projection (merged is not Settled); `bundle <projection>` gives a bundle for `vars1.py
 verify-projection`; `attest <decision>` gives one for `vars1.py verify-attestation`, with the latest witnessed
 projection that covers the release. A client accepts a release only from a witnessed projection's complete
@@ -202,9 +202,23 @@ addressed units of metered computation ("spores") which fetch their dependencies
 they checked and what they took on others' word, with separate responsibilities for minds and Warrant. It is design
 intent agreed with the owner, built first from the parts above; nothing in it is a claim of this repository.
 
+### What a release checks, and what only CI checks
+
+A release (`tools/minds_chain.py release`, `run_checks`) records that these passed on its commit, in a fresh
+checkout: `lake build` of the proofs and of `vars1exec`, `vars1fold`, `vars1cycle` and `Vars1Sigma`; the conformance
+suite (`test_vars1`); the property suite (`test_vars1_props.py`); the witness checks (`lake build vars1witness`,
+`experiments/witness/test_witness.py`); and the kernel checks (each rules module rebuilt from the commit hashes to
+its identity, and the released rules are among them).
+
+CI (`.github/workflows/check.yml`) runs all of these and more, which a release does not record and does not run:
+`tools/check_claims.py` (every normative block held by a witness), `tools/f42_vectors.py --check`, the two
+`experiments/decisions` suites (`test_decisions.py`, `test_profile.py`) and the mutants. A release's checks are
+therefore a statement about the rules and their proofs at that commit, not about the claims, the decision
+experiments or the strength of the tests; those hold on a commit only as far as its CI run passed.
+
 ## Status
 
-Experimental. CI (`.github/workflows/check.yml`) runs every release check on a fresh Ubuntu runner: the kernel
+Experimental. CI (`.github/workflows/check.yml`) runs every release check, and the CI-only ones above, on a fresh Ubuntu runner: the kernel
 rebuild, which hashes to the same `H_LENS_KERNEL` there as on macOS, the Lean proofs and executables, the conformance
 suite, the property suite, the witness checkers (`experiments/witness`, on the live chain) and fold-candidates
 (`experiments/decisions`: what each of several readings of an event would change, grouped by what it does; and the
