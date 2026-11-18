@@ -1,0 +1,71 @@
+{
+ "duty": "4259a47d3ca46dbef486dd2acdfb0a879dccc6d5c0963ad38ee8ce1b7a1fc646",
+ "established": [
+  "Member CLI --bundle-out exports standard atoms, cells and seals including grounds, verdict and projection seal; keyless carrier CLI ingest settles both decision and projection after the receiving tip advances, under a 2-of-2 scope.",
+  "Every bundle seal was independently corrupted and refused; outsider replacements, signatures under a stale governing scope, no seals, altered atom bytes and second ingest were refused without moving the ref.",
+  "Outsider CLI --outside writes and reads a signed overlay without moving the chain; each corrupted signature, two signing keys and promotion to a member bundle were refused.",
+  "keygen and its private mode/non-overwrite contract exercised by test 19c.",
+  "No changes to vars1.py, VARS-1-SPEC.md, kernel/, kernel2/ or verify/minds_verify.py from PR 124 base ef4f1baa through M. The JSON transport envelopes wrap existing CAS objects; VAR1 and kernel formats are unchanged."
+ ],
+ "evidence_named_by_target": {
+  "id": "f9415d7fe9eb61f93de60ea4c5e0d5781e00ce5ff361f1ca96c9f1b196f95caf",
+  "kind": "record",
+  "pr": 130,
+  "schema": "pr-head@1"
+ },
+ "main": "cbabc57a43d715cf3db55a1f49859d919da62691",
+ "pull_requests": [
+  {
+   "head": "653d6ec8ace1ba12b65454e5bbfc7ab6f94480cd",
+   "merge": "77febd63ada140412e4faa891ae327c8a15a889e",
+   "url": "https://github.com/s0fractal/minds/pull/124"
+  },
+  {
+   "head": "325dad3ce3fe4c504723451d1ac1d74322c35285",
+   "merge": "cbabc57a43d715cf3db55a1f49859d919da62691",
+   "url": "https://github.com/s0fractal/minds/pull/130"
+  }
+ ],
+ "repository": "s0fractal/minds",
+ "reproduction": {
+  "command": "TMPDIR=<scratch>/tmp PYTHONDONTWRITEBYTECODE=1 <pinned-python> probe.py <checkout-at-M>",
+  "output": "PASS CLI --bundle-out exports verdict, grounds and projection seal at threshold 2\nPASS forged bundle seal 0\nPASS forged bundle seal 1\nPASS forged bundle seal 2\nPASS outsider replaces every signature\nPASS valid member signatures under stale governing scope\nPASS unsealed bundle\nPASS atom bytes changed without its hash\nPASS keyless carrier CLI ingest settles decision and projection after tip advances, standard CAS paths only\nPASS second ingest\nPASS outsider CLI generates and reads signed overlay, no ref changes\nPASS forged overlay seal 0\nPASS forged overlay seal 1\nPASS overlay signed by two outsiders\nPASS outside overlay promoted to member bundle\nPASS malformed bundle shape None\nPASS malformed bundle shape []\nPASS malformed bundle shape 5\nPASS malformed bundle shape 'not a bundle'\nPASS malformed bundle shape {}\nPASS malformed bundle shape {'format': 'minds.cells@1', 'scope': 'minds', 'cells': [None]}\nPASS all independent transport and authority probes\n",
+  "source": "import contextlib, copy, io, json, os, shutil, subprocess, sys\nfrom pathlib import Path\nROOT = Path(sys.argv[1]).resolve()\nsys.path.insert(0, str(ROOT))\nimport test_vars1 as tests\nimport vars1 as V\nfrom tools import minds_chain as mc\n\nt = tests.TestVars1Conformance()\nt.setUp()\nchecks_seen = []\ndef checks(*args, **kwargs):\n    checks_seen.append((args[1], kwargs.get('chain')))\n    return ['test_vars1 OK'], True\n\ndef cli(repo, args):\n    old = mc.ROOT\n    mc.ROOT = repo\n    try:\n        with contextlib.redirect_stdout(io.StringIO()) as out:\n            rc = mc._main(args)\n        assert rc == 0, (rc, out.getvalue())\n        return out.getvalue()\n    finally:\n        mc.ROOT = old\n\ndef refused(doc, reader, repo, label):\n    tip = V.GitVarsRepo(repo).ref_commit('minds')\n    try:\n        reader(repo, doc)\n    except V.VarsError:\n        assert V.GitVarsRepo(repo).ref_commit('minds') == tip\n        print('PASS', label, flush=True)\n    else:\n        raise AssertionError('admitted: ' + label)\n\ndef flip(raw):\n    return raw[:-2] + ('01' if raw[-2:] == '00' else '00')\n\ntry:\n    owner, member, outsider, outsider2 = (bytes([i])*32 for i in [7,8,9,10])\n    mc.init(t.repo_path, owner)\n    initial_scope = mc.governing_scope(V.GitVarsRepo(t.repo_path))\n    mc.release(t.repo_path, owner, 'a'*40, ['test_vars1 OK'])\n    mc.join(t.repo_path, owner, V.ed25519_pubkey(member), 'member')\n    mc.set_threshold(t.repo_path, owner, 2)\n    _, release = mc.release(t.repo_path, owner, 'b'*40, ['test_vars1 OK'])\n    clone = t.repo_path/'member'\n    shutil.copytree(t.repo_path, clone)\n    key = t.repo_path/'synthetic-member.key'\n    key.write_text(member.hex())\n    bundle_path = t.repo_path/'bundle.json'\n    mc.verify_release.__defaults__ = (checks,)\n    cli(clone, ['verify-release', release['decision'].hex(), '--key', str(key), '--name', 'member', '--bundle-out', str(bundle_path)])\n    doc = json.loads(bundle_path.read_text())\n    assert len(checks_seen) == 1 and checks_seen[0][0] == 'b'*40\n    assert any(V.Seal.decode(bytes.fromhex(s)).h_target == release['projection'] for s in doc['seals'])\n    assert set(doc) == {'format','scope','commit','atoms','cells','seals'}\n    print('PASS CLI --bundle-out exports verdict, grounds and projection seal at threshold 2', flush=True)\n    for i in range(len(doc['seals'])):\n        bad = copy.deepcopy(doc)\n        bad['seals'][i] = flip(bad['seals'][i])\n        refused(bad, mc.ingest, t.repo_path, f'forged bundle seal {i}')\n    parsed = [V.Seal.decode(bytes.fromhex(s)) for s in doc['seals']]\n    refused(dict(doc, seals=[V.Seal.sign(outsider,s.h_target,s.h_scope_ctx).encode().hex() for s in parsed]), mc.ingest, t.repo_path, 'outsider replaces every signature')\n    refused(dict(doc, seals=[V.Seal.sign(member,s.h_target,initial_scope).encode().hex() for s in parsed]), mc.ingest, t.repo_path, 'valid member signatures under stale governing scope')\n    refused(dict(doc, seals=[]), mc.ingest, t.repo_path, 'unsealed bundle')\n    bad = copy.deepcopy(doc)\n    h = next(iter(bad['atoms']))\n    bad['atoms'][h] = flip(bad['atoms'][h])\n    refused(bad, mc.ingest, t.repo_path, 'atom bytes changed without its hash')\n    _, later = mc.release(t.repo_path, owner, 'c'*40, ['test_vars1 OK'])\n    cli(t.repo_path, ['ingest', str(bundle_path)])\n    repo = V.GitVarsRepo(t.repo_path)\n    lens = repo.lens('minds')\n    assert lens['settled'][release['decision']] and lens['settled'][release['projection']]\n    assert not lens['settled'][later['decision']]\n    paths = subprocess.run(['git','-C',str(t.repo_path),'ls-tree','-r','--name-only',repo.ref_commit('minds')],check=True,capture_output=True,text=True).stdout.splitlines()\n    assert all(p.startswith(('cas/atoms/','cas/cells/','cas/seals/')) for p in paths)\n    print('PASS keyless carrier CLI ingest settles decision and projection after tip advances, standard CAS paths only', flush=True)\n    refused(doc, mc.ingest, t.repo_path, 'second ingest')\n    mc.verify_outside.__defaults__ = (checks,)\n    outsider_key = t.repo_path/'synthetic-outsider.key'\n    outsider_key.write_text(outsider.hex())\n    overlay_path = t.repo_path/'overlay.json'\n    before = repo.ref_commit('minds')\n    cli(t.repo_path, ['verify-release',release['decision'].hex(),'--key',str(outsider_key),'--name','outside','--outside','--out',str(overlay_path)])\n    overlay = json.loads(overlay_path.read_text())\n    got = json.loads(cli(t.repo_path, ['overlay',str(overlay_path)]))\n    assert got['outcome'] == 'ATTESTED' and got['agrees'] and got['key'] == V.ed25519_pubkey(outsider).hex()\n    assert repo.ref_commit('minds') == before\n    print('PASS outsider CLI generates and reads signed overlay, no ref changes', flush=True)\n    for i in range(len(overlay['seals'])):\n        bad = copy.deepcopy(overlay)\n        bad['seals'][i] = flip(bad['seals'][i])\n        refused(bad, mc.overlay, t.repo_path, f'forged overlay seal {i}')\n    bad = copy.deepcopy(overlay)\n    s = V.Seal.decode(bytes.fromhex(bad['seals'][0]))\n    bad['seals'][0] = V.Seal.sign(outsider2,s.h_target,s.h_scope_ctx).encode().hex()\n    refused(bad, mc.overlay, t.repo_path, 'overlay signed by two outsiders')\n    refused(dict(overlay,format=mc.BUNDLE), mc.ingest, t.repo_path, 'outside overlay promoted to member bundle')\n    for shape in [None, [], 5, 'not a bundle', {}, {'format':mc.BUNDLE,'scope':'minds','cells':[None]}]:\n        refused(shape, mc.ingest, t.repo_path, 'malformed bundle shape '+repr(shape))\n    print('PASS all independent transport and authority probes', flush=True)\nfinally:\n    t.tearDown()\n"
+ },
+ "review": "codex roadmap verdict",
+ "source_sha256": {
+  "REVIEWING.md": "4759ece445f8397add1578c4d7d92717bdd974adc760380345bdfb83df62e64b",
+  "mutants.json": "d37a0f92acda366409c8d9627ca196be0082433b20a74342ec7aeab6d72a115a",
+  "test_vars1.py": "7207f0850c7cd7121490d7c2902bae82e97691cdd89985a4c73c400907b9de28",
+  "tools/minds_chain.py": "bfbad07a82ca39fd7f5e67c3794e40a13fa97ba4f2ee6f910e5765c7916a9ed2"
+ },
+ "target": "1506b105c7cbf36661debfd569afa610e7966b28c643b31e33e261b5b55f7c52",
+ "validation": {
+  "claims": "tools/check_claims.py passed: 229 claims, 700 mutants; existing debt: 5 assumed, 2 unburned",
+  "execution": "Tests and serial mutant runner on git archive of M outside verdict worktree. Independent probe imports exact M worktree; Python 3.15 with sigma-glyph 1.0.1 whose module bytes pass the repository pin check.",
+  "limits": "Synthetic test keys and stub release check results exercise CLI transport and authority. Full conformance suite, all 700 mutants, actual release checks and live witness.yml execution were not rerun. Witness workflow was inspected; no automatic overlay collection is claimed.",
+  "mutants": {
+   "ids": [
+    "m-ingest-format",
+    "m-ingest-twice",
+    "m-bundle-delta",
+    "m-keygen-mode",
+    "m-overlay-roster",
+    "m-overlay-sealed",
+    "m-overlay-scope",
+    "m-overlay-agrees",
+    "m-outside-roster",
+    "m-outside-chain"
+   ],
+   "result": "10/10 killed, semantic"
+  },
+  "passed_tests": [
+   "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle",
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay",
+   "test_19_a_second_member_verifies_releases",
+   "test_20_checks_at_runs_in_a_fresh_checkout_at_the_released_commit"
+  ],
+  "roadmap_before": "32 lineages, 0 problems; due --actor codex matches D/T/M; MCP context PENDING, one roadmap/acceptor attest, no open prerequisites or challenges on T"
+ },
+ "verdict": "accept"
+}
