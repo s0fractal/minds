@@ -3301,6 +3301,18 @@
     "m-unclaimed-failed",
     "m-invalid-first"
    ]
+  },
+  {
+   "id": "assurance.release-publish",
+   "source": "ASSURANCE.md",
+   "quote": "`release --publish` pushes the chain and then dispatches the witness, stopping at the first command that fails",
+   "status": "tested",
+   "witnesses": [
+    "test:test_18b_release_publish_pushes_the_chain_then_dispatches_the_witness"
+   ],
+   "mutants": [
+    "m-publish-order"
+   ]
   }
  ],
  "informative": [

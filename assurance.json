@@ -373,6 +373,11 @@
       "`test_vars1.py` 142; `tools/minds_chain.py` `precheck`, `recorded`; `.github/workflows/witness.yml`"
      ],
      [
+      "`release --publish` pushes the chain and then dispatches the witness, stopping at the first command that fails, so a release need not wait for the witness's schedule",
+      "Tested, with mutants",
+      "`test_vars1.py` 18b; `tools/minds_chain.py` `publish`"
+     ],
+     [
       "`verify-release` reruns a release's checks against the chain as it stood when the release was recorded, in a clone that shares this repository's objects but not its refs: a member who joined or left since is not in the roster they read, and `release` reads the chain as it is",
       "Tested, with mutants",
       "`test_vars1.py` 96; `tools/minds_chain.py` `checks_at`, `recorded_at`"
