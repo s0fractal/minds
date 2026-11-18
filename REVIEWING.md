@@ -79,6 +79,12 @@ trusts. `.warrant/merge.json` names the base, the required checks, the owner pat
 git push origin refs/vars/heads/minds
 ```
 
+Without push access to `refs/vars/heads/minds`: make a key (`tools/minds_chain.py keygen ~/minds-member.key`, which
+prints its public key) and ask a member to `join` it; run `verify-release` in your clone, then
+`tools/minds_chain.py bundle --out verdict.json` and hand the file to anyone with push access, who runs
+`tools/minds_chain.py ingest verdict.json` and pushes. The gate checks every seal in it under the roster, so whoever
+carries the file can lose it, never change it.
+
 `verify-release` reruns every check on the released commit in a fresh checkout, against the chain as it stood when
 the release was recorded, and records your verdict under your
 own key. It shows that the checks pass; it does not show that what the commits claim is true. That is step 2.

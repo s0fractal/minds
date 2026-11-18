@@ -3313,6 +3313,21 @@
    "mutants": [
     "m-publish-order"
    ]
+  },
+  {
+   "id": "assurance.member-bundle",
+   "source": "ASSURANCE.md",
+   "quote": "A member without push access hands its verdict over as a bundle (`bundle`)",
+   "status": "tested",
+   "witnesses": [
+    "test:test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
+   ],
+   "mutants": [
+    "m-ingest-format",
+    "m-ingest-twice",
+    "m-bundle-delta",
+    "m-keygen-mode"
+   ]
   }
  ],
  "informative": [

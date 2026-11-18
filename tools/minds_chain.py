@@ -33,6 +33,10 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # that another member sealed and that nobody vetoed (a ref
                                               # refs/vars/veto/minds/<cell>); it judges form and time, not merit
     tools/minds_chain.py cosign-ref --key FILE  # the ref this key keeps its signed cosign ledger in (for the push)
+    tools/minds_chain.py keygen FILE           # a new member key in FILE (outside the checkout); prints its public key
+    tools/minds_chain.py bundle [COMMIT] --out FILE
+                                              # what one chain commit added (default the tip), for a member without push
+    tools/minds_chain.py ingest FILE           # admit a bundle onto the chain's tip, through the gate (seals checked)
     tools/minds_chain.py verify-release DECISION --key FILE --name NAME
                                               # as a member: rerun the checks the release claims at its commit, record
                                               # a verdict, and witness the projections that name your key; exit 3 and
@@ -1642,6 +1646,59 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
     return c, ok, lines
 
 
+BUNDLE = "minds.cells@1"
+
+
+def bundle(repo_dir: Path, commit: Optional[str] = None) -> Dict[str, object]:
+    """What one chain commit added (default: the tip), as a document anyone can carry: its atoms, cells and seals,
+    hex-encoded (obligation 9a0b88aa). A member without push access runs `verify-release` in a clone, then `bundle`,
+    and hands the file over; `ingest` admits it onto the chain wherever it is, after the gate checks every seal under
+    the governing scope. The bundle needs no trust in whoever carries it: an altered byte breaks a seal or a hash."""
+    repo = V.GitVarsRepo(repo_dir)
+    commit = commit or repo.ref_commit(SCOPE)
+    atoms, cells, seals = repo.chain_deltas(repo.commit_chain(commit))[-1]
+    return {"format": BUNDLE, "scope": SCOPE, "commit": commit,
+            "atoms": {k.hex(): v.hex() for k, v in sorted(atoms.items())},
+            "cells": [c.encode().hex() for _, c in sorted(cells.items())],
+            "seals": [x.encode().hex() for _, x in sorted(seals.items())]}
+
+
+def ingest(repo_dir: Path, doc: Dict[str, object]) -> str:
+    """Admit a bundle's atoms, cells and seals onto the chain's tip as one new commit, through the admission gate
+    (which checks each seal's signature and the roster): the commit's author is no one's word. Returns the commit. A
+    bundle of cells the chain already holds is refused, as is anything the gate refuses."""
+    if not (isinstance(doc, dict) and doc.get("format") == BUNDLE and doc.get("scope") == SCOPE
+            and set(doc) <= {"format", "scope", "commit", "atoms", "cells", "seals"}):
+        raise V.VarsError(f"not a {BUNDLE} bundle of {SCOPE}")
+    try:
+        atoms = {bytes.fromhex(k): bytes.fromhex(v) for k, v in dict(doc.get("atoms") or {}).items()}
+        cells = [V.Cell.decode(bytes.fromhex(x)) for x in list(doc.get("cells") or [])]
+        seals = [V.Seal.decode(bytes.fromhex(x)) for x in list(doc.get("seals") or [])]
+    except (TypeError, ValueError) as e:
+        raise V.VarsError(f"malformed bundle ({e})") from None
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    _, have, have_seals = repo.read_cas_tree(tip)
+    if all(c.id in have for c in cells) and all(x.id in have_seals for x in seals):
+        raise V.VarsError("the chain holds this bundle already")
+    c = repo.build_candidate_commit(SCOPE, atoms, cells, seals, parent_commit=tip)
+    repo.admit_and_advance(SCOPE, c, expected_old=tip)
+    return c
+
+
+def keygen(path: Path) -> bytes:
+    """A new Ed25519 seed written to `path` (outside any checkout, never overwritten); its public key, which a member
+    `join`s to the roster."""
+    import secrets
+    if path.exists():
+        raise V.VarsError(f"{path} exists: a key is never overwritten")
+    sk = secrets.token_bytes(32)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(sk.hex() + "\n")
+    return V.ed25519_pubkey(sk)
+
+
 def answered_by(repo: "V.GitVarsRepo", pk: bytes) -> set:
     """The releases a verdict this key sealed attests (a verdict that attests nothing is no answer)."""
     atoms, cells, seals = repo.read_cas_tree(repo.ref_commit(SCOPE))
@@ -2042,6 +2099,19 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "cosign-ref" and len(argv) == 3 and argv[1] == "--key":
         print(cosign_ref(V.ed25519_pubkey(bytes.fromhex(Path(argv[2]).read_text().strip()))))
+        return 0
+    if cmd == "keygen" and len(argv) == 2:
+        print(keygen(Path(argv[1]).expanduser()).hex())
+        return 0
+    if cmd == "bundle" and len(argv) in (3, 4) and argv[-2] == "--out":
+        out = Path(argv[-1])
+        if out.exists():
+            raise SystemExit(f"{out} exists")
+        out.write_text(json.dumps(bundle(repo_dir, argv[1] if len(argv) == 4 else None), indent=1) + "\n")
+        print(out)
+        return 0
+    if cmd == "ingest" and len(argv) == 2:
+        print(ingest(repo_dir, json.loads(Path(argv[1]).read_text())))
         return 0
     if cmd == "verify-release" and len(argv) == 6 and argv[2] == "--key" and argv[4] == "--name":
         sk = bytes.fromhex(Path(argv[3]).read_text().strip())
