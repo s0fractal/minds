@@ -8718,6 +8718,14 @@ class TestVars1Conformance(unittest.TestCase):
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
             self.assertNotIn(sink, page)
         self.assertIn('from "./minds_verify.mjs"', page)
+        # "since your last visit": cell by cell, what the projection's bits gained and lost (site/since.mjs)
+        js = ("const m = await import(process.argv[1]); process.stdout.write(JSON.stringify(m.statusChanges("
+              "{a: {accepted: false, stale: true}, b: {accepted: true}, g: {accepted: true}},"
+              " {a: {accepted: true, stale: false}, b: {accepted: true, stale: false}, n: {accepted: false}})))")   # b: a bit unknown before reads false
+        got = subprocess.run([node, "--input-type=module", "-e", js, (ROOT_DIR / "site" / "since.mjs").as_uri()],
+                             capture_output=True, text=True)
+        self.assertEqual(json.loads(got.stdout or "null"), {"same": 1, "changed": [{"cid": "a", "gained": ["accepted"], "lost": ["stale"]}],
+                                                            "added": ["n"], "gone": ["g"]}, got.stderr)
 
     def _warrant_checker(self):
         import importlib.util

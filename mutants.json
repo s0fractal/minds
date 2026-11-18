@@ -4638,5 +4638,21 @@
   "kills": [
    "test_19c_a_member_without_push_hands_its_verdict_over_as_a_bundle"
   ]
+ },
+ "m-since-bits": {
+  "file": "site/since.mjs",
+  "find": "filter((k) => Boolean(bits[k]) !== Boolean(was[k]))",
+  "replace": "filter((k) => bits[k] !== was[k])",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
+ },
+ "m-since-gone": {
+  "file": "site/since.mjs",
+  "find": "gone: Object.keys(before).filter((cid) => !(cid in after))",
+  "replace": "gone: []",
+  "kills": [
+   "test_134_the_browser_verifier_answers_as_this_file_does"
+  ]
  }
 }
