@@ -3328,6 +3328,19 @@
     "m-bundle-delta",
     "m-keygen-mode"
    ]
+  },
+  {
+   "id": "assurance.since-last-visit",
+   "source": "ASSURANCE.md",
+   "quote": "The release page says, on a return visit, which cells read differently than at the last projection the browser accepted",
+   "status": "tested",
+   "witnesses": [
+    "test:test_134_the_browser_verifier_answers_as_this_file_does"
+   ],
+   "mutants": [
+    "m-since-bits",
+    "m-since-gone"
+   ]
   }
  ],
  "informative": [

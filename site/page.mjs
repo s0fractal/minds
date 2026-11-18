@@ -1,7 +1,8 @@
 // The release check page: fetch the published bundles (index.json names them), let the reader pin keys, and run the
 // verifier's own command line on them here (minds_verify.mjs, held to minds_verify.py by verify/vectors.json). Every
 // word of a verdict below is the verifier's: its exit code, its `explain` fields, its refusal. Text is set as text.
-import { compareProjections, readBundle, runCommand, sha256, toHex } from "./minds_verify.mjs";
+import { compareProjections, readBundle, runCommand, sha256, toHex, verifyProjection } from "./minds_verify.mjs";
+import { statusChanges } from "./since.mjs";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, text, cls) => {
@@ -202,6 +203,29 @@ async function history(cmd, bundleBytes) {
     }
   }
   store.set("minds.last-accepted", JSON.stringify(projection));
+  await sinceLastVisit(projection);
+}
+
+async function sinceLastVisit(projection) {
+  let now;
+  try {
+    now = (await verifyProjection(projection)).statuses;
+  } catch { return; }
+  if (!now) return;
+  const last = store.get("minds.last-statuses");
+  store.set("minds.last-statuses", JSON.stringify({ tip: projection.tip ?? null, statuses: now }));
+  if (!last) return;
+  let before;
+  try { before = JSON.parse(last); } catch { return; }
+  const d = statusChanges(before.statuses ?? {}, now);
+  const short = (c) => c.slice(0, 12);
+  const lines = [`Since your last visit: ${d.same} cell(s) read the same, ${d.changed.length} changed, ${d.added.length} new`
+    + (d.gone.length ? `, ${d.gone.length} no longer in the projection` : "") + "."];
+  for (const c of d.changed.slice(0, 20)) {
+    lines.push(`${short(c.cid)}: ${[...c.gained.map((k) => "+" + k), ...c.lost.map((k) => "−" + k)].join(" ")}`);
+  }
+  if (d.changed.length > 20) lines.push(`… and ${d.changed.length - 20} more`);
+  $("since").textContent = lines.join("\n");
 }
 
 $("check").addEventListener("click", () => { check().catch((e) => status(`Error: ${e.message}`)); });

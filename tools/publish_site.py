@@ -11,7 +11,7 @@ What it writes, at stable paths:
   the bundle's own policy (`minds_chain.py attest`, at that projection), checked here with minds_verify.py;
 - `rules/<id>.wasm`: every rules module the verifier interprets, named by its SHA-256 (the page runs one with
   `--kernel`, and the verifier uses it only when its hash is the projection's rules);
-- `index.html`, `page.mjs`, `style.css` (site/), and `minds_verify.mjs` (verify/), as of this checkout's commit.
+- `index.html`, `page.mjs`, `since.mjs`, `style.css` (site/), and `minds_verify.mjs` (verify/), as of this checkout's commit.
 
 Older bundle files in OUT stay: a reader who kept a link keeps the bytes. The same chain and checkout write the same
 bytes (`published` is the chain tip's commit time), so `.github/workflows/site.yml` republishes on every change of
@@ -105,7 +105,7 @@ def publish(out: Path) -> dict:
     for h, entry in zip(RULES_FILES, index["rules"]):
         if entry["sha256"] != h.hex():
             raise SystemExit(f"{entry['file']} does not hash to its rules identity")
-    for name in ("index.html", "page.mjs", "style.css"):
+    for name in ("index.html", "page.mjs", "since.mjs", "style.css"):
         shutil.copy(ROOT / "site" / name, out / name)
     (out / ".nojekyll").write_bytes(b"")
     (out / "index.json").write_text(json.dumps(index, indent=1) + "\n")
