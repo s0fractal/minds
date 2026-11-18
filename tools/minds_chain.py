@@ -37,10 +37,15 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py bundle [COMMIT] --out FILE
                                               # what one chain commit added (default the tip), for a member without push
     tools/minds_chain.py ingest FILE           # admit a bundle onto the chain's tip, through the gate (seals checked)
-    tools/minds_chain.py verify-release DECISION --key FILE --name NAME
+    tools/minds_chain.py verify-release DECISION --key FILE --name NAME [--bundle-out FILE | --outside --out FILE]
                                               # as a member: rerun the checks the release claims at its commit, record
                                               # a verdict, and witness the projections that name your key; exit 3 and
                                               # nothing recorded when they cannot be rerun as they ran (UNREPRODUCIBLE)
+                                              # --bundle-out: also write the verdict as a bundle (for ingest);
+                                              # --outside: a key outside the roster, its sealed verdict written
+                                              # to FILE as an overlay, the chain unchanged
+    tools/minds_chain.py overlay FILE...       # read overlays beside the chain: each key's answer, checked, and whether
+                                              # it agrees with what the chain settled; counts for nothing
     tools/minds_chain.py witnessed-ref --key FILE  # the ref this key remembers its sealed tips in (for the workflow's push)
     tools/minds_chain.py witness --key FILE --name NAME [--checks-from FILE]
                                               # as a member: verify-release every release awaiting your key
@@ -1566,29 +1571,9 @@ def run_release_checks(checks, repo_dir: Path, sha: str, rules: bytes, pins, cha
             else checks(repo_dir, sha, rules, chain=chain))
 
 
-def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
-                   checks=checks_at) -> Tuple[str, bool, List[str]]:
-    """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
-    (ATTESTED if every check the statement claims passed again, else INVALID), and witness every projection that names
-    this member's key and whose digests this host recomputes. Returns the new commit, the outcome and the claimed checks'
-    lines. A check the statement does not claim is not part of the answer (a commit from before it has none to pass).
-
-    A release whose checks cannot be rerun as they ran is answered by neither: `Unreproducible` is raised and nothing is
-    recorded. That is a release whose checks read a sibling checkout nothing pins (`unpinned_reads`), decided before any
-    check runs; one that claims a check this verifier does not run at its commit; or one whose commit fails a check
-    this verifier runs there and the statement does not claim (an omission must not earn a seal). A claimed check that
-    runs and fails, or a profile that is not the commit's, is INVALID, never unreproducible; an unclaimed check that
-    passes is no part of the answer.
-
-    `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
-    contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
-    an INVALID cannot be taken back by a later ATTESTED."""
-    repo = V.GitVarsRepo(repo_dir)
-    tip = repo.ref_commit(SCOPE)
-    atoms, cells, seals = repo.read_cas_tree(tip)
-    pk = V.ed25519_pubkey(sk)
-    if pk not in roster(repo):
-        raise V.VarsError("this key is not on the roster; a member must `join` it first")
+def _judge(repo_dir: Path, repo: V.GitVarsRepo, atoms, cells, decision_id: bytes, name: str, checks):
+    """(new atoms, grounds, verdict cell, outcome, lines): a verifier's answer on a release, built and not yet sealed
+    (verify_release for a member, verify_outside for a key outside the roster)."""
     d = cells.get(decision_id)
     statement, sha, rules, profile, pins, then = release_inputs(repo_dir, repo, decision_id)
     claimed = claimed_checks(statement)
@@ -1614,7 +1599,6 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
             raise Unreproducible(f"not reproducible: this verifier runs {unclaimed} at main@{sha[:12]}, which fail there, "
                                  "and the statement does not claim them: leaving a check out cannot be told from a "
                                  "commit that did not have it, so it earns no verdict")
-    s = governing_scope(repo)
     new: Dict[bytes, bytes] = {}
     base = f"{V.parse_utf8(atoms[d.h_slot_name])}/{name}/{'attested' if ok else 'invalid'}"
     grounds = check_cells(new, base, lines, sha, profile)  # this member's own checks: its verdict rests on them
@@ -1626,9 +1610,37 @@ def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
         h_relies=_put(new, V.atom_hvec([g.id for g in grounds])),
         slots=(V.H_EMPTY, V.H_ATTESTED if ok else V.H_VERDICT_INVALID, _put(new, V.atom_utf8(name))),
     )
+    return new, grounds, verdict, ok, lines
+
+
+def verify_release(repo_dir: Path, sk: bytes, decision_id: bytes, name: str,
+                   checks=checks_at) -> Tuple[str, bool, List[str]]:
+    """As a roster member: run `checks` on the release's commit, record this member's verdict on the decision
+    (ATTESTED if every check the statement claims passed again, else INVALID), and witness every projection that names
+    this member's key and whose digests this host recomputes. Returns the new commit, the outcome and the claimed checks'
+    lines. A check the statement does not claim is not part of the answer (a commit from before it has none to pass).
+
+    A release whose checks cannot be rerun as they ran is answered by neither: `Unreproducible` is raised and nothing is
+    recorded. That is a release whose checks read a sibling checkout nothing pins (`unpinned_reads`), decided before any
+    check runs; one that claims a check this verifier does not run at its commit; or one whose commit fails a check
+    this verifier runs there and the statement does not claim (an omission must not earn a seal). A claimed check that
+    runs and fails, or a profile that is not the commit's, is INVALID, never unreproducible; an unclaimed check that
+    passes is no part of the answer.
+
+    `name` is the member's verifier id, the same on every run: an INVALID after the member's own ATTESTED
+    contradicts it in Pass 3 and so withdraws it. Each outcome is recorded at most once per member and release;
+    an INVALID cannot be taken back by a later ATTESTED."""
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    atoms, cells, seals = repo.read_cas_tree(tip)
+    pk = V.ed25519_pubkey(sk)
+    if pk not in roster(repo):
+        raise V.VarsError("this key is not on the roster; a member must `join` it first (or verify-release --outside)")
+    new, grounds, verdict, ok, lines = _judge(repo_dir, repo, atoms, cells, decision_id, name, checks)
+    s = governing_scope(repo)
+    sealed_by_me = {x.h_target for x in seals.values() if x.actor_pubkey == pk}
     if verdict.id in cells:
         raise V.VarsError("this member already recorded this verdict")
-    sealed_by_me = {x.h_target for x in seals.values() if x.actor_pubkey == pk}
     witness = []
     for cid, c in sorted(cells.items()):
         if c.h_schema != V.H_SCHEMA["projection"] or cid in sealed_by_me:
@@ -1684,6 +1696,83 @@ def ingest(repo_dir: Path, doc: Dict[str, object]) -> str:
     c = repo.build_candidate_commit(SCOPE, atoms, cells, seals, parent_commit=tip)
     repo.admit_and_advance(SCOPE, c, expected_old=tip)
     return c
+
+
+OVERLAY = "minds.overlay@1"
+
+
+def verify_outside(repo_dir: Path, sk: bytes, decision_id: bytes, name: str, checks=checks_at) -> Dict[str, object]:
+    """As a key outside the roster (obligation 4259a47d): run the same checks a member runs and return the answer as an
+    overlay document, sealed by this key and admitted nowhere. The chain does not change; anyone may read the document
+    beside it (`overlay`), where it counts for no threshold and decides nothing. A key on the roster records its verdict
+    on the chain instead (verify-release), so it is refused here."""
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    atoms, cells, _ = repo.read_cas_tree(tip)
+    if V.ed25519_pubkey(sk) in roster(repo):
+        raise V.VarsError("this key is on the roster: its verdict goes on the chain (verify-release), not in an overlay")
+    new, grounds, verdict, _, _ = _judge(repo_dir, repo, atoms, cells, decision_id, name, checks)
+    s = governing_scope(repo)
+    return {"format": OVERLAY, "scope": SCOPE, "chain": tip, "decision": decision_id.hex(),
+            "atoms": {k.hex(): v.hex() for k, v in sorted(new.items())},
+            "cells": [c.encode().hex() for c in [*grounds, verdict]],
+            "seals": [V.Seal.sign(sk, c.id, s).encode().hex() for c in [*grounds, verdict]]}
+
+
+def overlay(repo_dir: Path, doc: Dict[str, object]) -> Dict[str, object]:
+    """What an overlay document says, checked against the chain as this checkout holds it, or VarsError: one key
+    outside the roster seals every cell (a signature that fails, a cell left unsealed or a seal on anything else is
+    refused); one verdict, on a decision the chain holds, resting on exactly the other cells; seals bound to a scope of
+    this chain. Returns {key, name, decision, outcome, checks, settled, agrees}: `settled` is the chain's own reading of
+    the decision, `agrees` whether the outside answer is the same. Nothing is admitted and no threshold counts it."""
+    import hashlib
+    if not (isinstance(doc, dict) and doc.get("format") == OVERLAY and doc.get("scope") == SCOPE
+            and set(doc) == {"format", "scope", "chain", "decision", "atoms", "cells", "seals"}):
+        raise V.VarsError(f"not a {OVERLAY} document of {SCOPE}")
+    try:
+        atoms = {bytes.fromhex(k): bytes.fromhex(v) for k, v in dict(doc["atoms"]).items()}
+        cells = [V.Cell.decode(bytes.fromhex(x)) for x in list(doc["cells"])]
+        seals = [V.Seal.decode(bytes.fromhex(x)) for x in list(doc["seals"])]  # each signature checked here
+        decision = bytes.fromhex(str(doc["decision"]))
+    except (TypeError, ValueError, V.VarsError) as e:
+        raise V.VarsError(f"malformed overlay ({e})") from None
+    if any(hashlib.sha256(v).digest() != k for k, v in atoms.items()):
+        raise V.VarsError("an overlay atom is not its hash")
+    repo = V.GitVarsRepo(repo_dir)
+    tip = repo.ref_commit(SCOPE)
+    chain_atoms, chain_cells, _ = repo.read_cas_tree(tip)
+    keys = {x.actor_pubkey for x in seals}
+    if len(keys) != 1:
+        raise V.VarsError("an overlay is one key's: its seals name another number of keys")
+    (pk,) = keys
+    if pk in roster(repo):
+        raise V.VarsError("this key is on the roster: a member's verdict is a bundle for the chain (ingest), not an overlay")
+    ids = {c.id for c in cells}
+    if {x.h_target for x in seals} != ids or len(seals) != len(ids):
+        raise V.VarsError("an overlay seals each of its cells once and nothing else")
+    for x in seals:
+        sc = chain_cells.get(x.h_scope_ctx)
+        if sc is None or sc.h_schema != V.H_SCHEMA["scope"]:
+            raise V.VarsError("an overlay seal is bound to no scope of this chain")
+    verdicts = [c for c in cells if c.h_schema == V.H_SCHEMA["verdict"]]
+    d = chain_cells.get(decision)
+    if len(verdicts) != 1 or verdicts[0].h_payload != decision or d is None or d.h_schema != V.H_SCHEMA["decision"]:
+        raise V.VarsError("an overlay holds one verdict, on a decision this chain holds")
+    v = verdicts[0]
+    have = {**chain_atoms, **atoms}
+    try:
+        relies = set(V.parse_hvec(have[v.h_relies], require_sorted=True))
+        name = V.parse_utf8(have[v.slots[2]])
+    except (KeyError, V.VarsError) as e:
+        raise V.VarsError(f"an overlay verdict's atoms are missing or malformed ({e})") from None
+    if relies != ids - {v.id}:
+        raise V.VarsError("an overlay verdict rests on exactly the overlay's other cells")
+    outcome = {V.H_ATTESTED: "ATTESTED", V.H_VERDICT_INVALID: "INVALID"}.get(v.slots[1])
+    if outcome is None:
+        raise V.VarsError("an overlay verdict is ATTESTED or INVALID")
+    settled = bool(repo.lens(SCOPE)["settled"].get(decision))
+    return {"key": pk.hex(), "name": name, "decision": decision.hex(), "outcome": outcome, "checks": len(ids) - 1,
+            "settled": settled, "agrees": (outcome == "ATTESTED") == settled}
 
 
 def keygen(path: Path) -> bytes:
@@ -2113,16 +2202,32 @@ def _main(argv: List[str]) -> int:
     if cmd == "ingest" and len(argv) == 2:
         print(ingest(repo_dir, json.loads(Path(argv[1]).read_text())))
         return 0
-    if cmd == "verify-release" and len(argv) == 6 and argv[2] == "--key" and argv[4] == "--name":
+    if cmd == "verify-release" and len(argv) in (6, 8, 9) and argv[2] == "--key" and argv[4] == "--name" \
+            and (len(argv) == 6 or argv[6:] in (["--bundle-out", argv[-1]], ["--outside", "--out", argv[-1]])):
         sk = bytes.fromhex(Path(argv[3]).read_text().strip())
+        out = Path(argv[-1]) if len(argv) > 6 else None
+        if out is not None and out.exists():
+            raise SystemExit(f"{out} exists")
         try:
+            if "--outside" in argv:     # a key outside the roster: an overlay document, the chain unchanged
+                doc = verify_outside(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
+                out.write_text(json.dumps(doc, indent=1) + "\n")
+                got = overlay(repo_dir, doc)
+                print(json.dumps({"overlay": str(out), "verdict": got["outcome"], "agrees": got["agrees"]}))
+                return 0 if got["outcome"] == "ATTESTED" else 1
             commit, ok, lines = verify_release(repo_dir, sk, bytes.fromhex(argv[1]), argv[5])
         except Unreproducible as e:
             print(json.dumps({"commit": None, "verdict": "UNREPRODUCIBLE", "why": str(e)}))
             return 3
+        if out is not None:             # --bundle-out: the verdict as a bundle for whoever has push (ingest)
+            out.write_text(json.dumps(bundle(repo_dir, commit), indent=1) + "\n")
         print("\n".join(lines))
         print(json.dumps({"commit": commit, "verdict": "ATTESTED" if ok else "INVALID"}))
         return 0 if ok else 1
+    if cmd == "overlay" and len(argv) >= 2:
+        for f in argv[1:]:
+            print(json.dumps({"file": f, **overlay(repo_dir, json.loads(Path(f).read_text()))}))
+        return 0
     if cmd == "precheck" and len(argv) == 5 and argv[1] == "--pubkey" and argv[3] == "--out":
         doc = precheck(repo_dir, bytes.fromhex(argv[2]))
         Path(argv[4]).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

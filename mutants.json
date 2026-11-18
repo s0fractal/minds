@@ -4654,5 +4654,53 @@
   "kills": [
    "test_134_the_browser_verifier_answers_as_this_file_does"
   ]
+ },
+ "m-overlay-roster": {
+  "file": "tools/minds_chain.py",
+  "find": "    if pk in roster(repo):\n        raise V.VarsError(\"this key is on the roster: a member's verdict is a bundle",
+  "replace": "    if False:\n        raise V.VarsError(\"this key is on the roster: a member's verdict is a bundle",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
+ },
+ "m-overlay-sealed": {
+  "file": "tools/minds_chain.py",
+  "find": "    if {x.h_target for x in seals} != ids or len(seals) != len(ids):\n",
+  "replace": "    if False:\n",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
+ },
+ "m-overlay-scope": {
+  "file": "tools/minds_chain.py",
+  "find": "        if sc is None or sc.h_schema != V.H_SCHEMA[\"scope\"]:\n",
+  "replace": "        if False:\n",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
+ },
+ "m-overlay-agrees": {
+  "file": "tools/minds_chain.py",
+  "find": "\"agrees\": (outcome == \"ATTESTED\") == settled}",
+  "replace": "\"agrees\": True}",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
+ },
+ "m-outside-roster": {
+  "file": "tools/minds_chain.py",
+  "find": "    if V.ed25519_pubkey(sk) in roster(repo):\n",
+  "replace": "    if False:\n",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
+ },
+ "m-outside-chain": {
+  "file": "tools/minds_chain.py",
+  "find": "            \"seals\": [V.Seal.sign(sk, c.id, s).encode().hex() for c in [*grounds, verdict]]}",
+  "replace": "            \"seals\": [V.Seal.sign(sk, c.id, s).encode().hex() for c in [verdict]]}",
+  "kills": [
+   "test_19d_a_key_outside_the_roster_answers_as_an_overlay"
+  ]
  }
 }
