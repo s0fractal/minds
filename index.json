@@ -56,7 +56,7 @@
   }
  ],
  "verifier": {
-  "main": "f558dbf9d021f722c3aa3d343df1bbb9254c4be3",
+  "main": "ef4f1baa804ea91eb02583161079b4257df47011",
   "file": "minds_verify.mjs",
   "sha256": "8eaea2ef1b4c8a62ce51acb801b056320ab88baa4e37970bd5b6d73ec1602267"
  }
