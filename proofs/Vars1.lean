@@ -27,3 +27,4 @@ import Vars1.Cut
 import Vars1.WitnessGrounded
 import Vars1.Tomb
 import Vars1.Silence
+import Vars1.Spore
