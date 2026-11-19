@@ -232,6 +232,29 @@ class TestCoalition(unittest.TestCase):
                     globals()["CO"] = saved
                 self.assertEqual(len(res.errors), 0, f"{mid} crashed instead of failing assertion: {res.errors}")
                 self.assertEqual(len(res.failures), 1, f"{mid} SURVIVED {test_name}!")
+    def test_none_action_survives_synthesis(self) -> None:
+        """A legal None action is kept by the survival policy: the policy covers the whole controllable kernel and the
+        certificate's verified states match it (Codex finding F1 on #134)."""
+        game = CO.make_game(["s"], {"s": [None]}, {"s": ["env"]}, {("s", None, "env"): ["s"]})
+        safe = frozenset({"s"})
+        kernel = CO.controllable_viability(game, safe)
+        self.assertEqual(kernel, safe)
+        self.assertEqual(CO.synthesize_survival_policy(game, safe), {"s": None})
+        cert = CO.viability_certificate(game, safe)["certificate"]
+        self.assertEqual(cert["policy_info"]["verified_states"], len(kernel))
+
+    def test_safe_iterables_are_frozen_once(self) -> None:
+        """A finite safe iterable gives the same composite answers as the set it holds: blocking power, the
+        certificate and the translation report each freeze it once (Codex finding F2 on #134)."""
+        game = CO.make_game(["s"], {"s": ["stay"]}, {"s": ["env"]}, {("s", "stay", "env"): ["s"]})
+        safe = frozenset({"s"})
+        dest = CO.make_game(["s", "out"], {"s": ["stay"], "out": ["stay"]}, {"s": ["env"], "out": ["env"]},
+                           {("s", "stay", "env"): ["out"], ("out", "stay", "env"): ["out"]})
+        self.assertEqual(CO.blocking_power(game, iter(safe)), CO.blocking_power(game, safe))
+        self.assertEqual(CO.viability_certificate(game, iter(safe)), CO.viability_certificate(game, safe))
+        want = CO.translation_loss_report(game, dest, {"s": "s"}, safe, safe)
+        self.assertEqual(want["lost_dyn_control_viab"], ["s"])
+        self.assertEqual(CO.translation_loss_report(game, dest, {"s": "s"}, iter(safe), iter(safe)), want)
 
 
 if __name__ == "__main__":

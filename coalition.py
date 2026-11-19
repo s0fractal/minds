@@ -176,6 +176,7 @@ def blocking_power(game: Game, safe, *, require_live=True):
     Every blocked state is viable ONLY under environment cooperation; the adversary can force it
     outside the controllable viability kernel regardless of the coalition's action choice.
     """
+    safe = frozenset(safe)                      # an iterable is read once, for both solvers (Codex F2 on #134)
     ang = angelic_viability(game, safe)
     ctrl = controllable_viability(game, safe, require_live=require_live)
     blocked = sorted(ang - ctrl)
@@ -203,13 +204,16 @@ def blocking_power(game: Game, safe, *, require_live=True):
     }
 
 
+_NOT_FOUND = object()
+
+
 def synthesize_survival_policy(game: Game, safe, *, require_live=True):
     """Synthesize a deterministic survival strategy `π : K_viab^⟨⟨C⟩⟩(safe) -> Action`."""
     ctrl = controllable_viability(game, safe, require_live=require_live)
     policy = {}
     for s in sorted(ctrl):
         envs = game.env_ok.get(s, frozenset())
-        chosen = None
+        chosen = _NOT_FOUND                      # None is a legal action: the sentinel is no action (Codex F1 on #134)
         for a in sorted(game.act_ok.get(s, frozenset())):
             saw_succ = False
             ok = True
@@ -223,7 +227,7 @@ def synthesize_survival_policy(game: Game, safe, *, require_live=True):
             if ok and (not require_live or saw_succ):
                 chosen = a
                 break
-        if chosen is not None:
+        if chosen is not _NOT_FOUND:
             policy[s] = chosen
     return policy
 
@@ -319,6 +323,7 @@ def check_alternating_simulation(g1: Game, g2: Game, phi: dict):
 
 def translation_loss_report(g1: Game, g2: Game, phi: dict, safe1, safe2, *, require_live=True):
     """Compute static & dynamic translation loss report (`F5 / D24`) for partial morphism `phi`."""
+    safe1, safe2 = frozenset(safe1), frozenset(safe2)      # read once: static and dynamic analyses both use them
     dom = sorted(s for s in phi if s in g1.states and phi[s] in g2.states)
     uncovered = sorted(g1.states - set(dom))
     s1_safe = frozenset(safe1) & g1.states
@@ -426,6 +431,7 @@ def spore_fuel_game(max_atp: int, step_cost: int, *, replenish_delta: int = 0, e
 
 def viability_certificate(game: Game, safe, *, label="unnamed", require_live=True):
     """Produce a deterministic, content-addressed SHA-256 viability & anti-capture certificate."""
+    safe = frozenset(safe)                      # read once: synthesis, verification and the body all use it
     live, dead = check_live_env(game)
     bp = blocking_power(game, safe, require_live=require_live)
     pol = synthesize_survival_policy(game, safe, require_live=require_live)
