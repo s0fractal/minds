@@ -9425,5 +9425,7 @@ class TestVars1Conformance(unittest.TestCase):
             self.assertEqual(main("--jobs", "2"), (2, [], set()), "nothing runs when a crate does not build unmutated")
             self.assertEqual(rm.baseline({"fx"})[0][:40], "fx: the unmutated crate does not build: ")
 
+from test_spore import TestSpores  # noqa: E402, F401
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
