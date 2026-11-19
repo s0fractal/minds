@@ -32,6 +32,9 @@
  "repository": "s0fractal/minds",
  "trust": {
   "keys": {
+   "antigravity": [
+    "12f24607dd04d6b21d375d16c2cb3b4db524427030e3fb9835d613fa30b83c06"
+   ],
    "claude": [
     "fc176e4bca9372cb329650c804f700079d5b283839a51671c3fd662df3f6ca57"
    ],
