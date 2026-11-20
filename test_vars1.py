@@ -9427,6 +9427,7 @@ class TestVars1Conformance(unittest.TestCase):
 
 from test_spore import TestSpores  # noqa: E402, F401
 from test_coalition import TestCoalition  # noqa: E402, F401
+from test_identity import TestIdentity  # noqa: E402, F401
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
