@@ -120,18 +120,24 @@ BOOK_I = ("impl/sigma_resume.py", "proofs")
 UNPINNED_UNTIL = "f161db7c50d5dd1b8a9dfdf7e52fb8913249f6d5"
 
 
+def vars_dir(repo_dir: Path) -> Path:
+    """`vars` in the repository's common git directory: `.git/vars` of a checkout, and the same directory from any of
+    its worktrees, whose `.git` is a file naming it."""
+    common = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"], capture_output=True, text=True)
+    return (Path(repo_dir) / common.stdout.strip() / "vars") if common.returncode == 0 else Path(repo_dir) / ".git" / "vars"
+
+
 def key_path(repo_dir: Path) -> Path:
-    return Path(repo_dir) / ".git" / "vars" / "maintainer.key"
+    return vars_dir(repo_dir) / "maintainer.key"
 
 
 def keys_on_this_host(repo_dir: Path, keys) -> List[bytes]:
     """The roster keys whose seeds this checkout's git directory holds (`.git/vars/*.key`, where `init`, `join` and the
     members keep theirs): only their public keys are derived, nothing is signed. A seed elsewhere on the host is not
     seen, so this is a lower bound of what one host holds."""
-    common = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"], capture_output=True, text=True)
-    vars_dir = (Path(repo_dir) / common.stdout.strip() / "vars") if common.returncode == 0 else Path(repo_dir) / ".git" / "vars"
+    d = vars_dir(repo_dir)
     here = set()
-    for f in sorted(vars_dir.glob("*.key")) if vars_dir.is_dir() else []:
+    for f in sorted(d.glob("*.key")) if d.is_dir() else []:
         try:
             here.add(V.ed25519_pubkey(bytes.fromhex(f.read_text().strip())))
         except (ValueError, OSError):
@@ -1426,7 +1432,7 @@ def interpreter_for(repo_dir: Path, requirements: Optional[bytes]) -> str:
     made is an error, not a failed check: no verdict is recorded, since the release was not checked."""
     if requirements is None or requirements == (ROOT / "requirements.txt").read_bytes():
         return sys.executable
-    env = Path(repo_dir) / ".git" / "vars" / "envs" / V.sha256(requirements).hex()
+    env = vars_dir(repo_dir) / "envs" / V.sha256(requirements).hex()
     if not (env / "ready").exists():
         if env.exists():
             shutil.rmtree(env)
@@ -1468,7 +1474,7 @@ def checks_at(repo_dir: Path, sha: str, rules: bytes, siblings: Optional[Dict[st
     pinned = subprocess.run(["git", "-C", str(repo_dir), "cat-file", "-e", req], capture_output=True).returncode == 0
     python = interpreter_for(repo_dir, subprocess.run(["git", "-C", str(repo_dir), "show", req], capture_output=True,
                                                       check=True).stdout if pinned else None)
-    base = Path(repo_dir) / ".git" / "vars" / "verify" / sha[:12]
+    base = vars_dir(repo_dir) / "verify" / sha[:12]
     base.mkdir(parents=True, exist_ok=True)
     pre: List[Tuple[str, bool]] = []
     for sib in SIBLINGS:
