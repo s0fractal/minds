@@ -1684,6 +1684,32 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(json.loads(out.stdout)["witnessed"])
 
 
+    def test_15b_chain_paths_from_a_worktree(self) -> None:
+        """tools/minds_chain.py run from a linked worktree, whose `.git` is a file: the maintainer key, the members'
+        keys, the pinned environments and the release checkouts all live in the common git directory's `vars`, the
+        same as from the checkout itself (a release from a worktree raised NotADirectoryError, 2026-11-20)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("minds_chain", ROOT_DIR / "tools" / "minds_chain.py")
+        mc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mc)
+        repo = Path(self.tmp.name) / "paths-main"
+        wt = Path(self.tmp.name) / "paths-wt"
+        q = dict(capture_output=True, check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], **q)
+        subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "--allow-empty", "-m", "root"], **q)
+        subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "--detach", str(wt)], **q)
+        self.assertTrue((wt / ".git").is_file(), "a linked worktree's .git is a file")
+        want = (repo / ".git" / "vars").resolve()
+        self.assertEqual(mc.key_path(wt).resolve(), want / "maintainer.key", "a worktree reaches the checkout's key")
+        self.assertEqual(mc.vars_dir(repo).resolve(), want)
+        self.assertEqual(mc.vars_dir(wt).resolve(), want, "a worktree reaches the checkout's vars")
+        want.mkdir(parents=True)
+        sk = b"\x09" * 32
+        (want / "member.key").write_text(sk.hex())
+        pk = V.ed25519_pubkey(sk)
+        self.assertEqual(mc.keys_on_this_host(wt, [pk]), [pk], "the members' keys are seen from a worktree")
+
     def test_15_minds_governs_itself(self) -> None:
         """tools/minds_chain.py on a scratch repository: genesis, two releases, each a Settled decision attested by
         the maintainer plus a witnessed projection of the chain that a client verifies from a bundle."""
