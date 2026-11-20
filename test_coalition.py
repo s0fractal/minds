@@ -210,7 +210,7 @@ class TestCoalition(unittest.TestCase):
              "test_cv06_f5_static_preserving_translation_catches_dynamic_loss"),
             ("CV-M7-lost-dyn-ang", "            if r1 and not r2:", "            if False:",
              "test_cv06_f5_static_preserving_translation_catches_dynamic_loss"),
-            ("CV-M8-lost-dyn-ctrl", "    lost_dyn_ctrl = sorted(s for s in dom if s in cv1 and phi[s] not in cv2)",
+            ("CV-M8-lost-dyn-ctrl", "    lost_dyn_ctrl = _sorted(s for s in dom if s in cv1 and phi[s] not in cv2)",
              "    lost_dyn_ctrl = []",
              "test_cv06_f5_static_preserving_translation_catches_dynamic_loss"),
         ]
@@ -232,6 +232,25 @@ class TestCoalition(unittest.TestCase):
                     globals()["CO"] = saved
                 self.assertEqual(len(res.errors), 0, f"{mid} crashed instead of failing assertion: {res.errors}")
                 self.assertEqual(len(res.failures), 1, f"{mid} SURVIVED {test_name}!")
+    def test_mixed_none_action_beside_another(self):
+        """Codex F1 on #135: a legal None action beside a string action sorts in every composite API."""
+        game = CO.make_game(
+            ["s", "out"], {"s": [None, "stay"], "out": ["stay"]},
+            {"s": ["env"], "out": ["env"]},
+            {("s", None, "env"): ["s"], ("s", "stay", "env"): ["out"],
+             ("out", "stay", "env"): ["out"]})
+        safe = frozenset({"s"})
+        try:
+            self.assertEqual(CO.controllable_viability(game, safe), safe)
+            self.assertEqual(CO.check_live_env(game), (True, []))
+            self.assertEqual(CO.synthesize_survival_policy(game, safe), {"s": None})
+            cert = CO.viability_certificate(game, safe)["certificate"]
+            self.assertTrue(cert["policy_verified"])
+            self.assertEqual(cert["policy_info"]["verified_states"], 1)
+            self.assertTrue(CO.check_alternating_simulation(game, game, {"s": "s", "out": "out"})["is_alt_sim"])
+        except TypeError as exc:                # unorderable mixed actions: a failure, not a crash
+            self.fail(f"mixed None/str actions do not sort: {exc}")
+
     def test_none_action_survives_synthesis(self) -> None:
         """A legal None action is kept by the survival policy: the policy covers the whole controllable kernel and the
         certificate's verified states match it (Codex finding F1 on #134)."""

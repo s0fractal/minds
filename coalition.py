@@ -19,6 +19,16 @@ import hashlib
 import json
 
 
+def _order(x):
+    """A total order over states and actions of any hashable types: by type name, then by value within one type, so a
+    legal None action sorts beside string actions instead of raising TypeError (Codex F1 on #135)."""
+    return (type(x).__name__, x)
+
+
+def _sorted(xs):
+    return sorted(xs, key=_order)
+
+
 @dataclass(frozen=True)
 class Game:
     """Finite two-player coalitional transition game (coalition actions vs environment moves)."""
@@ -54,7 +64,7 @@ def make_game(states, act_ok, env_ok, step):
         nxt_set = frozenset(nxt)
         bad = nxt_set - st
         if bad:
-            raise ValueError(f"step({s!r}, {a!r}, {e!r}) targets unknown states {sorted(bad)}")
+            raise ValueError(f"step({s!r}, {a!r}, {e!r}) targets unknown states {_sorted(bad)}")
         s_map[(s, a, e)] = nxt_set
     return Game(states=st, act_ok=a_map, env_ok=e_map, step=s_map)
 
@@ -66,9 +76,9 @@ def check_live_env(game: Game):
     Returns `(is_live, dead_pairs)`.
     """
     dead = []
-    for s in sorted(game.states):
+    for s in _sorted(game.states):
         envs = game.env_ok.get(s, frozenset())
-        for a in sorted(game.act_ok.get(s, frozenset())):
+        for a in _sorted(game.act_ok.get(s, frozenset())):
             has_succ = any(bool(game.step.get((s, a, e))) for e in envs)
             if not has_succ:
                 dead.append((s, a))
@@ -179,15 +189,15 @@ def blocking_power(game: Game, safe, *, require_live=True):
     safe = frozenset(safe)                      # an iterable is read once, for both solvers (Codex F2 on #134)
     ang = angelic_viability(game, safe)
     ctrl = controllable_viability(game, safe, require_live=require_live)
-    blocked = sorted(ang - ctrl)
+    blocked = _sorted(ang - ctrl)
     witnesses = {}
     for s in blocked:
         per_action = {}
-        envs = sorted(game.env_ok.get(s, frozenset()))
-        for a in sorted(game.act_ok.get(s, frozenset())):
+        envs = _sorted(game.env_ok.get(s, frozenset()))
+        for a in _sorted(game.act_ok.get(s, frozenset())):
             counter = None
             for e in envs:
-                bad_succs = sorted(game.step.get((s, a, e), frozenset()) - ctrl)
+                bad_succs = _sorted(game.step.get((s, a, e), frozenset()) - ctrl)
                 if bad_succs:
                     counter = {"env_move": e, "exits_control_kernel_to": bad_succs}
                     break
@@ -195,8 +205,8 @@ def blocking_power(game: Game, safe, *, require_live=True):
         witnesses[s] = per_action
     ratio = (len(ctrl) / len(ang)) if ang else 1.0
     return {
-        "angelic_viability": sorted(ang),
-        "controllable_viability": sorted(ctrl),
+        "angelic_viability": _sorted(ang),
+        "controllable_viability": _sorted(ctrl),
         "blocked_states": blocked,
         "blocking_count": len(blocked),
         "sovereign_ratio": ratio,
@@ -211,10 +221,10 @@ def synthesize_survival_policy(game: Game, safe, *, require_live=True):
     """Synthesize a deterministic survival strategy `π : K_viab^⟨⟨C⟩⟩(safe) -> Action`."""
     ctrl = controllable_viability(game, safe, require_live=require_live)
     policy = {}
-    for s in sorted(ctrl):
+    for s in _sorted(ctrl):
         envs = game.env_ok.get(s, frozenset())
         chosen = _NOT_FOUND                      # None is a legal action: the sentinel is no action (Codex F1 on #134)
-        for a in sorted(game.act_ok.get(s, frozenset())):
+        for a in _sorted(game.act_ok.get(s, frozenset())):
             saw_succ = False
             ok = True
             for e in envs:
@@ -238,17 +248,17 @@ def verify_survival_policy(game: Game, safe, policy, *, require_live=True):
     safe_set = frozenset(safe) & game.states
     dom = frozenset(policy.keys())
     if not (dom <= safe_set):
-        return False, {"reason": "OUTSIDE_SAFE", "states": sorted(dom - safe_set)}
-    for s in sorted(dom):
+        return False, {"reason": "OUTSIDE_SAFE", "states": _sorted(dom - safe_set)}
+    for s in _sorted(dom):
         a = policy[s]
         if a not in game.act_ok.get(s, frozenset()):
             return False, {"reason": "INADMISSIBLE_ACTION", "state": s, "action": a}
         saw_succ = False
-        for e in sorted(game.env_ok.get(s, frozenset())):
+        for e in _sorted(game.env_ok.get(s, frozenset())):
             succs = game.step.get((s, a, e), frozenset())
             if succs:
                 saw_succ = True
-                escaped = sorted(succs - dom)
+                escaped = _sorted(succs - dom)
                 if escaped:
                     return False, {
                         "reason": "ESCAPED_KERNEL",
@@ -272,8 +282,8 @@ def check_alternating_simulation(g1: Game, g2: Game, phi: dict):
     such that every `(e2, s2')` reachable from `(phi[s1], a2)` in `g2` reflects back to some
     `(e1, s1')` reachable from `(s1, a1)` in `g1` with `s1' in dom(phi)` and `phi[s1'] == s2'`.
     """
-    uncovered = sorted(g1.states - set(phi))
-    bad_images = sorted(s1 for s1, s2 in phi.items() if s1 in g1.states and s2 not in g2.states)
+    uncovered = _sorted(g1.states - set(phi))
+    bad_images = _sorted(s1 for s1, s2 in phi.items() if s1 in g1.states and s2 not in g2.states)
     if bad_images:
         return {
             "is_alt_sim": False,
@@ -282,11 +292,11 @@ def check_alternating_simulation(g1: Game, g2: Game, phi: dict):
         }
 
     counterexamples = []
-    for s1 in sorted(s for s in phi if s in g1.states):
+    for s1 in _sorted(s for s in phi if s in g1.states):
         s2 = phi[s1]
         e1_set = g1.env_ok.get(s1, frozenset())
         e2_set = g2.env_ok.get(s2, frozenset())
-        for a1 in sorted(g1.act_ok.get(s1, frozenset())):
+        for a1 in _sorted(g1.act_ok.get(s1, frozenset())):
             g1_succ_images = set()
             for e1 in e1_set:
                 for s1p in g1.step.get((s1, a1, e1), frozenset()):
@@ -294,7 +304,7 @@ def check_alternating_simulation(g1: Game, g2: Game, phi: dict):
                         g1_succ_images.add(phi[s1p])
 
             matched = False
-            for a2 in sorted(g2.act_ok.get(s2, frozenset())):
+            for a2 in _sorted(g2.act_ok.get(s2, frozenset())):
                 ok_a2 = True
                 for e2 in e2_set:
                     for s2p in g2.step.get((s2, a2, e2), frozenset()):
@@ -324,11 +334,11 @@ def check_alternating_simulation(g1: Game, g2: Game, phi: dict):
 def translation_loss_report(g1: Game, g2: Game, phi: dict, safe1, safe2, *, require_live=True):
     """Compute static & dynamic translation loss report (`F5 / D24`) for partial morphism `phi`."""
     safe1, safe2 = frozenset(safe1), frozenset(safe2)      # read once: static and dynamic analyses both use them
-    dom = sorted(s for s in phi if s in g1.states and phi[s] in g2.states)
-    uncovered = sorted(g1.states - set(dom))
+    dom = _sorted(s for s in phi if s in g1.states and phi[s] in g2.states)
+    uncovered = _sorted(g1.states - set(dom))
     s1_safe = frozenset(safe1) & g1.states
     s2_safe = frozenset(safe2) & g2.states
-    static_lost = sorted(s for s in dom if s in s1_safe and phi[s] not in s2_safe)
+    static_lost = _sorted(s for s in dom if s in s1_safe and phi[s] not in s2_safe)
 
     def _forward_angelic(game, start):
         visited = {start}
@@ -359,7 +369,7 @@ def translation_loss_report(g1: Game, g2: Game, phi: dict, safe1, safe2, *, requ
 
     cv1 = controllable_viability(g1, safe1, require_live=require_live)
     cv2 = controllable_viability(g2, safe2, require_live=require_live)
-    lost_dyn_ctrl = sorted(s for s in dom if s in cv1 and phi[s] not in cv2)
+    lost_dyn_ctrl = _sorted(s for s in dom if s in cv1 and phi[s] not in cv2)
 
     alt = check_alternating_simulation(g1, g2, phi)
     faithful = bool(alt["is_alt_sim"]) and not uncovered and not static_lost and not lost_dyn_ctrl
@@ -441,7 +451,7 @@ def viability_certificate(game: Game, safe, *, label="unnamed", require_live=Tru
         "label": label,
         "live_env": live,
         "dead_pairs": [list(x) for x in dead],
-        "safe": sorted(frozenset(safe) & game.states),
+        "safe": _sorted(frozenset(safe) & game.states),
         "angelic_viability": bp["angelic_viability"],
         "controllable_viability": bp["controllable_viability"],
         "blocked_states": bp["blocked_states"],
