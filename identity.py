@@ -25,26 +25,23 @@ def _is_int(v):
 
 
 def _tag_val(v):
-    """Collision-free canonical encoding distinguishing e.g. `0` (int), `False` (bool), and `"0"` (str)."""
+    """Collision-free canonical encoding over strictly immutable values (`None`, `bool`, `int`, `str`, `tuple`, `frozenset`, `TypedSet`)."""
+    t = type(v)
     if v is None:
         return ["null", None]
-    if isinstance(v, bool):
+    if t is bool:
         return ["bool", v]
-    if isinstance(v, int):
+    if t is int:
         return ["int", v]
-    if isinstance(v, str):
+    if t is str:
         return ["str", v]
-    if isinstance(v, (list, tuple)):
-        return ["list", [_tag_val(x) for x in v]]
-    if isinstance(v, (set, frozenset, TypedSet)):
+    if t is tuple:
+        return ["tuple", [_tag_val(x) for x in v]]
+    if t is frozenset or t is TypedSet:
         items = [_tag_val(x) for x in v]
         items.sort(key=lambda x: json.dumps(x, sort_keys=True, separators=(",", ":")))
         return ["set", items]
-    if isinstance(v, dict):
-        pairs = [[_tag_val(k), _tag_val(val)] for k, val in v.items()]
-        pairs.sort(key=lambda p: json.dumps(p[0], sort_keys=True, separators=(",", ":")))
-        return ["dict", pairs]
-    raise TypeError(f"unsupported value type for canonical identity encoding: {type(v).__name__}")
+    raise TypeError(f"unsupported or mutable value type for canonical identity encoding: {t.__name__}")
 
 
 def _sort_key(v):
@@ -52,67 +49,76 @@ def _sort_key(v):
 
 
 class TypedSet:
-    """Immutable canonical set distinguishing values by type tag (`False` != `0`, `True` != `1`)."""
+    """Strictly immutable canonical set distinguishing values by exact type tag (`False` != `0`, `True` != `1`).
 
-    __slots__ = ("_map",)
+    Refuses mutable values (`list`, `dict`, `set`) and custom subclasses fail-closed with `IdentityError`
+    so cached canonical keys and historical `identity_certificate` digests can never be mutated post-hoc.
+    """
+
+    __slots__ = ("_items", "_keys")
 
     def __init__(self, items=()):
-        if isinstance(items, TypedSet):
-            self._map = items._map
+        if type(items) is TypedSet:
+            self._items = items._items
+            self._keys = items._keys
             return
         mapping = {}
-        for x in items:
-            try:
+        try:
+            for x in items:
                 k = _sort_key(x)
-            except TypeError as exc:
-                raise IdentityError("UNSUPPORTED_VALUE", str(exc)) from exc
-            if k not in mapping:
-                mapping[k] = x
-        self._map = dict(sorted(mapping.items()))
+                if k not in mapping:
+                    mapping[k] = x
+        except (TypeError, RecursionError) as exc:
+            raise IdentityError("UNSUPPORTED_VALUE", str(exc)) from exc
+        self._items = tuple(sorted(mapping.items(), key=lambda kv: kv[0]))
+        self._keys = frozenset(mapping.keys())
 
     def __len__(self):
-        return len(self._map)
+        return len(self._items)
 
     def __bool__(self):
-        return bool(self._map)
+        return bool(self._items)
 
     def __iter__(self):
-        return iter(self._map.values())
+        return (v for _, v in self._items)
 
     def __contains__(self, item):
         try:
-            return _sort_key(item) in self._map
-        except TypeError:
+            return _sort_key(item) in self._keys
+        except (TypeError, RecursionError):
             return False
 
     def __eq__(self, other):
-        if not isinstance(other, TypedSet):
+        if type(other) is not TypedSet:
             return NotImplemented
-        return self._map.keys() == other._map.keys()
+        return self._keys == other._keys
 
     def __hash__(self):
-        return hash(tuple(self._map.keys()))
+        return hash(tuple(k for k, _ in self._items))
 
     def __le__(self, other):
-        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
-        return self._map.keys() <= other_ts._map.keys()
+        other_ts = other if type(other) is TypedSet else TypedSet(other)
+        return self._keys <= other_ts._keys
 
     def __or__(self, other):
-        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
-        merged = dict(self._map)
-        merged.update(other_ts._map)
+        other_ts = other if type(other) is TypedSet else TypedSet(other)
+        merged = dict(self._items)
+        merged.update(other_ts._items)
         out = TypedSet.__new__(TypedSet)
-        out._map = dict(sorted(merged.items()))
+        out._items = tuple(sorted(merged.items(), key=lambda kv: kv[0]))
+        out._keys = frozenset(merged.keys())
         return out
 
     def __sub__(self, other):
-        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
+        other_ts = other if type(other) is TypedSet else TypedSet(other)
+        kept = tuple((k, v) for k, v in self._items if k not in other_ts._keys)
         out = TypedSet.__new__(TypedSet)
-        out._map = {k: v for k, v in self._map.items() if k not in other_ts._map}
+        out._items = kept
+        out._keys = frozenset(k for k, _ in kept)
         return out
 
     def __repr__(self):
-        return f"TypedSet({list(self._map.values())!r})"
+        return f"TypedSet({[v for _, v in self._items]!r})"
 
 
 @dataclass(frozen=True)

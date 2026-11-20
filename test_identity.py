@@ -149,8 +149,28 @@ class TestIdentity(unittest.TestCase):
         self.assertIn(False, p1.relations)
         self.assertNotIn(0, p1.relations)
 
-    def test_id10_mutants_all_killed_on_assertion(self):
-        """ID10: 10 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
+    def test_id10_mutable_values_refused_and_immutable_tuples_isolated(self):
+        """ID10: Mutable values (list/dict/set, nested or top-level) fail closed with UNSUPPORTED_VALUE (Codex F1 #2)."""
+        for bad in (["safety"], {"trust": ["bob"]}, {"a"}, (["nested"],), ({"k": 1},)):
+            d = ID.LineageDAG()
+            with self.assertRaises(ID.IdentityError) as ctx:
+                d.genesis("p", invariants=[bad])
+            self.assertEqual(ctx.exception.code, "UNSUPPORTED_VALUE")
+            with self.assertRaises(ID.IdentityError) as ctx_r:
+                d.genesis("p", relations=[bad])
+            self.assertEqual(ctx_r.exception.code, "UNSUPPORTED_VALUE")
+        # Deeply immutable tuples/TypedSets are admitted and deterministic
+        d_ok = ID.LineageDAG()
+        p = d_ok.genesis("p", invariants=[("safety", False), ("safety", 0)], relations=[("trust", "bob")])
+        self.assertEqual(len(p.invariants), 2)
+        self.assertIn(("safety", False), p.invariants)
+        self.assertIn(("safety", 0), p.invariants)
+        self.assertEqual(ID.identity_certificate(d_ok, "p")["certificate"]["invariants"],
+                         [["tuple", [["str", "safety"], ["bool", False]]],
+                          ["tuple", [["str", "safety"], ["int", 0]]]])
+
+    def test_id11_mutants_all_killed_on_assertion(self):
+        """ID11: 11 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
         src_path = Path(__file__).resolve().parent / "identity.py"
         orig = src_path.read_text(encoding="utf-8")
         mutants = [
@@ -173,9 +193,12 @@ class TestIdentity(unittest.TestCase):
             ("ID-M9-same-uses-cont", "        cur = dag._out_cont.get(cur)",
              "        edges = dag._out_enabled.get(cur, ()); cur = edges[0].dst if edges else None",
              "test_id02_fork_satisfies_authpath_and_provenance_yet_is_new_entity"),
-            ("ID-M10-typed-set-le", "        return self._map.keys() <= other_ts._map.keys()",
-             "        return set(self._map.values()) <= set(other_ts._map.values())",
+            ("ID-M10-typed-set-le", "        return self._keys <= other_ts._keys",
+             "        return {v for _, v in self._items} <= {v for _, v in other_ts._items}",
              "test_id09_typed_invariant_and_relation_equality_prevents_bool_int_erasure"),
+            ("ID-M11-mutable-guard", "    if t is tuple:",
+             "    if t in (list, tuple):",
+             "test_id10_mutable_values_refused_and_immutable_tuples_isolated"),
         ]
         for mid, find, repl, test_name in mutants:
             self.assertEqual(orig.count(find), 1, f"{mid}: find must match uniquely")
