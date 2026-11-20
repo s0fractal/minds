@@ -39,7 +39,8 @@ def _sorted(xs):
 def _canon(x):
     """The certificate body as JSON that names every state and action unambiguously (Codex F2 on #135): a dict whose
     keys are all strings stays an object, any other dict is {"map": [[key, value], ...]} in key order (0 and "0" are
-    two keys, not one); a tuple is {"tuple": [...]}, a frozenset {"set": [...]} in order; a list keeps its order. A
+    two keys, not one); a tuple is {"tuple": [...]}, a frozenset {"set": [...]} in order, bytes {"bytes": hex}, any other non-JSON
+    value {"repr": [type name, repr]}; a list keeps its order. A
     game whose states and actions are strings encodes as before."""
     if isinstance(x, dict):
         if all(isinstance(k, str) for k in x):
@@ -51,7 +52,11 @@ def _canon(x):
         return {"set": [_canon(y) for y in _sorted(x)]}
     if isinstance(x, list):
         return [_canon(y) for y in x]
-    return x
+    if isinstance(x, bytes):                    # Codex F1 on #135 head 3: bytes are admitted identifiers
+        return {"bytes": x.hex()}
+    if x is None or isinstance(x, (bool, int, float, str)):
+        return x
+    return {"repr": [type(x).__name__, repr(x)]}  # any other admitted hashable: named, never a JSON error
 
 
 @dataclass(frozen=True)

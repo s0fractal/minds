@@ -232,6 +232,17 @@ class TestCoalition(unittest.TestCase):
                     globals()["CO"] = saved
                 self.assertEqual(len(res.errors), 0, f"{mid} crashed instead of failing assertion: {res.errors}")
                 self.assertEqual(len(res.failures), 1, f"{mid} SURVIVED {test_name}!")
+    def test_byte_identifiers_certify(self):
+        """Codex F1 on #135 head 3: byte states and actions are admitted, so the certificate encodes them."""
+        try:
+            for st, act in ((b"s", "stay"), ("s", b"stay")):
+                g = CO.make_game([st], {st: [act]}, {st: ["env"]}, {(st, act, "env"): [st]})
+                cert = CO.viability_certificate(g, {st})
+                self.assertTrue(cert["certificate"]["policy_verified"])
+                self.assertEqual(cert, CO.viability_certificate(g, {st}))
+        except TypeError as exc:                # a JSON error: a failure, not a crash
+            self.fail(f"byte identifiers break the certificate: {exc}")
+
     def test_tuple_actions_and_mixed_states(self):
         """Codex F1, F2 on #135 head 2: tuple actions holding None or a string sort; states 0 and "0" are two states
         in a deterministic certificate."""
