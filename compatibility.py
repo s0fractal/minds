@@ -118,9 +118,6 @@ class CompatibilityLedger:
             )
         raw_w = json.dumps(tagged_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         wdig = hashlib.sha256(raw_w).hexdigest()
-        key = (claim_id, context_id)
-        if key in self._refusals:
-            return self._refusals[key]
         ref = LocalRefusal(
             claim_id=claim_id,
             context_id=context_id,
@@ -128,8 +125,11 @@ class CompatibilityLedger:
             witness_digest=wdig,
             witness_payload=frozen_payload,
         )
-        self._refusals[key] = ref
-        return ref
+        key = (claim_id, context_id)
+        existing = self._refusals.get(key)
+        if existing is None or (wdig, challenger_id) < (existing.witness_digest, existing.challenger_id):
+            self._refusals[key] = ref
+        return self._refusals[key]
 
     def is_refuted(self, claim_id: str, context_id: str) -> bool:
         _require_str(claim_id, "BAD_CLAIM_ID", "claim_id")

@@ -80,6 +80,23 @@ class TestCompatibility(unittest.TestCase):
             CM.compatibility_certificate(l2, "a", "b", "c1", "x1")["digest"],
         )
 
+        # Same-pair two distinct valid witnesses in opposite arrival orders must converge to identical certificate (Codex F1)
+        def wfn_pair(claim, ctx, payload):
+            return (claim, ctx) == ("c", "x") and payload in (("w", 1), ("w", 2))
+
+        p1, p2 = CM.CompatibilityLedger(wfn_pair), CM.CompatibilityLedger(wfn_pair)
+        for p in (p1, p2):
+            p.register_entity("a")
+            p.register_entity("b")
+        p1.file_refusal("a", "c", "x", witness_payload=("w", 1))
+        p1.file_refusal("b", "c", "x", witness_payload=("w", 2))
+        p2.file_refusal("b", "c", "x", witness_payload=("w", 2))
+        p2.file_refusal("a", "c", "x", witness_payload=("w", 1))
+        self.assertEqual(
+            CM.compatibility_certificate(p1, "a", "b", "c", "x"),
+            CM.compatibility_certificate(p2, "a", "b", "c", "x"),
+        )
+
     def test_cm05_mutable_witness_payload_and_bad_flags_refused(self):
         """CM05: Mutable witness payloads (list/dict) and non-bool flags fail closed."""
         led = CM.CompatibilityLedger(lambda _c, _x, _p: True)
@@ -109,6 +126,9 @@ class TestCompatibility(unittest.TestCase):
              '    return v, ["raw", v]', "test_cm05_mutable_witness_payload_and_bad_flags_refused"),
             ("CM-M6-bool-flags", "        if type(standing) is not bool or type(viable_alone) is not bool:",
              "        if False:", "test_cm05_mutable_witness_payload_and_bad_flags_refused"),
+            ("CM-M7-canonical-order",
+             "        if existing is None or (wdig, challenger_id) < (existing.witness_digest, existing.challenger_id):",
+             "        if existing is None:", "test_cm04_order_independence_and_idempotence"),
         ]
         for mid, find, repl, test_name in mutants:
             self.assertEqual(orig.count(find), 1, f"{mid}: find must match uniquely")
