@@ -16,6 +16,9 @@ Constructive theorems (0 `sorry`, 0 `Classical.choice`):
     the same parent cannot both continue its identity (forbids split-brain identity duplication).
   - `no_incoming_continuation_not_same`: a node born without an incoming `IdentityContinuation`
     edge (such as any `fork` child) is never `SameEntity` as an ancestor.
+  - `fork_target_not_same_as_any_other` & `fork_not_same_entity`: under `fork_no_continuation`,
+    any node born via `fork` is strictly distinct from every other node (including across
+    multi-hop `step` detours).
   - `fork_no_obligation_theft`: a `fork` transition inherits provenance without silently cloning
     external relational obligations or trust standing onto the new entity.
   - `d21_fork_authorized_and_ancestor` & `d21_fork_new_entity_and_isolated`: concrete `Fin 3`
@@ -41,9 +44,12 @@ structure LineageGraph (N I R : Type) where
   continues    : N → N → Prop
   invOk        : I → I → Prop
   /-- Every identity continuation must be an enabled non-forking `step` edge. -/
-  continues_is_step : ∀ u v, continues u v → enabled u v .step
+  continues_is_step    : ∀ u v, continues u v → enabled u v .step
   /-- Every enabled transition satisfies the constitutional meta-invariant `I*`. -/
-  enabled_inv_ok    : ∀ u v k, enabled u v k → invOk (inv u) (inv v)
+  enabled_inv_ok       : ∀ u v k, enabled u v k → invOk (inv u) (inv v)
+  /-- Fork birth excludes identity continuation: a node born by `fork` has no incoming
+  `IdentityContinuation` edge from any node. -/
+  fork_no_continuation : ∀ p c, enabled p c .fork → ∀ x, ¬ continues x c
 
 /-- Uniqueness of identity continuation: a node has at most one identity-continuing successor
 (prevents split-brain identity cloning). -/
@@ -120,6 +126,18 @@ theorem no_incoming_continuation_not_same {N I R : Type} {G : LineageGraph N I R
     (hne : p ≠ c) (hno : ∀ x, ¬ G.continues x c) : ¬ SameEntity G p c :=
   fun h => hne (sameEntity_eq_of_no_incoming h hno)
 
+/-- Any node `c` born via a `fork` edge cannot satisfy `SameEntity G a c` for any other node
+`a ≠ c`, ruling out multi-hop `step` detours that attempt to rejoin a fork-born node. -/
+theorem fork_target_not_same_as_any_other {N I R : Type} {G : LineageGraph N I R} {p c a : N}
+    (hfork : G.enabled p c .fork) (hne : a ≠ c) : ¬ SameEntity G a c :=
+  no_incoming_continuation_not_same hne (G.fork_no_continuation p c hfork)
+
+/-- **Fork Births a New Entity Theorem (Thesis 2 / D21)**: for any `LineageGraph`, a non-self
+`fork` edge `p → c` strictly separates entity identity (`¬ SameEntity G p c`). -/
+theorem fork_not_same_entity {N I R : Type} {G : LineageGraph N I R} {p c : N}
+    (hne : p ≠ c) (hfork : G.enabled p c .fork) : ¬ SameEntity G p c :=
+  fork_target_not_same_as_any_other hfork hne
+
 /-! ## 2. Relational Isolation on Fork (No Silent Obligation / Trust Cloning) -/
 
 /-- Relational discipline on `fork`: a node born by `fork` starts with no cloned external
@@ -150,6 +168,11 @@ def d21Graph : LineageGraph (Fin 3) Nat Nat where
   enabled_inv_ok := by
     intro _ _ _ _
     rfl
+  fork_no_continuation := by
+    intro _ _ hf _ ⟨_, h1⟩
+    rcases hf with ⟨_, _, hk⟩ | ⟨_, hc2, _⟩
+    · exact EdgeKind.noConfusion hk
+    · rw [hc2] at h1; cases h1
 
 theorem d21_unique_continuation : UniqueContinuation d21Graph := by
   intro _ v₁ v₂ ⟨_, h1⟩ ⟨_, h2⟩
@@ -181,14 +204,7 @@ external relational standing (`¬ rels 2 1`) — resolving F2 / D21 constructive
 theorem d21_fork_new_entity_and_isolated :
     ¬ SameEntity d21Graph ⟨0, by decide⟩ ⟨2, by decide⟩ ∧
     ¬ d21Graph.rels ⟨2, by decide⟩ 1 := by
-  constructor
-  · intro hsame
-    have hno : ∀ x, ¬ d21Graph.continues x ⟨2, by decide⟩ := by
-      intro _ ⟨_, h1⟩
-      cases h1
-    have heq := sameEntity_eq_of_no_incoming hsame hno
-    cases heq
-  · have hf : d21Graph.enabled ⟨0, by decide⟩ ⟨2, by decide⟩ .fork := Or.inr ⟨rfl, rfl, rfl⟩
-    exact fork_no_obligation_theft d21_fork_isolates_relations hf
+  have hf : d21Graph.enabled ⟨0, by decide⟩ ⟨2, by decide⟩ .fork := Or.inr ⟨rfl, rfl, rfl⟩
+  exact ⟨fork_not_same_entity (by decide) hf, fork_no_obligation_theft d21_fork_isolates_relations hf⟩
 
 end Vars1.Identity

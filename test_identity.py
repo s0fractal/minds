@@ -38,9 +38,9 @@ class TestIdentity(unittest.TestCase):
         dag.genesis("a0", invariants=["inv-42"], relations=["obl:debt-1"], atp=100)
         b0 = dag.fork("a0", "b0", enabled_warrant="w:fork-1", child_atp=40)
         a1 = dag.continue_step("a0", "a1", enabled_warrant="w:e1", continuation_warrant="w:c1", atp_spent=10)
-        self.assertEqual(b0.invariants, frozenset(["inv-42"]))
+        self.assertEqual(b0.invariants, ID.TypedSet(["inv-42"]))
         self.assertEqual(b0.entity_root, "b0")
-        self.assertEqual(b0.relations, frozenset())
+        self.assertEqual(b0.relations, ID.TypedSet())
         self.assertEqual(a1.atp, 50)
         # AuthPath & provenance hold across fork, yet SameEntity is strictly False!
         self.assertIsNotNone(ID.auth_path(dag, "a0", "b0"))
@@ -113,7 +113,7 @@ class TestIdentity(unittest.TestCase):
         self.assertIsNotNone(ID.auth_path(dag, "a0", "b1"))
         self.assertEqual(ID.provenance_chain(dag, "b1"), ["a0", "b0", "b1"])
         self.assertEqual(ID.entity_lineage(dag, "b1"), ["b0", "b1"])
-        self.assertEqual(b1.relations, frozenset(["own-pact"]))
+        self.assertEqual(b1.relations, ID.TypedSet(["own-pact"]))
 
     def test_id08_certificate_distinguishes_typed_invariants_and_is_deterministic(self):
         """ID08: Identity certificates are deterministic and distinguish `0` (int) from `'0'` (str)."""
@@ -125,8 +125,32 @@ class TestIdentity(unittest.TestCase):
         self.assertEqual(len(c1.get("digest", "")), 64)
         self.assertEqual(len(c1.get("certificate", {}).get("invariants", [])), 2)
 
-    def test_id09_mutants_all_killed_on_assertion(self):
-        """ID09: 8 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
+    def test_id09_typed_invariant_and_relation_equality_prevents_bool_int_erasure(self):
+        """ID09: TypedSet distinguishes bool False/True from int 0/1 in invariants, relations, and digests (Codex F1)."""
+        for op in ("continue_step", "fork"):
+            d = ID.LineageDAG()
+            d.genesis("p", invariants=[False], atp=10)
+            kw = {"enabled_warrant": "w:en", "invariants": [0]}
+            if op == "continue_step":
+                kw["continuation_warrant"] = "w:cont"
+            with self.assertRaises(ID.IdentityError) as ctx:
+                getattr(d, op)("p", "c", **kw)
+            self.assertEqual(ctx.exception.code, "CONSTITUTION_VIOLATED")
+        # Order-independence and collision-free retention for [0, False] vs [False, 0]
+        d1, d2 = ID.LineageDAG(), ID.LineageDAG()
+        d1.genesis("p", invariants=[0, False], relations=[False, 0])
+        d2.genesis("p", invariants=[False, 0], relations=[0, False])
+        c1, c2 = ID.identity_certificate(d1, "p"), ID.identity_certificate(d2, "p")
+        self.assertEqual(c1["digest"], c2["digest"])
+        self.assertEqual(c1["certificate"]["invariants"], [["bool", False], ["int", 0]])
+        self.assertEqual(c1["certificate"]["relations"], [["bool", False], ["int", 0]])
+        # Dropping int 0 must not drop bool False from relations
+        p1 = d1.continue_step("p", "p1", enabled_warrant="w:e", continuation_warrant="w:c", drop_relations=[0])
+        self.assertIn(False, p1.relations)
+        self.assertNotIn(0, p1.relations)
+
+    def test_id10_mutants_all_killed_on_assertion(self):
+        """ID10: 10 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
         src_path = Path(__file__).resolve().parent / "identity.py"
         orig = src_path.read_text(encoding="utf-8")
         mutants = [
@@ -149,6 +173,9 @@ class TestIdentity(unittest.TestCase):
             ("ID-M9-same-uses-cont", "        cur = dag._out_cont.get(cur)",
              "        edges = dag._out_enabled.get(cur, ()); cur = edges[0].dst if edges else None",
              "test_id02_fork_satisfies_authpath_and_provenance_yet_is_new_entity"),
+            ("ID-M10-typed-set-le", "        return self._map.keys() <= other_ts._map.keys()",
+             "        return set(self._map.values()) <= set(other_ts._map.values())",
+             "test_id09_typed_invariant_and_relation_equality_prevents_bool_int_erasure"),
         ]
         for mid, find, repl, test_name in mutants:
             self.assertEqual(orig.count(find), 1, f"{mid}: find must match uniquely")

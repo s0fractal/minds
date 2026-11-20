@@ -25,7 +25,7 @@ def _is_int(v):
 
 
 def _tag_val(v):
-    """Collision-free canonical encoding distinguishing e.g. `0` (int) from `"0"` (str)."""
+    """Collision-free canonical encoding distinguishing e.g. `0` (int), `False` (bool), and `"0"` (str)."""
     if v is None:
         return ["null", None]
     if isinstance(v, bool):
@@ -36,7 +36,7 @@ def _tag_val(v):
         return ["str", v]
     if isinstance(v, (list, tuple)):
         return ["list", [_tag_val(x) for x in v]]
-    if isinstance(v, (set, frozenset)):
+    if isinstance(v, (set, frozenset, TypedSet)):
         items = [_tag_val(x) for x in v]
         items.sort(key=lambda x: json.dumps(x, sort_keys=True, separators=(",", ":")))
         return ["set", items]
@@ -51,12 +51,76 @@ def _sort_key(v):
     return json.dumps(_tag_val(v), sort_keys=True, separators=(",", ":"))
 
 
+class TypedSet:
+    """Immutable canonical set distinguishing values by type tag (`False` != `0`, `True` != `1`)."""
+
+    __slots__ = ("_map",)
+
+    def __init__(self, items=()):
+        if isinstance(items, TypedSet):
+            self._map = items._map
+            return
+        mapping = {}
+        for x in items:
+            try:
+                k = _sort_key(x)
+            except TypeError as exc:
+                raise IdentityError("UNSUPPORTED_VALUE", str(exc)) from exc
+            if k not in mapping:
+                mapping[k] = x
+        self._map = dict(sorted(mapping.items()))
+
+    def __len__(self):
+        return len(self._map)
+
+    def __bool__(self):
+        return bool(self._map)
+
+    def __iter__(self):
+        return iter(self._map.values())
+
+    def __contains__(self, item):
+        try:
+            return _sort_key(item) in self._map
+        except TypeError:
+            return False
+
+    def __eq__(self, other):
+        if not isinstance(other, TypedSet):
+            return NotImplemented
+        return self._map.keys() == other._map.keys()
+
+    def __hash__(self):
+        return hash(tuple(self._map.keys()))
+
+    def __le__(self, other):
+        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
+        return self._map.keys() <= other_ts._map.keys()
+
+    def __or__(self, other):
+        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
+        merged = dict(self._map)
+        merged.update(other_ts._map)
+        out = TypedSet.__new__(TypedSet)
+        out._map = dict(sorted(merged.items()))
+        return out
+
+    def __sub__(self, other):
+        other_ts = other if isinstance(other, TypedSet) else TypedSet(other)
+        out = TypedSet.__new__(TypedSet)
+        out._map = {k: v for k, v in self._map.items() if k not in other_ts._map}
+        return out
+
+    def __repr__(self):
+        return f"TypedSet({list(self._map.values())!r})"
+
+
 @dataclass(frozen=True)
 class EntityNode:
     node_id: str
     entity_root: str
-    invariants: frozenset
-    relations: frozenset
+    invariants: TypedSet
+    relations: TypedSet
     atp: int
     parent: str | None
     birth_kind: str  # "genesis" | "step" | "fork"
@@ -85,9 +149,9 @@ def _require_warrant(w, code, name):
         raise IdentityError(code, f"{name} must be a non-empty warrant reference")
 
 
-def default_inv_ok(prev_inv: frozenset, next_inv: frozenset) -> bool:
-    """Default constitutional meta-invariant `I*`: byte/constitution invariants are preserved."""
-    return prev_inv <= next_inv
+def default_inv_ok(prev_inv, next_inv) -> bool:
+    """Default constitutional meta-invariant `I*`: typed invariants are preserved without type erasure."""
+    return TypedSet(prev_inv) <= TypedSet(next_inv)
 
 
 class LineageDAG:
@@ -125,8 +189,8 @@ class LineageDAG:
         node = EntityNode(
             node_id=node_id,
             entity_root=node_id,
-            invariants=frozenset(invariants),
-            relations=frozenset(relations),
+            invariants=TypedSet(invariants),
+            relations=TypedSet(relations),
             atp=atp,
             parent=None,
             birth_kind="genesis",
@@ -163,15 +227,15 @@ class LineageDAG:
                 f"parent {parent_id!r} already continued to {self._out_cont[parent_id]!r}",
             )
         parent = self._nodes[parent_id]
-        next_inv = parent.invariants if invariants is None else frozenset(invariants)
+        next_inv = parent.invariants if invariants is None else TypedSet(invariants)
         if not self._inv_ok(parent.invariants, next_inv):
             raise IdentityError("CONSTITUTION_VIOLATED", f"inv_ok failed on {parent_id!r} -> {next_id!r}")
         avail = self._unallocated_atp[parent_id]
         if not (_is_int(atp_spent) and 0 <= atp_spent <= avail):
             raise IdentityError("ATP_INFLATION", f"atp_spent={atp_spent!r} outside 0..{avail}")
 
-        add_set = frozenset(add_relations)
-        drop_set = frozenset(drop_relations)
+        add_set = TypedSet(add_relations)
+        drop_set = TypedSet(drop_relations)
         next_rels = (parent.relations - drop_set) | add_set
         next_atp = avail - atp_spent
         node = EntityNode(
@@ -231,7 +295,7 @@ class LineageDAG:
                 "fork births a new entity and must not carry an IdentityContinuation warrant",
             )
         parent = self._nodes[parent_id]
-        child_inv = parent.invariants if invariants is None else frozenset(invariants)
+        child_inv = parent.invariants if invariants is None else TypedSet(invariants)
         if not self._inv_ok(parent.invariants, child_inv):
             raise IdentityError("CONSTITUTION_VIOLATED", f"inv_ok failed on fork {parent_id!r} -> {child_id!r}")
         if not (_is_int(child_atp) and child_atp >= 0):
@@ -243,7 +307,7 @@ class LineageDAG:
                 "ATP_INFLATION",
                 f"fork budget rem={rem} + child={child_atp} exceeds available_atp={avail}",
             )
-        init_rels = frozenset(initial_relations)
+        init_rels = TypedSet(initial_relations)
         if init_rels:
             raise IdentityError(
                 "FORK_CLONED_RELATIONS",
@@ -253,7 +317,7 @@ class LineageDAG:
             node_id=child_id,
             entity_root=child_id,  # New entity root!
             invariants=child_inv,
-            relations=frozenset(),
+            relations=TypedSet(),
             atp=child_atp,
             parent=parent_id,
             birth_kind="fork",
