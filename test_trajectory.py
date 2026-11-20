@@ -170,8 +170,17 @@ class TestTrajectory(unittest.TestCase):
         self.assertEqual(traj2.steps[0].next_state, {"n": 1})
         self.assertTrue(traj2.is_safe())
 
+        # Closed state domain refuses functions and custom mutable objects even nested inside dicts
+        def box():
+            pass
+
+        box.n = 0
+        with self.assertRaises(TR.TrajectoryError) as ctx_fn:
+            TR.SafeTrajectory({"box": box}, inv_fn=lambda _s: True, safe_act_fn=lambda _s, _a: True, step_fn=lambda s, _a, _e: s)
+        self.assertEqual(ctx_fn.exception.code, "UNSUPPORTED_STATE")
+
     def test_tr09_mutants_all_killed_on_assertion(self):
-        """TR09: 11 surgical mutants of trajectory.py all fail on assertion (zero crashes, zero survivors)."""
+        """TR09: 12 surgical mutants of trajectory.py all fail on assertion (zero crashes, zero survivors)."""
         src_path = Path(__file__).resolve().parent / "trajectory.py"
         orig = src_path.read_text(encoding="utf-8")
         mutants = [
@@ -201,7 +210,13 @@ class TestTrajectory(unittest.TestCase):
              '        if act_id not in self._acts:\n            raise TrajectoryError("UNKNOWN_ACT_ID", f"unknown act_id {act_id!r}")',
              "        if act_id not in self._acts:\n            return None",
              "test_tr05_error_driven_refutation_is_non_inflationary"),
-            ("TR-M11-state-snapshot", "        return copy.deepcopy(v)", "        return v",
+            ("TR-M11-state-dict-copy",
+             "    if t is dict:\n        return {_snapshot(k, _depth + 1): _snapshot(val, _depth + 1) for k, val in v.items()}",
+             "    if t is dict:\n        return v",
+             "test_tr08_mutable_state_isolation_and_failure_atomicity"),
+            ("TR-M12-closed-domain",
+             '    raise TrajectoryError("UNSUPPORTED_STATE", f"unsupported state/input type: {t.__name__}")',
+             "    return v",
              "test_tr08_mutable_state_isolation_and_failure_atomicity"),
         ]
         for mid, find, repl, test_name in mutants:

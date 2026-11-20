@@ -11,9 +11,9 @@ Executable Python counterpart of `Vars1.Trajectory`, providing:
   3. `trajectory_mass_certificate`: emits a deterministic, content-addressed SHA-256
      `vars1-trajectory-mass@1` certificate verifiable offline by `warrant.witness`.
 """
-import copy
 import hashlib
 import json
+import math
 from typing import NamedTuple
 
 VALID_ORIGINS = frozenset(("verified", "retold", "forked"))
@@ -23,12 +23,43 @@ def _is_int(v) -> bool:
     return type(v) is int
 
 
-def _snapshot(v):
-    """Return an isolated deep copy of `v`, failing closed if `v` cannot be snapshotted."""
-    try:
-        return copy.deepcopy(v)
-    except (TypeError, RecursionError) as exc:
-        raise TrajectoryError("UNCOPYABLE_STATE", f"state/input cannot be snapshotted: {exc}") from exc
+def _snapshot(v, _depth: int = 0):
+    """Return a provably isolated copy over a closed exact value domain.
+
+    Admits only exact immutable primitives (`None`, `bool`, `int`, finite `float`, `str`, `bytes`)
+    and recursively copied containers (`tuple`, `list`, `frozenset`, `set`, `dict`).
+    Refuses functions, custom objects, subclasses, and cyclic/deep nesting with `TrajectoryError`.
+    """
+    if _depth > 64:
+        raise TrajectoryError("UNSUPPORTED_STATE", "state nesting exceeds maximum depth 64")
+    t = type(v)
+    if v is None or t is bool or t is int or t is str or t is bytes:
+        return v
+    if t is float:
+        if not math.isfinite(v):
+            raise TrajectoryError("UNSUPPORTED_STATE", "non-finite float is not supported in trajectory state")
+        return v
+    if t is tuple:
+        return tuple(_snapshot(x, _depth + 1) for x in v)
+    if t is list:
+        return [_snapshot(x, _depth + 1) for x in v]
+    if t is frozenset:
+        return frozenset(_snapshot(x, _depth + 1) for x in v)
+    if t is set:
+        return {_snapshot(x, _depth + 1) for x in v}
+    if t is dict:
+        return {_snapshot(k, _depth + 1): _snapshot(val, _depth + 1) for k, val in v.items()}
+    raise TrajectoryError("UNSUPPORTED_STATE", f"unsupported state/input type: {t.__name__}")
+
+
+def _snapshot_step(s: "TrajectoryStep") -> "TrajectoryStep":
+    return TrajectoryStep(
+        s.step_idx,
+        _snapshot(s.prev_state),
+        _snapshot(s.action),
+        _snapshot(s.env_move),
+        _snapshot(s.next_state),
+    )
 
 
 def _require_non_empty_str(v, code: str, name: str) -> str:
@@ -86,16 +117,7 @@ class SafeTrajectory:
 
     @property
     def steps(self) -> tuple[TrajectoryStep, ...]:
-        return tuple(
-            TrajectoryStep(
-                s.step_idx,
-                _snapshot(s.prev_state),
-                _snapshot(s.action),
-                _snapshot(s.env_move),
-                _snapshot(s.next_state),
-            )
-            for s in self._steps
-        )
+        return tuple(_snapshot_step(s) for s in self._steps)
 
     def advance(self, action, env_move) -> TrajectoryStep:
         """Advance one step under `(action, env_move)`, failing closed on guard or invariant violation."""
@@ -121,7 +143,7 @@ class SafeTrajectory:
         )
         self._steps.append(step)
         self._current = _snapshot(next_state)
-        return _snapshot(step)
+        return _snapshot_step(step)
 
     def is_safe(self) -> bool:
         """Independently re-verify base invariant, every guarded transition, and every reached state."""
