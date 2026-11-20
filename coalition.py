@@ -20,13 +20,38 @@ import json
 
 
 def _order(x):
-    """A total order over states and actions of any hashable types: by type name, then by value within one type, so a
-    legal None action sorts beside string actions instead of raising TypeError (Codex F1 on #135)."""
-    return (type(x).__name__, x)
+    """A total order over states and actions of any hashable types (Codex F1 on #135, twice): a tuple or a frozenset by
+    the order of what it holds, a scalar by type name and then value, anything else by type name and repr; values of
+    different types are never compared."""
+    if isinstance(x, tuple):
+        return ("tuple", tuple(_order(y) for y in x))
+    if isinstance(x, frozenset):
+        return ("frozenset", tuple(sorted(_order(y) for y in x)))
+    if x is None or isinstance(x, (bool, int, float, str, bytes)):
+        return (type(x).__name__, x)
+    return (type(x).__name__, repr(x))
 
 
 def _sorted(xs):
     return sorted(xs, key=_order)
+
+
+def _canon(x):
+    """The certificate body as JSON that names every state and action unambiguously (Codex F2 on #135): a dict whose
+    keys are all strings stays an object, any other dict is {"map": [[key, value], ...]} in key order (0 and "0" are
+    two keys, not one); a tuple is {"tuple": [...]}, a frozenset {"set": [...]} in order; a list keeps its order. A
+    game whose states and actions are strings encodes as before."""
+    if isinstance(x, dict):
+        if all(isinstance(k, str) for k in x):
+            return {k: _canon(v) for k, v in x.items()}
+        return {"map": [[_canon(k), _canon(x[k])] for k in sorted(x, key=_order)]}
+    if isinstance(x, tuple):
+        return {"tuple": [_canon(y) for y in x]}
+    if isinstance(x, frozenset):
+        return {"set": [_canon(y) for y in _sorted(x)]}
+    if isinstance(x, list):
+        return [_canon(y) for y in x]
+    return x
 
 
 @dataclass(frozen=True)
@@ -460,6 +485,6 @@ def viability_certificate(game: Game, safe, *, label="unnamed", require_live=Tru
         "policy_verified": pol_ok,
         "policy_info": pol_info,
     }
-    canon = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    canon = json.dumps(_canon(body), sort_keys=True, separators=(",", ":")).encode("utf-8")
     digest = hashlib.sha256(canon).hexdigest()
     return {"digest": digest, "certificate": body}

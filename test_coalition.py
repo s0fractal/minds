@@ -232,6 +232,27 @@ class TestCoalition(unittest.TestCase):
                     globals()["CO"] = saved
                 self.assertEqual(len(res.errors), 0, f"{mid} crashed instead of failing assertion: {res.errors}")
                 self.assertEqual(len(res.failures), 1, f"{mid} SURVIVED {test_name}!")
+    def test_tuple_actions_and_mixed_states(self):
+        """Codex F1, F2 on #135 head 2: tuple actions holding None or a string sort; states 0 and "0" are two states
+        in a deterministic certificate."""
+        a, b = (None,), ("stay",)
+        g = CO.make_game(["s", "out"], {"s": [a, b], "out": [b]}, {"s": ["env"], "out": ["env"]},
+                         {("s", a, "env"): ["s"], ("s", b, "env"): ["out"], ("out", b, "env"): ["out"]})
+        states = [0, "0"]
+        m = CO.make_game(states, {s: ["stay"] for s in states}, {s: ["env"] for s in states},
+                         {(s, "stay", "env"): [s] for s in states})
+        try:
+            self.assertEqual(CO.check_live_env(g), (True, []))
+            self.assertEqual(CO.synthesize_survival_policy(g, frozenset({"s"})), {"s": a})
+            self.assertEqual(CO.viability_certificate(g, {"s"})["certificate"]["policy_info"]["verified_states"], 1)
+            self.assertTrue(CO.check_alternating_simulation(g, g, {s: s for s in g.states})["is_alt_sim"])
+            cert = CO.viability_certificate(m, set(states))
+        except TypeError as exc:                # unorderable or unencodable identifiers: a failure, not a crash
+            self.fail(f"tuple actions or mixed states break the API: {exc}")
+        self.assertEqual(cert["certificate"]["policy_info"]["verified_states"], 2)
+        self.assertEqual(set(cert["certificate"]["safe"]), set(states))
+        self.assertEqual(cert, CO.viability_certificate(m, set(states)))
+
     def test_mixed_none_action_beside_another(self):
         """Codex F1 on #135: a legal None action beside a string action sorts in every composite API."""
         game = CO.make_game(
