@@ -30,3 +30,4 @@ import Vars1.Silence
 import Vars1.Spore
 import Vars1.Coalition
 import Vars1.Identity
+import Vars1.Trajectory
