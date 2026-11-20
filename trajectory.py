@@ -11,6 +11,7 @@ Executable Python counterpart of `Vars1.Trajectory`, providing:
   3. `trajectory_mass_certificate`: emits a deterministic, content-addressed SHA-256
      `vars1-trajectory-mass@1` certificate verifiable offline by `warrant.witness`.
 """
+import copy
 import hashlib
 import json
 from typing import NamedTuple
@@ -20,6 +21,14 @@ VALID_ORIGINS = frozenset(("verified", "retold", "forked"))
 
 def _is_int(v) -> bool:
     return type(v) is int
+
+
+def _snapshot(v):
+    """Return an isolated deep copy of `v`, failing closed if `v` cannot be snapshotted."""
+    try:
+        return copy.deepcopy(v)
+    except (TypeError, RecursionError) as exc:
+        raise TrajectoryError("UNCOPYABLE_STATE", f"state/input cannot be snapshotted: {exc}") from exc
 
 
 def _require_non_empty_str(v, code: str, name: str) -> str:
@@ -57,64 +66,79 @@ class SafeTrajectory:
     """Append-only trajectory enforcing the 3-part inductive safety law (`D22 / F3`)."""
 
     def __init__(self, initial_state, *, inv_fn, safe_act_fn, step_fn):
-        if not bool(inv_fn(initial_state)):
+        init_snap = _snapshot(initial_state)
+        if not bool(inv_fn(_snapshot(init_snap))):
             raise TrajectoryError("BASE_INVARIANT_VIOLATED", f"initial state {initial_state!r} fails inv_fn")
         self._inv_fn = inv_fn
         self._safe_act_fn = safe_act_fn
         self._step_fn = step_fn
-        self._initial = initial_state
-        self._current = initial_state
+        self._initial = init_snap
+        self._current = _snapshot(init_snap)
         self._steps: list[TrajectoryStep] = []
 
     @property
     def initial_state(self):
-        return self._initial
+        return _snapshot(self._initial)
 
     @property
     def current_state(self):
-        return self._current
+        return _snapshot(self._current)
 
     @property
     def steps(self) -> tuple[TrajectoryStep, ...]:
-        return tuple(self._steps)
+        return tuple(
+            TrajectoryStep(
+                s.step_idx,
+                _snapshot(s.prev_state),
+                _snapshot(s.action),
+                _snapshot(s.env_move),
+                _snapshot(s.next_state),
+            )
+            for s in self._steps
+        )
 
     def advance(self, action, env_move) -> TrajectoryStep:
         """Advance one step under `(action, env_move)`, failing closed on guard or invariant violation."""
-        if not bool(self._safe_act_fn(self._current, action)):
+        act_snap = _snapshot(action)
+        env_snap = _snapshot(env_move)
+        if not bool(self._safe_act_fn(_snapshot(self._current), _snapshot(act_snap))):
             raise TrajectoryError(
                 "UNSAFE_ACTION",
                 f"action {action!r} refused by safe_act_fn at state {self._current!r}",
             )
-        next_state = self._step_fn(self._current, action, env_move)
-        if not bool(self._inv_fn(next_state)):
+        next_state = _snapshot(self._step_fn(_snapshot(self._current), _snapshot(act_snap), _snapshot(env_snap)))
+        if not bool(self._inv_fn(_snapshot(next_state))):
             raise TrajectoryError(
                 "STEP_INVARIANT_VIOLATED",
                 f"transition ({self._current!r}, {action!r}, {env_move!r}) -> {next_state!r} violates inv_fn",
             )
         step = TrajectoryStep(
             step_idx=len(self._steps),
-            prev_state=self._current,
-            action=action,
-            env_move=env_move,
+            prev_state=_snapshot(self._current),
+            action=act_snap,
+            env_move=env_snap,
             next_state=next_state,
         )
         self._steps.append(step)
-        self._current = next_state
-        return step
+        self._current = _snapshot(next_state)
+        return _snapshot(step)
 
     def is_safe(self) -> bool:
         """Independently re-verify base invariant, every guarded transition, and every reached state."""
-        if not bool(self._inv_fn(self._initial)):
+        if not bool(self._inv_fn(_snapshot(self._initial))):
             return False
-        cur = self._initial
+        cur = _snapshot(self._initial)
         for st in self._steps:
             if st.prev_state != cur:
                 return False
-            if not bool(self._safe_act_fn(cur, st.action)):
+            if not bool(self._safe_act_fn(_snapshot(cur), _snapshot(st.action))):
                 return False
-            if not bool(self._inv_fn(st.next_state)):
+            recomputed = self._step_fn(_snapshot(cur), _snapshot(st.action), _snapshot(st.env_move))
+            if recomputed != st.next_state:
                 return False
-            cur = st.next_state
+            if not bool(self._inv_fn(_snapshot(st.next_state))):
+                return False
+            cur = _snapshot(st.next_state)
         return cur == self._current
 
 

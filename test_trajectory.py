@@ -138,16 +138,48 @@ class TestTrajectory(unittest.TestCase):
         self.assertEqual(cert["refuted_ids"], ["a1"])
         self.assertEqual(len(cert["verified_acts"]), 1)
 
-    def test_tr08_mutants_all_killed_on_assertion(self):
-        """TR08: 10 surgical mutants of trajectory.py all fail on assertion (zero crashes, zero survivors)."""
+    def test_tr08_mutable_state_isolation_and_failure_atomicity(self):
+        """TR08: In-place refused transitions and caller/exported state mutations cannot alter history (Codex F1)."""
+        def inplace_step(state, _action, env):
+            state["n"] = env
+            return state
+
+        init = {"n": 0}
+        traj = TR.SafeTrajectory(
+            init, inv_fn=lambda s: 0 <= s["n"] < 2, safe_act_fn=lambda _s, _a: True, step_fn=inplace_step,
+        )
+        init["n"] = 99
+        self.assertEqual(traj.initial_state, {"n": 0})
+        with self.assertRaises(TR.TrajectoryError) as ctx:
+            traj.advance("go", 2)
+        self.assertEqual(ctx.exception.code, "STEP_INVARIANT_VIOLATED")
+        self.assertEqual(traj.initial_state, {"n": 0})
+        self.assertEqual(traj.current_state, {"n": 0})
+        self.assertEqual(traj.steps, ())
+
+        # Pure step: mutating exported current_state or returned step cannot rewrite recorded history
+        traj2 = TR.SafeTrajectory(
+            {"n": 0}, inv_fn=lambda s: 0 <= s["n"] < 10,
+            safe_act_fn=lambda _s, _a: True, step_fn=lambda s, a, _e: {"n": s["n"] + a},
+        )
+        ret = traj2.advance(1, None)
+        ret.next_state["n"] = 8
+        exported = traj2.current_state
+        exported["n"] = 7
+        self.assertEqual(traj2.current_state, {"n": 1})
+        self.assertEqual(traj2.steps[0].next_state, {"n": 1})
+        self.assertTrue(traj2.is_safe())
+
+    def test_tr09_mutants_all_killed_on_assertion(self):
+        """TR09: 11 surgical mutants of trajectory.py all fail on assertion (zero crashes, zero survivors)."""
         src_path = Path(__file__).resolve().parent / "trajectory.py"
         orig = src_path.read_text(encoding="utf-8")
         mutants = [
-            ("TR-M1-base-inv", "        if not bool(inv_fn(initial_state)):", "        if False:",
+            ("TR-M1-base-inv", "        if not bool(inv_fn(_snapshot(init_snap))):", "        if False:",
              "test_tr01_base_invariant_and_safe_trajectory_induction"),
-            ("TR-M2-safe-act", "        if not bool(self._safe_act_fn(self._current, action)):", "        if False:",
+            ("TR-M2-safe-act", "        if not bool(self._safe_act_fn(_snapshot(self._current), _snapshot(act_snap))):", "        if False:",
              "test_tr02_unsafe_action_and_step_invariant_violation_refused"),
-            ("TR-M3-step-inv", "        if not bool(self._inv_fn(next_state)):", "        if False:",
+            ("TR-M3-step-inv", "        if not bool(self._inv_fn(_snapshot(next_state))):", "        if False:",
              "test_tr02_unsafe_action_and_step_invariant_violation_refused"),
             ("TR-M4-horizon-cmp", '            if act.origin == "verified" and not act.refuted and act.step_idx <= horizon:\n                total += act.weight',
              '            if act.origin == "verified" and not act.refuted:\n                total += act.weight',
@@ -169,6 +201,8 @@ class TestTrajectory(unittest.TestCase):
              '        if act_id not in self._acts:\n            raise TrajectoryError("UNKNOWN_ACT_ID", f"unknown act_id {act_id!r}")',
              "        if act_id not in self._acts:\n            return None",
              "test_tr05_error_driven_refutation_is_non_inflationary"),
+            ("TR-M11-state-snapshot", "        return copy.deepcopy(v)", "        return v",
+             "test_tr08_mutable_state_isolation_and_failure_atomicity"),
         ]
         for mid, find, repl, test_name in mutants:
             self.assertEqual(orig.count(find), 1, f"{mid}: find must match uniquely")
