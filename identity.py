@@ -15,9 +15,9 @@ Core invariants enforced fail-closed:
   3. Path-indexed queries: `auth_path(dag, u, v)` (necessary, holds across `fork`) vs
      `same_entity(dag, u, v)` (strictly single-branch continuation, never crosses `fork`).
 """
-from dataclasses import dataclass
 import hashlib
 import json
+from typing import NamedTuple
 
 
 def _is_int(v):
@@ -51,17 +51,16 @@ def _sort_key(v):
 class TypedSet:
     """Strictly immutable canonical set distinguishing values by exact type tag (`False` != `0`, `True` != `1`).
 
-    Refuses mutable values (`list`, `dict`, `set`) and custom subclasses fail-closed with `IdentityError`
-    so cached canonical keys and historical `identity_certificate` digests can never be mutated post-hoc.
+    Constructed via `__new__` with attribute mutation disabled (`__setattr__`/`__delattr__` raise
+    `AttributeError` and no custom `__init__`), and refuses mutable values (`list`, `dict`, `set`)
+    and custom subclasses fail-closed with `IdentityError` so cached keys and certificates cannot drift.
     """
 
     __slots__ = ("_items", "_keys")
 
-    def __init__(self, items=()):
-        if type(items) is TypedSet:
-            self._items = items._items
-            self._keys = items._keys
-            return
+    def __new__(cls, items=()):
+        if type(items) is cls:
+            return items
         mapping = {}
         try:
             for x in items:
@@ -70,8 +69,16 @@ class TypedSet:
                     mapping[k] = x
         except (TypeError, RecursionError) as exc:
             raise IdentityError("UNSUPPORTED_VALUE", str(exc)) from exc
-        self._items = tuple(sorted(mapping.items(), key=lambda kv: kv[0]))
-        self._keys = frozenset(mapping.keys())
+        self = super().__new__(cls)
+        object.__setattr__(self, "_items", tuple(sorted(mapping.items(), key=lambda kv: kv[0])))
+        object.__setattr__(self, "_keys", frozenset(mapping.keys()))
+        return self
+
+    def __setattr__(self, name, value):
+        raise AttributeError("TypedSet is immutable")
+
+    def __delattr__(self, name):
+        raise AttributeError("TypedSet is immutable")
 
     def __len__(self):
         return len(self._items)
@@ -104,25 +111,24 @@ class TypedSet:
         other_ts = other if type(other) is TypedSet else TypedSet(other)
         merged = dict(self._items)
         merged.update(other_ts._items)
-        out = TypedSet.__new__(TypedSet)
-        out._items = tuple(sorted(merged.items(), key=lambda kv: kv[0]))
-        out._keys = frozenset(merged.keys())
+        out = super().__new__(TypedSet)
+        object.__setattr__(out, "_items", tuple(sorted(merged.items(), key=lambda kv: kv[0])))
+        object.__setattr__(out, "_keys", frozenset(merged.keys()))
         return out
 
     def __sub__(self, other):
         other_ts = other if type(other) is TypedSet else TypedSet(other)
         kept = tuple((k, v) for k, v in self._items if k not in other_ts._keys)
-        out = TypedSet.__new__(TypedSet)
-        out._items = kept
-        out._keys = frozenset(k for k, _ in kept)
+        out = super().__new__(TypedSet)
+        object.__setattr__(out, "_items", kept)
+        object.__setattr__(out, "_keys", frozenset(k for k, _ in kept))
         return out
 
     def __repr__(self):
         return f"TypedSet({[v for _, v in self._items]!r})"
 
 
-@dataclass(frozen=True)
-class EntityNode:
+class EntityNode(NamedTuple):
     node_id: str
     entity_root: str
     invariants: TypedSet
@@ -132,8 +138,7 @@ class EntityNode:
     birth_kind: str  # "genesis" | "step" | "fork"
 
 
-@dataclass(frozen=True)
-class TransitionEdge:
+class TransitionEdge(NamedTuple):
     src: str
     dst: str
     kind: str  # "step" | "fork"

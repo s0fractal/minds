@@ -159,18 +159,28 @@ class TestIdentity(unittest.TestCase):
             with self.assertRaises(ID.IdentityError) as ctx_r:
                 d.genesis("p", relations=[bad])
             self.assertEqual(ctx_r.exception.code, "UNSUPPORTED_VALUE")
-        # Deeply immutable tuples/TypedSets are admitted and deterministic
+        # Deeply immutable tuples/TypedSets are admitted, deterministic, and cannot be reinitialized/mutated
+        nested = ID.TypedSet(["safety"])
         d_ok = ID.LineageDAG()
-        p = d_ok.genesis("p", invariants=[("safety", False), ("safety", 0)], relations=[("trust", "bob")])
-        self.assertEqual(len(p.invariants), 2)
+        p = d_ok.genesis("p", invariants=[nested, ("safety", False), ("safety", 0)],
+                         relations=[("trust", "bob")], atp=10)
+        before_dig = ID.identity_certificate(d_ok, "p")["digest"]
+        self.assertEqual(len(p.invariants), 3)
+        self.assertIn(ID.TypedSet(["safety"]), p.invariants)
         self.assertIn(("safety", False), p.invariants)
         self.assertIn(("safety", 0), p.invariants)
-        self.assertEqual(ID.identity_certificate(d_ok, "p")["certificate"]["invariants"],
-                         [["tuple", [["str", "safety"], ["bool", False]]],
-                          ["tuple", [["str", "safety"], ["int", 0]]]])
+        nested.__init__(["unsafe"])
+        p.relations.__init__(["trust:mallory"])
+        p.__init__("evil", "evil", ID.TypedSet(), ID.TypedSet(), 999, None, "genesis")
+        self.assertEqual(list(nested), ["safety"])
+        self.assertEqual(list(p.relations), [("trust", "bob")])
+        self.assertEqual(p.atp, 10)
+        with self.assertRaises(AttributeError):
+            nested._items = ()
+        self.assertEqual(ID.identity_certificate(d_ok, "p")["digest"], before_dig)
 
     def test_id11_mutants_all_killed_on_assertion(self):
-        """ID11: 11 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
+        """ID11: 12 surgical mutants of identity.py all fail on assertion (zero crashes, zero survivors)."""
         src_path = Path(__file__).resolve().parent / "identity.py"
         orig = src_path.read_text(encoding="utf-8")
         mutants = [
@@ -198,6 +208,10 @@ class TestIdentity(unittest.TestCase):
              "test_id09_typed_invariant_and_relation_equality_prevents_bool_int_erasure"),
             ("ID-M11-mutable-guard", "    if t is tuple:",
              "    if t in (list, tuple):",
+             "test_id10_mutable_values_refused_and_immutable_tuples_isolated"),
+            ("ID-M12-typedset-setattr",
+             '    def __setattr__(self, name, value):\n        raise AttributeError("TypedSet is immutable")',
+             "    def __setattr__(self, name, value):\n        object.__setattr__(self, name, value)",
              "test_id10_mutable_values_refused_and_immutable_tuples_isolated"),
         ]
         for mid, find, repl, test_name in mutants:
