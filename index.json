@@ -2,8 +2,8 @@
  "format": "minds.published-bundles@1",
  "about": "The latest release of s0fractal/minds and the projection that covers it, as published by tools/publish_site.py. The names and the roster are the publisher's word: pin the keys you trust.",
  "chain": "refs/vars/heads/minds",
- "chain_tip": "ef16c941341ddbff87d57b449fb0ccd79645472f",
- "published": "2026-11-20T12:04:55Z",
+ "chain_tip": "5749b961a03f10aa4518e888e605aa060f09c7d2",
+ "published": "2026-11-20T21:54:10Z",
  "projection": {
   "id": "3623c1ee603600139192f49637e461141f4721afcd7b64255dbb42c65922e7fd",
   "tip": "b03cf624ac3cf34a13b05110a5de265cd38abbdb",
@@ -56,7 +56,7 @@
   }
  ],
  "verifier": {
-  "main": "049c3e602ccf5e445fbe1f154855661ad48366ed",
+  "main": "bbfa5abd88b0dcd15c291613728502a39c99049d",
   "file": "minds_verify.mjs",
   "sha256": "8eaea2ef1b4c8a62ce51acb801b056320ab88baa4e37970bd5b6d73ec1602267"
  }
