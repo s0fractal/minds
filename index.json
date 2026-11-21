@@ -2,27 +2,27 @@
  "format": "minds.published-bundles@1",
  "about": "The latest release of s0fractal/minds and the projection that covers it, as published by tools/publish_site.py. The names and the roster are the publisher's word: pin the keys you trust.",
  "chain": "refs/vars/heads/minds",
- "chain_tip": "5749b961a03f10aa4518e888e605aa060f09c7d2",
- "published": "2026-11-20T21:54:10Z",
+ "chain_tip": "9baf8ea4025d63ad411a6ecdf9fb35d6b8f848b7",
+ "published": "2026-11-21T02:14:48Z",
  "projection": {
-  "id": "3623c1ee603600139192f49637e461141f4721afcd7b64255dbb42c65922e7fd",
-  "tip": "b03cf624ac3cf34a13b05110a5de265cd38abbdb",
+  "id": "6055053e5f814e2767e6196b221767bdd2ad7cdb490a4562102982241dae528c",
+  "tip": "5749b961a03f10aa4518e888e605aa060f09c7d2",
   "witnesses": [
    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
   ],
-  "file": "bundles/projection-3623c1ee603600139192f49637e461141f4721afcd7b64255dbb42c65922e7fd.json",
-  "sha256": "426349623de2dcc461ff15f1a9b89f0feef9f2e569c6893e517da4b23eba5e7c"
+  "file": "bundles/projection-6055053e5f814e2767e6196b221767bdd2ad7cdb490a4562102982241dae528c.json",
+  "sha256": "3e0c74de41ae8cb3c55088630eac0626cb4af823ec5cab0f011f89ece4737176"
  },
  "attestation": {
-  "decision": "606cd56bb46cf2fb4c350251f2d238bc789cb1924b4006b1c6dbcb4d86e0b4fd",
-  "statement": "minds release main@66cb262ef459822ae4c0a7319562f006b3853a96 rules@1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e; checks: lake build OK; lake build vars1exec OK; lake build vars1fold OK; lake build vars1cycle OK; lake build Vars1Sigma OK; test_vars1 OK; test_vars1_props OK; lake build vars1witness OK; experiments/witness OK; kernel rebuild hashes to H_LENS_KERNEL OK; kernel2 rebuild hashes to H_LENS_KERNEL_V2 OK; kernel/lens1b.wasm rebuild hashes to H_LENS_KERNEL_V1B OK; the released rules are rebuilt here OK; profile@d6e787b8f894f3df47e05ce722f040747069be0a65da9bc7c6e0dd558ffa8c3b",
+  "decision": "702163110e5fbea16824270941e87d3c77bd4cf0d9340babb6bc3619d844ca48",
+  "statement": "minds release main@43eb60f0fb13658b917d35a2708b3272474dc64d rules@1ca798b5013bf45735d3de836ecff23ca148e5bac2f6ca2c7d6289c2cf26707e; checks: lake build OK; lake build vars1exec OK; lake build vars1fold OK; lake build vars1cycle OK; lake build Vars1Sigma OK; test_vars1 OK; test_vars1_props OK; lake build vars1witness OK; experiments/witness OK; kernel rebuild hashes to H_LENS_KERNEL OK; kernel2 rebuild hashes to H_LENS_KERNEL_V2 OK; kernel/lens1b.wasm rebuild hashes to H_LENS_KERNEL_V1B OK; the released rules are rebuilt here OK; profile@9d82e1c60f0d8b16ab12781e75b6212109375562fa73684a382ecff7fc6126b6",
   "endorsers": [
    "1593c6d191e50a64b5f3982a3053d8703992fa64052395a0c70188cff648d0e4",
    "dd5dd02da0d9644bcc9e6f6efead92363e8eb45cab3c5efe93f85d7b5ecaa12a"
   ],
-  "file": "bundles/attestation-606cd56bb46cf2fb4c350251f2d238bc789cb1924b4006b1c6dbcb4d86e0b4fd.json",
-  "sha256": "528de34297b4bc7542e2362c191ae634cdc1cbd9d3cb00241995058067fa5780"
+  "file": "bundles/attestation-702163110e5fbea16824270941e87d3c77bd4cf0d9340babb6bc3619d844ca48.json",
+  "sha256": "97e0cf841d53a0403464f039c1882dadc57747b3403491a8f33bc74c14d85151"
  },
  "roster": [
   {
