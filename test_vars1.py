@@ -8365,6 +8365,39 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertEqual(V.verify_attestation(b, require=[pka, pkb, pkc])["required_missing"], [pkb.hex()],
                          "every pinned key witnesses the projection: bob has not witnessed r3's")
 
+    def test_131b_attest_and_bundle_take_a_cell_as_why_names_it(self) -> None:
+        """`attest` and `bundle` take a cell as `why` reads one: its full id, its slot name, 8 or more hex digits of its
+        id or 7 or more of the released commit, and each gives the same bundle; a name no cell answers is refused in
+        words (a stranger named release bbfa5abd88b0 by its commit and was refused, 2026-11-22)."""
+        mc = self._minds_chain()
+        ska = b"\x07" * 32
+        mc.init(self.repo_path, ska)
+        _, r1 = mc.release(self.repo_path, ska, "ab" * 20, ["test_vars1 OK"])
+        _, r2 = mc.release(self.repo_path, ska, "cd" * 20, ["test_vars1 OK"])
+        did, pid = r1["decision"].hex(), r2["projection"].hex()
+
+        def run(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    code = mc._main(list(argv))
+                except (V.VarsError, ValueError) as e:     # an id it cannot read: a refusal, not a crash
+                    return ("refused", str(e))
+            return code, out.getvalue()
+        held = mc.ROOT
+        mc.ROOT = self.repo_path
+        try:
+            forms = [did, f"minds/release/{'ab' * 6}", did[:10], "ab" * 4]
+            attests = [run("attest", f) for f in forms]
+            bundles = [run("bundle", f) for f in (pid, pid[:12])]
+            nothing = run("attest", "minds/release/nothing")
+        finally:
+            mc.ROOT = held
+        self.assertTrue(all(a == attests[0] for a in attests) and attests[0][0] == 0, [a[:1] for a in attests])
+        self.assertIsInstance(json.loads(attests[0][1]), dict, "an attestation bundle")
+        self.assertTrue(bundles[0] == bundles[1] and bundles[0][0] == 0, [b[:1] for b in bundles])
+        self.assertEqual(nothing[0], "refused", nothing)
+
     def test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold(self) -> None:
         """`minds_chain.py why`: a release that waits names the member it waits for, and once that member answers,
         whose keys count, by the verifier ids their verdicts give; a release whose check is invalidated is not live,
