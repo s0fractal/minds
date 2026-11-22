@@ -79,7 +79,7 @@ with one that has the commit's own installed (`interpreter_for`).
                                               # hold `next` to the gate, act by act (`--every`: every seal of every key)
     tools/minds_chain.py lag REPO SCOPE       # read only: which cells of SCOPE in REPO that this chain holds stand on one
                                               # side and not the other, why, and what this scope can do (`vars1.lag`)
-    tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection`
+    tools/minds_chain.py bundle PROJECTION    # a projection bundle for `vars1.py verify-projection` (a cell named as `why` takes it)
     tools/minds_chain.py attest DECISION      # an attestation bundle for `vars1.py verify-attestation`
     tools/minds_chain.py shadow RULES [--out FILE]
                                               # every historical tip under its epoch's rules and under RULES: the
@@ -604,6 +604,15 @@ def key_names(cells: Dict[bytes, V.Cell], atoms: Dict[bytes, bytes], seals) -> D
             seen.setdefault(x.actor_pubkey, {}).setdefault(n, 0)
             seen[x.actor_pubkey][n] += 1
     return {k: max(sorted(v), key=v.get) for k, v in seen.items()}
+
+
+def cell_id(repo_dir: Path, ref: str) -> bytes:
+    """The id of the cell `ref` names, as `why` reads a name: its full id, its slot name, 8 or more hex digits of its
+    id, or 7 or more of a commit whose release it is. `attest` and `bundle` take any of these (a stranger asked for
+    the attestation of release `bbfa5abd88b0` and was refused: "not a contract or decision cell", 2026-11-22)."""
+    if re.fullmatch(r"[0-9a-f]{64}", ref):
+        return bytes.fromhex(ref)
+    return bytes.fromhex(explain(repo_dir, ref)["path"][0]["cell"])
 
 
 def explain(repo_dir: Path, ref: str) -> Dict[str, object]:
@@ -2319,11 +2328,11 @@ def _main(argv: List[str]) -> int:
         print(json.dumps(profile_at(repo_dir, argv[1]), indent=2))
         return 0
     if cmd == "bundle" and len(argv) == 2:
-        print(json.dumps(V.export_projection(V.GitVarsRepo(repo_dir), SCOPE, bytes.fromhex(argv[1])), indent=2))
+        print(json.dumps(V.export_projection(V.GitVarsRepo(repo_dir), SCOPE, cell_id(repo_dir, argv[1])), indent=2))
         return 0
     if cmd == "attest" and len(argv) == 2:
         repo = V.GitVarsRepo(repo_dir)
-        did = bytes.fromhex(argv[1])
+        did = cell_id(repo_dir, argv[1])
         print(json.dumps(V.export_attestation(repo, SCOPE, did, covering_projection(repo, did)), indent=2))
         return 0
     print(__doc__, file=sys.stderr)
