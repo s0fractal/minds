@@ -15,3 +15,9 @@ The workspace's rules (`~/Projects/AGENTS.md`) hold here; this file says how the
    merged by the owner; seeds and keys (`.git/vars/*.key`, the environment `witness`) are never read out or moved.
 4. **Bundle by theme.** Records ride in the next pull request with code; one pushed head per batch, since every head
    wakes the review and runs CI twice.
+5. **A new thesis lands with its consumer.** A new module at the root (a model, a verifier, a Lean development) joins
+   `vars1.py`'s surface only with a scenario that uses it through the chain (`tools/minds_chain.py`) or the kernel, and
+   with the open obligation it answers named in the pull request. Until then it is a study: under `experiments/`, not
+   at the root, where every new module is an owner path for the gate (any module there can shadow what the gate
+   imports). Between 2026-11-19 and 2026-11-21 five theses entered the root (spores, coalition, identity, trajectory,
+   compatibility) with only their own tests and no caller; each needed the owner's merge for that reason alone.
