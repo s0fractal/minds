@@ -1,0 +1,24 @@
+# minds
+
+> A repository that governs itself with VARS-1: each release of `main` is a decision cell on the chain
+> `refs/vars/heads/minds`, settled when a majority of its roster (keys named in the README) attests it.
+
+To know whether you may rely on the latest release of `main` (in a clone; the chain refs are not fetched by default):
+
+    git clone https://github.com/s0fractal/minds && cd minds
+    git fetch origin '+refs/vars/*:refs/vars/*'
+    python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt
+    .venv/bin/python tools/minds_chain.py status            # main_released, last_released, the threshold
+    .venv/bin/python tools/minds_chain.py why COMMIT        # Settled or not, whose keys counted, whom it waits for
+
+To check a release without running this repository's code, take its bundles from the `site` branch and run the
+standard-library verifier: `python3 -I verify/minds_verify.py verify-attestation BUNDLE --require KEY ...`. The newest
+release is covered by a projection only once the next one is made (open obligation ba1c174a).
+
+Its proposals and review records are a Warrant store (`.warrant/`); read any of them from the address alone:
+
+    warrant-agent rely github.com/s0fractal/minds ba1c174a     # pip install "warrant-graph @ git+https://github.com/s0fractal/warrant"
+
+- [README](https://github.com/s0fractal/minds/blob/main/README.md): self-governance, the roster's keys, the verify commands
+- [VARS-1 specification](https://github.com/s0fractal/minds/blob/main/VARS-1-SPEC.md)
+- [AGENTS.md](https://github.com/s0fractal/minds/blob/main/AGENTS.md): how agents work here
