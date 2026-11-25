@@ -8398,6 +8398,71 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(bundles[0] == bundles[1] and bundles[0][0] == 0, [b[:1] for b in bundles])
         self.assertEqual(nothing[0], "refused", nothing)
 
+    def test_131c_tensions_runs_profile_over_chain_tip(self) -> None:
+        """`minds_chain.py tensions` (obligation 3b23e070): runs `experiments/decisions/profile.py` over the chain's
+        tip in one call — default profile over all evaluated cells, explicit `--profile`, `--min-cut`, `--since`,
+        JSON and text views — surfacing FRAGILITY, INCOMPLETENESS and UNREALIZED_POSSIBILITY."""
+        mc = self._minds_chain()
+        ska, skb, skc, skd, ske = b"\x07" * 32, b"\x08" * 32, b"\x09" * 32, b"\x0a" * 32, b"\x0b" * 32
+        mc.init(self.repo_path, ska)
+        _, r1 = mc.release(self.repo_path, ska, "11" * 20, ["test_vars1 OK"])
+        for sk, name in ((skb, "bob"), (skc, "carol"), (skd, "dave"), (ske, "eve")):
+            mc.join(self.repo_path, [ska], V.ed25519_pubkey(sk), name)
+        # 5-key roster -> release majority is 3; ska's verdict leaves deficit=2 (INCOMPLETENESS)
+        r2_tip, r2 = mc.release(self.repo_path, ska, "22" * 20, ["test_vars1 OK"])
+        # r1 is Grounded with 1 key (fragile at min-cut 2); r2 needs 2 more keys (INCOMPLETENESS)
+        def run(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                try:
+                    code = mc._main(list(argv))
+                except (V.VarsError, ValueError) as e:
+                    return ("refused", str(e))
+            return code, out.getvalue()
+
+        held = mc.ROOT
+        mc.ROOT = self.repo_path
+        try:
+            rc_j, out_j = run("tensions", "--json", "--min-cut", "2")
+            rc_t, out_t = run("tensions", "--min-cut", "2")
+            doc_j = json.loads(out_j)
+            # Bob attests r2 -> deficit drops from 2 to 1 -> UNREALIZED_POSSIBILITY with --since
+            v_bob = V.Cell(V.H_SCHEMA["verdict"], V.sha256(V.atom_utf8("minds/verdict/bob-r2")),
+                           r2["decision"], h_attests=V.sha256(V.atom_hvec([r2["decision"]])),
+                           slots=(V.H_EMPTY, V.H_ATTESTED, V.sha256(V.atom_utf8("bob"))))
+            atoms = {V.sha256(a): a for a in (V.atom_utf8("minds/verdict/bob-r2"),
+                                               V.atom_hvec([r2["decision"]]), V.atom_utf8("bob"))}
+            s_id = mc.NextTip(self.repo_path).scope
+            cand = self.repo.build_candidate_commit(mc.SCOPE, atoms, [v_bob],
+                                                    [V.Seal.sign(skb, v_bob.id, s_id)], parent_commit=r2_tip)
+            self.repo.admit_and_advance(mc.SCOPE, cand, expected_old=r2_tip)
+            rc_s, out_s = run("tensions", "--json", "--since", r2_tip)
+            doc_s = json.loads(out_s)
+            # Explicit --profile JSON targeting only r1 with min_cut_threshold=1 has no fragility
+            pf = self.repo_path / "prof.json"
+            pf.write_text(json.dumps({
+                "format": "minds.decisions.profile@1",
+                "goals": [r1["decision"].hex()],
+                "preferences": {"min_cut_threshold": 1},
+            }))
+            rc_p, out_p = run("tensions", "--profile", str(pf), "--json")
+            doc_p = json.loads(out_p)
+            bad = run("tensions", "--min-cut", "not-an-int")
+        finally:
+            mc.ROOT = held
+        kinds_j = {t["kind"] for t in doc_j["tensions"]}
+        self.assertEqual(rc_j, 0)
+        self.assertIn("FRAGILITY", kinds_j)
+        self.assertIn("INCOMPLETENESS", kinds_j)
+        self.assertTrue(any(t.get("slot_name") == f"minds/release/{'11' * 6}" for t in doc_j["tensions"]))
+        self.assertEqual(rc_t, 0)
+        self.assertIn("FRAGILITY", out_t)
+        self.assertEqual(rc_s, 0)
+        self.assertIn("UNREALIZED_POSSIBILITY", {t["kind"] for t in doc_s["tensions"]})
+        self.assertEqual(rc_p, 0)
+        self.assertEqual(doc_p["tensions"], [])
+        self.assertEqual(bad[0], "refused", bad)
+
     def test_131_why_names_whom_a_cell_waits_for_and_the_first_cell_that_does_not_hold(self) -> None:
         """`minds_chain.py why`: a release that waits names the member it waits for, and once that member answers,
         whose keys count, by the verifier ids their verdicts give; a release whose check is invalidated is not live,
