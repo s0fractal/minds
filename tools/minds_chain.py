@@ -56,6 +56,9 @@ with one that has the commit's own installed (`interpreter_for`).
     tools/minds_chain.py show                # releases and projections with their status
     tools/minds_chain.py status               # read only: is main released, who has not yet attested each
                                               # release or witnessed each projection, rules, claims debt
+    tools/minds_chain.py tensions [--profile FILE] [--tip COMMIT] [--since COMMIT] [--min-cut N] [--max-deficit N] [--json]
+                                              # read only: FRAGILITY, INCOMPLETENESS, CONTRADICTION and
+                                              # UNREALIZED_POSSIBILITY over the chain's tip (experiments/decisions/profile.py)
     tools/minds_chain.py profile COMMIT       # the release profile of COMMIT: every file an admission depends on
     tools/minds_chain.py what-if CELL... [--key FILE | --assume PUBKEY] [--restore]
                                               # what would follow if CELL... (a release's check, say) were
@@ -2163,6 +2166,59 @@ def what_if(repo_dir: Path, sk: Optional[bytes], cells: List[bytes], name: str =
     return repo.what_if(SCOPE, atoms, new, [V.Seal.sign(sk, c.id, s) for c in new])
 
 
+def _load_decisions_profile():
+    """Load `experiments/decisions/profile.py` without colliding with stdlib `profile`."""
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / "experiments" / "decisions" / "profile.py"
+    spec = importlib.util.spec_from_file_location("_minds_decisions_profile", path)
+    if spec is None or spec.loader is None:
+        raise V.VarsError(f"cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def tensions(repo_dir: Path, profile_path: Optional[Path] = None, tip: Optional[str] = None,
+             since: Optional[str] = None, min_cut: int = 2, max_deficit: int = 1000) -> Dict[str, object]:
+    """Read only: run `experiments/decisions/profile.py` over the chain's tip in one call (obligation 3b23e070).
+    Without `--profile`, inspects every evaluated cell (`contract`, `decision`, `question`) at the tip."""
+    dp = _load_decisions_profile()
+    repo = V.GitVarsRepo(repo_dir)
+    tip_state = dp.FR.Tip(V, repo, SCOPE, tip)
+    try:
+        if profile_path is not None:
+            prof = dp.read_profile(profile_path.read_bytes())
+        else:
+            prof = dp.check_profile({
+                "format": dp.PROFILE,
+                "goals": sorted(h.hex() for h, c in tip_state.cells.items() if c.h_schema in dp.EVALUATED),
+                "obligations": [],
+                "max_deficit": max_deficit,
+                "preferences": {"min_cut_threshold": min_cut},
+                "precedents": [],
+            })
+    except (dp.Bad, OSError) as e:
+        raise V.VarsError(str(e)) from None
+    out = dp.filter_tensions(repo, SCOPE, prof, tip=tip_state.tip, since=since)  # one read of the tip (codex c149b4d9)
+    for row in out["tensions"]:
+        cid = bytes.fromhex(row["target_goal"])
+        cell = tip_state.cells.get(cid)
+        row["slot_name"] = V.parse_utf8(tip_state.atoms[cell.h_slot_name]) if cell and cell.h_slot_name in tip_state.atoms else None
+    out["counts"] = {k: sum(1 for t in out["tensions"] if t["kind"] == k) for k in dp.KINDS}
+    return out
+
+
+def tensions_text(doc: Dict[str, object]) -> str:
+    """One-line-per-tension human view of `tensions()`."""
+    order = ("CONTRADICTION", "FRAGILITY", "INCOMPLETENESS", "UNREALIZED_POSSIBILITY")
+    counts = doc["counts"]
+    lines = [f"{doc['scope']} @ {str(doc['tip'])[:12]}  " + " · ".join(f"{k} {counts[k]}" for k in order)]
+    for t in doc["tensions"]:
+        label = t.get("slot_name") or t["target_goal"][:12]
+        lines.append(f"  [{t['kind']}] {label} ({t['target_goal'][:12]}): {t['question_prompt']}")
+    return "\n".join(lines)
+
+
 def _main(argv: List[str]) -> int:
     cmd = argv[0] if argv else ""
     repo_dir = ROOT
@@ -2323,6 +2379,32 @@ def _main(argv: List[str]) -> int:
         return 0
     if cmd == "status":
         print(json.dumps(status(repo_dir), indent=2))
+        return 0
+    if cmd == "tensions":
+        flags, opts, rest = set(), {}, list(argv[1:])
+        while rest:
+            a = rest.pop(0)
+            if a == "--json":
+                flags.add(a)
+            elif a in ("--profile", "--tip", "--since", "--min-cut", "--max-deficit") and rest and a not in opts:
+                opts[a] = rest.pop(0)
+            else:
+                print(__doc__, file=sys.stderr)
+                return 2
+        try:
+            min_cut = int(opts["--min-cut"]) if "--min-cut" in opts else 2
+            max_deficit = int(opts["--max-deficit"]) if "--max-deficit" in opts else 1000
+        except ValueError:
+            raise V.VarsError("--min-cut and --max-deficit must be integers") from None
+        doc = tensions(
+            repo_dir,
+            profile_path=Path(opts["--profile"]) if "--profile" in opts else None,
+            tip=opts.get("--tip"),
+            since=opts.get("--since"),
+            min_cut=min_cut,
+            max_deficit=max_deficit,
+        )
+        print(json.dumps(doc, indent=2) if "--json" in flags else tensions_text(doc))
         return 0
     if cmd == "profile" and len(argv) == 2:
         print(json.dumps(profile_at(repo_dir, argv[1]), indent=2))
