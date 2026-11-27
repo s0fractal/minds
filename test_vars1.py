@@ -8398,6 +8398,34 @@ class TestVars1Conformance(unittest.TestCase):
         self.assertTrue(bundles[0] == bundles[1] and bundles[0][0] == 0, [b[:1] for b in bundles])
         self.assertEqual(nothing[0], "refused", nothing)
 
+    def test_131d_tensions_reads_one_tip(self) -> None:
+        """tensions() builds its goals and its report from one read of the chain's tip: a writer advancing the ref
+        between the two reads must not leave the newer tip named with its release missing (codex finding c149b4d9)."""
+        mc = self._minds_chain()
+        sk = bytes([7]) * 32
+        mc.init(self.repo_path, sk)
+        old, _ = mc.release(self.repo_path, sk, '11' * 20, ['test_vars1 OK'])
+        new, _ = mc.release(self.repo_path, sk, '22' * 20, ['test_vars1 OK'])
+
+        def set_tip(t):
+            subprocess.run(['git', '-C', str(self.repo_path), 'update-ref', 'refs/vars/heads/minds', t], check=True)
+        expected = {t: {r['target_goal'] for r in mc.tensions(self.repo_path, tip=t)['tensions']} for t in (old, new)}
+        self.assertNotEqual(expected[old], expected[new])
+        set_tip(old)
+        dp = mc._load_decisions_profile()
+        original, reads = dp.FR.Tip, []
+
+        def advance_after_read(*args, **kwargs):
+            snap = original(*args, **kwargs)
+            reads.append(snap.tip)
+            if len(reads) == 1:
+                set_tip(new)
+            return snap
+        with unittest.mock.patch.object(dp.FR, 'Tip', side_effect=advance_after_read):
+            got = mc.tensions(self.repo_path)
+        self.assertEqual({r['target_goal'] for r in got['tensions']}, expected[got['tip']])
+        self.assertEqual(got['tip'], reads[0])
+
     def test_131c_tensions_runs_profile_over_chain_tip(self) -> None:
         """`minds_chain.py tensions` (obligation 3b23e070): runs `experiments/decisions/profile.py` over the chain's
         tip in one call — default profile over all evaluated cells, explicit `--profile`, `--min-cut`, `--since`,

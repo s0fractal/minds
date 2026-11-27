@@ -2199,7 +2199,7 @@ def tensions(repo_dir: Path, profile_path: Optional[Path] = None, tip: Optional[
             })
     except (dp.Bad, OSError) as e:
         raise V.VarsError(str(e)) from None
-    out = dp.filter_tensions(repo, SCOPE, prof, tip=tip, since=since)
+    out = dp.filter_tensions(repo, SCOPE, prof, tip=tip_state.tip, since=since)  # one read of the tip (codex c149b4d9)
     for row in out["tensions"]:
         cid = bytes.fromhex(row["target_goal"])
         cell = tip_state.cells.get(cid)
